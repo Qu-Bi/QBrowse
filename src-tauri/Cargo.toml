@@ -25,7 +25,7 @@ tauri = { version = "2.11.3", features = ["unstable"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2.0.2"
 window-vibrancy = "0.7.1"
-rusqlite = "0.40.1"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
 aes-gcm = "0.10.3"
 argon2 = "0.5.3"
 rand = "0.9.5"
