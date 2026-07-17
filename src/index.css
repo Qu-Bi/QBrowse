@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .hide-scroll {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  .hide-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 :root {
   --accent: #3b82f6; /* default blue */
   --accent-10: rgba(59, 130, 246, 0.1);
@@ -21,4 +31,30 @@ body {
   .perspective-\[1200px\] {
     perspective: 1200px;
   }
+}
+
+@keyframes slideUpFade {
+  0% { opacity: 0; transform: translateY(20px) translateX(-50%); }
+  100% { opacity: 1; transform: translateY(0) translateX(-50%); }
+}
+
+.animate-toast {
+  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sidebar-light {
+  --sidebar-text-muted: rgba(0, 0, 0, 0.5);
+  --sidebar-text-normal: rgba(0, 0, 0, 0.7);
+  --sidebar-text-hover: rgba(0, 0, 0, 1);
+  --sidebar-bg-hover: rgba(0, 0, 0, 0.05);
+  --sidebar-bg-active: rgba(0, 0, 0, 0.1);
+  --sidebar-border: rgba(0, 0, 0, 0.1);
+}
+.sidebar-dark {
+  --sidebar-text-muted: rgba(255, 255, 255, 0.4);
+  --sidebar-text-normal: rgba(255, 255, 255, 0.6);
+  --sidebar-text-hover: rgba(255, 255, 255, 1);
+  --sidebar-bg-hover: rgba(255, 255, 255, 0.05);
+  --sidebar-bg-active: rgba(255, 255, 255, 0.1);
+  --sidebar-border: rgba(255, 255, 255, 0.1);
 }

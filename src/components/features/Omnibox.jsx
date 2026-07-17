@@ -1,8 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { 
     Terminal, Search, Calculator, Globe, ArrowRight, 
     VolumeX, Volume2, Cpu, Zap, Moon, Sun, PanelLeft, Layers, Puzzle 
-} from 'lucide-react';
+, Trash2, XCircle } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
@@ -13,6 +13,10 @@ const mockHistoryDB = [
 ];
 
 const availableCommands = [
+    { id: 'ls', title: 'List open tabs in current space', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
+    { id: 'clear', title: 'Clear tab history & cache', cmd: 'clear', icon: Trash2, color: 'text-gray-400' },
+    { id: 'top', title: 'Show top memory-consuming tabs', cmd: 'top', icon: Cpu, color: 'text-red-400' },
+    { id: 'kill', title: 'Kill active tab', cmd: 'kill', icon: XCircle, color: 'text-red-500' },
     { id: 'mute', title: 'Mute all tabs globally', cmd: 'mute all', icon: VolumeX, color: 'text-red-400' },
     { id: 'unmute', title: 'Unmute all tabs globally', cmd: 'unmute all', icon: Volume2, color: 'text-green-400' },
     { id: 'sleep', title: 'Sleep background tabs (Free RAM)', cmd: 'sleep tabs', icon: Cpu, color: 'text-blue-400' },
@@ -23,6 +27,18 @@ const availableCommands = [
     { id: 'tab_map', title: 'Open Tab Map (Mission Control)', cmd: 'tab map', icon: Layers, color: 'text-purple-400' },
     { id: 'tool_hub', title: 'Toggle Tool Hub (Notes/AI)', cmd: 'tool hub', icon: Puzzle, color: 'text-fuchsia-400' }
 ];
+
+const parseUrlInput = (input) => {
+    const trimmed = input.trim();
+    if (!trimmed) return '';
+    // Basic regex to detect if it's a domain/URL
+    const isUrl = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(:\d+)?(\/.*)?$/i.test(trimmed) || trimmed.startsWith('localhost:');
+    if (isUrl) {
+        return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+    }
+    // Otherwise treat as search query
+    return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+};
 
 export default function Omnibox() {
     const isOmniboxOpen = useUIStore(state => state.isOmniboxOpen);
@@ -47,7 +63,34 @@ export default function Omnibox() {
     const setGhostTabs = useTabStore(state => state.setGhostTabs);
 
     const isIncognito = activeSpace === 'ghost';
+    const liveSearch = useUIStore(state => state.settings?.liveSearch);
     const searchInputRef = useRef(null);
+
+    const [liveSuggestions, setLiveSuggestions] = useState([]);
+
+    useEffect(() => {
+        if (!searchQuery || searchQuery.startsWith('>')) {
+            setLiveSuggestions([]);
+            return;
+        }
+        
+        const fetchSuggestions = async () => {
+            try {
+                const response = await fetch(`https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(searchQuery)}`);
+                const data = await response.json();
+                if (data && data[1]) {
+                    setLiveSuggestions(data[1].slice(0, 4));
+                }
+            } catch (e) {
+                // Ignore fetch errors, might be CORS
+                console.log(e);
+            }
+        };
+
+        const timer = setTimeout(fetchSuggestions, 150);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
 
     useEffect(() => {
         if (isOmniboxOpen && searchInputRef.current) {
@@ -87,10 +130,27 @@ export default function Omnibox() {
         return null;
     })();
 
+    
     const basePredictions = getSmartPredictions(searchQuery);
+    const apiPredictions = liveSuggestions.map(s => ({
+        url: `https://www.google.com/search?q=${encodeURIComponent(s)}`,
+        title: s,
+        score: 50,
+        isSearch: true
+    }));
+    
+    // Merge without duplicates by title
+    const merged = [...basePredictions];
+    apiPredictions.forEach(apiP => {
+        if (!merged.find(p => p.title.toLowerCase() === apiP.title.toLowerCase())) {
+            merged.push(apiP);
+        }
+    });
+
     const filteredPredictions = mathPrediction
-        ? [mathPrediction, ...basePredictions.slice(0, 3)]
-        : basePredictions;
+        ? [mathPrediction, ...merged.slice(0, 5)]
+        : merged.slice(0, 5);
+
 
     const isCommandMode = searchQuery.startsWith('>');
     const commandQuery = searchQuery.slice(1).trim().toLowerCase();
@@ -98,7 +158,24 @@ export default function Omnibox() {
 
     const handleExecuteCommand = (cmdId) => {
         switch (cmdId) {
+            
+            case 'ls':
+                showToast('Terminal: Listing active tabs...');
+                openTabMap();
+                break;
+            case 'clear':
+                showToast('Terminal: Cache cleared');
+                break;
+            case 'top':
+                showToast('Terminal: Tab resources analyzed');
+                break;
+            case 'kill':
+                const activeTab = activeSpace === 'personal' ? privateTabs.find(t => t.active) : activeSpace === 'work' ? workTabs.find(t => t.active) : ghostTabs.find(t => t.active);
+                if (activeTab) useTabStore.getState().handleCloseTab(activeTab.id);
+                showToast('Terminal: Process terminated');
+                break;
             case 'mute':
+
             case 'unmute': {
                 const isMuting = cmdId === 'mute';
                 const muteAll = (list, setList) => setList(list.map(t => ({ ...t, isMuted: isMuting })));
@@ -154,8 +231,8 @@ export default function Omnibox() {
                 }
             };
 
-            if (activeSpace === 'prywatne') cleanupTabs(privateTabs, setPrivateTabs);
-            else if (activeSpace === 'praca') cleanupTabs(workTabs, setWorkTabs);
+            if (activeSpace === 'personal') cleanupTabs(privateTabs, setPrivateTabs);
+            else if (activeSpace === 'work') cleanupTabs(workTabs, setWorkTabs);
             else cleanupTabs(ghostTabs, setGhostTabs);
         }
     };
@@ -166,11 +243,10 @@ export default function Omnibox() {
             showToast(`Copied to clipboard: ${pred.url.replace('= ', '')}`);
             handleCloseOmnibox(false);
         } else {
-            showToast(`Opening ${pred.url}`);
             setCurrentUrl(pred.url);
             const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: pred.url, title: pred.title } : t));
-            if (activeSpace === 'prywatne') updateTab(privateTabs, setPrivateTabs);
-            else if (activeSpace === 'praca') updateTab(workTabs, setWorkTabs);
+            if (activeSpace === 'personal') updateTab(privateTabs, setPrivateTabs);
+            else if (activeSpace === 'work') updateTab(workTabs, setWorkTabs);
             else updateTab(ghostTabs, setGhostTabs);
             handleCloseOmnibox(true);
         }
@@ -180,7 +256,7 @@ export default function Omnibox() {
         <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[15vh] bg-black/50 backdrop-blur-md transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
             <div className={`w-full max-w-2xl mx-4 flex flex-col ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => e.stopPropagation()}>
 
-                <div className={`w-full bg-[#121214]/80 backdrop-blur-3xl border border-white/10 rounded-[1.5rem] p-5 flex items-center gap-4 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 ${isCommandMode ? 'shadow-[0_0_80px_rgba(234,179,8,0.15)] border-yellow-500/30 scale-[1.02]' : (isIncognito ? 'shadow-[0_0_80px_rgba(168,85,247,0.3)]' : 'shadow-[0_30px_80px_rgba(0,0,0,0.8)]')}`}>
+                <div className={`w-full bg-[#121214]/80 backdrop-blur-3xl border border-white/10 rounded-[1.5rem] p-5 flex items-center gap-4 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${isCommandMode ? 'shadow-[0_0_80px_rgba(234,179,8,0.15)] border-yellow-500/30 scale-[1.02]' : (isIncognito ? 'shadow-[0_0_80px_rgba(168,85,247,0.3)]' : 'shadow-[0_30px_80px_rgba(0,0,0,0.8)]')}`}>
                     {isCommandMode ? <Terminal size={24} className="text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)] animate-pulse" /> : <Search size={24} className="text-accent transition-transform duration-300" />}
 
                     <input
@@ -188,6 +264,7 @@ export default function Omnibox() {
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                                 e.preventDefault();
@@ -197,20 +274,13 @@ export default function Omnibox() {
                                     if (filteredPredictions.length > 0) {
                                         handleSelectPrediction(filteredPredictions[0]);
                                     } else if (searchQuery.trim().length > 0) {
-                                        showToast(`Searching: ${searchQuery}`);
-                                        setCurrentUrl(`google.com/search?q=${encodeURIComponent(searchQuery)}`);
-                                        const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: `google.com/search?q=${encodeURIComponent(searchQuery)}`, title: `Search: ${searchQuery}` } : t));
-                                        if (activeSpace === 'prywatne') updateTab(privateTabs, setPrivateTabs);
-                                        else if (activeSpace === 'praca') updateTab(workTabs, setWorkTabs);
-                                        else updateTab(ghostTabs, setGhostTabs);
-                                        handleCloseOmnibox(true);
+                                        const url = parseUrlInput(searchQuery);
+                                        handleSelectPrediction({ url, title: `Search/Go: ${searchQuery}` });
                                     }
                                 }
-                            } else if (e.key === 'Escape') {
-                                e.preventDefault();
-                                handleCloseOmnibox(false);
                             }
                         }}
+
                         placeholder="Search Google, type URL or '>' for commands..."
                         className={`w-full bg-transparent border-none text-xl md:text-2xl font-light text-white placeholder-white/30 focus:outline-none focus:ring-0 transition-all duration-300 ${isCommandMode ? 'font-mono text-yellow-500 tracking-wide' : ''}`}
                         spellCheck="false"

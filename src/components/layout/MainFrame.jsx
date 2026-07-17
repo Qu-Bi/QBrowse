@@ -14,6 +14,8 @@ export default function MainFrame() {
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const setIsFullscreen = useUIStore(state => state.setIsFullscreen);
     const isForceDark = useUIStore(state => state.isForceDark);
+    const darkExclusions = useUIStore(state => state.darkExclusions);
+    const setDarkExclusions = useUIStore(state => state.setDarkExclusions);
     const setIsForceDark = useUIStore(state => state.setIsForceDark);
     const toast = useUIStore(state => state.toast);
     const activePopover = useUIStore(state => state.activePopover);
@@ -25,18 +27,27 @@ export default function MainFrame() {
     const isSplitView = useUIStore(state => state.isSplitView);
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const refresh = useUIStore(state => state.refresh);
-    const currentUrl = useUIStore(state => state.currentUrl);
     const openOmnibox = useUIStore(state => state.openOmnibox);
     const peekWindow = useUIStore(state => state.peekWindow);
     const setPeekWindow = useUIStore(state => state.setPeekWindow);
     const isPeekClosing = useUIStore(state => state.isPeekClosing);
     const closePeek = useUIStore(state => state.closePeek);
+
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const privateTabs = useTabStore(state => state.privateTabs);
+    const workTabs = useTabStore(state => state.workTabs);
+    const ghostTabs = useTabStore(state => state.ghostTabs);
+
+    const isIncognito = activeSpace === 'ghost';
+    const isPrywatneEmpty = privateTabs.find(t => t.active)?.url === '';
+    const isPracaEmpty = workTabs.find(t => t.active)?.url === '';
+    const isGhostEmpty = ghostTabs.find(t => t.active)?.url === '';
+    
     const isAdblockActive = useUIStore(state => state.isAdblockActive);
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive);
+    const adblockStats = useUIStore(state => state.adblockStats);
     const accentColor = useUIStore(state => state.accentColor);
     
-    const activeSpace = useTabStore(state => state.activeSpace);
-    const isIncognito = activeSpace === 'ghost';
     
     const [findQuery, setFindQuery] = useState('');
     const findInputRef = useRef(null);
@@ -59,38 +70,32 @@ export default function MainFrame() {
         }
     }, [isFindOpen]);
 
-    const dateString = currentTime.toLocaleDateString('pl-PL', { weekday: 'long', month: 'long', day: 'numeric' });
-    const timeString = currentTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    const dateString = currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeString = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
     // Mock states for UI
     const [formEmail, setFormEmail] = useState('admin@qbrowse.local');
     const [formPassword, setFormPassword] = useState('super_secret_password_123');
-    const darkExclusions = ['github.com', 'stackoverflow.com'];
+
 
     const renderZenDashboard = () => {
         const isDark = isForceDark || isIncognito;
-        const hour = currentTime.getHours();
-        const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+        const greeting = "Welcome";
 
         return (
             <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden animate-pop-in z-10 w-full h-full">
-                <div className={`absolute inset-0 bg-[radial-gradient(ellipse_at_center,var(--accent-30),transparent_60%)] ${isDark ? 'opacity-40' : 'opacity-20 mix-blend-multiply'} animate-pulse pointer-events-none`} style={{ animationDuration: '8s' }}></div>
-                <div className={`absolute top-0 left-0 right-0 h-64 bg-gradient-to-b ${isDark ? 'from-black/20' : 'from-white/40'} to-transparent pointer-events-none`}></div>
-
-                <div className="relative z-10 flex flex-col items-center transition-transform duration-500 w-full" style={{ transform: `scale(${zoomLevel / 100})` }}>
-                    <div className="flex flex-col items-center mb-10 md:mb-14">
-                        <span className={`text-xs md:text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isDark ? 'text-white/50' : 'text-slate-500/80'}`}>{dateString}</span>
-                        <h1 className={`text-[6rem] md:text-[9rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isDark ? 'from-white via-white/90 to-white/20' : 'from-slate-800 via-slate-600 to-slate-400'} select-none transition-colors duration-500`} style={{ textShadow: isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)' }}>
+                <div className="relative z-10 flex flex-col items-center transition-transform duration-500 w-full mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
+                    <div className="flex flex-col items-center mb-10 md:mb-14 px-4 w-full text-center">
+                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isDark ? 'text-white/50' : 'text-slate-500/80'}`}>{dateString}</span>
+                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isDark ? 'from-white via-white/90 to-white/20' : 'from-slate-800 via-slate-600 to-slate-400'} select-none transition-colors duration-500 px-4`} style={{ textShadow: isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)' }}>
                             {timeString}
                         </h1>
-                        <span className={`text-sm font-medium mt-4 tracking-widest transition-colors duration-500 ${isDark ? 'text-white/40' : 'text-slate-400'}`}>{greeting}, Admin</span>
                     </div>
 
                     <button
                         onClick={() => openOmnibox('')}
                         className={`group relative w-[90%] max-w-2xl backdrop-blur-3xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-500 hover:scale-[1.02] ${isDark ? 'bg-black/40 border-white/10 hover:border-accent/50 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_80px_var(--accent-20)]' : 'bg-white/60 border-black/5 hover:border-accent/40 shadow-[0_20px_50px_rgba(0,0,0,0.05)] hover:shadow-[0_20px_80px_var(--accent-20)]'}`}
                     >
-                        <div className={`absolute inset-0 bg-gradient-to-r from-transparent ${isDark ? 'via-white/5' : 'via-black/5'} to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite] rounded-[2rem] overflow-hidden`}></div>
                         <Search size={22} className={`transition-colors ${isDark ? 'text-white/40 group-hover:text-accent' : 'text-slate-400 group-hover:text-accent'}`} />
                         <span className={`text-lg font-medium transition-colors flex-1 text-left ${isDark ? 'text-white/30 group-hover:text-white/80' : 'text-slate-400 group-hover:text-slate-700'}`}>Search the web, or type a command...</span>
                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-inner transition-colors ${isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30' : 'bg-black/5 border-black/5 group-hover:bg-accent/10 group-hover:border-accent/30'}`}>
@@ -99,50 +104,14 @@ export default function MainFrame() {
                         </div>
                     </button>
 
-                    <div className={`mt-14 md:mt-20 flex items-center gap-6 md:gap-8 px-8 py-4 backdrop-blur-3xl border rounded-full transition-colors duration-500 ${isDark ? 'bg-[#0a0a0c]/60 border-white/5 shadow-[0_30px_60px_rgba(0,0,0,0.6)] hover:border-white/10' : 'bg-white/60 border-black/5 shadow-[0_30px_60px_rgba(0,0,0,0.05)] hover:border-black/10'}`}>
-                        <div className="flex items-center gap-3 group/stat cursor-default">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center border transition-colors ${isDark ? 'bg-green-500/10 border-green-500/20 group-hover/stat:bg-green-500/20' : 'bg-green-100 border-green-200 group-hover/stat:bg-green-200'}`}>
-                                <ShieldCheck size={16} className="text-green-500 group-hover/stat:drop-shadow-[0_0_8px_rgba(34,197,94,0.6)] transition-all" />
-                            </div>
-                            <div className="flex flex-col">
-                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${isDark ? 'text-white/40' : 'text-slate-400'}`}>Privacy</span>
-                                <span className={`text-xs font-semibold transition-colors ${isDark ? 'text-white/70 group-hover/stat:text-white' : 'text-slate-600 group-hover/stat:text-slate-900'}`}>12,401 Blocked</span>
-                            </div>
-                        </div>
-                        <div className={`w-px h-8 transition-colors ${isDark ? 'bg-white/10' : 'bg-black/10'}`}></div>
-                        <div className="flex items-center gap-3 group/stat cursor-default">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center border transition-colors ${isDark ? 'bg-blue-500/10 border-blue-500/20 group-hover/stat:bg-blue-500/20' : 'bg-blue-100 border-blue-200 group-hover/stat:bg-blue-200'}`}>
-                                <Cpu size={16} className="text-blue-500 group-hover/stat:drop-shadow-[0_0_8px_rgba(59,130,246,0.6)] transition-all" />
-                            </div>
-                            <div className="flex flex-col">
-                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${isDark ? 'text-white/40' : 'text-slate-400'}`}>Memory</span>
-                                <span className={`text-xs font-semibold transition-colors ${isDark ? 'text-white/70 group-hover/stat:text-white' : 'text-slate-600 group-hover/stat:text-slate-900'}`}>1.4 GB Saved</span>
-                            </div>
-                        </div>
-                        <div className={`w-px h-8 transition-colors ${isDark ? 'bg-white/10' : 'bg-black/10'}`}></div>
-                        <div className="flex items-center gap-3 group/stat cursor-default">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center border transition-colors ${isDark ? 'bg-accent-10 border-accent-20 group-hover/stat:bg-accent-20' : 'bg-accent/10 border-accent/20 group-hover/stat:bg-accent/20'}`}>
-                                <Zap size={16} className="text-accent group-hover/stat:drop-shadow-[0_0_8px_var(--accent)] transition-all" />
-                            </div>
-                            <div className="flex flex-col">
-                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${isDark ? 'text-white/40' : 'text-slate-400'}`}>Engine</span>
-                                <span className={`text-xs font-semibold transition-colors ${isDark ? 'text-white/70 group-hover/stat:text-white' : 'text-slate-600 group-hover/stat:text-slate-900'}`}>Hardware Accel.</span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         );
     };
 
     return (
-        <main className={`flex-1 relative z-10 flex flex-col overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border border-white/20'} ${isForceDark || isIncognito ? 'bg-[#121214]' : 'bg-[#fafafa]'}`}>
-            {toast && (
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[20000] px-5 py-3 bg-accent-20 border border-accent-30 text-accent rounded-2xl backdrop-blur-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] font-semibold text-sm animate-toast flex items-center gap-3 pointer-events-none">
-                    <Command size={16} />{toast}
-                </div>
-            )}
-
+        <main className={`flex-1 relative z-10 flex flex-col overflow-hidden transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]`}>
+            
             {(activePopover || isPopoverClosing) && (
                 <div className={`absolute inset-0 z-[50] bg-black/10 backdrop-blur-[2px] transition-opacity duration-200 ${isPopoverClosing ? 'opacity-0' : 'opacity-100'}`} onClick={closePopover} />
             )}
@@ -173,7 +142,7 @@ export default function MainFrame() {
             )}
 
             {(activePopover === 'darkmode' || (isPopoverClosing && activePopover === 'darkmode')) && (
-                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-32 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-slide-down'}`}>
+                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-32 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
                     <div className="p-4 border-b border-white/10 flex items-center justify-between">
                         <div className="flex items-center gap-2 font-semibold text-sm">
                             <Moon size={16} className="text-accent" /> Smart Dark Mode
@@ -183,23 +152,25 @@ export default function MainFrame() {
                         </button>
                     </div>
                     <div className="p-4 bg-black/20">
-                        <span className="text-xs font-bold uppercase text-white/40 tracking-wider mb-2 block">Blacklist</span>
-                        <div className="flex flex-col gap-2">
-                            {darkExclusions.map((domain, i) => (
-                                <div key={i} className="flex justify-between items-center bg-white/5 border border-white/5 rounded-lg px-3 py-1.5 text-xs font-mono text-white/80">
-                                    {domain} <Trash2 size={12} className="text-red-400 hover:text-red-300 cursor-pointer" />
-                                </div>
-                            ))}
-                        </div>
+                        <span className="text-xs font-bold uppercase text-white/40 tracking-wider mb-2 block">Site List (One per line)</span>
+                        <textarea 
+                            className="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-2 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
+                            value={darkExclusions.join('\n')}
+                            onChange={(e) => {
+                                const newExclusions = e.target.value.split('\n').map(d => d.trim()).filter(d => d.length > 0);
+                                setDarkExclusions(newExclusions);
+                            }}
+                            placeholder="example.com\ngithub.com"
+                        />
                     </div>
                 </div>
             )}
 
             {(activePopover === 'adblock' || (isPopoverClosing && activePopover === 'adblock')) && (
-                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-12 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-slide-down'}`}>
+                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-12 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
                     <div className={`p-5 flex flex-col items-center justify-center border-b border-white/10 transition-colors duration-500 ${isAdblockActive ? 'bg-green-500/10' : 'bg-transparent'}`}>
                         <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? 'text-green-400' : 'text-white/20'}`} strokeWidth={1.5} />
-                        <span className={`text-3xl font-black tracking-tight ${isAdblockActive ? 'text-white' : 'text-white/40'}`}>{isAdblockActive ? '12' : '0'}</span>
+                        <span className={`text-3xl font-black tracking-tight ${isAdblockActive ? 'text-white' : 'text-white/40'}`}>{isAdblockActive ? adblockStats.count : '0'}</span>
                         <span className="text-[10px] font-bold uppercase text-white/40 tracking-widest mt-1">Blocked Trackers</span>
                     </div>
                     <div className="p-4 bg-black/20 flex flex-col gap-3">
@@ -210,15 +181,17 @@ export default function MainFrame() {
                             </button>
                         </div>
                         <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 ${isAdblockActive ? 'opacity-100' : 'opacity-30'}`}>
-                            <div className="flex justify-between"><span className="text-white/60">doubleclick.net</span><span className="text-red-400">Blocked</span></div>
-                            <div className="flex justify-between"><span className="text-white/60">google-analytics.com</span><span className="text-red-400">Blocked</span></div>
+                            {adblockStats.domains.length === 0 && <div className="text-center text-white/40 py-2">No trackers blocked yet</div>}
+                            {adblockStats.domains.map((domain, i) => (
+                                <div key={i} className="flex justify-between"><span className="text-white/60 truncate mr-2">{domain}</span><span className="text-red-400 flex-shrink-0">Blocked</span></div>
+                            ))}
                         </div>
                     </div>
                 </div>
             )}
 
             {(activePopover === 'downloads' || (isPopoverClosing && activePopover === 'downloads')) && (
-                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-6 z-[60] w-80 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-slide-down'}`}>
+                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-6 z-[60] w-80 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
                     <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">
                         <div className="flex items-center gap-2 font-semibold text-sm">
                             <Download size={16} className="text-accent" /> Downloads
@@ -263,7 +236,7 @@ export default function MainFrame() {
             )}
 
             {(activePopover === 'media' || (isPopoverClosing && activePopover === 'media')) && (
-                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-6 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-slide-down'}`}>
+                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-6 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
                     <div className="p-3 border-b border-white/10 flex items-center justify-between bg-white/5">
                         <div className="flex items-center gap-2 font-semibold text-sm">
                             <Music size={14} className="text-purple-400" /> Media Controls
@@ -297,34 +270,35 @@ export default function MainFrame() {
                 </div>
             )}
 
-            <div className={`flex-1 w-full relative overflow-hidden transition-colors duration-700 ease-in-out flex text-white`}>
-                <div className={`relative h-full overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isSplitView ? 'w-1/2 border-r border-white/10' : 'w-full'}`}>
+            <div className={`flex-1 w-full relative overflow-hidden transition-colors duration-700 ease-in-out flex ${isForceDark || isIncognito ? 'text-white' : 'text-black'} ${isFullscreen ? '' : 'px-4 pb-0 pt-2'}`}>
+                <div className={`relative w-full h-full overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.1)] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border border-white/20'} ${isForceDark || isIncognito ? 'bg-black/60 backdrop-blur-3xl' : 'bg-white/60 backdrop-blur-3xl'}`}>
+                    <div className={`relative h-full overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isSplitView ? 'w-1/2 border-r border-white/10' : 'w-full'}`}>
                     <div className="absolute inset-y-0 left-0 w-[300%] flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                        style={{ transform: activeSpace === 'prywatne' ? 'translateX(0)' : activeSpace === 'praca' ? 'translateX(-33.333%)' : 'translateX(-66.666%)' }}>
+                        style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-33.333%)' : 'translateX(-66.666%)' }}>
 
                         {/* PRYWATNE */}
                         <div className="w-1/3 flex-shrink-0 h-full flex flex-col items-center justify-center relative">
-                            {currentUrl === '' ? renderZenDashboard() : (
+                            {isPrywatneEmpty ? renderZenDashboard() : (
                                 <>
                                     <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px' }}></div>
-                                    <WebViewContainer space="prywatne" />
+                                    <WebViewContainer space="personal" />
                                 </>
                             )}
                         </div>
 
                         {/* PRACA */}
                         <div className={`w-1/3 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito ? 'text-white' : 'text-black'}`}>
-                            {currentUrl === '' ? renderZenDashboard() : (
+                            {isPracaEmpty ? renderZenDashboard() : (
                                 <>
                                     <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px' }}></div>
-                                    <WebViewContainer space="praca" />
+                                    <WebViewContainer space="work" />
                                 </>
                             )}
                         </div>
 
                         {/* GHOST */}
                         <div className={`w-1/3 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito ? 'text-white' : 'text-black'}`}>
-                            {currentUrl === '' ? renderZenDashboard() : (
+                            {isGhostEmpty ? renderZenDashboard() : (
                                 <>
                                     <WebViewContainer space="ghost" />
                                 </>
@@ -343,6 +317,7 @@ export default function MainFrame() {
                         </div>
                     </div>
                 </div>
+            </div>
 
             </div>
 

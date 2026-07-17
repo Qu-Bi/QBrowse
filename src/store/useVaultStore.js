@@ -1,41 +1,58 @@
 import { create } from 'zustand';
-import useUIStore from './useUIStore';
+import { unlockVault, getPasswords, addPassword } from '../services/electronIPC';
 
 const useVaultStore = create((set, get) => ({
-  formEmail: '',
-  setFormEmail: (val) => set({ formEmail: typeof val === 'function' ? val(get().formEmail) : val }),
-  
-  formPassword: '',
-  setFormPassword: (val) => set({ formPassword: typeof val === 'function' ? val(get().formPassword) : val }),
-  
-  isPrivateFolderOpen: true,
-  setIsPrivateFolderOpen: (val) => set({ isPrivateFolderOpen: val }),
-  
-  isWorkFolderOpen: true,
-  setIsWorkFolderOpen: (val) => set({ isWorkFolderOpen: val }),
+    isUnlocked: false,
+    masterPassword: '',
+    passwords: [],
+    isLoading: false,
+    error: null,
 
-  fillBitwardenMock: () => {
-    useUIStore.getState().closePopover();
-    const targetEmail = 'admin@qbrowse.local';
-    const targetPass = 'super_secret_password_123';
-    set({ formEmail: '', formPassword: '' });
-    useUIStore.getState().showToast('Auto-filling from Vault...');
-
-    let eIdx = 0;
-    const emailInterval = setInterval(() => {
-        set(state => ({ formEmail: targetEmail.slice(0, state.formEmail.length + 1) }));
-        eIdx++;
-        if (eIdx >= targetEmail.length) {
-            clearInterval(emailInterval);
-            let pIdx = 0;
-            const passInterval = setInterval(() => {
-                set(state => ({ formPassword: targetPass.slice(0, state.formPassword.length + 1) }));
-                pIdx++;
-                if (pIdx >= targetPass.length) clearInterval(passInterval);
-            }, 30);
+    unlock: async (password) => {
+        set({ isLoading: true, error: null });
+        try {
+            const unlocked = await unlockVault(password);
+            if (unlocked) {
+                set({ isUnlocked: true, masterPassword: password });
+                await get().fetchPasswords();
+            } else {
+                set({ error: 'Invalid master password', isLoading: false });
+            }
+        } catch (err) {
+            set({ error: err.message, isLoading: false });
         }
-    }, 30);
-  }
+    },
+
+    lock: () => {
+        set({ isUnlocked: false, masterPassword: '', passwords: [] });
+    },
+
+    fetchPasswords: async () => {
+        const { isUnlocked, masterPassword } = get();
+        if (!isUnlocked) return;
+        
+        set({ isLoading: true, error: null });
+        try {
+            const list = await getPasswords(masterPassword);
+            set({ passwords: list, isLoading: false });
+        } catch (err) {
+            set({ error: err.message, isLoading: false });
+        }
+    },
+
+    addNewPassword: async (title, username, passwordPlaintext, url) => {
+        const { isUnlocked, masterPassword } = get();
+        if (!isUnlocked) throw new Error("Vault is locked");
+
+        set({ isLoading: true });
+        try {
+            await addPassword(title, username, passwordPlaintext, url, masterPassword);
+            await get().fetchPasswords();
+        } catch (err) {
+            set({ error: err.message, isLoading: false });
+            throw err;
+        }
+    }
 }));
 
 export default useVaultStore;

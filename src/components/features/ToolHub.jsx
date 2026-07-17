@@ -8,9 +8,11 @@ import useUIStore from '../../store/useUIStore';
 export default function ToolHub() {
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
     const setIsRightPanelOpen = useUIStore(state => state.setIsRightPanelOpen);
+    const rightPanelTab = useUIStore(state => state.rightPanelTab);
+        const setRightPanelTab = useUIStore(state => state.setRightPanelTab);
+    const downloads = useUIStore(state => state.downloads);
     const currentUrl = useUIStore(state => state.currentUrl);
 
-    const [rightPanelTab, setRightPanelTab] = useState('ai');
     const [notesContent, setNotesContent] = useState('');
     const [hubToast, setHubToast] = useState(null);
     const [aiContextEnabled, setAiContextEnabled] = useState(false);
@@ -78,6 +80,14 @@ export default function ToolHub() {
 
     return (
         <>
+            {/* Click-outside backdrop */}
+            {isRightPanelOpen && (
+                <div 
+                    className="fixed inset-0 z-[44999] bg-transparent" 
+                    onClick={() => setIsRightPanelOpen(false)}
+                />
+            )}
+            
             <div
                 className="fixed right-0 top-1/2 -translate-y-1/2 w-4 h-40 z-[40000] cursor-pointer group flex items-center justify-end pr-1"
                 onClick={() => setIsRightPanelOpen(true)}
@@ -85,7 +95,7 @@ export default function ToolHub() {
                 <div className={`w-1 h-12 rounded-full transition-all duration-300 ease-out group-hover:h-24 ${isRightPanelOpen ? 'bg-transparent' : 'bg-white/10 group-hover:bg-accent/60 group-hover:shadow-[0_0_15px_var(--accent-30)]'}`}></div>
             </div>
 
-            <div className={`fixed top-4 bottom-4 right-4 w-80 md:w-96 bg-[#0a0a0c]/95 border border-white/10 rounded-[2rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRightPanelOpen ? 'translate-x-0 opacity-100' : 'translate-x-[110%] opacity-0'}`} onClick={e => e.stopPropagation()}>
+            <div className={`fixed top-4 bottom-4 right-4 w-96 md:w-[450px] bg-[#0a0a0c]/95 border border-white/10 rounded-[2rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRightPanelOpen ? 'translate-x-0 opacity-100' : 'translate-x-[110%] opacity-0'}`} onClick={e => e.stopPropagation()}>
 
                 {hubToast && (
                     <div className="absolute -left-32 top-1/2 -translate-y-1/2 bg-accent text-black px-3 py-1.5 rounded-lg text-xs font-bold animate-pop-in shadow-lg">
@@ -106,11 +116,12 @@ export default function ToolHub() {
                     <div className="flex bg-black/40 border border-white/5 p-1 rounded-xl relative">
                         <div
                             className="absolute top-1 bottom-1 bg-accent-20 border border-accent-30 rounded-lg transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-sm"
-                            style={{ width: 'calc(33.333% - 2.6px)', transform: `translateX(${rightPanelTab === 'notes' ? '0%' : rightPanelTab === 'clipboard' ? '100%' : '200%'})` }}
+                            style={{ width: 'calc(25% - 2px)', transform: `translateX(${rightPanelTab === 'notes' ? '0%' : rightPanelTab === 'clipboard' ? '100%' : rightPanelTab === 'ai' ? '200%' : '300%'})` }}
                         ></div>
-                        <button onClick={() => setRightPanelTab('notes')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'notes' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><PenTool size={12} /> Notes</button>
-                        <button onClick={() => setRightPanelTab('clipboard')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'clipboard' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><ClipboardList size={12} /> Copied</button>
-                        <button onClick={() => setRightPanelTab('ai')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'ai' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><MessageSquare size={12} /> Qu-AI</button>
+                        <button onClick={() => setRightPanelTab('notes')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'notes' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><PenTool size={12} /> Notes</button>
+                        <button onClick={() => setRightPanelTab('clipboard')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'clipboard' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><ClipboardList size={12} /> Copied</button>
+                        <button onClick={() => setRightPanelTab('ai')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'ai' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><MessageSquare size={12} /> Qu-AI</button>
+                        <button onClick={() => setRightPanelTab('downloads')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'downloads' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><Download size={12} /> DL</button>
                     </div>
                 </div>
 
@@ -231,6 +242,49 @@ export default function ToolHub() {
                             </>
                         )}
                     </div>
+                    <div className={`absolute inset-0 p-5 overflow-y-auto hide-scroll transition-all duration-300 ${rightPanelTab === 'downloads' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
+                        <div className="flex flex-col gap-3">
+                            <h3 className="text-sm font-bold text-white/90 mb-2">Active Downloads</h3>
+                            
+                            {downloads.length === 0 && (
+                                <div className="text-center text-white/40 text-xs italic py-4">No downloads yet.</div>
+                            )}
+
+                            {downloads.map(dl => (
+                                <div key={dl.id} className="p-3 bg-white/5 border border-white/10 rounded-xl animate-pop-in relative overflow-hidden group">
+                                    {dl.state === 'progressing' && (
+                                        <div className="absolute top-0 left-0 bottom-0 bg-accent/20 transition-all duration-300 ease-linear" style={{ width: `${(dl.receivedBytes / dl.totalBytes) * 100}%` }}></div>
+                                    )}
+                                    <div className="relative z-10 flex flex-col gap-2">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-semibold text-white/90 truncate max-w-[180px]" title={dl.fileName}>{dl.fileName}</span>
+                                                <span className="text-[10px] text-white/40 font-mono mt-0.5">
+                                                    {dl.state === 'progressing' ? `${(dl.receivedBytes / 1024 / 1024).toFixed(2)} MB / ${(dl.totalBytes / 1024 / 1024).toFixed(2)} MB` : (dl.state === 'completed' ? 'Done' : dl.state)}
+                                                </span>
+                                            </div>
+                                            {dl.state === 'completed' ? (
+                                                <span className="text-[10px] font-bold text-green-400 group-hover:scale-110 transition-transform">Done</span>
+                                            ) : (
+                                                <button className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors">
+                                                    <X size={12} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {dl.state === 'progressing' && (
+                                            <div className="w-full h-1 bg-black/50 rounded-full overflow-hidden mt-1">
+                                                <div className="h-full bg-accent rounded-full transition-all duration-300 shadow-[0_0_10px_var(--accent)]" style={{ width: `${(dl.receivedBytes / dl.totalBytes) * 100}%` }}></div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+
+                    
+
                 </div>
             </div>
         </>

@@ -6,6 +6,16 @@
     <title>QBrowse</title>
   </head>
   <body>
+    <div id="error-container" style="color: red; padding: 20px; font-family: monospace; z-index: 99999; position: absolute; background: black; display: none;"></div>
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        var el = document.getElementById('error-container');
+        if (el) {
+          el.style.display = 'block';
+          el.innerText = 'App Crashed: ' + message + '\n\n' + (error ? error.stack : '');
+        }
+      };
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -2,87 +2,201 @@ import { create } from 'zustand';
 import useUIStore from './useUIStore';
 
 const useTabStore = create((set, get) => ({
-  activeSpace: 'prywatne',
-  setActiveSpace: (space) => set({ activeSpace: space }),
+  activeSpace: 'personal',
+  setActiveSpace: (space) => set((state) => {
+      const updates = { activeSpace: space };
+      if (state.activeSpace === 'ghost' && space !== 'ghost') {
+          updates.ghostTabs = [{ id: 'g-' + Date.now(), title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+      }
+      return updates;
+  }),
 
   draggedItem: null,
   setDraggedItem: (item) => set({ draggedItem: item }),
   dragOverItem: null,
   setDragOverItem: (item) => set({ dragOverItem: item }),
 
-  pinnedTabs: [
-    { id: 'p1', title: 'Messenger', domain: 'messenger.com' },
-    { id: 'p2', title: 'X.com', domain: 'x.com' },
-    { id: 'p3', title: 'Figma', domain: 'figma.com' }
-  ],
+  folders: [],
+  renamingFolderId: null,
+  setRenamingFolderId: (id) => set({ renamingFolderId: id }),
+  setFolders: (folders) => set({ folders: typeof folders === 'function' ? folders(get().folders) : folders }),
+  
+  createFolder: (spaceType, name) => {
+    const newFolder = { id: `f-${Date.now()}`, name, spaceType, isOpen: true };
+    set(state => ({ folders: [...state.folders, newFolder] }));
+    return newFolder.id;
+  },
+  
+  renameFolder: (id, newName) => {
+    set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, name: newName } : f) }));
+  },
+  
+  deleteFolder: (id) => {
+    // move tabs out of the folder
+    const moveTabs = (list) => list.map(t => t.folderId === id ? { ...t, folderId: null } : t);
+    set(state => ({
+        privateTabs: moveTabs(state.privateTabs),
+        workTabs: moveTabs(state.workTabs),
+        ghostTabs: moveTabs(state.ghostTabs),
+        folders: state.folders.filter(f => f.id !== id)
+    }));
+  },
+  
+  toggleFolder: (id) => {
+    set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, isOpen: !f.isOpen } : f) }));
+  },
+
+  pinnedTabs: [],
   setPinnedTabs: (tabs) => set({ pinnedTabs: tabs }),
 
   privateTabs: [
-    { id: 't1', title: 'New Tab', url: '', active: true, folderId: null },
-    { id: 't2', title: 'YouTube - FPV Drones', url: 'youtube.com', active: false, folderId: null, isAudioPlaying: true, isMuted: false },
-    { id: 't3', title: 'QBrowse Web App', url: 'qbrowse.local', active: false, folderId: 'f1' },
-    { id: 't4', title: 'ChatGPT - Tauri Backend', url: 'chatgpt.com', active: false, folderId: 'f1' },
-    { id: 't5', title: 'GitHub - qbrowse/core', url: 'github.com', active: false, folderId: null }
+    { id: 't1', title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
   ],
   setPrivateTabs: (tabs) => set({ privateTabs: typeof tabs === 'function' ? tabs(get().privateTabs) : tabs }),
 
   workTabs: [
-    { id: 'w1', title: 'Jira - Sprint Board', url: 'jira.com', active: true, folderId: 'f2' },
-    { id: 'w2', title: 'Tauri Documentation', url: 'tauri.app', active: false, folderId: 'f2' },
-    { id: 'w3', title: 'AWS Management Console', url: 'aws.amazon.com', active: false, folderId: null }
+    { id: 'w1', title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
   ],
   setWorkTabs: (tabs) => set({ workTabs: typeof tabs === 'function' ? tabs(get().workTabs) : tabs }),
 
   ghostTabs: [
-    { id: 'g1', title: 'New Incognito Tab', url: '', active: true, folderId: null }
+    { id: 'g1', title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
   ],
   setGhostTabs: (tabs) => set({ ghostTabs: typeof tabs === 'function' ? tabs(get().ghostTabs) : tabs }),
 
   // Actions
   getActiveList: () => {
     const space = get().activeSpace;
-    return space === 'prywatne' ? get().privateTabs : (space === 'praca' ? get().workTabs : get().ghostTabs);
+    return space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : get().ghostTabs);
   },
   
   getActiveSetList: () => {
     const space = get().activeSpace;
-    return space === 'prywatne' ? get().setPrivateTabs : (space === 'praca' ? get().setWorkTabs : get().setGhostTabs);
+    return space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : get().setGhostTabs);
   },
 
-  handleNewTab: () => {
-    const newTab = { id: `t-${Date.now()}`, title: 'New Tab', url: '', active: true, folderId: null };
+  reorderTabs: (draggedId, targetId) => {
+    if (draggedId === targetId) return;
+    const list = get().getActiveList();
     const setList = get().getActiveSetList();
-    setList(prev => [...prev.map(t => ({ ...t, active: false })), newTab]);
+    
+    const draggedIndex = list.findIndex(t => t.id === draggedId);
+    const targetIndex = list.findIndex(t => t.id === targetId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    
+    const newList = [...list];
+    const [draggedTab] = newList.splice(draggedIndex, 1);
+    newList.splice(targetIndex, 0, draggedTab);
+    
+    setList(newList);
+  },
+
+  addTab: (tabObj) => {
+    const setList = get().getActiveSetList();
+    setList(prev => [...prev.map(t => ({ ...t, active: false })), { ...tabObj, lastActiveAt: Date.now(), suspended: false }]);
     useUIStore.getState().setCurrentUrl('');
     useUIStore.getState().showToast('New tab created');
   },
 
+  handleNewTab: () => {
+    get().addTab({ id: `t-${Date.now()}`, title: 'New Tab', url: '', active: true, folderId: null });
+  },
+
+  updateTabActivity: (id) => {
+    const list = get().getActiveList();
+    const setList = get().getActiveSetList();
+    setList(list.map(t => t.id === id ? { ...t, lastActiveAt: Date.now() } : t));
+  },
+
+  navigateTabBack: (tabId) => {
+    const list = get().getActiveList();
+    const setList = get().getActiveSetList();
+    const tab = list.find(t => t.id === tabId);
+    
+    if (tab && tab.history && tab.historyIndex > 0) {
+        const newIdx = tab.historyIndex - 1;
+        const newUrl = tab.history[newIdx];
+        setList(list.map(t => t.id === tabId ? { ...t, url: newUrl, historyIndex: newIdx } : t));
+        useUIStore.getState().setCurrentUrl(newUrl);
+        return newUrl;
+    }
+    return null;
+  },
+
+  navigateTabForward: (tabId) => {
+    const list = get().getActiveList();
+    const setList = get().getActiveSetList();
+    const tab = list.find(t => t.id === tabId);
+    
+    if (tab && tab.history && tab.historyIndex < tab.history.length - 1) {
+        const newIdx = tab.historyIndex + 1;
+        const newUrl = tab.history[newIdx];
+        setList(list.map(t => t.id === tabId ? { ...t, url: newUrl, historyIndex: newIdx } : t));
+        useUIStore.getState().setCurrentUrl(newUrl);
+        return newUrl;
+    }
+    return null;
+  },
+
   handleCloseTab: (id) => {
-    const space = get().activeSpace;
     const list = get().getActiveList();
     const setList = get().getActiveSetList();
     
-    if (list.find(t => t.id === id)) {
-      setList(list.map(t => t.id === id ? { ...t, isClosing: true } : t));
-      setTimeout(() => {
-        setList(prev => prev.filter(t => t.id !== id));
-      }, 200);
+    const tabToClose = list.find(t => t.id === id);
+    if (!tabToClose) return;
+
+    if (list.length === 1) {
+        // Last tab: don't remove it, just reset it to Zen Dashboard
+        setList([{ ...tabToClose, url: '', title: 'New Tab', lastActiveAt: Date.now() }]);
+        useUIStore.getState().setCurrentUrl('');
+        return;
     }
+
+    setList(list.map(t => t.id === id ? { ...t, isClosing: true } : t));
+    
+    setTimeout(() => {
+        const currentList = get().getActiveList();
+        const newList = currentList.filter(t => t.id !== id);
+        
+        if (tabToClose.active && newList.length > 0) {
+            const closedIdx = currentList.findIndex(t => t.id === id);
+            const nextIdx = Math.max(0, closedIdx > 0 ? closedIdx - 1 : 0);
+            newList[nextIdx].active = true;
+            useUIStore.getState().setCurrentUrl(newList[nextIdx].url);
+        }
+        
+        setList(newList);
+    }, 200);
     useUIStore.getState().showToast('Tab closed');
+  },
+
+  handleSwitchToTab: (tabId, spaceType) => {
+    if (get().activeSpace !== spaceType) {
+        get().setActiveSpace(spaceType);
+    }
+    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : get().ghostTabs);
+    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : get().setGhostTabs);
+    
+    setList(list.map(t => ({
+        ...t,
+        active: t.id === tabId,
+        lastActiveAt: t.id === tabId ? Date.now() : t.lastActiveAt
+    })));
   },
 
   handleToggleMute: (id, spaceType) => {
     const toggle = (list, setList) => setList(list.map(t => t.id === id ? { ...t, isMuted: !t.isMuted } : t));
-    if (spaceType === 'prywatne') toggle(get().privateTabs, get().setPrivateTabs);
-    if (spaceType === 'praca') toggle(get().workTabs, get().setWorkTabs);
+    if (spaceType === 'personal') toggle(get().privateTabs, get().setPrivateTabs);
+    if (spaceType === 'work') toggle(get().workTabs, get().setWorkTabs);
     if (spaceType === 'ghost') toggle(get().ghostTabs, get().setGhostTabs);
   },
 
   handlePinTab: (tab) => {
     const { activeSpace, pinnedTabs, privateTabs, workTabs, setPinnedTabs, setPrivateTabs, setWorkTabs } = get();
     setPinnedTabs([...pinnedTabs, { id: `p-${tab.id}-${Date.now()}`, title: tab.title, domain: tab.url }]);
-    if (activeSpace === 'prywatne') setPrivateTabs(privateTabs.filter(t => t.id !== tab.id));
-    if (activeSpace === 'praca') setWorkTabs(workTabs.filter(t => t.id !== tab.id));
+    if (activeSpace === 'personal') setPrivateTabs(privateTabs.filter(t => t.id !== tab.id));
+    if (activeSpace === 'work') setWorkTabs(workTabs.filter(t => t.id !== tab.id));
     useUIStore.getState().showToast(`Pinned: ${tab.title}`);
   },
 
@@ -95,8 +209,13 @@ const useTabStore = create((set, get) => ({
   },
 
   handleDragStart: (e, tab, spaceType) => {
-    get().setDraggedItem({ tab, spaceType });
-    if(e) e.dataTransfer.effectAllowed = "move";
+    if (e) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData('text/plain', tab.id);
+    }
+    setTimeout(() => {
+      get().setDraggedItem({ tab, spaceType });
+    }, 0);
   },
 
   handleDrop: (e, targetTab, spaceType) => {
@@ -108,14 +227,24 @@ const useTabStore = create((set, get) => ({
         useUIStore.getState().showToast('You can only move tabs within the same space');
         return;
     }
-    const list = spaceType === 'prywatne' ? get().privateTabs : (spaceType === 'praca' ? get().workTabs : get().ghostTabs);
-    const setList = spaceType === 'prywatne' ? get().setPrivateTabs : (spaceType === 'praca' ? get().setWorkTabs : get().setGhostTabs);
-    
+    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : get().ghostTabs);
+    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : get().setGhostTabs);
     const draggedIdx = list.findIndex(t => t.id === draggedItem.tab.id);
+    const originalTargetIdx = list.findIndex(t => t.id === targetTab.id);
     const newList = [...list];
+    
+    // Remove dragged item
     const [removed] = newList.splice(draggedIdx, 1);
     removed.folderId = targetTab.folderId;
-    const targetIdx = newList.findIndex(t => t.id === targetTab.id);
+    
+    // Find target index in NEW list
+    let targetIdx = newList.findIndex(t => t.id === targetTab.id);
+    
+    // If dragging down, insert AFTER the target so it swaps intuitively
+    if (draggedIdx < originalTargetIdx) {
+        targetIdx += 1;
+    }
+    
     newList.splice(targetIdx, 0, removed);
     setList(newList);
     get().setDraggedItem(null);
@@ -127,8 +256,8 @@ const useTabStore = create((set, get) => ({
     get().setDragOverItem(null);
     if (!draggedItem || draggedItem.spaceType !== spaceType) return;
     
-    const list = spaceType === 'prywatne' ? get().privateTabs : (spaceType === 'praca' ? get().workTabs : get().ghostTabs);
-    const setList = spaceType === 'prywatne' ? get().setPrivateTabs : (spaceType === 'praca' ? get().setWorkTabs : get().setGhostTabs);
+    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : get().ghostTabs);
+    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : get().setGhostTabs);
     
     const newList = [...list];
     const draggedTab = newList.find(t => t.id === draggedItem.tab.id);
@@ -148,8 +277,8 @@ const useTabStore = create((set, get) => ({
     get().setDragOverItem(null);
     if (!draggedItem || draggedItem.spaceType !== spaceType) return;
 
-    const list = spaceType === 'prywatne' ? get().privateTabs : (spaceType === 'praca' ? get().workTabs : get().ghostTabs);
-    const setList = spaceType === 'prywatne' ? get().setPrivateTabs : (spaceType === 'praca' ? get().setWorkTabs : get().setGhostTabs);
+    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : get().ghostTabs);
+    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : get().setGhostTabs);
     
     const newList = [...list];
     const draggedTab = newList.find(t => t.id === draggedItem.tab.id);
@@ -164,14 +293,28 @@ const useTabStore = create((set, get) => ({
   },
 
   handleGoHome: () => {
-    const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: '', title: 'New Tab' } : t));
+    const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: '', title: 'New Tab', lastActiveAt: Date.now(), suspended: false } : t));
     const activeSpace = get().activeSpace;
-    if (activeSpace === 'prywatne') updateTab(get().privateTabs, get().setPrivateTabs);
-    else if (activeSpace === 'praca') updateTab(get().workTabs, get().setWorkTabs);
+    if (activeSpace === 'personal') updateTab(get().privateTabs, get().setPrivateTabs);
+    else if (activeSpace === 'work') updateTab(get().workTabs, get().setWorkTabs);
     else updateTab(get().ghostTabs, get().setGhostTabs);
 
     useUIStore.getState().setCurrentUrl('');
     useUIStore.getState().setIsFullscreen(false);
+  },
+
+  updateTabActivity: (tabId) => {
+    const update = (list) => list.map(t => t.id === tabId ? { ...t, lastActiveAt: Date.now(), suspended: false } : t);
+    get().setPrivateTabs(update(get().privateTabs));
+    get().setWorkTabs(update(get().workTabs));
+    get().setGhostTabs(update(get().ghostTabs));
+  },
+
+  suspendTab: (tabId) => {
+    const update = (list) => list.map(t => t.id === tabId ? { ...t, suspended: true } : t);
+    get().setPrivateTabs(update(get().privateTabs));
+    get().setWorkTabs(update(get().workTabs));
+    get().setGhostTabs(update(get().ghostTabs));
   }
 }));
 

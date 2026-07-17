@@ -21,7 +21,7 @@ const HistoryModal = () => {
     if (activeModal !== 'history' && !isModalClosing) return null;
 
     return (
-        <div className={`fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-3xl text-white font-sans p-6 ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
+        <div className={`absolute inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-3xl text-white font-sans p-6 ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
             <div className="w-full max-w-3xl h-[80vh] min-h-[500px] bg-[#121214]/80 backdrop-blur-md border border-white/10 rounded-3xl shadow-[0_40px_100px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]" onClick={e => e.stopPropagation()}>
                 <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/20">
                     <div>

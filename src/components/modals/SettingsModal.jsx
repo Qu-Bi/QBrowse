@@ -15,17 +15,19 @@ const SettingsModal = () => {
         setIsGlassEnabled,
         isSwipeEnabled, 
         setIsSwipeEnabled,
-        mockSettings, 
-        toggleMockSetting,
+        settings, 
+        toggleSetting,
         accentColor, 
-        setAccentColor
+        setAccentColor,
+        darkExclusions,
+        setDarkExclusions
     } = useUIStore();
 
     if (activeModal !== 'settings' && !isModalClosing) return null;
 
     return (
-        <div className={`fixed inset-0 z-[200] flex bg-black/60 backdrop-blur-3xl text-white font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`}>
-            <div className="w-64 border-r border-white/10 flex flex-col bg-black/40">
+        <div className={`absolute inset-0 z-[200] flex bg-black/60 backdrop-blur-3xl text-white font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
+            <div className="w-64 border-r border-white/10 flex flex-col bg-black/40" onClick={e => e.stopPropagation()}>
                 <div className="p-6 pb-2">
                     <h2 className="text-xl font-bold tracking-tight">Settings</h2>
                 </div>
@@ -37,7 +39,7 @@ const SettingsModal = () => {
                         <Shield size={16} /> <span className="text-sm font-medium">Privacy & Security</span>
                     </button>
                     <button onClick={() => setSettingsTab('engine')} className={`flex items-center gap-3 p-3 rounded-xl transition ${settingsTab === 'engine' ? 'bg-accent-20 text-accent border border-accent-30' : 'hover:bg-white/5 text-white/60 hover:text-white border border-transparent'}`}>
-                        <Cpu size={16} /> <span className="text-sm font-medium">Engine (Tauri)</span>
+                        <Cpu size={16} /> <span className="text-sm font-medium">Engine (Electron)</span>
                     </button>
                     <button onClick={() => setSettingsTab('adblock')} className={`flex items-center gap-3 p-3 rounded-xl transition ${settingsTab === 'adblock' ? 'bg-accent-20 text-accent border border-accent-30' : 'hover:bg-white/5 text-white/60 hover:text-white border border-transparent'}`}>
                         <ShieldAlert size={16} /> <span className="text-sm font-medium">Native AdBlocker</span>
@@ -51,10 +53,10 @@ const SettingsModal = () => {
                 </div>
             </div>
 
-            <div className="flex-1 p-10 relative overflow-y-auto">
-                <button onClick={closeModal} className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition"><X size={16} /></button>
+            <div className="flex-1 p-10 relative overflow-y-auto w-[600px] md:w-[800px] max-w-full" onClick={e => e.stopPropagation()}>
+                <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition z-[999] cursor-pointer"><X size={16} className="pointer-events-none" /></button>
 
-                <div className="max-w-2xl">
+                <div className="w-full">
                     {settingsTab === 'appearance' && (
                         <div className="animate-pop-in">
                             <h3 className="text-2xl font-bold mb-6">Appearance & UX</h3>
@@ -105,14 +107,25 @@ const SettingsModal = () => {
                             <div className="mb-8 space-y-4">
                                 <span className="text-xs font-bold uppercase text-white/40 tracking-wider mb-2 block">Interface Options</span>
 
-                                <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
-                                    <div>
-                                        <p className="font-semibold text-sm">Force Dark Mode (Web & UI)</p>
-                                        <p className="text-xs text-white/40 mt-0.5">Force websites and interface to use a dark theme.</p>
+                                <div className="flex flex-col gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="font-semibold text-sm">Force Dark Mode (Web & UI)</p>
+                                            <p className="text-xs text-white/40 mt-0.5">Force websites and interface to use a dark theme.</p>
+                                        </div>
+                                        <button onClick={() => setIsForceDark(!isForceDark)} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${isForceDark ? 'bg-accent' : 'bg-white/20'}`}>
+                                            <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isForceDark ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                        </button>
                                     </div>
-                                    <button onClick={() => setIsForceDark(!isForceDark)} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${isForceDark ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isForceDark ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                                    </button>
+                                    <div className="mt-2">
+                                        <p className="text-xs text-white/50 mb-1">Blacklist domains (One per line):</p>
+                                        <textarea
+                                            value={darkExclusions.join('\n')}
+                                            onChange={(e) => setDarkExclusions(e.target.value.split('\n').map(s => s.trim()).filter(s => s))}
+                                            placeholder="example.com&#10;github.com"
+                                            className="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-2 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -146,17 +159,17 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">HTTPS-Only Mode</p>
                                         <p className="text-xs text-white/40 mt-0.5">Automatically upgrade all connections to secure HTTPS.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('httpsOnly')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.httpsOnly ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.httpsOnly ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('httpsOnly')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.httpsOnly ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.httpsOnly ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
                                     <div>
                                         <p className="font-semibold text-sm">Strict Site Isolation</p>
-                                        <p className="text-xs text-white/40 mt-0.5">Run each site in its own Tauri process (uses more RAM).</p>
+                                        <p className="text-xs text-white/40 mt-0.5">Run each site in its own Electron process (uses more RAM).</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('isolation')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.isolation ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.isolation ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('isolation')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.isolation ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.isolation ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -164,8 +177,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">WebRTC Leak Protection</p>
                                         <p className="text-xs text-white/40 mt-0.5">Prevent sites from discovering your true IP address.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('webrtc')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.webrtc ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.webrtc ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('webrtc')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.webrtc ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.webrtc ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -189,15 +202,15 @@ const SettingsModal = () => {
 
                     {settingsTab === 'engine' && (
                         <div className="animate-pop-in">
-                            <h3 className="text-2xl font-bold mb-6">Engine (Tauri)</h3>
+                            <h3 className="text-2xl font-bold mb-6">Engine (Electron)</h3>
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
                                     <div>
                                         <p className="font-semibold text-sm">Hardware Acceleration (GPU)</p>
                                         <p className="text-xs text-white/40 mt-0.5">Use GPU to render complex web pages and animations.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('hardware')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.hardware ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.hardware ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('hardware')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.hardware ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.hardware ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -205,8 +218,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Memory Saver</p>
                                         <p className="text-xs text-white/40 mt-0.5">Suspend background tabs to save RAM.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('memory')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.memory ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.memory ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('memory')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.memory ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.memory ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -214,8 +227,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Smooth Scrolling</p>
                                         <p className="text-xs text-white/40 mt-0.5">Enable physical-like momentum scrolling on web pages.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('smooth')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.smooth ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.smooth ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('smooth')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.smooth ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.smooth ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -223,8 +236,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Battery Saver Mode</p>
                                         <p className="text-xs text-white/40 mt-0.5">Limit JS framerate and animations when below 20% battery.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('battery')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.battery ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.battery ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('battery')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.battery ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.battery ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                             </div>
@@ -240,8 +253,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Cosmetic Filtering</p>
                                         <p className="text-xs text-white/40 mt-0.5">Inject CSS to hide empty spaces left by blocked ads.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('cosmetic')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.cosmetic ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.cosmetic ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('cosmetic')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.cosmetic ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.cosmetic ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -249,8 +262,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Block Social Trackers</p>
                                         <p className="text-xs text-white/40 mt-0.5">Prevent Facebook, X, and TikTok from tracking you.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('social')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.social ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.social ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('social')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.social ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.social ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -294,8 +307,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Smart Calculator</p>
                                         <p className="text-xs text-white/40 mt-0.5">Solve math equations directly in the Omnibox.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('smartCalc')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.smartCalc ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.smartCalc ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('smartCalc')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.smartCalc ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.smartCalc ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -303,8 +316,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Live Search Suggestions</p>
                                         <p className="text-xs text-white/40 mt-0.5">Send typed queries to your search engine for live autocomplete.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('liveSearch')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.liveSearch ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.liveSearch ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('liveSearch')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.liveSearch ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.liveSearch ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                             </div>
@@ -320,8 +333,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Ask where to save each file</p>
                                         <p className="text-xs text-white/40 mt-0.5">Instead of saving automatically to Downloads folder.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('askSave')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.askSave ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.askSave ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('askSave')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.askSave ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.askSave ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
@@ -336,8 +349,8 @@ const SettingsModal = () => {
                                         <p className="font-semibold text-sm">Group by Extension</p>
                                         <p className="text-xs text-white/40 mt-0.5">Automatically organize files into Images, Documents, etc.</p>
                                     </div>
-                                    <button onClick={() => toggleMockSetting('groupDownloads')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${mockSettings.groupDownloads ? 'bg-accent' : 'bg-white/20'}`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${mockSettings.groupDownloads ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                    <button onClick={() => toggleSetting('groupDownloads')} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${settings.groupDownloads ? 'bg-accent' : 'bg-white/20'}`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${settings.groupDownloads ? 'translate-x-4' : 'translate-x-0'}`}></div>
                                     </button>
                                 </div>
                             </div>
