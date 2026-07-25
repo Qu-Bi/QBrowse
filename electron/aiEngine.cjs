@@ -488,12 +488,16 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
 
                 const totalBytes = parseInt(response.headers['content-length'], 10) || (3.1 * 1024 * 1024 * 1024);
                 let downloadedBytes = 0;
+                let lastProgressTime = 0;
 
                 response.on('data', (chunk) => {
                     downloadedBytes += chunk.length;
                     file.write(chunk);
-                    const percent = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
-                    if (onProgress) {
+                    
+                    const now = Date.now();
+                    if (onProgress && now - lastProgressTime >= 100) {
+                        lastProgressTime = now;
+                        const percent = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
                         onProgress({
                             percent,
                             downloadedBytes,
