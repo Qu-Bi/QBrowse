@@ -416,13 +416,16 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         }
 
         const parseRGB = (str) => {
-            if (!str) return null;
-            const m = str.match(/\\d+/g);
-            return m && m.length >= 3 ? m.slice(0, 3).map(Number) : null;
+            if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+            const m = str.match(/[\d.]+/g);
+            if (!m) return null;
+            // If rgba with alpha 0, it's fully transparent
+            if (m.length >= 4 && parseFloat(m[3]) === 0) return null;
+            return m.length >= 3 ? m.slice(0, 3).map(Number) : null;
         };
 
         const getLuminance = (rgb) => {
-            if (!rgb) return 1;
+            if (!rgb) return 1; // Default transparent canvas is white
             return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
         };
 

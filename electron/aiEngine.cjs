@@ -347,11 +347,16 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
             ];
 
             if (options.mmprojPath) {
-                const mmprojFullPath = path.join(getBinDir(), options.mmprojPath);
+                const mmprojFullPath = path.isAbsolute(options.mmprojPath) 
+                    ? options.mmprojPath 
+                    : path.join(getModelsDir(), options.mmprojPath);
+
                 if (fs.existsSync(mmprojFullPath)) {
                     args.push('--mmproj', mmprojFullPath);
                 } else if (fs.existsSync(options.mmprojPath)) {
                     args.push('--mmproj', options.mmprojPath);
+                } else {
+                    appendLog(`[WARNING] Vision projector not found at: ${mmprojFullPath}`);
                 }
             }
 
