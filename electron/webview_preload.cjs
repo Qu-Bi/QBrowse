@@ -205,15 +205,6 @@ function sendMediaState() {
         let currentTime = 0;
         let duration = 0;
 
-        if (navigator.mediaSession && navigator.mediaSession.metadata) {
-            const meta = navigator.mediaSession.metadata;
-            title = meta.title || '';
-            artist = meta.artist || meta.album || '';
-            if (meta.artwork && meta.artwork.length > 0) {
-                albumArt = meta.artwork[meta.artwork.length - 1].src || '';
-            }
-        }
-
         const mediaEls = Array.from(document.querySelectorAll('video, audio'));
         const activeMedia = mediaEls.find(el => !el.paused && !el.ended && el.readyState > 1) || mediaEls[0];
 
