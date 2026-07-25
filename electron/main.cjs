@@ -179,6 +179,9 @@ function createWindow() {
               }
           }
           
+          // Block YouTube service workers to fix Electron blank/stuck load bugs
+          if (u.includes('youtube.com/sw.js') || (u.includes('youtube.com') && u.includes('service-worker'))) return true;
+          
           // Whitelist YouTube completely to prevent anti-adblock walls (we use 16x speedup script instead)
           const source = request.sourceUrl ? request.sourceUrl.toLowerCase() : '';
           if (u.includes('youtube.com') || source.includes('youtube.com')) return false;
@@ -250,6 +253,12 @@ const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/201
 app.userAgentFallback = dynamicCleanUA;
 
 app.whenReady().then(() => {
+  // Fix YouTube stuck loading by wiping its service workers and caches on boot
+  session.defaultSession.clearStorageData({
+      origin: 'https://www.youtube.com',
+      storages: ['serviceworkers', 'cachestorage']
+  }).catch(() => {});
+
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
       delete details.requestHeaders['X-Electron-Version'];
       if (settingsStore.dnt !== false) {
