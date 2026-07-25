@@ -1,1 +1,7 @@
 node_modules
+dist_electron
+dist
+electron/bin
+*.exe
+*.AppImage
+*.zip

@@ -451,7 +451,7 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         if (!wv) return;
 
         const exclusions = darkExclusions || [];
-        const isExcluded = exclusions.some(domain => tab.url && tab.url.includes(domain));
+        const isExcluded = exclusions.some(domain => tab.url && typeof tab.url === 'string' && tab.url.includes(domain));
 
         const applySmartDark = () => {
             if (!isForceDark || isExcluded) {

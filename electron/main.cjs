@@ -28,7 +28,7 @@ crashReporter.start({
 });
 
 let mainWindow;
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = !app.isPackaged;
 app.setName('QBrowse');
 if (process.platform === 'win32') {
     app.setAppUserModelId('com.qbrowse.app');
@@ -92,7 +92,7 @@ function createWindow() {
     minHeight: 820,
     show: false,
     backgroundColor: '#0a0a0c',
-    icon: path.join(__dirname, '../app-icon.svg'),
+    icon: path.join(__dirname, '../icon.png'),
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
     webPreferences: {
@@ -179,6 +179,10 @@ function createWindow() {
               }
           }
           
+          // Whitelist YouTube completely to prevent anti-adblock walls (we use 16x speedup script instead)
+          const source = request.sourceUrl ? request.sourceUrl.toLowerCase() : '';
+          if (u.includes('youtube.com') || source.includes('youtube.com')) return false;
+
           // Whitelist essential video streaming, CDN, and auth endpoints to prevent breaking websites
           if (
               u.includes('accounts.google.com') ||

@@ -46,7 +46,11 @@ function getModelsDir() {
 }
 
 function getBinDir() {
-    const dir = path.join(__dirname, 'bin');
+    let dir = path.join(__dirname, 'bin');
+    // If packaged, the bin folder is extracted outside the asar archive
+    if (dir.includes('app.asar')) {
+        dir = dir.replace('app.asar', 'app.asar.unpacked');
+    }
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -286,7 +290,14 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
         const zipPath = path.join(getBinDir(), 'llama.zip');
 
         return new Promise((resolve, reject) => {
-            const downloadReq = https.get('https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-win-vulkan-x64.zip', (res) => {
+            let downloadUrl = 'https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-win-vulkan-x64.zip';
+            if (process.platform === 'linux') {
+                downloadUrl = 'https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-ubuntu-x64.zip';
+            } else if (process.platform === 'darwin') {
+                downloadUrl = 'https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-macos-arm64.zip'; // Defaulting to Apple Silicon for Mac
+            }
+
+            const downloadReq = https.get(downloadUrl, (res) => {
                 if (res.statusCode === 301 || res.statusCode === 302) {
                     https.get(res.headers.location, handleDownload);
                 } else {
@@ -303,6 +314,13 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                         const zip = new AdmZip(zipPath);
                         zip.extractAllTo(getBinDir(), true);
                         fs.unlinkSync(zipPath);
+                        
+                        if (process.platform !== 'win32') {
+                            if (fs.existsSync(binPath)) {
+                                fs.chmodSync(binPath, 0o755);
+                            }
+                        }
+
                         appendLog('Engine downloaded and extracted successfully.');
                         resolve(binPath);
                     } catch (err) {

@@ -77,7 +77,7 @@ export default function Sidebar() {
         const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : ghostTabs;
         const setTabs = activeSpace === 'personal' ? setPrivateTabs : activeSpace === 'work' ? setWorkTabs : setGhostTabs;
         
-        const existingTab = tabs.find(t => t.pinnedId === pin.id || (t.url && t.url.includes(pin.domain)));
+        const existingTab = tabs.find(t => t.pinnedId === pin.id || (t.url && typeof t.url === 'string' && t.url.includes(pin.domain)));
         
         if (existingTab) {
             setTabs(prev => prev.map(t => ({ ...t, active: t.id === existingTab.id })));
@@ -203,7 +203,7 @@ export default function Sidebar() {
             <div className="px-4 py-4 hidden md:grid grid-cols-4 gap-2 border-b border-[color:var(--sidebar-border)] relative z-10">
                 {pinnedTabs.map((pin) => {
                     const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : ghostTabs;
-                    const isActive = tabs.find(t => t.active)?.pinnedId === pin.id || tabs.find(t => t.active && t.url && t.url.includes(pin.domain));
+                    const isActive = tabs.find(t => t.active)?.pinnedId === pin.id || tabs.find(t => t.active && t.url && typeof t.url === 'string' && t.url.includes(pin.domain));
                     return (
                     <div key={pin.id} className="relative group flex justify-center animate-pin-in" onContextMenu={(e) => handleTabContextMenuClick(e, pin, 'pinned')}>
                         <button onClick={() => handlePinnedTabClick(pin)} className={`w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all shadow-sm overflow-hidden ${isActive ? 'bg-[color:var(--sidebar-bg-active)] border-white/30 scale-105' : 'bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border-[color:var(--sidebar-border)] group-hover:scale-105'}`} title={pin.title}>
@@ -236,7 +236,7 @@ export default function Sidebar() {
                             </button>
                         </div>
                         {(() => {
-                            const filtered = privateTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && t.url.includes(p.domain)));
+                            const filtered = privateTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
                             if (filtered.length === 0) {
                                 return (
                                     <button onClick={handleNewTab} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
@@ -264,7 +264,7 @@ export default function Sidebar() {
                             </button>
                         </div>
                         {(() => {
-                            const filtered = workTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && t.url.includes(p.domain)));
+                            const filtered = workTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
                             if (filtered.length === 0) {
                                 return (
                                     <button onClick={handleNewTab} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
@@ -292,7 +292,7 @@ export default function Sidebar() {
                             </button>
                         </div>
                         {(() => {
-                            const filtered = ghostTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && t.url.includes(p.domain)));
+                            const filtered = ghostTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
                             if (filtered.length === 0) {
                                 return (
                                     <button onClick={handleNewTab} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
