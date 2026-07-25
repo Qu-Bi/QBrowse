@@ -40,6 +40,7 @@ app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('enable-picture-in-picture');
 app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs');
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // Vault setup
@@ -211,10 +212,13 @@ function createWindow() {
         // CRITICAL: Safely wrap executeJavaScript to prevent Ghostery and V8 from throwing fatal Unhandled Rejections during navigation!
         const originalExecute = contents.executeJavaScript;
         contents.executeJavaScript = function(code, userGesture) {
-            return originalExecute.call(this, code, userGesture).catch(err => {
-                // Silently catch to prevent Node.js from exiting with code 3221225477 (0xC0000005)
-                return null;
-            });
+            try {
+                return originalExecute.call(this, code, userGesture).catch(err => {
+                    return null;
+                });
+            } catch (err) {
+                return Promise.resolve(null);
+            }
         };
 
         // CRITICAL: Disable background throttling so YouTube media plays perfectly in the background
