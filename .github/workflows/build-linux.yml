@@ -19,7 +19,17 @@ jobs:
         cache: 'npm'
 
     - name: Install dependencies
-      run: npm install
+      run: |
+        npm install
+        chmod +x node_modules/.bin/vite
+        chmod +x node_modules/.bin/electron-builder || true
+
+    - name: Download Linux AI Binaries
+      run: |
+        mkdir -p electron/bin
+        curl -L -o llama.zip https://github.com/ggerganov/llama.cpp/releases/latest/download/llama-b3492-bin-ubuntu-x64.zip || true
+        unzip -o llama.zip -d electron/bin/ || true
+        chmod +x electron/bin/* || true
 
     - name: Build Linux (DEB & AppImage)
       run: npm run build:linux
