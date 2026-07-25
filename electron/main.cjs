@@ -138,19 +138,11 @@ function createWindow() {
   let globalBlocker = null;
 
   ipcMain.handle('update-adblock-filters', async () => {
-      try {
-          if (globalBlocker) {
-              await globalBlocker.enableBlockingInSession(session.defaultSession);
-          } else {
-              globalBlocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
-              await globalBlocker.enableBlockingInSession(session.defaultSession);
-          }
-          return { success: true, count: 151564 };
-      } catch {
-          return { success: true, count: 151564 };
-      }
+      return { success: true, count: 0 };
   });
 
+  // GHOSTERY TEMPORARILY DISABLED FOR CRASH ISOLATION
+  /*
   ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
       globalBlocker = blocker;
       blocker.on('request-blocked', (request) => {
@@ -205,6 +197,7 @@ function createWindow() {
   }).catch(err => {
       console.error('Failed to initialize Adblocker:', err);
   });
+  */
 
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
