@@ -367,7 +367,7 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
 });
 
 // --- YOUTUBE NATIVE AD-SKIPPER ---
-if (window.location.hostname.includes('youtube.com')) {
+if (window.location.hostname.includes('youtube.com') && window === window.top) {
     let speedUpInterval = setInterval(() => {
         try {
             if (!document.body) return; // Wait for body to load
@@ -375,12 +375,11 @@ if (window.location.hostname.includes('youtube.com')) {
             const ad = document.querySelector('.ad-showing, .ad-interrupting');
             if (ad) {
                 const video = document.querySelector('video');
-                // Only modify playbackRate if video is actually loaded and ready, to prevent Chromium decoder crash
-                if (video && video.readyState > 1 && video.playbackRate !== 16) {
+                if (video) {
                     video.playbackRate = 16;
                     video.muted = true;
                 }
-                const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-skip-button-slot');
+                const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-text.ytp-ad-skip-button-text');
                 if (skipBtn) skipBtn.click();
             }
         } catch(e) {}
