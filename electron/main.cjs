@@ -243,9 +243,11 @@ function createWindow() {
     });
 }
 
-const cleanUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const chromeVersionFull = process.versions.chrome || '130.0.0.0';
+const chromeVersionMajor = chromeVersionFull.split('.')[0] || '130';
+const dynamicCleanUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersionFull} Safari/537.36`;
 const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
-app.userAgentFallback = cleanUA;
+app.userAgentFallback = dynamicCleanUA;
 
 app.whenReady().then(() => {
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
@@ -262,8 +264,8 @@ app.whenReady().then(() => {
           delete details.requestHeaders['Sec-CH-UA-Platform-Version'];
           delete details.requestHeaders['Sec-CH-UA-Full-Version-List'];
       } else {
-          details.requestHeaders['User-Agent'] = cleanUA;
-          details.requestHeaders['Sec-CH-UA'] = '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"';
+          details.requestHeaders['User-Agent'] = dynamicCleanUA;
+          details.requestHeaders['Sec-CH-UA'] = `"Chromium";v="${chromeVersionMajor}", "Google Chrome";v="${chromeVersionMajor}", "Not?A_Brand";v="99"`;
           details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
           details.requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
       }
