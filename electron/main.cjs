@@ -262,7 +262,19 @@ const dynamicCleanUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/53
 const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
 app.userAgentFallback = dynamicCleanUA;
 
-app.whenReady().then(() => {
+app.setName('QBrowse');
+app.setAppUserModelId('com.qbrowse.app');
+
+const { components } = require('electron');
+
+app.whenReady().then(async () => {
+  try {
+      await components.whenReady();
+      console.log('Widevine and components loaded successfully.');
+  } catch(e) {
+      console.error('Components failed to load:', e);
+  }
+
   // Fix YouTube stuck loading by wiping its service workers and caches on boot
   session.defaultSession.clearStorageData({
       origin: 'https://www.youtube.com',
