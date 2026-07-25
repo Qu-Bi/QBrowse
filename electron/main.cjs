@@ -179,9 +179,7 @@ function createWindow() {
               }
           }
           
-          // Whitelist YouTube completely to prevent anti-adblock walls (we use 16x speedup script instead)
-          const source = request.sourceUrl ? request.sourceUrl.toLowerCase() : '';
-          if (u.includes('youtube.com') || source.includes('youtube.com')) return false;
+          // Ghostery handles YouTube natively now
 
           // Whitelist essential video streaming, CDN, and auth endpoints to prevent breaking websites
           if (

@@ -356,33 +356,7 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
     }
 });
 
-// --- YOUTUBE NATIVE AD-SKIPPER ---
-if (window.location.hostname.includes('youtube.com') && window === window.top) {
-    let speedUpInterval = setInterval(() => {
-        try {
-            if (!document.body) return; // Wait for body to load
-            
-            const ad = document.querySelector('.ad-showing, .ad-interrupting');
-            if (ad) {
-                const videos = Array.from(document.querySelectorAll('video'));
-                const activeVideo = videos.find(v => v.readyState > 1 && !v.paused) || videos[0];
-                
-                if (activeVideo && activeVideo.duration && !isNaN(activeVideo.duration)) {
-                    activeVideo.muted = true;
-                    // SAFETY CHECK: Only seek if the video is under 5 minutes (a real ad). 
-                    // Seeking a main 20-minute video during a mid-roll ad crashes the player!
-                    if (activeVideo.duration < 300 && activeVideo.currentTime < activeVideo.duration - 1) {
-                        activeVideo.currentTime = activeVideo.duration - 0.5;
-                    }
-                }
-                const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-text.ytp-ad-skip-button-text');
-                if (skipBtn) {
-                    skipBtn.click();
-                }
-            }
-        } catch(e) {}
-    }, 250);
-}
+// --- NATIVE AD-SKIPPER REMOVED (Relies on Ghostery now) ---
 
 // --- SMART DARK MODE ---
 ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
