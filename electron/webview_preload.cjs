@@ -269,7 +269,6 @@ setInterval(sendMediaState, 800);
 
 document.addEventListener('play', sendMediaState, true);
 document.addEventListener('pause', sendMediaState, true);
-document.addEventListener('timeupdate', sendMediaState, true);
 
 ipcRenderer.on('media-control-command', (event, cmdData) => {
     try {
