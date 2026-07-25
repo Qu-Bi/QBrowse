@@ -343,7 +343,7 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 '--n-gpu-layers', gpuLayers.toString(),
                 '--port', port.toString(),
                 '--tools', 'all',
-                '--parallel', '4'
+                '--parallel', '1'
             ];
 
             if (options.mmprojPath) {
