@@ -373,11 +373,15 @@ if (window.location.hostname.includes('youtube.com') && window === window.top) {
             
             const ad = document.querySelector('.ad-showing, .ad-interrupting');
             if (ad) {
-                const video = document.querySelector('video');
-                if (video && video.duration && !isNaN(video.duration)) {
-                    video.muted = true;
-                    if (video.currentTime < video.duration - 1) {
-                        video.currentTime = video.duration - 0.5;
+                const videos = Array.from(document.querySelectorAll('video'));
+                const activeVideo = videos.find(v => v.readyState > 1 && !v.paused) || videos[0];
+                
+                if (activeVideo && activeVideo.duration && !isNaN(activeVideo.duration)) {
+                    activeVideo.muted = true;
+                    // SAFETY CHECK: Only seek if the video is under 5 minutes (a real ad). 
+                    // Seeking a main 20-minute video during a mid-roll ad crashes the player!
+                    if (activeVideo.duration < 300 && activeVideo.currentTime < activeVideo.duration - 1) {
+                        activeVideo.currentTime = activeVideo.duration - 0.5;
                     }
                 }
                 const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-text.ytp-ad-skip-button-text');
