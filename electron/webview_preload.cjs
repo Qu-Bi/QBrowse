@@ -385,3 +385,63 @@ if (window.location.hostname.includes('youtube.com') && window === window.top) {
         } catch(e) {}
     }, 250);
 }
+
+// --- SMART DARK MODE ---
+ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
+    try {
+        if (!isForceDark || isExcluded) {
+            const styleEl = document.getElementById('qbrowse-smart-dark-style');
+            if (styleEl) styleEl.remove();
+            document.documentElement.classList.remove('qbrowse-smart-dark-active');
+            return;
+        }
+
+        let styleEl = document.getElementById('qbrowse-smart-dark-style');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'qbrowse-smart-dark-style';
+            styleEl.textContent = `
+                html.qbrowse-smart-dark-active {
+                    filter: invert(0.92) hue-rotate(180deg) !important;
+                    background-color: #121214 !important;
+                }
+                html.qbrowse-smart-dark-active img,
+                html.qbrowse-smart-dark-active video,
+                html.qbrowse-smart-dark-active iframe,
+                html.qbrowse-smart-dark-active canvas,
+                html.qbrowse-smart-dark-active svg,
+                html.qbrowse-smart-dark-active [style*="background-image"] {
+                    filter: invert(1.08) hue-rotate(180deg) !important;
+                }
+            `;
+            (document.head || document.documentElement).appendChild(styleEl);
+        }
+
+        const parseRGB = (str) => {
+            if (!str) return null;
+            const m = str.match(/\\d+/g);
+            return m && m.length >= 3 ? m.slice(0, 3).map(Number) : null;
+        };
+
+        const getLuminance = (rgb) => {
+            if (!rgb) return 1;
+            return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+        };
+
+        const bodyStyle = window.getComputedStyle(document.body);
+        const docStyle = window.getComputedStyle(document.documentElement);
+        const bodyBg = parseRGB(bodyStyle.backgroundColor);
+        const docBg = parseRGB(docStyle.backgroundColor);
+
+        const bodyLum = bodyBg ? getLuminance(bodyBg) : 1;
+        const docLum = docBg ? getLuminance(docBg) : 1;
+
+        const isNativelyDark = (bodyBg && bodyLum < 0.42) || (docBg && docLum < 0.42);
+
+        if (!isNativelyDark) {
+            document.documentElement.classList.add('qbrowse-smart-dark-active');
+        } else {
+            document.documentElement.classList.remove('qbrowse-smart-dark-active');
+        }
+    } catch (e) {}
+});
