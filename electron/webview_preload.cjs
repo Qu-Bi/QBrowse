@@ -404,12 +404,13 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
                     background-color: #121214 !important;
                 }
                 html.qbrowse-smart-dark-active img,
+                html.qbrowse-smart-dark-active picture,
                 html.qbrowse-smart-dark-active video,
                 html.qbrowse-smart-dark-active iframe,
                 html.qbrowse-smart-dark-active canvas,
                 html.qbrowse-smart-dark-active svg,
                 html.qbrowse-smart-dark-active [style*="background-image"] {
-                    filter: invert(1.08) hue-rotate(180deg) !important;
+                    filter: invert(1) hue-rotate(180deg) !important;
                 }
             `;
             (document.head || document.documentElement).appendChild(styleEl);
@@ -419,25 +420,28 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
             if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
             const m = str.match(/[\d.]+/g);
             if (!m) return null;
-            // If rgba with alpha 0, it's fully transparent
             if (m.length >= 4 && parseFloat(m[3]) === 0) return null;
             return m.length >= 3 ? m.slice(0, 3).map(Number) : null;
         };
 
-        const getLuminance = (rgb) => {
-            if (!rgb) return 1; // Default transparent canvas is white
+        const getLuminance = (rgb, defaultLum = 1) => {
+            if (!rgb) return defaultLum; 
             return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
         };
 
         const bodyStyle = window.getComputedStyle(document.body);
         const docStyle = window.getComputedStyle(document.documentElement);
+        
         const bodyBg = parseRGB(bodyStyle.backgroundColor);
         const docBg = parseRGB(docStyle.backgroundColor);
+        const bodyColor = parseRGB(bodyStyle.color);
 
-        const bodyLum = bodyBg ? getLuminance(bodyBg) : 1;
-        const docLum = docBg ? getLuminance(docBg) : 1;
+        const bodyLum = getLuminance(bodyBg, 1);
+        const docLum = getLuminance(docBg, 1);
+        const textColorLum = getLuminance(bodyColor, 0);
 
-        const isNativelyDark = (bodyBg && bodyLum < 0.42) || (docBg && docLum < 0.42);
+        // A site is natively dark if its background is explicitly dark, OR if its text is very light (meaning the background is dark elsewhere)
+        const isNativelyDark = (bodyBg && bodyLum < 0.42) || (docBg && docLum < 0.42) || (textColorLum > 0.6);
 
         if (!isNativelyDark) {
             document.documentElement.classList.add('qbrowse-smart-dark-active');
