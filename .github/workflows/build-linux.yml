@@ -27,12 +27,14 @@ jobs:
     - name: Download Linux AI Binaries
       run: |
         mkdir -p electron/bin
-        curl -L -o llama.zip https://github.com/ggerganov/llama.cpp/releases/latest/download/llama-b3492-bin-ubuntu-x64.zip || true
+        curl -L -o llama.zip https://github.com/ggerganov/llama.cpp/releases/download/b3492/llama-b3492-bin-ubuntu-x64.zip || true
         unzip -o llama.zip -d electron/bin/ || true
         chmod +x electron/bin/* || true
 
     - name: Build Linux (DEB & AppImage)
       run: npm run build:linux
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
     - name: Upload Linux Artifacts
       uses: actions/upload-artifact@v4
