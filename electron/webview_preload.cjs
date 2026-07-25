@@ -365,3 +365,23 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
         console.error('[Preload MediaControl] Exception in command handler:', e);
     }
 });
+
+// --- YOUTUBE NATIVE AD-SKIPPER ---
+if (window.location.hostname.includes('youtube.com')) {
+    let speedUpInterval = setInterval(() => {
+        try {
+            if (!document.body) return; // Wait for body to load
+            
+            const ad = document.querySelector('.ad-showing, .ad-interrupting');
+            if (ad) {
+                const video = document.querySelector('video');
+                if (video) {
+                    video.playbackRate = 16;
+                    video.muted = true;
+                }
+                const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-text.ytp-ad-skip-button-text');
+                if (skipBtn) skipBtn.click();
+            }
+        } catch(e) {}
+    }, 250);
+}

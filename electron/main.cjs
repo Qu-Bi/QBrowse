@@ -240,32 +240,6 @@ function createWindow() {
                 }
             }
         });
-
-        // YouTube 16x ad speedup
-        contents.on('did-finish-load', () => {
-            const url = contents.getURL();
-            if (url && (url.includes('youtube.com') || url.includes('googlevideo.com'))) {
-                contents.executeJavaScript(`
-                    (function() {
-                        let speedUpInterval = setInterval(() => {
-                            try {
-                                if (!document.body) {
-                                    clearInterval(speedUpInterval);
-                                    return;
-                                }
-                                const ad = document.querySelector('.ad-showing');
-                                if (ad) {
-                                    const video = document.querySelector('video');
-                                    if (video) video.playbackRate = 16;
-                                    const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern');
-                                    if (skipBtn) skipBtn.click();
-                                }
-                            } catch(e) {}
-                        }, 500);
-                    })();
-                `).catch(() => {});
-            }
-        });
     });
 }
 
@@ -280,7 +254,7 @@ app.whenReady().then(() => {
           details.requestHeaders['DNT'] = '1';
       }
       const url = details.url || '';
-      if (url.includes('google.com') || url.includes('googleapis.com')) {
+      if (url.includes('google.com') || url.includes('googleapis.com') || url.includes('youtube.com') || url.includes('googlevideo.com')) {
           details.requestHeaders['User-Agent'] = firefoxUA;
           delete details.requestHeaders['Sec-CH-UA'];
           delete details.requestHeaders['Sec-CH-UA-Mobile'];
