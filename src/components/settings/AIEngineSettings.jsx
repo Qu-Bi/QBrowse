@@ -221,7 +221,9 @@ export default function AIEngineSettings() {
                                     <div className="space-y-1.5 pt-1">
                                         <div className="flex justify-between text-[10px] font-mono text-accent">
                                             <span>Downloading {preset.mmprojUrl && downloadDetail?.percent > 0 && downloadDetail?.percent < 100 ? (downloadDetail?.totalBytes < 1000000000 ? 'Vision Projector...' : 'Language Model...') : 'weights...'}</span>
-                                            <span>{downloadProgress || 0}%</span>
+                                            <span>
+                                                {downloadDetail?.downloadedBytes ? `${(downloadDetail.downloadedBytes / 1024 / 1024).toFixed(1)}MB / ${(downloadDetail.totalBytes / 1024 / 1024).toFixed(1)}MB` : `${downloadProgress || 0}%`}
+                                            </span>
                                         </div>
                                         <div className="w-full h-1.5 bg-black/60 border border-white/10 rounded-full overflow-hidden">
                                             <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${downloadProgress || 0}%` }} />

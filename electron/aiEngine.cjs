@@ -492,10 +492,9 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
 
                 response.on('data', (chunk) => {
                     downloadedBytes += chunk.length;
-                    file.write(chunk);
                     
                     const now = Date.now();
-                    if (onProgress && now - lastProgressTime >= 100) {
+                    if (onProgress && now - lastProgressTime >= 150) {
                         lastProgressTime = now;
                         const percent = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
                         onProgress({
@@ -507,14 +506,16 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
                     }
                 });
 
-                response.on('end', () => {
-                    file.end();
+                response.pipe(file);
+
+                file.on('finish', () => {
+                    file.close();
                     currentModelPath = destPath;
                     appendLog(`[SUCCESS] GGUF Model weights saved & verified: ${destPath}`);
                     resolve({ success: true, destPath });
                 });
 
-                response.on('error', (err) => {
+                file.on('error', (err) => {
                     fs.unlink(destPath, () => {});
                     appendLog(`[ERROR] File write error: ${err.message}`);
                     reject(err);
