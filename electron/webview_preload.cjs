@@ -375,11 +375,12 @@ if (window.location.hostname.includes('youtube.com')) {
             const ad = document.querySelector('.ad-showing, .ad-interrupting');
             if (ad) {
                 const video = document.querySelector('video');
-                if (video) {
+                // Only modify playbackRate if video is actually loaded and ready, to prevent Chromium decoder crash
+                if (video && video.readyState > 1 && video.playbackRate !== 16) {
                     video.playbackRate = 16;
                     video.muted = true;
                 }
-                const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-text.ytp-ad-skip-button-text');
+                const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-skip-button-slot');
                 if (skipBtn) skipBtn.click();
             }
         } catch(e) {}

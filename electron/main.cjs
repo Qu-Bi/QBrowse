@@ -254,7 +254,7 @@ app.whenReady().then(() => {
           details.requestHeaders['DNT'] = '1';
       }
       const url = details.url || '';
-      if (url.includes('google.com') || url.includes('googleapis.com') || url.includes('youtube.com') || url.includes('googlevideo.com')) {
+      if (url.includes('google.com') || url.includes('googleapis.com')) {
           details.requestHeaders['User-Agent'] = firefoxUA;
           delete details.requestHeaders['Sec-CH-UA'];
           delete details.requestHeaders['Sec-CH-UA-Mobile'];
