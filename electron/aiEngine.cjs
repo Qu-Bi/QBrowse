@@ -346,6 +346,15 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 '--parallel', '4'
             ];
 
+            if (options.mmprojPath) {
+                const mmprojFullPath = path.join(getBinDir(), options.mmprojPath);
+                if (fs.existsSync(mmprojFullPath)) {
+                    args.push('--mmproj', mmprojFullPath);
+                } else if (fs.existsSync(options.mmprojPath)) {
+                    args.push('--mmproj', options.mmprojPath);
+                }
+            }
+
             appendLog(`Launching native C++ llama-server.exe with args: ${args.join(' ')}`);
 
             serverProcess = spawn(binaryPath, args, { cwd: process.cwd() });

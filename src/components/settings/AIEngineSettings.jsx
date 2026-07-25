@@ -8,9 +8,9 @@ import useUIStore from '../../store/useUIStore';
 
 export default function AIEngineSettings() {
     const { 
-        status, isRunning, activeModelId, customModelPath, logs, metrics,
-        threads, contextSize, gpuLayers, temperature, downloadProgress, downloadedModels,
-        setActiveModelId, setCustomModelPath, setThreads, setContextSize,
+        status, isRunning, activeModelId, customModelPath, customMmprojPath, logs, metrics,
+        threads, contextSize, gpuLayers, temperature, downloadProgress, downloadDetail, downloadedModels,
+        setActiveModelId, setCustomModelPath, setCustomMmprojPath, setThreads, setContextSize,
         setGpuLayers, setTemperature, startEngine, stopEngine, toggleEngine,
         downloadModel, clearLogs, addLog, parsePdfAsImage, setParsePdfAsImage
     } = useAIStore();
@@ -48,6 +48,20 @@ export default function AIEngineSettings() {
             const demoPath = 'C:\\Models\\gemma-2-4b-it-Q4_K_M.gguf';
             setCustomModelPath(demoPath);
             showToast(`Loaded demo custom model path!`);
+        }
+    };
+
+    const handlePickCustomMmproj = async () => {
+        if (window.electronAPI && typeof window.electronAPI.pickAiModelFile === 'function') {
+            const filePath = await window.electronAPI.pickAiModelFile();
+            if (filePath) {
+                setCustomMmprojPath(filePath);
+                showToast(`Loaded custom vision projector: ${filePath.split(/[/\\]/).pop()}`);
+            }
+        } else {
+            const demoPath = 'C:\\Models\\mmproj-model-f16.gguf';
+            setCustomMmprojPath(demoPath);
+            showToast(`Loaded demo custom projector path!`);
         }
     };
 
@@ -142,20 +156,37 @@ export default function AIEngineSettings() {
             <div className="p-5 bg-[#0e0f13]/80 border border-white/10 rounded-2xl space-y-4">
                 <div className="flex items-center justify-between">
                     <h4 className="text-sm font-bold text-white flex items-center gap-2"><Sparkles size={16} className="text-accent" /> Active GGUF Model</h4>
-                    <button
-                        onClick={handlePickCustomFile}
-                        className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-white/80 font-medium transition cursor-pointer flex items-center gap-1.5"
-                    >
-                        <FolderOpen size={13} /> Load Custom .GGUF File...
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handlePickCustomFile}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-white/80 font-medium transition cursor-pointer flex items-center gap-1.5"
+                        >
+                            <FolderOpen size={13} /> Load Custom .GGUF File...
+                        </button>
+                        <button
+                            onClick={handlePickCustomMmproj}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-white/80 font-medium transition cursor-pointer flex items-center gap-1.5"
+                        >
+                            <FolderOpen size={13} /> Load Custom Projector...
+                        </button>
+                    </div>
                 </div>
 
                 {customModelPath && (
                     <div className="p-3 bg-accent/10 border border-accent/30 rounded-xl flex items-center justify-between text-xs text-accent font-mono">
                         <div className="flex items-center gap-2 truncate">
-                            <HardDrive size={14} /> Custom Path: {customModelPath}
+                            <HardDrive size={14} /> Custom Model: {customModelPath}
                         </div>
                         <button onClick={() => setCustomModelPath('')} className="text-white/40 hover:text-white ml-2 font-sans text-[10px]">Reset</button>
+                    </div>
+                )}
+                
+                {customMmprojPath && (
+                    <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl flex items-center justify-between text-xs text-purple-400 font-mono mt-2">
+                        <div className="flex items-center gap-2 truncate">
+                            <HardDrive size={14} /> Custom Projector: {customMmprojPath}
+                        </div>
+                        <button onClick={() => setCustomMmprojPath('')} className="text-white/40 hover:text-white ml-2 font-sans text-[10px]">Reset</button>
                     </div>
                 )}
 
@@ -189,7 +220,7 @@ export default function AIEngineSettings() {
                                 {isThisDownloading ? (
                                     <div className="space-y-1.5 pt-1">
                                         <div className="flex justify-between text-[10px] font-mono text-accent">
-                                            <span>Downloading weights...</span>
+                                            <span>Downloading {preset.mmprojUrl && downloadDetail?.percent > 0 && downloadDetail?.percent < 100 ? (downloadDetail?.totalBytes < 1000000000 ? 'Vision Projector...' : 'Language Model...') : 'weights...'}</span>
                                             <span>{downloadProgress || 0}%</span>
                                         </div>
                                         <div className="w-full h-1.5 bg-black/60 border border-white/10 rounded-full overflow-hidden">

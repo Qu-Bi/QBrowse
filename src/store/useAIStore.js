@@ -5,19 +5,23 @@ import { speakLocal, stopLocalTTS } from '../utils/localTTS';
 export const MODEL_PRESETS = [
     {
         id: 'gemma-4-e2b',
-        name: 'Gemma 4 E2B Instruct (Q4_K_M)',
-        size: '3.11 GB',
-        url: 'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
-        filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
-        description: 'Unsloth Gemma 4 E2B Instruct GGUF model for fast web page summarization, chat, and reasoning.'
+        name: 'Gemma 4 E2B Instruct (Q4_0)',
+        size: '2.04 GB (Model) + 557 MB (Vision)',
+        url: 'https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf',
+        filename: 'gemma-4-E2B-it-Q4_0.gguf',
+        mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-Q8_0.gguf',
+        mmprojFilename: 'mmproj-gemma-4-E2B-it-Q8_0.gguf',
+        description: 'Unsloth Gemma 4 E2B Instruct GGUF model with full Multimodal Vision support for analyzing images and chat.'
     },
     {
         id: 'gemma-4-e4b',
-        name: 'Gemma 4 E4B Instruct (Q4_K_M)',
-        size: '4.98 GB',
-        url: 'https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
-        filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
-        description: 'High reasoning Unsloth Gemma 4 E4B model for complex code analysis, writing, and research.'
+        name: 'Gemma 4 E4B Instruct (Q4_0)',
+        size: '4.59 GB (Model) + 560 MB (Vision)',
+        url: 'https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf',
+        filename: 'gemma-4-E4B-it-Q4_0.gguf',
+        mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-Q8_0.gguf',
+        mmprojFilename: 'mmproj-gemma-4-E4B-it-Q8_0.gguf',
+        description: 'High reasoning Unsloth Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
     }
 ];
 
@@ -27,6 +31,7 @@ const useAIStore = create((set, get) => ({
     status: 'stopped', // 'stopped' | 'starting' | 'running' | 'error' | 'downloading'
     activeModelId: localStorage.getItem('qbrowse_ai_model') || 'gemma-4-e2b',
     customModelPath: localStorage.getItem('qbrowse_ai_custom_path') || '',
+    customMmprojPath: localStorage.getItem('qbrowse_ai_custom_mmproj') || '',
     logs: [],
     metrics: {
         tokensPerSecond: 0,
@@ -80,6 +85,11 @@ const useAIStore = create((set, get) => ({
         localStorage.setItem('qbrowse_ai_custom_path', path);
     },
 
+    setCustomMmprojPath: (path) => {
+        set({ customMmprojPath: path });
+        localStorage.setItem('qbrowse_ai_custom_mmproj', path);
+    },
+
     setThreads: (val) => {
         set({ threads: val });
         localStorage.setItem('qbrowse_ai_threads', val.toString());
@@ -106,18 +116,22 @@ const useAIStore = create((set, get) => ({
     // llama.cpp Process Controller Actions
     startEngine: async () => {
         set({ status: 'starting' });
-        const { activeModelId, customModelPath, threads, contextSize, gpuLayers, temperature, port } = get();
+        const { activeModelId, customModelPath, customMmprojPath, threads, contextSize, gpuLayers, temperature, port } = get();
         let modelPath = customModelPath;
+        let mmprojPath = customMmprojPath;
 
         if (!modelPath) {
             const preset = MODEL_PRESETS.find(m => m.id === activeModelId) || MODEL_PRESETS[0];
-            // Path will be resolved by electron or local fallback
             modelPath = preset.filename;
+            if (!mmprojPath && preset.mmprojFilename) {
+                mmprojPath = preset.mmprojFilename;
+            }
         }
 
         if (window.electronAPI && typeof window.electronAPI.startAiServer === 'function') {
             const res = await window.electronAPI.startAiServer({
                 modelPath,
+                mmprojPath,
                 threads,
                 contextSize,
                 gpuLayers,
@@ -191,10 +205,21 @@ const useAIStore = create((set, get) => ({
             }
 
             try {
+                // Download Main Model
                 await window.electronAPI.downloadAiModel({
                     url: presetObj.url,
                     filename: presetObj.filename
                 });
+                
+                // Download mmproj if required
+                if (presetObj.mmprojUrl) {
+                    set({ downloadProgress: 0, downloadDetail: { percent: 0, downloadedBytes: 0, totalBytes: 0 } });
+                    await window.electronAPI.downloadAiModel({
+                        url: presetObj.mmprojUrl,
+                        filename: presetObj.mmprojFilename
+                    });
+                }
+
                 if (unsub) unsub();
                 set({ status: 'stopped', downloadProgress: 100 });
                 get().setActiveModelId(presetObj.id);
