@@ -41,6 +41,7 @@ app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('enable-picture-in-picture');
 app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-gpu-video-decoder');
 
 // Vault setup
 const appDataPath = app.getPath('userData');
@@ -178,9 +179,6 @@ function createWindow() {
                   return true; // Block social tracking pixels
               }
           }
-          
-          // Block YouTube service workers to fix Electron blank/stuck load bugs
-          if (u.includes('youtube.com/sw.js') || (u.includes('youtube.com') && u.includes('service-worker'))) return true;
           
           // Whitelist YouTube completely to prevent anti-adblock walls (we use 16x speedup script instead)
           const source = request.sourceUrl ? request.sourceUrl.toLowerCase() : '';
