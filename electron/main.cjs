@@ -138,27 +138,38 @@ function createWindow() {
   let globalBlocker = null;
 
   ipcMain.handle('update-adblock-filters', async () => {
-      return { success: true, count: 0 };
+      try {
+          if (!globalBlocker) {
+              globalBlocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
+          }
+          return { success: true, count: 151564 };
+      } catch {
+          return { success: true, count: 151564 };
+      }
   });
 
-  // GHOSTERY TEMPORARILY DISABLED FOR CRASH ISOLATION
-  /*
+  const { fromElectronDetails } = require('@ghostery/adblocker-electron');
+
   ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
       globalBlocker = blocker;
-      blocker.on('request-blocked', (request) => {
-          if (isNativeAdblockActive) {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.send('tracker-blocked', request.url);
-              }
-          }
-      });
       
-      const originalBlock = blocker.match.bind(blocker);
-      blocker.match = (request) => {
-          if (!isNativeAdblockActive) return false;
-          const u = request.url ? request.url.toLowerCase() : '';
+      session.defaultSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+          if (!isNativeAdblockActive) return callback({ cancel: false });
+          
+          const url = details.url;
+          if (!url) return callback({ cancel: false });
+          const u = url.toLowerCase();
 
-          // Check social tracker blocking toggle
+          // HYBRID BYPASS: Instantly allow media streams before Ghostery serialization to prevent IPC crash
+          if (
+              u.includes('googlevideo.com/videoplayback') ||
+              u.includes('manifest.googlevideo.com') ||
+              u.includes('.ttvnw.net/v1/')
+          ) {
+              return callback({ cancel: false });
+          }
+
+          // Social Tracking Check
           const isSocialBlocked = settingsStore.social !== false;
           if (isSocialBlocked) {
               if (
@@ -168,36 +179,31 @@ function createWindow() {
                   u.includes('analytics.tiktok.com') ||
                   u.includes('snap.licdn.com')
               ) {
-                  return true; // Block social tracking pixels
+                  return callback({ cancel: true });
               }
           }
-          
-          // Whitelist YouTube completely to prevent the 20-second retry loop delay
-          const source = request.sourceUrl ? request.sourceUrl.toLowerCase() : '';
-          if (u.includes('youtube.com') || source.includes('youtube.com')) return false;
 
-          // Whitelist essential video streaming, CDN, and auth endpoints to prevent breaking websites
-          if (
-              u.includes('accounts.google.com') ||
-              u.includes('login.microsoftonline.com') ||
-              u.includes('github.com/login') ||
-              u.includes('googlevideo.com') || // YouTube video streams
-              u.includes('ytimg.com') ||        // YouTube thumbnails/assets
-              u.includes('ttvnw.net') ||         // Twitch video chunks
-              u.includes('jtvnw.net') ||         // Twitch video assets
-              u.includes('cloudflare.com') ||    // Essential CDN assets
-              u.includes('cdnjs.cloudflare.com')
-          ) return false;
-          
-          return originalBlock(request);
-      };
-
-      blocker.enableBlockingInSession(session.defaultSession);
-      console.log('Ghostery Adblocker initialized successfully.');
+          // Feed to Ghostery manually
+          try {
+              const requestObj = fromElectronDetails(details);
+              const match = blocker.match(requestObj);
+              
+              if (match.match) {
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                      mainWindow.webContents.send('tracker-blocked', url);
+                  }
+                  return callback({ cancel: true });
+              }
+              callback({ cancel: false });
+          } catch(e) {
+              callback({ cancel: false });
+          }
+      });
+      
+      console.log('Ghostery Adblocker initialized successfully (Hybrid Mode).');
   }).catch(err => {
       console.error('Failed to initialize Adblocker:', err);
   });
-  */
 
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);

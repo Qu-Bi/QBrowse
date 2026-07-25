@@ -246,13 +246,6 @@ export default function App() {
             
             <Overlays />
             <TabSwitcherOverlay />
-
-            {toast && (
-                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[1000] px-6 py-3 rounded-full bg-[#121214]/90 backdrop-blur-xl border border-accent/50 text-white text-sm font-semibold shadow-[0_10px_40px_var(--accent-30)] animate-toast flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-                    {toast}
-                </div>
-            )}
         </div>
         </ContextMenuProvider>
     );
