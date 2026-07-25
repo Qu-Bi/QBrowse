@@ -210,6 +210,16 @@ function createWindow() {
 
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
+        
+        // CRITICAL: Safely wrap executeJavaScript to prevent Ghostery and V8 from throwing fatal Unhandled Rejections during navigation!
+        const originalExecute = contents.executeJavaScript;
+        contents.executeJavaScript = function(code, userGesture) {
+            return originalExecute.call(this, code, userGesture).catch(err => {
+                // Silently catch to prevent Node.js from exiting with code 3221225477 (0xC0000005)
+                return null;
+            });
+        };
+
         // CRITICAL: Disable background throttling so YouTube media plays perfectly in the background
         contents.setBackgroundThrottling(false);
 
@@ -265,8 +275,10 @@ app.whenReady().then(() => {
           details.requestHeaders['DNT'] = '1';
       }
       const url = details.url || '';
-      if (url.includes('google.com') || url.includes('googleapis.com')) {
-          details.requestHeaders['User-Agent'] = firefoxUA;
+      
+      // Delete client hints for all Google domains to bypass strict bot fingerprinting
+      if (url.includes('google.com') || url.includes('googleapis.com') || url.includes('youtube.com') || url.includes('googlevideo.com')) {
+          details.requestHeaders['User-Agent'] = dynamicCleanUA;
           delete details.requestHeaders['Sec-CH-UA'];
           delete details.requestHeaders['Sec-CH-UA-Mobile'];
           delete details.requestHeaders['Sec-CH-UA-Platform'];
