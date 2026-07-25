@@ -179,7 +179,9 @@ function createWindow() {
               }
           }
           
-          // Ghostery handles YouTube natively now
+          // Whitelist YouTube completely to prevent the 20-second retry loop delay
+          const source = request.sourceUrl ? request.sourceUrl.toLowerCase() : '';
+          if (u.includes('youtube.com') || source.includes('youtube.com')) return false;
 
           // Whitelist essential video streaming, CDN, and auth endpoints to prevent breaking websites
           if (
