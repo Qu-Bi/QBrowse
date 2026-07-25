@@ -1,51 +1,15 @@
 import React from 'react';
-import { 
-    ArrowLeft, ArrowRight, RefreshCw, Copy, MonitorPlay, Pin, Minus, 
-    PictureInPicture2, VolumeX, Volume2, Layers, X, Ghost, Globe, Play, Pause 
-} from 'lucide-react';
+import { Globe } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import AuthModal from '../modals/AuthModal';
 
 export default function Overlays() {
-    const isForceDark = useUIStore(state => state.isForceDark);
-    const contextMenu = useUIStore(state => state.contextMenu);
-    const isContextMenuClosing = useUIStore(state => state.isContextMenuClosing);
-    const closeContextMenu = useUIStore(state => state.closeContextMenu);
-    
-    const tabContextMenu = useUIStore(state => state.tabContextMenu);
-    const isTabContextMenuClosing = useUIStore(state => state.isTabContextMenuClosing);
-    const closeTabContextMenu = useUIStore(state => state.closeTabContextMenu);
-    
     const hoverPreview = useUIStore(state => state.hoverPreview);
-    const showSwitcher = useUIStore(state => state.showSwitcher);
-    
-    const pipWindow = useUIStore(state => state.pipWindow);
-    const isPipClosing = useUIStore(state => state.isPipClosing);
-    const closePip = useUIStore(state => state.closePip);
-    const setPipWindow = useUIStore(state => state.setPipWindow);
-    const showToast = useUIStore(state => state.showToast);
-
-    const peekWindow = useUIStore(state => state.peekWindow);
-    const isPeekClosing = useUIStore(state => state.isPeekClosing);
-    const closePeek = useUIStore(state => state.closePeek);
-
+    const tabContextMenu = useUIStore(state => state.tabContextMenu);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const isFullscreen = useUIStore(state => state.isFullscreen);
-
-    const activeSpace = useTabStore(state => state.activeSpace);
-    const privateTabs = useTabStore(state => state.privateTabs);
-    const workTabs = useTabStore(state => state.workTabs);
-    const ghostTabs = useTabStore(state => state.ghostTabs);
     const draggedItem = useTabStore(state => state.draggedItem);
-    
-    const handleCloseTab = useTabStore(state => state.handleCloseTab);
-    const handleToggleMute = useTabStore(state => state.handleToggleMute);
-    const handlePinTab = useTabStore(state => state.handlePinTab);
-    const handleUnpinTab = useTabStore(state => state.handleUnpinTab);
-
-    const isIncognito = activeSpace === 'ghost';
-    
-    const handleRefresh = () => { showToast('Odświeżam...'); }
 
     return (
         <>
@@ -78,9 +42,7 @@ export default function Overlays() {
                     </div>
                 </div>
             )}
-
-
-
+            <AuthModal />
         </>
     );
 }

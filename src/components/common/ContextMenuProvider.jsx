@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
     ArrowLeft, ArrowRight, RefreshCw, Copy, MonitorPlay, Pin, Minus, 
-    PictureInPicture2, VolumeX, Volume2, Layers, X, Pencil, Trash
+    PictureInPicture2, VolumeX, Volume2, Layers, X, Pencil, Trash, Moon
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -76,7 +76,7 @@ export default function ContextMenuProvider({ children }) {
                     <div className="px-3 py-2 text-xs font-semibold text-white/40 border-b border-white/5 mb-1 truncate">
                         {tabContextMenu?.tab.title}
                     </div>
-                    {tabContextMenu?.spaceType !== 'pinned' && (
+                    {tabContextMenu?.spaceType !== 'pinned' && tabContextMenu?.tab?.url && tabContextMenu?.tab?.url !== 'about:blank' && (
                         <button onClick={() => { handlePinTab(tabContextMenu?.tab); closeTabContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
                             <Pin size={14} className="text-white/50 group-hover:text-white transition" /> Pin Tab
                         </button>
@@ -89,15 +89,24 @@ export default function ContextMenuProvider({ children }) {
                     <button onClick={() => { showToast('URL copied to clipboard'); closeTabContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
                         <Copy size={14} className="text-white/50 group-hover:text-white transition" /> Copy URL
                     </button>
-                    
-                    <button onClick={() => { setPeekWindow(tabContextMenu?.tab); closeTabContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
-                        <MonitorPlay size={14} className="text-white/50 group-hover:text-white transition" /> Peek Preview
+                    <button onClick={() => { 
+                        if (tabContextMenu?.tab) {
+                            useUIStore.getState().toggleSplitView(tabContextMenu.tab.id);
+                            showToast(`Opened ${tabContextMenu.tab.title} in Split View`);
+                        }
+                        closeTabContextMenu(); 
+                    }} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/10 rounded-lg text-sm font-medium transition text-left w-full group text-accent">
+                        <MonitorPlay size={14} className="text-accent/70 group-hover:text-accent transition" /> Open in Split View
                     </button>
-
+                    
                     <div className="h-px w-full bg-white/10 my-1.5"></div>
 
                     {tabContextMenu?.tab.isAudioPlaying && (
-                        <button onClick={() => { setPipWindow(tabContextMenu?.tab); showToast('PiP Activated'); closeTabContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-purple-500/10 rounded-lg text-sm font-medium transition text-left w-full group text-purple-400">
+                        <button onClick={() => { 
+                            useUIStore.getState().sendMediaCommand('toggle-pip'); 
+                            showToast('Picture-in-Picture'); 
+                            closeTabContextMenu(); 
+                        }} className="flex items-center gap-3 px-3 py-2 hover:bg-purple-500/10 rounded-lg text-sm font-medium transition text-left w-full group text-purple-400">
                             <PictureInPicture2 size={14} className="text-purple-400/60 group-hover:text-purple-400 transition" /> Picture in Picture
                         </button>
                     )}
@@ -109,6 +118,11 @@ export default function ContextMenuProvider({ children }) {
                     <button onClick={() => { showToast('Duplicated tab'); closeTabContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
                         <Layers size={14} className="text-white/50 group-hover:text-white transition" /> Duplicate Tab
                     </button>
+                    {!tabContextMenu?.tab.suspended && (
+                        <button onClick={() => { useTabStore.getState().suspendTab(tabContextMenu?.tab.id); closeTabContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
+                            <Moon size={14} className="text-white/50 group-hover:text-white transition" /> Suspend Tab
+                        </button>
+                    )}
 
                     <div className="h-px w-full bg-white/10 my-1.5"></div>
 

@@ -1,13 +1,8 @@
 import React from 'react';
-import { Clock, Search, X } from 'lucide-react';
+import { Clock, Search, X, ExternalLink } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
-
-// Move mockHistoryDB here
-const mockHistoryDB = [
-    { url: 'youtube.com', title: 'YouTube - FPV Drones', visits: 1450, lastVisit: Date.now() - 1000 * 60 * 60 },
-    { url: 'github.com/tauri-apps/tauri', title: 'Tauri - Build smaller, faster', visits: 320, lastVisit: Date.now() - 1000 * 60 * 60 * 24 },
-    { url: 'react.dev', title: 'React Documentation', visits: 890, lastVisit: Date.now() - 1000 * 60 * 60 * 5 },
-];
+import useHistoryStore from '../../store/useHistoryStore';
+import useTabStore from '../../store/useTabStore';
 
 const HistoryModal = () => {
     const {
@@ -17,8 +12,22 @@ const HistoryModal = () => {
         historySearchQuery,
         setHistorySearchQuery
     } = useUIStore();
+    const history = useHistoryStore(state => state.history);
+    const clearHistory = useHistoryStore(state => state.clearHistory);
 
-    if (activeModal !== 'history' && !isModalClosing) return null;
+    const isClosingThis = isModalClosing && useUIStore.getState().closingModal === 'history';
+    if (activeModal !== 'history' && !isClosingThis) return null;
+
+    const handleOpenUrl = (url) => {
+        if (!url) return;
+        const activeTab = useTabStore.getState().getActiveTab();
+        if (activeTab) {
+            useTabStore.getState().handleNavigateTab(activeTab.id, url);
+        } else {
+            useTabStore.getState().handleAddTab('personal', url);
+        }
+        closeModal();
+    };
 
     return (
         <div className={`absolute inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-3xl text-white font-sans p-6 ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
@@ -29,6 +38,7 @@ const HistoryModal = () => {
                         <p className="text-xs text-white/40 mt-1">Local SQLite database (Securely synced)</p>
                     </div>
                     <div className="flex items-center gap-3">
+                        <button onClick={clearHistory} className="px-3 py-1.5 text-xs font-bold bg-white/5 hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-colors">Clear</button>
                         <div className="relative">
                             <Search size={14} className="absolute left-3 top-2.5 text-white/30" />
                             <input
@@ -48,17 +58,24 @@ const HistoryModal = () => {
                         <div className="animate-pop-in">
                             <h3 className="text-xs font-bold uppercase text-accent tracking-widest mb-3 pl-1">Search Results</h3>
                             <div className="flex flex-col gap-2">
-                                {mockHistoryDB.filter(item => item.title.toLowerCase().includes(historySearchQuery.toLowerCase()) || item.url.toLowerCase().includes(historySearchQuery.toLowerCase())).length > 0 ? (
-                                    mockHistoryDB.filter(item => item.title.toLowerCase().includes(historySearchQuery.toLowerCase()) || item.url.toLowerCase().includes(historySearchQuery.toLowerCase())).map((item, i) => (
-                                        <div key={item.url} className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition group cursor-pointer border border-transparent hover:border-white/5 animate-pop-in" style={{ animationFillMode: 'both', animationDelay: `${i * 0.04}s` }}>
-                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 group-hover-text-accent transition overflow-hidden">
+                                {history.filter(item => item.title.toLowerCase().includes(historySearchQuery.toLowerCase()) || item.url.toLowerCase().includes(historySearchQuery.toLowerCase())).length > 0 ? (
+                                    history.filter(item => item.title.toLowerCase().includes(historySearchQuery.toLowerCase()) || item.url.toLowerCase().includes(historySearchQuery.toLowerCase())).map((item, i) => (
+                                        <div 
+                                            key={item.url} 
+                                            onClick={() => handleOpenUrl(item.url)}
+                                            className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition group cursor-pointer border border-transparent hover:border-white/5 animate-pop-in" 
+                                            style={{ animationFillMode: 'both', animationDelay: `${i * 0.04}s` }}
+                                        >
+                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 group-hover:text-accent transition overflow-hidden">
                                                 <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
                                             </div>
-                                            <div className="flex flex-col flex-1">
-                                                <span className="text-sm font-semibold text-white/90 group-hover:text-white transition">{item.title}</span>
-                                                <span className="text-xs text-white/40">{item.url}</span>
+                                            <div className="flex flex-col flex-1 min-w-0">
+                                                <span className="text-sm font-semibold text-white/90 group-hover:text-white transition truncate">{item.title}</span>
+                                                <span className="text-xs text-white/40 truncate">{item.url}</span>
                                             </div>
-                                            <span className="text-xs text-white/20 font-mono opacity-0 group-hover:opacity-100 transition">Visits: {item.visits}</span>
+                                            <span className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full group-hover:text-purple-300 group-hover:border-purple-500/30 transition flex-shrink-0">
+                                                {item.visits || 1} {item.visits === 1 ? 'visit' : 'visits'}
+                                            </span>
                                         </div>
                                     ))
                                 ) : (
@@ -66,44 +83,72 @@ const HistoryModal = () => {
                                 )}
                             </div>
                         </div>
-                    ) : (
-                        <div className="animate-pop-in space-y-6">
-                            <div>
-                                <h3 className="text-xs font-bold uppercase text-white/30 tracking-widest mb-3 pl-1">Today</h3>
-                                <div className="flex flex-col gap-2">
-                                    {mockHistoryDB.slice(0, 3).map((item, i) => (
-                                        <div key={item.url} className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition group cursor-pointer border border-transparent hover:border-white/5 animate-pop-in" style={{ animationFillMode: 'both', animationDelay: `${i * 0.04}s` }}>
-                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 group-hover-text-accent transition overflow-hidden">
-                                                <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
-                                            </div>
-                                            <div className="flex flex-col flex-1">
-                                                <span className="text-sm font-semibold text-white/90 group-hover:text-white transition">{item.title}</span>
-                                                <span className="text-xs text-white/40">{item.url}</span>
-                                            </div>
-                                            <span className="text-xs text-white/20 font-mono opacity-0 group-hover:opacity-100 transition">Visits: {item.visits}</span>
+                    ) : (() => {
+                        const groups = {};
+                        const now = new Date();
+                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                        const yesterday = today - 86400000;
+                        
+                        history.forEach(item => {
+                            const time = item.lastVisit;
+                            let groupName = 'Older';
+                            if (time >= today) {
+                                groupName = 'Today';
+                            } else if (time >= yesterday) {
+                                groupName = 'Yesterday';
+                            } else if (time >= today - 86400000 * 7) {
+                                groupName = 'Last 7 Days';
+                            }
+                            
+                            if (!groups[groupName]) groups[groupName] = [];
+                            groups[groupName].push(item);
+                        });
+                        
+                        const groupedHistory = [
+                            { name: 'Today', items: groups['Today'] || [] },
+                            { name: 'Yesterday', items: groups['Yesterday'] || [] },
+                            { name: 'Last 7 Days', items: groups['Last 7 Days'] || [] },
+                            { name: 'Older', items: groups['Older'] || [] },
+                        ].filter(g => g.items.length > 0);
+
+                        let globalIndex = 0;
+
+                        return (
+                            <div className="animate-pop-in space-y-6">
+                                {groupedHistory.map(group => (
+                                    <div key={group.name}>
+                                        <h3 className="text-xs font-bold uppercase text-white/30 tracking-widest mb-3 pl-1">{group.name}</h3>
+                                        <div className="flex flex-col gap-2">
+                                            {group.items.map((item) => {
+                                                const i = globalIndex++;
+                                                return (
+                                                <div 
+                                                    key={item.url + i} 
+                                                    onClick={() => handleOpenUrl(item.url)}
+                                                    className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition group cursor-pointer border border-transparent hover:border-white/5 animate-pop-in" 
+                                                    style={{ animationFillMode: 'both', animationDelay: `${i * 0.03}s` }}
+                                                >
+                                                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 group-hover:text-accent transition overflow-hidden">
+                                                        <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
+                                                    </div>
+                                                    <div className="flex flex-col flex-1 min-w-0">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-sm font-semibold text-white/90 group-hover:text-white transition truncate max-w-[400px]">{item.title}</span>
+                                                            <span className="text-[10px] text-white/30 font-mono whitespace-nowrap">{new Date(item.lastVisit).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                                        </div>
+                                                        <span className="text-xs text-white/40 truncate">{item.url}</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full group-hover:text-purple-300 group-hover:border-purple-500/30 transition flex-shrink-0">
+                                                        {item.visits || 1} {item.visits === 1 ? 'visit' : 'visits'}
+                                                    </span>
+                                                </div>
+                                            )})}
                                         </div>
-                                    ))}
-                                </div>
+                                    </div>
+                                ))}
                             </div>
-                            <div>
-                                <h3 className="text-xs font-bold uppercase text-white/30 tracking-widest mb-3 pl-1">Yesterday</h3>
-                                <div className="flex flex-col gap-2">
-                                    {mockHistoryDB.slice(3, 5).map((item, i) => (
-                                        <div key={item.url} className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition group cursor-pointer border border-transparent hover:border-white/5 animate-pop-in" style={{ animationFillMode: 'both', animationDelay: `${(i + 3) * 0.04}s` }}>
-                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 group-hover-text-accent transition overflow-hidden">
-                                                <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
-                                            </div>
-                                            <div className="flex flex-col flex-1">
-                                                <span className="text-sm font-semibold text-white/90 group-hover:text-white transition">{item.title}</span>
-                                                <span className="text-xs text-white/40">{item.url}</span>
-                                            </div>
-                                            <span className="text-xs text-white/20 font-mono opacity-0 group-hover:opacity-100 transition">Visits: {item.visits}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                 </div>
             </div>

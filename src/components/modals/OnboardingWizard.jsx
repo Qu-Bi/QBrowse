@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, User, ShieldCheck, Monitor, CheckCircle, X, UserPlus, ArrowRight, Lock, Zap, Loader } from 'lucide-react';
+import { Globe, User, ShieldCheck, Monitor, CheckCircle, X, UserPlus, ArrowRight, Lock, Zap, Loader, Sliders, Key, Palette, Layers, History } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTabStore from '../../store/useTabStore';
@@ -17,12 +17,13 @@ const OnboardingWizard = () => {
         setObPassword
     } = useUIStore();
 
-    const { signUp, isSyncing, authError } = useSyncStore();
+    const { signUp, isSyncing, authError, syncCategories, toggleSyncCategory } = useSyncStore();
     const pinnedTabs = useTabStore(state => state.pinnedTabs);
     const setPinnedTabs = useTabStore(state => state.setPinnedTabs);
     const [loginMode, setLoginMode] = useState(false);
 
-    if (activeModal !== 'onboarding' && !isModalClosing) return null;
+    const isClosingThis = isModalClosing && useUIStore.getState().closingModal === 'onboarding';
+    if (activeModal !== 'onboarding' && !isClosingThis) return null;
 
     return (
         <div className={`absolute inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-3xl text-white font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-pop-in duration-500'}`} onClick={closeModal}>
@@ -36,7 +37,7 @@ const OnboardingWizard = () => {
                         {[
                             { id: 0, label: 'Local Profile', icon: User },
                             { id: 1, label: 'Encryption', icon: ShieldCheck },
-                            { id: 2, label: 'Desktop Sync', icon: Monitor },
+                            { id: 2, label: 'Sync Categories', icon: Sliders },
                             { id: 3, label: 'Personalize', icon: Zap },
                             { id: 4, label: 'Ready', icon: CheckCircle }
                         ].map(step => (
@@ -70,9 +71,14 @@ const OnboardingWizard = () => {
                                 <input type="email" value={obEmail} onChange={e => setObEmail(e.target.value)} placeholder="hello@example.com" className="w-full max-w-sm bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-lg text-white outline-none focus:border-accent/50 focus:shadow-[0_0_30px_var(--accent-20)] transition-all" />
                             </div>
 
-                            <button onClick={() => setOnboardingStep(1)} disabled={!obEmail.trim() || !obEmail.includes('@')} className="px-8 py-4 bg-accent text-black rounded-2xl font-bold self-start hover:scale-105 transition-transform shadow-[0_10px_20px_var(--accent-20)] disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2">
-                                Continue <ArrowRight size={16} />
-                            </button>
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => setOnboardingStep(1)} disabled={!obEmail.trim() || !obEmail.includes('@')} className="px-8 py-4 bg-accent text-black rounded-2xl font-bold hover:scale-105 transition-transform shadow-[0_10px_20px_var(--accent-20)] disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2">
+                                    Continue <ArrowRight size={16} />
+                                </button>
+                                <button onClick={() => setOnboardingStep(2)} className="text-xs text-white/40 hover:text-white transition font-medium">
+                                    Skip & Continue as Guest
+                                </button>
+                            </div>
                         </div>
 
                         {/* Krok 1: Master Password */}
@@ -109,31 +115,48 @@ const OnboardingWizard = () => {
                             </p>
                         </div>
 
-                        {/* Krok 2: Desktop Sync */}
+                        {/* Krok 2: Select Sync Categories */}
                         <div className="w-1/5 h-full p-12 flex flex-col justify-center relative">
-                            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 mb-6 text-blue-400"><Monitor size={32} /></div>
-                            <h3 className="text-4xl font-black text-white mb-4 tracking-tight">Desktop Sync.</h3>
-                            <p className="text-sm text-white/50 mb-8 leading-relaxed max-w-md">Sync your workspace and Vault securely across Windows and Linux. Generate a pairing code to link another QBrowse instance via E2EE.</p>
+                            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 mb-4 text-accent"><Sliders size={32} /></div>
+                            <h3 className="text-3xl font-black text-white mb-2 tracking-tight">What to Sync.</h3>
+                            <p className="text-xs text-white/50 mb-5 leading-relaxed max-w-md">Control exactly what encrypted data gets synchronized with your Firebase Cloud account.</p>
 
-                            <div className="flex flex-col gap-5 mb-8 w-full max-w-sm">
-                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex flex-col items-center text-center">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400/80 mb-2">Your Device Code</span>
-                                    <span className="text-xl font-mono tracking-widest text-blue-400 font-bold bg-black/40 px-4 py-2 rounded-xl border border-blue-500/30">QB-8X91-FZ42</span>
-                                </div>
+                            <div className="flex flex-col gap-2 mb-6 w-full max-w-md">
+                                {[
+                                    { key: 'vault', label: 'QVault & Passwords', desc: 'Encrypted logins, site passwords & secure notes', icon: Key },
+                                    { key: 'settings', label: 'Settings & Theme', desc: 'Accent color, force dark mode & engine rules', icon: Palette },
+                                    { key: 'tabs', label: 'Tabs & Workspaces', desc: 'Active workspace tabs across Personal, Work & Ghost', icon: Layers },
+                                    { key: 'history', label: 'History & Bookmarks', desc: 'Browsing history log & pinned favorite sites', icon: History }
+                                ].map((cat) => {
+                                    const Icon = cat.icon;
+                                    const isEnabled = syncCategories ? syncCategories[cat.key] !== false : true;
+                                    return (
+                                        <div key={cat.key} onClick={() => toggleSyncCategory(cat.key)} className="flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-accent-30 rounded-2xl cursor-pointer transition group">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center border transition ${isEnabled ? 'bg-accent-10 text-accent border-accent-30' : 'bg-white/5 text-white/40 border-white/10'}`}>
+                                                    <Icon size={15} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-xs text-white group-hover:text-accent transition-colors">{cat.label}</p>
+                                                    <p className="text-[10px] text-white/40">{cat.desc}</p>
+                                                </div>
+                                            </div>
 
-                                <div className="flex items-center gap-4 w-full">
-                                    <div className="h-px flex-1 bg-white/10"></div>
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">OR</span>
-                                    <div className="h-px flex-1 bg-white/10"></div>
-                                </div>
-
-                                <input type="text" placeholder="Enter code from another PC" className="w-full bg-black/40 border border-white/10 rounded-xl px-5 py-4 text-center text-sm font-mono text-white outline-none focus:border-blue-500/50 focus:shadow-[0_0_20px_rgba(59,130,246,0.15)] transition-all" />
+                                            <button 
+                                                type="button" 
+                                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-all duration-300 ${isEnabled ? 'bg-accent shadow-[0_0_10px_var(--accent-40)]' : 'bg-white/20'}`}
+                                            >
+                                                <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform duration-300 ${isEnabled ? 'translate-x-[16px]' : 'translate-x-0'}`} />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
                             </div>
 
                             <div className="flex items-center gap-4 mt-auto">
-                                <button onClick={() => setOnboardingStep(1)} className="px-6 py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl font-bold transition-colors">Back</button>
-                                <button onClick={() => setOnboardingStep(3)} className="px-8 py-4 bg-blue-500 text-white rounded-2xl font-bold hover:scale-105 transition-transform shadow-[0_10px_20px_rgba(59,130,246,0.3)] flex items-center gap-2">
-                                    Next Step <ArrowRight size={16} />
+                                <button onClick={() => setOnboardingStep(1)} className="px-6 py-3 bg-white/5 hover:bg-white/10 text-white rounded-2xl text-xs font-bold transition-colors">Back</button>
+                                <button onClick={() => setOnboardingStep(3)} className="px-8 py-3 bg-accent text-black rounded-2xl text-xs font-bold hover:scale-105 transition-transform shadow-[0_10px_20px_var(--accent-20)] flex items-center gap-2">
+                                    Next Step <ArrowRight size={14} />
                                 </button>
                             </div>
                         </div>

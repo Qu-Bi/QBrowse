@@ -107,7 +107,7 @@ export default function TabSwitcherOverlay() {
                             }}
                         >
                             <div className="h-10 bg-black/40 border-b border-white/10 flex items-center px-4 gap-3">
-                                {tab.url ? (
+                                {tab.url && tab.url !== 'about:blank' ? (
                                     <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="" className="w-5 h-5 rounded" onError={(e) => e.target.style.display='none'} />
                                 ) : (
                                     <div className="w-5 h-5 bg-white/10 rounded flex-shrink-0"></div>
@@ -115,7 +115,7 @@ export default function TabSwitcherOverlay() {
                                 <span className="text-white font-semibold truncate text-sm">{tab.title}</span>
                             </div>
                             <div className="w-full h-full bg-white/5 flex flex-col items-center justify-center p-4">
-                                {tab.url ? (
+                                {tab.url && tab.url !== 'about:blank' ? (
                                     <div className="text-white/30 font-mono text-xs text-center break-all">{tab.url}</div>
                                 ) : (
                                     <span className="text-white/20 font-medium">New Tab</span>

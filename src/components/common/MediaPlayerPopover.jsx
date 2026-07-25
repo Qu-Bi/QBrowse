@@ -1,85 +1,164 @@
-import React, { useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music, X } from 'lucide-react';
+import React from 'react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music, X, PictureInPicture2 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import useTabStore from '../../store/useTabStore';
+
+function formatTime(seconds) {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
 
 export default function MediaPlayerPopover() {
-    const currentUrl = useUIStore(state => state.currentUrl);
-    const [mediaState, setMediaState] = useState({
-        isPlaying: false,
-        title: 'No media playing',
-        artist: '',
-        albumArt: '',
-        url: ''
+    const activePopover = useUIStore(state => state.activePopover);
+    const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
+    const closePopover = useUIStore(state => state.closePopover);
+    const mediaState = useUIStore(state => state.mediaState);
+    const sendMediaCommand = useUIStore(state => state.sendMediaCommand);
+    const isForceDark = useUIStore(state => state.isForceDark);
+
+    const activeTab = useTabStore(state => {
+        const space = state.activeSpace;
+        const tabs = space === 'personal' ? state.privateTabs : space === 'work' ? state.workTabs : state.ghostTabs;
+        return tabs.find(t => t.id === mediaState.tabId) || tabs.find(t => t.active);
     });
 
-    const [isVisible, setIsVisible] = useState(false);
+    const isMuted = activeTab ? !!activeTab.isMuted : false;
 
-    useEffect(() => {
-        // Disabled mockup auto-popup logic
-    }, [currentUrl]);
+    const handleMuteToggle = () => {
+        if (activeTab) {
+            useTabStore.getState().handleToggleMute(activeTab.id);
+        }
+        sendMediaCommand('mute-toggle');
+    };
 
-    if (!isVisible) return null;
+    if (activePopover !== 'media' && !isPopoverClosing) return null;
+
+    const progressPercent = mediaState.duration > 0 
+        ? Math.min(100, Math.max(0, (mediaState.currentTime / mediaState.duration) * 100))
+        : 0;
+
+    const handleSeek = (e) => {
+        if (!mediaState.duration) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const ratio = Math.min(1, Math.max(0, clickX / rect.width));
+        const seekTime = ratio * mediaState.duration;
+        sendMediaCommand({ action: 'seek', time: seekTime });
+    };
 
     return (
-        <div className="fixed top-6 right-6 z-[60000] w-80 bg-black/60 backdrop-blur-3xl border border-white/20 rounded-3xl shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden animate-pop-in group transition-all duration-500 hover:shadow-[0_40px_120px_rgba(var(--accent),0.2)]">
-            
-            {/* Background Glow */}
-            <div className="absolute -inset-10 bg-[var(--accent)] opacity-20 blur-[60px] rounded-full pointer-events-none transition-opacity duration-1000"></div>
+        <div 
+            onClick={e => e.stopPropagation()}
+            className={`absolute top-16 right-16 z-[70] w-80 bg-[#0d0d11]/95 backdrop-blur-2xl border border-white/12 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] overflow-hidden flex flex-col text-white ${
+                isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'
+            }`}
+        >
+            {/* Header */}
+            <div className="p-3.5 border-b border-white/10 flex items-center justify-between bg-white/5">
+                <div className="flex items-center gap-2">
+                    <Music size={14} className="text-accent" />
+                    <span className="text-xs font-bold tracking-tight text-white/90">Media Control</span>
+                </div>
+                <button onClick={closePopover} className="p-1 rounded-md hover:bg-white/10 text-white/40 hover:text-white transition cursor-pointer">
+                    <X size={13} />
+                </button>
+            </div>
 
-            {/* Close Button */}
-            <button onClick={() => setIsVisible(false)} className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-full bg-black/40 hover:bg-white/10 text-white/40 hover:text-white transition-colors z-20">
-                <X size={12} />
-            </button>
-
-            <div className="relative p-4 flex gap-4 items-center">
-                
-                {/* Album Art Container */}
-                <div className="w-16 h-16 rounded-2xl overflow-hidden relative shadow-lg bg-white/5 border border-white/10 flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
+            {/* Media Info Section */}
+            <div className="p-4 flex gap-3.5 items-center">
+                {/* Album Art / Thumbnail */}
+                <div className="w-14 h-14 rounded-2xl overflow-hidden relative shadow-md bg-white/5 border border-white/10 flex-shrink-0 flex items-center justify-center">
                     {mediaState.albumArt ? (
-                        <img src={mediaState.albumArt} alt="Album Art" className="w-full h-full object-cover" />
+                        <img src={mediaState.albumArt} alt="Artwork" className="w-full h-full object-cover" />
                     ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[var(--accent)]/50 bg-gradient-to-br from-white/5 to-transparent">
-                            <Music size={24} />
+                        <div className="w-full h-full flex items-center justify-center text-accent bg-accent-10">
+                            <Music size={20} />
                         </div>
                     )}
                     {mediaState.isPlaying && (
-                        <div className="absolute bottom-1 right-1 flex gap-0.5 items-end h-3">
-                            <div className="w-0.5 bg-[var(--accent)] rounded-t-sm h-full animate-pulse"></div>
-                            <div className="w-0.5 bg-[var(--accent)] rounded-t-sm h-[60%] animate-pulse" style={{ animationDelay: '0.1s' }}></div>
-                            <div className="w-0.5 bg-[var(--accent)] rounded-t-sm h-[80%] animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="absolute bottom-1 right-1 flex gap-0.5 items-end h-2.5 bg-black/70 p-0.5 rounded">
+                            <div className="w-0.5 bg-accent rounded-t-sm h-full animate-pulse"></div>
+                            <div className="w-0.5 bg-accent rounded-t-sm h-[60%] animate-pulse" style={{ animationDelay: '0.15s' }}></div>
+                            <div className="w-0.5 bg-accent rounded-t-sm h-[80%] animate-pulse" style={{ animationDelay: '0.3s' }}></div>
                         </div>
                     )}
                 </div>
 
-                {/* Metadata */}
-                <div className="flex-1 overflow-hidden flex flex-col justify-center">
-                    <h3 className="text-sm font-bold text-white truncate drop-shadow-md">{mediaState.title}</h3>
-                    <p className="text-xs text-white/50 truncate font-medium mt-0.5">{mediaState.artist || mediaState.url}</p>
+                {/* Track Metadata */}
+                <div className="flex-1 overflow-hidden flex flex-col justify-center min-w-0">
+                    <h3 className="text-xs font-bold text-white truncate leading-snug">
+                        {mediaState.title || 'No Media Playing'}
+                    </h3>
+                    <p className="text-[11px] text-white/50 truncate font-medium mt-0.5">
+                        {mediaState.artist || 'Play audio or video in any tab'}
+                    </p>
                 </div>
-
             </div>
 
-            {/* Controls */}
-            <div className="flex items-center justify-between px-6 pb-4 relative z-10">
-                <button className="p-2 text-white/50 hover:text-white transition-colors hover:scale-110">
-                    <SkipBack size={18} fill="currentColor" />
-                </button>
-                <button 
-                    onClick={() => setMediaState(prev => ({ ...prev, isPlaying: !prev.isPlaying }))}
-                    className="w-12 h-12 rounded-full bg-[var(--accent)] text-black flex items-center justify-center transition-all duration-300 hover:scale-110 shadow-[0_0_20px_var(--accent-40)] active:scale-95"
+            {/* Seek Bar */}
+            <div className="px-4 pb-2 flex flex-col gap-1">
+                <div 
+                    onClick={handleSeek}
+                    className="w-full h-1.5 bg-white/10 hover:bg-white/20 rounded-full cursor-pointer relative overflow-hidden transition-all group/seek"
                 >
-                    {mediaState.isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-1" />}
-                </button>
-                <button className="p-2 text-white/50 hover:text-white transition-colors hover:scale-110">
-                    <SkipForward size={18} fill="currentColor" />
-                </button>
+                    <div 
+                        className="h-full bg-accent rounded-full relative transition-all duration-200" 
+                        style={{ width: `${progressPercent}%` }}
+                    />
+                </div>
+                {mediaState.duration > 0 && (
+                    <div className="flex items-center justify-between text-[10px] font-mono text-white/40 px-0.5">
+                        <span>{formatTime(mediaState.currentTime)}</span>
+                        <span>{formatTime(mediaState.duration)}</span>
+                    </div>
+                )}
             </div>
 
-            {/* Progress Bar Stub */}
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/5">
-                <div className="h-full bg-[var(--accent)] w-1/3 relative group-hover:w-1/2 transition-all duration-[3000ms] ease-linear">
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow-[0_0_8px_rgba(255,255,255,1)] transition-opacity"></div>
-                </div>
+            {/* Playback Controls */}
+            <div className="flex items-center justify-center gap-6 px-4 pb-4 pt-1">
+                <button 
+                    onClick={() => sendMediaCommand('prev-track')}
+                    className="p-2 text-white/60 hover:text-white transition-transform active:scale-95 cursor-pointer"
+                    title="Previous / Skip 10s"
+                >
+                    <SkipBack size={16} fill="currentColor" />
+                </button>
+
+                <button 
+                    onClick={() => sendMediaCommand('toggle-play')}
+                    className="w-10 h-10 rounded-full bg-accent hover:bg-accent/90 text-black font-bold flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-lg shadow-accent/20 cursor-pointer"
+                    title={mediaState.isPlaying ? 'Pause' : 'Play'}
+                >
+                    {mediaState.isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+                </button>
+
+                <button 
+                    onClick={() => sendMediaCommand('next-track')}
+                    className="p-2 text-white/60 hover:text-white transition-transform active:scale-95 cursor-pointer"
+                    title="Next / Skip 10s"
+                >
+                    <SkipForward size={16} fill="currentColor" />
+                </button>
+
+                <button 
+                    onClick={handleMuteToggle}
+                    className={`p-2 transition-transform active:scale-95 cursor-pointer ml-1 ${
+                        isMuted ? 'text-red-400 hover:text-red-300' : 'text-white/40 hover:text-white'
+                    }`}
+                    title={isMuted ? "Unmute Tab Audio" : "Mute Tab Audio"}
+                >
+                    {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                </button>
+
+                <button 
+                    onClick={() => sendMediaCommand('toggle-pip')}
+                    className="p-2 text-white/40 hover:text-white transition-transform active:scale-95 cursor-pointer"
+                    title="Toggle Picture-in-Picture (PiP)"
+                >
+                    <PictureInPicture2 size={15} />
+                </button>
             </div>
         </div>
     );

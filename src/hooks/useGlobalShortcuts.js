@@ -58,6 +58,24 @@ export default function useGlobalShortcuts() {
                 }
             }
 
+            if (e.key === 'F11') {
+                e.preventDefault();
+                const newFullscreenState = !uiStore.isFullscreen;
+                if (window.electronAPI && window.electronAPI.setFullscreen) {
+                    window.electronAPI.setFullscreen(newFullscreenState);
+                }
+                uiStore.setIsFullscreen(newFullscreenState);
+                return;
+            }
+
+            if (e.key === 'F12') {
+                e.preventDefault();
+                if (window.electronAPI && window.electronAPI.openDevTools) {
+                    window.electronAPI.openDevTools();
+                }
+                return;
+            }
+
             if (cmdOrCtrl) {
                 switch (e.key.toLowerCase()) {
                     case 'r':
@@ -200,12 +218,32 @@ export default function useGlobalShortcuts() {
 
         // Listen for shortcuts captured natively by Electron (e.g. when webview has focus)
         if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
-            window.electronAPI.onGlobalShortcut((shortcut) => {
+            window.electronAPI.onGlobalShortcut((data) => {
+                const shortcut = typeof data === 'string' ? data : data.shortcut;
+                const shift = typeof data === 'string' ? false : data.shift;
+                
                 const tabStore = useTabStore.getState();
                 const uiStore = useUIStore.getState();
                 
                 if (shortcut === 'f11') {
-                    uiStore.toggleFullscreen();
+                    const isFull = !uiStore.isFullscreen;
+                    if (window.electronAPI && window.electronAPI.setFullscreen) {
+                        window.electronAPI.setFullscreen(isFull);
+                    }
+                    uiStore.setIsFullscreen(isFull);
+                    return;
+                }
+                
+                if (shortcut === 'f12') {
+                    if (window.electronAPI && window.electronAPI.openDevTools) {
+                        window.electronAPI.openDevTools();
+                    }
+                    return;
+                }
+                
+                if (shortcut === 'escape') {
+                    if (uiStore.activePopover) uiStore.togglePopover(null);
+                    if (uiStore.isFindOpen) uiStore.setIsFindOpen(false);
                     return;
                 }
                 
@@ -288,6 +326,18 @@ export default function useGlobalShortcuts() {
                             break;
                         case '0':
                             uiStore.setZoomLevel(100);
+                            break;
+                        case 'f11':
+                            const newFullscreenState = !uiStore.isFullscreen;
+                            if (window.electronAPI && window.electronAPI.setFullscreen) {
+                                window.electronAPI.setFullscreen(newFullscreenState);
+                            }
+                            uiStore.setIsFullscreen(newFullscreenState);
+                            break;
+                        case 'f12':
+                            if (window.electronAPI && window.electronAPI.openDevTools) {
+                                window.electronAPI.openDevTools();
+                            }
                             break;
                     }
                 }

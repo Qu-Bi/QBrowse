@@ -75,7 +75,7 @@ export default function TabMap() {
             </div>
         ) : (
             <div className="absolute inset-0 flex items-center justify-center">
-                {tab.url ? <img src={`https://www.google.com/s2/favicons?sz=128&domain=${tab.url}`} className={`rounded-2xl drop-shadow-md transition-opacity duration-500 ${isActive ? 'w-20 h-20 opacity-90' : 'w-10 h-10 opacity-40 group-hover/card:opacity-80'}`} alt="icon" /> : <Globe size={isActive ? 64 : 32} className="text-white/20" />}
+                {tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=128&domain=${tab.url}`} className={`rounded-2xl drop-shadow-md transition-opacity duration-500 ${isActive ? 'w-20 h-20 opacity-90' : 'w-10 h-10 opacity-40 group-hover/card:opacity-80'}`} alt="icon" onError={(e) => { e.target.style.display = 'none'; }} /> : <Home size={isActive ? 64 : 32} className="text-white/20" />}
             </div>
         )}
         </>
@@ -120,7 +120,7 @@ export default function TabMap() {
                                     <div className="absolute inset-0 bg-black/40 group-hover/card:bg-transparent transition-colors duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"></div>
                                     
                                     <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent z-30 flex items-center gap-3">
-                                    {tab.url && activeSpace !== 'ghost' && <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} className="w-5 h-5 rounded-md shadow-sm opacity-50 grayscale group-hover/card:opacity-100 group-hover/card:grayscale-0 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]" onError={(e) => e.target.style.display='none'} />}
+                                    {tab.url && tab.url !== 'about:blank' && activeSpace !== 'ghost' && <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} className="w-5 h-5 rounded-md shadow-sm opacity-50 grayscale group-hover/card:opacity-100 group-hover/card:grayscale-0 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]" onError={(e) => e.target.style.display='none'} />}
                                     <div className="flex flex-col truncate w-full">
                                         <span className="text-xs md:text-sm font-bold text-white/70 group-hover/card:text-white truncate transition-colors duration-700">{tab.title}</span>
                                     </div>

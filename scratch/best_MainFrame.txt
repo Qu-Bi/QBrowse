@@ -1,0 +1,97 @@
+Created At: 2026-07-20T17:09:21Z
+Completed At: 2026-07-20T17:09:22Z
+
+				The command completed successfully.
+				Output:
+				<truncated 1 lines>
++                        <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-6 z-[60] w-80 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
++                            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">
++                                <div className="flex items-center gap-2 font-semibold text-sm">
++                                    <Download size={16} className="text-accent" /> Downloads
++                                </div>
++                                <button className="text-white/40 hover:text-white transition text-xs font-medium">Clear All</button>
++                            </div>
++                            <div className="p-2 flex flex-col gap-1">
++                                <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col gap-2 relative overflow-hidden group">
++                                    <div className="flex justify-between items-start relative z-10">
++                                        <div className="flex items-center gap-3 overflow-hidden">
++                                            <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0 shadow-inner"><Cpu size={14} /></div>
++                                            <div className="flex flex-col truncate">
++                                                <span className="text-sm font-semibold text-white/90 truncate">ubuntu-24.04-desktop.iso</span>
++                                                <span className="text-[10px] text-white/40 font-mono mt-0.5">1.2 GB / 4.5 GB • 12 MB/s</span>
++                                            </div>
++                                        </div>
++                                        <div className="flex items-center gap-1">
++                                            <button className="p-1 text-white/40 hover:text-white hover:bg-white/10 rounded-lg transition" title="Pause"><Pause size={14} /></button>
++                                            <button className="p-1 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition" title="Cancel"><XCircle size={14} /></button>
++                                        </div>
++                                    </div>
++                                    <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden mt-1 relative z-10 border border-white/5">
++                                        <div className="h-full bg-accent w-[35%] rounded-full relative">
++                                            <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
++                                        </div>
++                                    </div>
++                                </div>
++                                <div className="p-3 bg-transparent hover:bg-white/5 border border-transparent rounded-xl flex items-center justify-between transition group cursor-pointer mt-1">
++                                    <div className="flex items-center gap-3 overflow-hidden">
++                                        <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center text-green-400 flex-shrink-0 shadow-inner"><FolderOpen size={14} /></div>
++                                        <div className="flex flex-col truncate">
++                                            <span className="text-sm font-medium text-white/80 group-hover:text-white truncate">Q4_Financial_Report.pdf</span>
++                                            <span className="text-[10px] text-green-400 font-mono mt-0.5">Completed • 2.4 MB</span>
++                                        </div>
++                                    </div>
++                                    <button className="p-1.5 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition shadow-sm" title="Show in folder">
++                                        <FolderOpen size={14} />
++                                    </button>
++                                </div>
++                            </div>
++                        </div>
++                    )}
++
++                    {(activePopover === 'media' || (isPopoverClosing && activePopover === 'media')) && (
++                        <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-6 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
++                            <div className="p-3 border-b border-white/10 flex items-center justify-between bg-white/5">
++                                <div className="flex items-center gap-2 font-semibold text-sm">
++                                    <Music size={14} className="text-purple-400" /> Media Controls
++                                </div>
++                            </div>
++                            <div className="p-4 flex flex-col gap-4">
++                                <div className="flex items-center gap-4">
++                                    <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=100&h=100&auto=format&fit=crop" className="w-12 h-12 rounded-lg shadow-md object-cover" alt="album cover" />
++                                    <div className="flex flex-col overflow-hidden w-full">
++                                        <span className="text-sm font-bold truncate">Lofi Chill Beats 2026</span>
++                                        <span className="text-xs text-white/50 truncate">YouTube</span>
++                                    </div>
++                                </div>
++
++                                <div className="flex flex-col gap-1.5">
++                                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden cursor-pointer">
++                                        <div className="h-full bg-purple-400 w-[45%] rounded-full relative"></div>
++                                    </div>
++                                    <div className="flex justify-between text-[9px] font-mono text-white/40">
++                                        <span>12:45</span>
++                                        <span>28:10</span>
++                                    </div>
++                                </div>
++
++                                <div className="flex items-center justify-center gap-6 mt-1">
++                                    <button className="text-white/50 hover:text-white transition hover:scale-110"><SkipBack size={18} fill="currentColor" /></button>
++                                    <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/5 flex items-center justify-center text-white transition shadow-sm hover:scale-105"><Pause size={18} fill="currentColor" /></button>
++                                    <button className="text-white/50 hover:text-white transition hover:scale-110"><SkipForward size={18} fill="currentColor" /></button>
++                                </div>
++                            </div>
++                        </div>
++                    )}
++
+                     <div className={`relative h-full overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isSplitView ? 'w-1/2 border-r border-white/10' : 'w-full'}`}>
+                     <div className="absolute inset-y-0 left-0 w-[300%] flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                         style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-33.333%)' : 'translateX(-66.666%)' }}>
+@@ -318,7 +444,6 @@ export default function MainFrame() {
+                     </div>
+                 </div>
+             </div>
+-
+             </div>
+ 
+             {/* PEEK WINDOW */}
+

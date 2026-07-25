@@ -46,8 +46,47 @@ const useTabStore = create((set, get) => ({
     set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, isOpen: !f.isOpen } : f) }));
   },
 
-  pinnedTabs: [],
+  pinnedTabs: (() => {
+      try {
+          const stored = localStorage.getItem('qbrowse_pinned_tabs');
+          if (stored) return JSON.parse(stored);
+      } catch(e) {}
+      return [
+          { id: 'pin-1', title: 'GitHub', domain: 'github.com' },
+          { id: 'pin-2', title: 'YouTube', domain: 'youtube.com' },
+          { id: 'pin-3', title: 'ChatGPT', domain: 'chatgpt.com' }
+      ];
+  })(),
   setPinnedTabs: (tabs) => set({ pinnedTabs: tabs }),
+
+  addPinnedTab: (title, urlOrDomain) => {
+      if (!urlOrDomain) return;
+      let cleanDomain = urlOrDomain.trim().replace(/^https?:\/\//i, '').split('/')[0];
+      const newPin = {
+          id: 'pin-' + Date.now(),
+          title: title ? title.trim() : cleanDomain,
+          domain: cleanDomain
+      };
+      set(state => {
+          const updated = [...state.pinnedTabs, newPin];
+          try {
+              localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
+          } catch(e) {}
+          return { pinnedTabs: updated };
+      });
+      useUIStore.getState().showToast(`Pinned "${newPin.title}" to sidebar`);
+  },
+
+  handleUnpinTab: (pin) => {
+      set(state => {
+          const updated = state.pinnedTabs.filter(p => p.id !== (pin.id || pin));
+          try {
+              localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
+          } catch(e) {}
+          return { pinnedTabs: updated };
+      });
+      useUIStore.getState().showToast(`Unpinned "${pin.title || 'app'}"`);
+  },
 
   privateTabs: [
     { id: 't1', title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
@@ -64,12 +103,28 @@ const useTabStore = create((set, get) => ({
   ],
   setGhostTabs: (tabs) => set({ ghostTabs: typeof tabs === 'function' ? tabs(get().ghostTabs) : tabs }),
 
+  closedTabs: [],
+  pushClosedTab: (tab) => set(state => ({ closedTabs: [...state.closedTabs, tab].slice(-20) })),
+  reopenLastClosedTab: () => {
+      const closedTabs = get().closedTabs;
+      if (closedTabs.length > 0) {
+          const tabToRestore = closedTabs[closedTabs.length - 1];
+          set(state => ({ closedTabs: closedTabs.slice(0, -1) }));
+          get().addTab({ ...tabToRestore, active: true, id: `t-${Date.now()}` });
+      }
+  },
+
   // Actions
   getActiveList: () => {
     const space = get().activeSpace;
     return space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : get().ghostTabs);
   },
   
+  getActiveTab: () => {
+    const list = get().getActiveList();
+    return list.find(t => t.active) || list[0] || null;
+  },
+
   getActiveSetList: () => {
     const space = get().activeSpace;
     return space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : get().setGhostTabs);
@@ -95,12 +150,33 @@ const useTabStore = create((set, get) => ({
   addTab: (tabObj) => {
     const setList = get().getActiveSetList();
     setList(prev => [...prev.map(t => ({ ...t, active: false })), { ...tabObj, lastActiveAt: Date.now(), suspended: false }]);
-    useUIStore.getState().setCurrentUrl('');
+    useUIStore.getState().setCurrentUrl(tabObj.url || '');
     useUIStore.getState().showToast('New tab created');
   },
 
-  handleNewTab: () => {
-    get().addTab({ id: `t-${Date.now()}`, title: 'New Tab', url: '', active: true, folderId: null });
+  handleNewTab: (url = '') => {
+    get().addTab({ id: `t-${Date.now()}`, title: url || 'New Tab', url: url, active: true, folderId: null });
+  },
+
+  suspendTab: (tabId) => {
+      const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs } = get();
+      const updateList = (list, setList) => {
+          if (list.some(t => t.id === tabId)) {
+              const tab = list.find(t => t.id === tabId);
+              if (tab.active) {
+                  useUIStore.getState().showToast('Cannot suspend active tab');
+              } else {
+                  setList(list.map(t => t.id === tabId ? { ...t, suspended: true } : t));
+                  useUIStore.getState().showToast('Tab suspended to save memory');
+              }
+              return true;
+          }
+          return false;
+      };
+      
+      if (updateList(privateTabs, setPrivateTabs)) return;
+      if (updateList(workTabs, setWorkTabs)) return;
+      if (updateList(ghostTabs, setGhostTabs)) return;
   },
 
   updateTabActivity: (id) => {
@@ -148,7 +224,7 @@ const useTabStore = create((set, get) => ({
 
     if (list.length === 1) {
         // Last tab: don't remove it, just reset it to Zen Dashboard
-        setList([{ ...tabToClose, url: '', title: 'New Tab', lastActiveAt: Date.now() }]);
+        setList([{ ...tabToClose, url: '', title: 'New Tab', thumbnail: null, lastActiveAt: Date.now() }]);
         useUIStore.getState().setCurrentUrl('');
         return;
     }
@@ -170,6 +246,12 @@ const useTabStore = create((set, get) => ({
     }, 200);
     useUIStore.getState().showToast('Tab closed');
   },
+  suspendTab: (tabId) => {
+    const list = get().getActiveList();
+    const setList = get().getActiveSetList();
+    setList(list.map(t => t.id === tabId ? { ...t, suspended: true } : t));
+    useUIStore.getState().showToast('Tab suspended to save memory');
+  },
 
   handleSwitchToTab: (tabId, spaceType) => {
     if (get().activeSpace !== spaceType) {
@@ -181,6 +263,7 @@ const useTabStore = create((set, get) => ({
     setList(list.map(t => ({
         ...t,
         active: t.id === tabId,
+        suspended: t.id === tabId ? false : t.suspended,
         lastActiveAt: t.id === tabId ? Date.now() : t.lastActiveAt
     })));
   },
@@ -193,6 +276,7 @@ const useTabStore = create((set, get) => ({
   },
 
   handlePinTab: (tab) => {
+    if (!tab.url || tab.url === 'about:blank') return;
     const { activeSpace, pinnedTabs, privateTabs, workTabs, setPinnedTabs, setPrivateTabs, setWorkTabs } = get();
     setPinnedTabs([...pinnedTabs, { id: `p-${tab.id}-${Date.now()}`, title: tab.title, domain: tab.url }]);
     if (activeSpace === 'personal') setPrivateTabs(privateTabs.filter(t => t.id !== tab.id));
@@ -310,8 +394,33 @@ const useTabStore = create((set, get) => ({
     get().setGhostTabs(update(get().ghostTabs));
   },
 
+  updateTabAudible: (tabId, isAudible) => {
+    const update = (list) => list.map(t => t.id === tabId ? { ...t, isAudioPlaying: !!isAudible, isAudible: !!isAudible } : t);
+    get().setPrivateTabs(update(get().privateTabs));
+    get().setWorkTabs(update(get().workTabs));
+    get().setGhostTabs(update(get().ghostTabs));
+  },
+
   suspendTab: (tabId) => {
     const update = (list) => list.map(t => t.id === tabId ? { ...t, suspended: true } : t);
+    get().setPrivateTabs(update(get().privateTabs));
+    get().setWorkTabs(update(get().workTabs));
+    get().setGhostTabs(update(get().ghostTabs));
+  },
+
+  handleNavigateTab: (tabId, url, title) => {
+    const update = (list) => list.map(t => t.id === tabId ? { ...t, url, title: title || (url === 'qbrowse://flags' ? 'QBrowse Flags' : t.title), suspended: false, lastActiveAt: Date.now() } : t);
+    get().setPrivateTabs(update(get().privateTabs));
+    get().setWorkTabs(update(get().workTabs));
+    get().setGhostTabs(update(get().ghostTabs));
+    const activeTab = get().getActiveTab();
+    if (activeTab && activeTab.id === tabId) {
+      useUIStore.getState().setCurrentUrl(url);
+    }
+  },
+
+  updateTabNavState: (tabId, canGoBack, canGoForward) => {
+    const update = (list) => list.map(t => t.id === tabId ? { ...t, canGoBack: !!canGoBack, canGoForward: !!canGoForward } : t);
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));

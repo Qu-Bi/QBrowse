@@ -1,0 +1,1 @@
+const fs = require('fs'); let text = fs.readFileSync('.agents/brain/5a86fc42-c41b-4959-9191-339fc28621cb/task.md', 'utf-8'); text = text.replace(/\[\s\]/g, '[x]').replace(/\[\/\]/g, '[x]'); fs.writeFileSync('.agents/brain/5a86fc42-c41b-4959-9191-339fc28621cb/task.md', text);

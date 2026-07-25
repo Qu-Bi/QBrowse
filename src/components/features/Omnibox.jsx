@@ -1,16 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { 
     Terminal, Search, Calculator, Globe, ArrowRight, 
-    VolumeX, Volume2, Cpu, Zap, Moon, Sun, PanelLeft, Layers, Puzzle 
-, Trash2, XCircle } from 'lucide-react';
+    VolumeX, Volume2, Cpu, Zap, Moon, Sun, PanelLeft, Layers, Puzzle,
+    Trash2, XCircle, Sparkles 
+} from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
-
-const mockHistoryDB = [
-    { url: 'youtube.com', title: 'YouTube - FPV Drones', visits: 1450, lastVisit: Date.now() - 1000 * 60 * 60 },
-    { url: 'github.com/tauri-apps/tauri', title: 'Tauri - Build smaller, faster', visits: 320, lastVisit: Date.now() - 1000 * 60 * 60 * 24 },
-    { url: 'react.dev', title: 'React Documentation', visits: 890, lastVisit: Date.now() - 1000 * 60 * 60 * 5 },
-];
+import useHistoryStore from '../../store/useHistoryStore';
+import useAIStore from '../../store/useAIStore';
+import { topSites } from '../../utils/topSites';
 
 const availableCommands = [
     { id: 'ls', title: 'List open tabs in current space', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
@@ -31,13 +29,33 @@ const availableCommands = [
 const parseUrlInput = (input) => {
     const trimmed = input.trim();
     if (!trimmed) return '';
-    // Basic regex to detect if it's a domain/URL
-    const isUrl = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(:\d+)?(\/.*)?$/i.test(trimmed) || trimmed.startsWith('localhost:');
-    if (isUrl) {
-        return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+    
+    // Internal browser protocols
+    if (/^(qbrowse:\/\/|chrome:\/\/|about:)/i.test(trimmed)) {
+        return trimmed;
     }
-    // Otherwise treat as search query
-    return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+
+    const isLocal = /^(https?:\/\/)?localhost(:\d+)?(\/.*)?$/i.test(trimmed) ||
+                    /^(https?:\/\/)?\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/i.test(trimmed);
+                    
+    const isUrl = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(:\d+)?(\/.*)?$/i.test(trimmed) || isLocal;
+                  
+    if (isUrl) {
+        const httpsOnly = useUIStore.getState().settings?.httpsOnly !== false;
+        if (trimmed.startsWith('http://') && !isLocal && httpsOnly) {
+            return trimmed.replace(/^http:\/\//i, 'https://');
+        }
+        if (trimmed.startsWith('http')) return trimmed;
+        return isLocal ? `http://${trimmed}` : `https://${trimmed}`;
+    }
+
+    const engine = useUIStore.getState().settings?.searchEngine || 'google';
+    const q = encodeURIComponent(trimmed);
+    if (engine === 'duckduckgo') return `https://duckduckgo.com/?q=${q}`;
+    if (engine === 'bing') return `https://www.bing.com/search?q=${q}`;
+    if (engine === 'brave') return `https://search.brave.com/search?q=${q}`;
+    if (engine === 'ecosia') return `https://www.ecosia.org/search?q=${q}`;
+    return `https://www.google.com/search?q=${q}`;
 };
 
 export default function Omnibox() {
@@ -58,38 +76,66 @@ export default function Omnibox() {
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
+    const historyStoreData = useHistoryStore(state => state.history);
     const setPrivateTabs = useTabStore(state => state.setPrivateTabs);
     const setWorkTabs = useTabStore(state => state.setWorkTabs);
     const setGhostTabs = useTabStore(state => state.setGhostTabs);
 
     const isIncognito = activeSpace === 'ghost';
     const liveSearch = useUIStore(state => state.settings?.liveSearch);
+    const searchEngine = useUIStore(state => state.settings?.searchEngine) || 'google';
+    const engineNames = {
+        google: 'Google',
+        duckduckgo: 'DuckDuckGo',
+        bing: 'Bing',
+        brave: 'Brave',
+        ecosia: 'Ecosia'
+    };
+    const currentEngineName = engineNames[searchEngine] || 'Google';
     const searchInputRef = useRef(null);
 
     const [liveSuggestions, setLiveSuggestions] = useState([]);
+    const [selectedIndex, setSelectedIndex] = useState(0);
 
     useEffect(() => {
+        setSelectedIndex(0);
         if (!searchQuery || searchQuery.startsWith('>')) {
             setLiveSuggestions([]);
             return;
         }
         
-        const fetchSuggestions = async () => {
-            try {
-                const response = await fetch(`https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(searchQuery)}`);
-                const data = await response.json();
-                if (data && data[1]) {
-                    setLiveSuggestions(data[1].slice(0, 4));
-                }
-            } catch (e) {
-                // Ignore fetch errors, might be CORS
-                console.log(e);
+        // Debounce Google Suggestions API
+        const timer = setTimeout(() => {
+            const domainRegex = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (domainRegex.test(searchQuery.trim())) {
+                setLiveSuggestions([]);
+                return;
             }
-        };
-
-        const timer = setTimeout(fetchSuggestions, 150);
+            
+            const callbackName = 'googleSuggestCb_' + Math.round(100000 * Math.random());
+            window[callbackName] = (data) => {
+                if (data && data[1]) {
+                    setLiveSuggestions(data[1].slice(0, 5));
+                }
+                delete window[callbackName];
+                const scriptEl = document.getElementById(callbackName);
+                if (scriptEl) scriptEl.remove();
+            };
+            
+            const script = document.createElement('script');
+            script.id = callbackName;
+            script.src = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(searchQuery)}&jsonp=${callbackName}`;
+            document.body.appendChild(script);
+        }, 150);
         return () => clearTimeout(timer);
     }, [searchQuery]);
+
+    useEffect(() => {
+        const selectedBtn = document.querySelector('[data-selected="true"]');
+        if (selectedBtn) {
+            selectedBtn.scrollIntoView({ block: 'nearest' });
+        }
+    }, [selectedIndex]);
 
 
     useEffect(() => {
@@ -106,7 +152,12 @@ export default function Omnibox() {
     const getSmartPredictions = (query) => {
         if (!query) return [];
         const q = query.toLowerCase();
-        return mockHistoryDB
+
+        const siteMatches = topSites
+            .filter(site => site.startsWith(q))
+            .map(site => ({ url: site, title: `Go to ${site}`, score: 100, visits: 10, lastVisit: Date.now() }));
+
+        return [...historyStoreData, ...siteMatches]
             .filter(item => item.url.includes(q) || item.title.toLowerCase().includes(q))
             .map(item => {
                 const hoursSinceVisit = (Date.now() - item.lastVisit) / (1000 * 60 * 60);
@@ -115,7 +166,7 @@ export default function Omnibox() {
                 return { ...item, score };
             })
             .sort((a, b) => b.score - a.score)
-            .slice(0, 4);
+            .slice(0, 3);
     };
 
     const mathPrediction = (() => {
@@ -126,6 +177,20 @@ export default function Omnibox() {
                 const res = new Function(`return (${q})`)();
                 if (isFinite(res)) return { isMath: true, url: `= ${res}`, title: `Calculator: ${q}`, score: 10000 };
             } catch (e) { }
+        }
+        return null;
+    })();
+
+    const aiPrediction = (() => {
+        const q = searchQuery.trim();
+        if (q.startsWith('?')) {
+            const queryText = q.slice(1).trim();
+            return {
+                isAI: true,
+                query: queryText,
+                title: `Ask Qu-AI (llama.cpp Gemma 4): "${queryText || 'Type your question...'}"`,
+                score: 200000
+            };
         }
         return null;
     })();
@@ -147,9 +212,16 @@ export default function Omnibox() {
         }
     });
 
-    const filteredPredictions = mathPrediction
-        ? [mathPrediction, ...merged.slice(0, 5)]
-        : merged.slice(0, 5);
+    const parsedInput = parseUrlInput(searchQuery);
+    const isDirectUrl = parsedInput && !parsedInput.includes('google.com/search?q=');
+    const directUrlPrediction = isDirectUrl ? { url: parsedInput, title: `Go to ${searchQuery}`, score: 100000 } : null;
+
+    let finalPredictions = aiPrediction ? [aiPrediction, ...merged] : mathPrediction ? [mathPrediction, ...merged] : merged;
+    if (directUrlPrediction && !aiPrediction) {
+        finalPredictions = [directUrlPrediction, ...finalPredictions.filter(p => p.url !== directUrlPrediction.url)];
+    }
+
+    const filteredPredictions = finalPredictions.slice(0, 6);
 
 
     const isCommandMode = searchQuery.startsWith('>');
@@ -238,6 +310,16 @@ export default function Omnibox() {
     };
 
     const handleSelectPrediction = (pred) => {
+        if (pred.isAI) {
+            useUIStore.getState().setIsRightPanelOpen(true);
+            useUIStore.getState().setRightPanelTab('ai');
+            if (pred.query) {
+                useAIStore.getState().sendChatMessage(pred.query, useUIStore.getState().currentUrl);
+            }
+            handleCloseOmnibox(true);
+            return;
+        }
+
         if (pred.isMath) {
             navigator.clipboard.writeText(pred.url.replace('= ', ''));
             showToast(`Copied to clipboard: ${pred.url.replace('= ', '')}`);
@@ -266,13 +348,20 @@ export default function Omnibox() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                         
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                            if (e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                const max = isCommandMode ? filteredCommands.length : filteredPredictions.length;
+                                setSelectedIndex(s => Math.min(s + 1, Math.max(0, max - 1)));
+                            } else if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                setSelectedIndex(s => Math.max(s - 1, 0));
+                            } else if (e.key === 'Enter') {
                                 e.preventDefault();
                                 if (isCommandMode && filteredCommands.length > 0) {
-                                    handleExecuteCommand(filteredCommands[0].id);
+                                    handleExecuteCommand(filteredCommands[selectedIndex]?.id || filteredCommands[0].id);
                                 } else if (!isCommandMode) {
                                     if (filteredPredictions.length > 0) {
-                                        handleSelectPrediction(filteredPredictions[0]);
+                                        handleSelectPrediction(filteredPredictions[selectedIndex] || filteredPredictions[0]);
                                     } else if (searchQuery.trim().length > 0) {
                                         const url = parseUrlInput(searchQuery);
                                         handleSelectPrediction({ url, title: `Search/Go: ${searchQuery}` });
@@ -281,7 +370,7 @@ export default function Omnibox() {
                             }
                         }}
 
-                        placeholder="Search Google, type URL or '>' for commands..."
+                        placeholder={`Search ${currentEngineName}, type URL or '>' for commands...`}
                         className={`w-full bg-transparent border-none text-xl md:text-2xl font-light text-white placeholder-white/30 focus:outline-none focus:ring-0 transition-all duration-300 ${isCommandMode ? 'font-mono text-yellow-500 tracking-wide' : ''}`}
                         spellCheck="false"
                     />
@@ -298,15 +387,15 @@ export default function Omnibox() {
                             {isCommandMode ? (
                                 filteredCommands.length > 0 ? (
                                     filteredCommands.map((cmd, i) => (
-                                        <button key={i} onClick={() => handleExecuteCommand(cmd.id)} style={{ animationFillMode: 'both', animationDelay: `${i * 0.05}s` }} className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-300 group text-left border animate-pop-in ${i === 0 ? 'bg-yellow-500/10 border-yellow-500/30 scale-[1.01] shadow-lg shadow-yellow-500/5' : 'border-transparent hover:border-yellow-500/30 hover:bg-yellow-500/10 hover:scale-[1.01] hover:shadow-lg hover:shadow-yellow-500/5'}`}>
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-300 bg-white/5 group-hover:bg-yellow-500/20 ${i === 0 ? 'bg-yellow-500/20 scale-110' : 'group-hover:scale-110'} ${cmd.color}`}>
+                                        <button key={i} data-selected={i === selectedIndex} onClick={() => handleExecuteCommand(cmd.id)} style={{ animationFillMode: 'both', animationDelay: `${i * 0.05}s` }} className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-300 group text-left border animate-pop-in ${i === selectedIndex ? 'bg-yellow-500/10 border-yellow-500/30 scale-[1.01] shadow-lg shadow-yellow-500/5' : 'border-transparent hover:border-yellow-500/30 hover:bg-yellow-500/10 hover:scale-[1.01] hover:shadow-lg hover:shadow-yellow-500/5'}`}>
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-300 bg-white/5 group-hover:bg-yellow-500/20 ${i === selectedIndex ? 'bg-yellow-500/20 scale-110' : 'group-hover:scale-110'} ${cmd.color}`}>
                                                 <cmd.icon size={16} />
                                             </div>
                                             <div className="flex flex-col flex-1 overflow-hidden">
-                                                <span className={`font-mono font-bold truncate transition-colors ${i === 0 ? 'text-yellow-400' : 'text-yellow-500 group-hover:text-yellow-400'}`}>{'> ' + cmd.cmd}</span>
-                                                <span className={`text-xs truncate transition-colors ${i === 0 ? 'text-yellow-500/70' : 'text-white/40 group-hover:text-yellow-500/70'}`}>{cmd.title}</span>
+                                                <span className={`font-mono font-bold truncate transition-colors ${i === selectedIndex ? 'text-yellow-400' : 'text-yellow-500 group-hover:text-yellow-400'}`}>{'> ' + cmd.cmd}</span>
+                                                <span className={`text-xs truncate transition-colors ${i === selectedIndex ? 'text-yellow-500/70' : 'text-white/40 group-hover:text-yellow-500/70'}`}>{cmd.title}</span>
                                             </div>
-                                            <Zap size={16} className={`transition-all duration-300 ${i === 0 ? 'text-yellow-400 scale-125 rotate-12' : 'text-white/20 group-hover:text-yellow-400 group-hover:scale-125 group-hover:rotate-12'}`} />
+                                            <Zap size={16} className={`transition-all duration-300 ${i === selectedIndex ? 'text-yellow-400 scale-125 rotate-12' : 'text-white/20 group-hover:text-yellow-400 group-hover:scale-125 group-hover:rotate-12'}`} />
                                         </button>
                                     ))
                                 ) : (
@@ -315,15 +404,15 @@ export default function Omnibox() {
                             ) : (
                                 filteredPredictions.length > 0 ? (
                                     filteredPredictions.map((pred, i) => (
-                                        <button key={i} onClick={() => handleSelectPrediction(pred)} className={`w-full flex items-center gap-4 p-3 rounded-xl transition-colors group text-left ${i === 0 ? 'bg-white/10' : 'hover:bg-white/10'}`}>
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${pred.isMath ? 'bg-accent-20 text-accent group-hover:bg-accent-30' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent'} ${i === 0 && !pred.isMath ? 'bg-white/10 text-accent' : ''}`}>
+                                        <button key={i} data-selected={i === selectedIndex} onClick={() => handleSelectPrediction(pred)} className={`w-full flex items-center gap-4 p-3 rounded-xl transition-colors group text-left ${i === selectedIndex ? 'bg-white/10' : 'hover:bg-white/10'}`}>
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${pred.isMath ? 'bg-accent-20 text-accent group-hover:bg-accent-30' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent'} ${i === selectedIndex && !pred.isMath ? 'bg-white/10 text-accent' : ''}`}>
                                                 {pred.isMath ? <Calculator size={16} /> : <Globe size={16} />}
                                             </div>
                                             <div className="flex flex-col flex-1 overflow-hidden">
-                                                <span className={`font-semibold truncate ${pred.isMath ? 'text-accent text-lg' : 'transition-colors'} ${i === 0 && !pred.isMath ? 'text-white' : 'text-white/90 group-hover:text-white'}`}>{pred.title}</span>
+                                                <span className={`font-semibold truncate ${pred.isMath ? 'text-accent text-lg' : 'transition-colors'} ${i === selectedIndex && !pred.isMath ? 'text-white' : 'text-white/90 group-hover:text-white'}`}>{pred.title}</span>
                                                 <span className="text-xs text-white/40 truncate font-mono">{pred.url}</span>
                                             </div>
-                                            <ArrowRight size={16} className={`transition-colors ${i === 0 ? 'text-accent' : 'text-white/20 group-hover:text-accent'}`} />
+                                            <ArrowRight size={16} className={`transition-colors ${i === selectedIndex ? 'text-accent' : 'text-white/20 group-hover:text-accent'}`} />
                                         </button>
                                     ))
                                 ) : (
