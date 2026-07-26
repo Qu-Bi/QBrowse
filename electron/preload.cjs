@@ -66,6 +66,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
     setFullscreen: (value) => ipcRenderer.send('set-fullscreen', value),
 
+    onOpenNewTab: (callback) => {
+        ipcRenderer.removeAllListeners('open-new-tab-url');
+        ipcRenderer.on('open-new-tab-url', (event, data) => callback(data));
+    },
+
     // Shortcuts
     onGlobalShortcut: (callback) => {
         ipcRenderer.removeAllListeners('global-shortcut');

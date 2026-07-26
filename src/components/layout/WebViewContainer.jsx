@@ -343,6 +343,14 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
             }
         };
 
+        const handleNewWindow = (e) => {
+            console.log(`[WebView ${tab.id}] new-window intercepted:`, e.url);
+            try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+            if (e.url && e.url !== 'about:blank') {
+                useTabStore.getState().handleNewTab(e.url);
+            }
+        };
+
         wv.addEventListener('did-start-loading', handleDidStartLoading);
         wv.addEventListener('did-navigate', handleNavigateSafe);
         wv.addEventListener('did-navigate-in-page', handleNavigateInPage);
@@ -358,6 +366,8 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         wv.addEventListener('media-paused', handleMediaPause);
         wv.addEventListener('console-message', handleConsoleMessage);
         wv.addEventListener('ipc-message', handleIpcMessage);
+        wv.addEventListener('new-window', handleNewWindow);
+        wv.addEventListener('did-create-window', handleNewWindow);
 
         return () => {
             if (captureInterval) clearInterval(captureInterval);
@@ -376,6 +386,8 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
             wv.removeEventListener('console-message', handleConsoleMessage);
             wv.removeEventListener('plugin-crashed', handleFailLoadLogged);
             wv.removeEventListener('ipc-message', handleIpcMessage);
+            wv.removeEventListener('new-window', handleNewWindow);
+            wv.removeEventListener('did-create-window', handleNewWindow);
         };
     }, [isActive, isSpaceActive, setSpaceTabs, tab.id]);
 

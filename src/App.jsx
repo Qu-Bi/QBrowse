@@ -86,6 +86,15 @@ export default function App() {
                 window.electronAPI.setAdblock(useUIStore.getState().isAdblockActive);
             }
 
+            if (window.electronAPI.onOpenNewTab) {
+                window.electronAPI.onOpenNewTab(({ url }) => {
+                    console.log("[App] Intercepted new window request from Electron:", url);
+                    if (url && url !== 'about:blank') {
+                        useTabStore.getState().handleNewTab(url);
+                    }
+                });
+            }
+
             if (window.electronAPI.onDownloadStarted) {
                 window.electronAPI.onDownloadStarted((data) => {
                     useUIStore.getState().addDownload({ ...data, state: 'progressing', receivedBytes: 0, speedBytesPerSec: 0 });

@@ -155,7 +155,14 @@ const useTabStore = create((set, get) => ({
   },
 
   handleNewTab: (url = '') => {
-    get().addTab({ id: `t-${Date.now()}`, title: url || 'New Tab', url: url, active: true, folderId: null });
+    const list = get().getActiveList();
+    const now = Date.now();
+    // Prevent duplicate tab opening if same URL was opened within the last 800ms
+    if (url && url !== 'about:blank') {
+        const recentDuplicate = list.find(t => t.url === url && now - (t.lastActiveAt || 0) < 800);
+        if (recentDuplicate) return;
+    }
+    get().addTab({ id: `t-${now}-${Math.floor(Math.random() * 1000)}`, title: url || 'New Tab', url: url, active: true, folderId: null });
   },
 
   suspendTab: (tabId) => {

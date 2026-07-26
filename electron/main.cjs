@@ -208,6 +208,17 @@ function createWindow() {
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
         
+        // CRITICAL: Prevent new OS windows when webview scripts or target="_blank" links open URLs!
+        contents.setWindowOpenHandler(({ url, frameName, disposition, features }) => {
+            console.log('[Electron Main] setWindowOpenHandler intercepted:', url, disposition);
+            if (url && url !== 'about:blank') {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('open-new-tab-url', { url, disposition });
+                }
+            }
+            return { action: 'deny' };
+        });
+
         // CRITICAL: Safely wrap executeJavaScript to prevent Ghostery and V8 from throwing fatal Unhandled Rejections during navigation!
         const originalExecute = contents.executeJavaScript;
         contents.executeJavaScript = function(code, userGesture) {
