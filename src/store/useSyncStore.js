@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
+import useVaultStore from './useVaultStore';
+import useTabStore from './useTabStore';
+import useHistoryStore from './useHistoryStore';
 import { auth, db } from '../services/firebase';
 import { 
     createUserWithEmailAndPassword, 
@@ -237,44 +240,134 @@ const useSyncStore = create((set, get) => ({
     },
 
     syncNow: async () => {
-        const { user } = get();
+        const { user, masterPassword, syncCategories } = get();
         if (!user) {
             useUIStore.getState().showToast("Sign in to sync your data");
             return;
         }
-        set({ isSyncing: true });
+        if (!masterPassword) {
+            useUIStore.getState().showToast("Sync failed: Master Password required");
+            return;
+        }
+        set({ isSyncing: true, authError: null });
         try {
-            const uiSettings = useUIStore.getState().settings;
-            await get().syncDataToCloud('settings', uiSettings);
+            let totalItems = 0;
+
+            // 1. Sync Settings
+            if (syncCategories?.settings !== false) {
+                const uiSettings = { ...useUIStore.getState().settings };
+                delete uiSettings.syncedCloudSettings;
+                await get().syncDataToCloud('settings', uiSettings);
+                totalItems += Object.keys(uiSettings).length;
+            }
+
+            // 2. Sync Vault (Passwords & Notes)
+            if (syncCategories?.vault !== false) {
+                const vaultItems = useVaultStore.getState().passwords || [];
+                await get().syncDataToCloud('vault', vaultItems);
+                totalItems += vaultItems.length;
+            }
+
+            // 3. Sync Tabs (Personal & Work Spaces)
+            if (syncCategories?.tabs !== false) {
+                const tabsPayload = {
+                    privateTabs: useTabStore.getState().privateTabs || [],
+                    workTabs: useTabStore.getState().workTabs || []
+                };
+                await get().syncDataToCloud('tabs', tabsPayload);
+                totalItems += (tabsPayload.privateTabs.length + tabsPayload.workTabs.length);
+            }
+
+            // 4. Sync History & Bookmarks
+            if (syncCategories?.history !== false) {
+                const historyList = useHistoryStore.getState().history || [];
+                const historyPayload = historyList.slice(0, 500);
+                await get().syncDataToCloud('history', historyPayload);
+                totalItems += historyPayload.length;
+            }
+
             const now = new Date().toLocaleTimeString();
-            set({ isSyncing: false, lastSyncTime: now, syncedItemsCount: Object.keys(uiSettings).length });
-            useUIStore.getState().showToast("Cloud Sync Complete!");
+            set({ isSyncing: false, lastSyncTime: now, syncedItemsCount: totalItems });
+            useUIStore.getState().showToast(`Cloud Sync Complete! (${totalItems} items encrypted)`);
         } catch(e) {
-            set({ isSyncing: false });
-            useUIStore.getState().showToast("Sync failed: Check Master Password");
+            console.error("syncNow error:", e);
+            set({ isSyncing: false, authError: e.message });
+            useUIStore.getState().showToast("Sync failed: Check Master Password or connection");
         }
     },
 
     listenToCloudSync: () => {
-        const { user, masterPassword } = get();
+        const { user, masterPassword, syncCategories } = get();
         if (!user || !masterPassword) return;
 
-        onSnapshot(doc(db, `users/${user.uid}/sync`, 'settings'), async (docSnapshot) => {
-            if (docSnapshot.exists()) {
-                const data = docSnapshot.data();
-                if (data.encrypted) {
+        // 1. Settings Listener
+        if (syncCategories?.settings !== false) {
+            onSnapshot(doc(db, `users/${user.uid}/sync`, 'settings'), async (docSnapshot) => {
+                if (docSnapshot.exists() && docSnapshot.data().encrypted) {
                     try {
-                        const decryptedSettings = await decryptData(data.encrypted, masterPassword);
-                        useUIStore.getState().setSettingValue('syncedCloudSettings', decryptedSettings);
-                        set({ syncedItemsCount: Object.keys(decryptedSettings).length });
+                        const decrypted = await decryptData(docSnapshot.data().encrypted, masterPassword);
+                        const currentSettings = useUIStore.getState().settings;
+                        const merged = { ...currentSettings, ...decrypted };
+                        delete merged.syncedCloudSettings;
+                        Object.keys(decrypted).forEach(key => {
+                            if (key !== 'syncedCloudSettings' && currentSettings[key] !== decrypted[key]) {
+                                useUIStore.getState().setSettingValue(key, decrypted[key]);
+                            }
+                        });
                     } catch(e) {
-                        console.warn("Could not decrypt remote cloud settings with active Master Password");
+                        console.warn("[Sync] Could not decrypt settings with Master Password");
                     }
                 }
-            }
-        }, (err) => {
-            console.warn("Firestore sync listener error (Permission Denied?):", err.message);
-        });
+            }, (err) => console.warn("Settings sync listener error:", err.message));
+        }
+
+        // 2. Vault Listener
+        if (syncCategories?.vault !== false) {
+            onSnapshot(doc(db, `users/${user.uid}/sync`, 'vault'), async (docSnapshot) => {
+                if (docSnapshot.exists() && docSnapshot.data().encrypted) {
+                    try {
+                        const remoteVault = await decryptData(docSnapshot.data().encrypted, masterPassword);
+                        if (Array.isArray(remoteVault)) {
+                            useVaultStore.setState({ cloudVaultBackup: remoteVault });
+                        }
+                    } catch(e) {
+                        console.warn("[Sync] Could not decrypt vault data");
+                    }
+                }
+            }, (err) => console.warn("Vault sync listener error:", err.message));
+        }
+
+        // 3. Tabs Listener
+        if (syncCategories?.tabs !== false) {
+            onSnapshot(doc(db, `users/${user.uid}/sync`, 'tabs'), async (docSnapshot) => {
+                if (docSnapshot.exists() && docSnapshot.data().encrypted) {
+                    try {
+                        const remoteTabs = await decryptData(docSnapshot.data().encrypted, masterPassword);
+                        if (remoteTabs && (remoteTabs.privateTabs || remoteTabs.workTabs)) {
+                            useTabStore.setState({ cloudTabsBackup: remoteTabs });
+                        }
+                    } catch(e) {
+                        console.warn("[Sync] Could not decrypt tabs data");
+                    }
+                }
+            }, (err) => console.warn("Tabs sync listener error:", err.message));
+        }
+
+        // 4. History Listener
+        if (syncCategories?.history !== false) {
+            onSnapshot(doc(db, `users/${user.uid}/sync`, 'history'), async (docSnapshot) => {
+                if (docSnapshot.exists() && docSnapshot.data().encrypted) {
+                    try {
+                        const remoteHistory = await decryptData(docSnapshot.data().encrypted, masterPassword);
+                        if (Array.isArray(remoteHistory)) {
+                            useHistoryStore.setState({ cloudHistoryBackup: remoteHistory });
+                        }
+                    } catch(e) {
+                        console.warn("[Sync] Could not decrypt history data");
+                    }
+                }
+            }, (err) => console.warn("History sync listener error:", err.message));
+        }
     }
 }));
 
