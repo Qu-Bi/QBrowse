@@ -324,13 +324,15 @@ const useUIStore = create((set) => ({
   setHoverPreview: (preview) => set({ hoverPreview: preview }),
 
   // Modals & Settings
-  activeModal: localStorage.getItem('qbrowse_setup_complete') === 'true' ? null : 'onboarding',
+  activeModal: localStorage.getItem('qbrowse_setup_complete') !== 'true' 
+    ? 'onboarding' 
+    : (localStorage.getItem('qbrowse_tutorial_done') !== 'true' ? 'tutorial' : null),
   isModalClosing: false,
   closingModal: null,
   openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null }),
   closeModal: () => {
     set(state => ({ isModalClosing: true, closingModal: state.activeModal }));
-    setTimeout(() => set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0 }), 200);
+    setTimeout(() => set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 }), 200);
   },
 
   settingsTab: 'appearance',
@@ -421,14 +423,21 @@ const useUIStore = create((set) => ({
   accentColor: '#d4bc94',
   setAccentColor: (color) => set({ accentColor: color }),
 
-  // Onboarding
+  // Onboarding & Tutorial
   setupComplete: localStorage.getItem('qbrowse_setup_complete') === 'true',
   setSetupComplete: (val) => {
       set({ setupComplete: val });
       localStorage.setItem('qbrowse_setup_complete', val ? 'true' : 'false');
   },
+  tutorialDone: localStorage.getItem('qbrowse_tutorial_done') === 'true',
+  setTutorialDone: (val) => {
+      set({ tutorialDone: val });
+      localStorage.setItem('qbrowse_tutorial_done', val ? 'true' : 'false');
+  },
   onboardingStep: 0,
   setOnboardingStep: (step) => set({ onboardingStep: step }),
+  tutorialStep: 0,
+  setTutorialStep: (step) => set({ tutorialStep: step }),
   obUsername: '',
   setObUsername: (val) => set({ obUsername: val }),
   obPassword: '',

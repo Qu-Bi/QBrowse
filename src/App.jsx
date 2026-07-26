@@ -18,6 +18,7 @@ import SettingsModal from './components/modals/SettingsModal';
 import HistoryModal from './components/modals/HistoryModal';
 import CookiesModal from './components/modals/CookiesModal';
 import OnboardingWizard from './components/modals/OnboardingWizard';
+import TutorialWizard from './components/modals/TutorialWizard';
 import AddPinModal from './components/modals/AddPinModal';
 import Overlays from './components/common/Overlays';
 import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
@@ -37,7 +38,7 @@ export default function App() {
     const activeSpace = useTabStore(state => state.activeSpace);
 
     const { onDragOver, onDragLeave, onDropRoot } = useDragAndDrop();
-    
+
     // Initialize global shortcuts
     useGlobalShortcuts();
 
@@ -84,7 +85,7 @@ export default function App() {
                 // Initialize adblocker state in backend
                 window.electronAPI.setAdblock(useUIStore.getState().isAdblockActive);
             }
-            
+
             if (window.electronAPI.onDownloadStarted) {
                 window.electronAPI.onDownloadStarted((data) => {
                     useUIStore.getState().addDownload({ ...data, state: 'progressing', receivedBytes: 0, speedBytesPerSec: 0 });
@@ -129,7 +130,7 @@ export default function App() {
             console.error("WEBVIEW ERROR FROM RUST:", err.payload);
             showToast("Webview Error: " + err.payload, 'error');
         });
-        
+
         return () => {
             unlisten.then(f => f());
         };
@@ -141,7 +142,7 @@ export default function App() {
             const store = useTabStore.getState();
             const allTabs = [...store.privateTabs, ...store.workTabs, ...store.ghostTabs];
             const now = Date.now();
-            
+
             let suspendedCount = 0;
             allTabs.forEach(tab => {
                 if (!tab.active && !tab.suspended && !tab.isAudible && tab.url !== '' && (now - tab.lastActiveAt > SUSPEND_TIMEOUT)) {
@@ -149,18 +150,18 @@ export default function App() {
                     suspendedCount++;
                 }
             });
-            
+
             if (suspendedCount > 0) {
                 console.log(`Suspended ${suspendedCount} inactive tabs to free memory.`);
             }
         }, 60000); // Check every minute
-        
+
         return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
         const root = document.documentElement;
-        
+
         // Fix for Tauri/WebView2 HTML5 drag and drop "red symbol" issue
         const handleGlobalDrag = (e) => {
             e.preventDefault();
@@ -168,7 +169,7 @@ export default function App() {
         };
         document.addEventListener('dragover', handleGlobalDrag);
         document.addEventListener('dragenter', handleGlobalDrag);
-        
+
         const hexToRgb = (hex) => {
             const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
             return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
@@ -220,33 +221,34 @@ export default function App() {
 
     return (
         <ContextMenuProvider>
-        <div 
-            className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 transition-all duration-300 bg-[#08080a] ${isForceDark || activeSpace === 'ghost' ? 'text-white' : 'text-black'} ${isFullscreen ? 'p-0 gap-0' : uiScale === 'compact' ? `p-1.5 ${isSidebarHidden ? 'gap-0' : 'gap-2'}` : `p-3 md:p-4 ${isSidebarHidden ? 'gap-0' : 'gap-4 md:gap-6'}`}`}
-            style={{ backgroundImage: `url('https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop')`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-            onClick={() => closeContextMenus()}
-            onContextMenu={handleContextMenu}
-            onDragOver={(e) => onDragOver(e, 'root')}
-            onDragLeave={onDragLeave}
-            onDrop={(e) => onDropRoot(e, activeSpace)}
-        >
-            <Sidebar />
-            <div className="flex-1 flex flex-col h-full relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
-                <MainFrame />
+            <div
+                className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 transition-all duration-300 bg-[#08080a] ${isForceDark || activeSpace === 'ghost' ? 'text-white' : 'text-black'} ${isFullscreen ? 'p-0 gap-0' : uiScale === 'compact' ? `p-1.5 ${isSidebarHidden ? 'gap-0' : 'gap-2'}` : `p-3 md:p-4 ${isSidebarHidden ? 'gap-0' : 'gap-4 md:gap-6'}`}`}
+                style={{ backgroundImage: `url('https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop')`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                onClick={() => closeContextMenus()}
+                onContextMenu={handleContextMenu}
+                onDragOver={(e) => onDragOver(e, 'root')}
+                onDragLeave={onDragLeave}
+                onDrop={(e) => onDropRoot(e, activeSpace)}
+            >
+                <Sidebar />
+                <div className="flex-1 flex flex-col h-full relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
+                    <MainFrame />
+                </div>
+
+                <Omnibox />
+                <TabMap />
+                <ToolHub />
+
+                <SettingsModal />
+                <CookiesModal />
+                <HistoryModal />
+                <OnboardingWizard />
+                <TutorialWizard />
+                <AddPinModal />
+
+                <Overlays />
+                <TabSwitcherOverlay />
             </div>
-
-            <Omnibox />
-            <TabMap />
-            <ToolHub />
-
-            <SettingsModal />
-            <CookiesModal />
-            <HistoryModal />
-            <OnboardingWizard />
-            <AddPinModal />
-            
-            <Overlays />
-            <TabSwitcherOverlay />
-        </div>
         </ContextMenuProvider>
     );
 }

@@ -146,7 +146,7 @@ const SettingsModal = () => {
                         <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
                             <Sparkles size={18} className="text-accent" /> Settings
                         </h2>
-                        <span className="text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-white/10 text-white/60">v1.2.0</span>
+                        <span className="text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-white/10 text-white/60">v1.2.1</span>
                     </div>
 
                     {/* Live Search Input */}
@@ -761,7 +761,7 @@ const SettingsModal = () => {
                                         <h4 className="text-xl font-bold text-white flex items-center gap-2">
                                             QBrowse Browser
                                             <span className="text-xs font-mono font-bold bg-accent/20 text-accent px-2.5 py-0.5 rounded-full border border-accent-30">
-                                                v1.2.0
+                                                v1.2.1
                                             </span>
                                         </h4>
                                         <p className="text-xs text-white/60 mt-1">Next-Generation Zen & Multitasking Web Environment</p>
@@ -773,7 +773,7 @@ const SettingsModal = () => {
                                         setIsCheckingUpdates(true);
                                         setTimeout(() => {
                                             setIsCheckingUpdates(false);
-                                            showToast('QBrowse is up to date! (v1.2.0)');
+                                            showToast('QBrowse is up to date! (v1.2.1)');
                                         }, 1200);
                                     }}
                                     className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-2 border border-white/10"

@@ -228,8 +228,8 @@ const OnboardingWizard = () => {
 
                             <button onClick={() => {
                                 useUIStore.getState().setSetupComplete(true);
-                                closeModal();
-                                useUIStore.getState().showToast("Welcome to QBrowse Sync!");
+                                useUIStore.getState().openModal('tutorial');
+                                useUIStore.getState().showToast("Welcome to QBrowse! Let's take a quick tour.");
                             }} className="px-10 py-5 bg-accent text-black rounded-3xl text-lg font-black tracking-wide hover:scale-110 transition-transform shadow-[0_15px_30px_var(--accent-30)] flex items-center gap-3">
                                 Launch QBrowse <Zap size={20} />
                             </button>
