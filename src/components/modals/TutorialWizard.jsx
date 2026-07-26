@@ -3,7 +3,8 @@ import {
     Layers, Search, Command, Map as MapIcon, Monitor, 
     Sparkles, Bot, CheckCircle, X, ArrowRight, Zap, 
     Compass, Keyboard, Shield, ChevronRight, Terminal,
-    Sidebar as SidebarIcon, Sliders, Play, Check, Globe, RefreshCw, Eye, Lock
+    Sidebar as SidebarIcon, Sliders, Play, Check, Globe, RefreshCw, Eye, Lock,
+    Calculator, Trash2, Cpu
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 
@@ -18,7 +19,7 @@ const TutorialWizard = () => {
 
     // Interactive Demo States for each slide
     const [demoSpace, setDemoSpace] = useState('personal');
-    const [demoQuery, setDemoQuery] = useState('@ai summarize this webpage');
+    const [demoQuery, setDemoQuery] = useState('> ls');
     const [isSimulatingSearch, setIsSimulatingSearch] = useState(false);
     const [activeShortcutDemo, setActiveShortcutDemo] = useState(null);
 
@@ -40,7 +41,7 @@ const TutorialWizard = () => {
     ];
 
     const shortcutsList = [
-        { key: 'Ctrl / Cmd + K', name: 'Command Palette', desc: 'Summon Omnibox for instant web search, AI queries, and tab jumping from anywhere.', cat: 'Navigation', icon: Command },
+        { key: 'Ctrl / Cmd + K', name: 'Command Palette', desc: 'Summon Omnibox for instant web search, terminal commands (>), AI queries (?), and math.', cat: 'Navigation', icon: Command },
         { key: 'Ctrl / Cmd + E', name: 'Spatial Tab Map', desc: 'Enter 3D spatial overview mode to see live web view thumbnails of all open tabs.', cat: 'Navigation', icon: MapIcon },
         { key: 'Ctrl / Cmd + 1 / 2 / 3', name: 'Switch Spaces', desc: 'Instantly jump between Personal (1), Work (2), and Ghost Mode (3) environments.', cat: 'Spaces', icon: Layers },
         { key: 'Ctrl / Cmd + Shift + N', name: 'Toggle Ghost Mode', desc: 'Activate zero-footprint private browsing where no history or cookies are stored.', cat: 'Spaces', icon: Eye },
@@ -51,11 +52,32 @@ const TutorialWizard = () => {
         { key: 'F11', name: 'Fullscreen Zen', desc: 'Expand the web viewport to fill your entire screen without OS menus or toolbars.', cat: 'Interface', icon: Zap }
     ];
 
+    const getDemoStatus = (query) => {
+        const q = query.trim();
+        if (q.startsWith('>')) {
+            return { type: 'Terminal Action', color: 'text-blue-400 bg-blue-500/10 border-blue-500/30', icon: Terminal, desc: `Executing browser command: "${q.slice(1).trim()}"` };
+        }
+        if (q.startsWith('?')) {
+            return { type: 'Ask Qu-AI (Offline)', color: 'text-purple-400 bg-purple-500/10 border-purple-500/30', icon: Sparkles, desc: `Querying local Llama/Gemma neural engine...` };
+        }
+        if (/^[-+]?[0-9.()]+(?:[\s+\-*/]+[0-9.()]+)+$/.test(q)) {
+            try {
+                // eslint-disable-next-line no-new-func
+                const res = new Function(`return (${q})`)();
+                return { type: 'Instant Math Evaluation', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30', icon: Calculator, desc: `Result: = ${res}` };
+            } catch (e) {}
+        }
+        return { type: 'Web URL / Search', color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', icon: Globe, desc: `Navigating to ${q}...` };
+    };
+
     const handleSearchDemo = (text) => {
         setDemoQuery(text);
         setIsSimulatingSearch(true);
-        setTimeout(() => setIsSimulatingSearch(false), 600);
+        setTimeout(() => setIsSimulatingSearch(false), 450);
     };
+
+    const currentDemoStatus = getDemoStatus(demoQuery);
+    const StatusIcon = currentDemoStatus.icon;
 
     return (
         <div className={`absolute inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-3xl text-white font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-pop-in duration-500'}`} onClick={finishTutorial}>
@@ -178,11 +200,11 @@ const TutorialWizard = () => {
                         <div className="w-1/5 h-full p-10 flex flex-col justify-center relative">
                             <div className="w-14 h-14 bg-gradient-to-br from-amber-500/20 to-yellow-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30 mb-5 text-amber-400 shadow-xl shadow-amber-500/10 animate-float"><Command size={28} /></div>
                             <span className="text-xs font-mono font-bold uppercase tracking-widest text-amber-400 mb-1 flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> Omnipresent Navigation
+                                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> The Ultimate Omnibox
                             </span>
                             <h3 className="text-3xl font-black text-white mb-3 tracking-tight">Command Palette (Ctrl + K).</h3>
                             <p className="text-xs text-white/60 mb-6 leading-relaxed max-w-lg">
-                                Press <span className="font-mono bg-white/10 px-1.5 py-0.5 rounded text-amber-300 font-bold">Ctrl + K</span> or <span className="font-mono bg-white/10 px-1.5 py-0.5 rounded text-amber-300 font-bold">Cmd + K</span> anywhere to summon the Omnibox. Type commands below to test instant execution:
+                                The QBrowse Omnibox is a 4-in-1 power hub. Type <span className="font-mono font-bold bg-white/10 px-1 py-0.5 rounded text-amber-300">&gt;</span> for terminal commands, <span className="font-mono font-bold bg-white/10 px-1 py-0.5 rounded text-purple-300">?</span> to ask offline AI, or math equations for instant answers!
                             </p>
 
                             {/* Interactive Search Simulator */}
@@ -193,38 +215,45 @@ const TutorialWizard = () => {
                                         type="text" 
                                         value={demoQuery} 
                                         onChange={e => setDemoQuery(e.target.value)}
+                                        placeholder="Try '> ls', '? summarize', or '25 * 4'"
                                         className="w-full bg-white/10 border border-amber-500/40 rounded-xl pl-10 pr-20 py-3 text-xs text-white font-mono outline-none shadow-[0_0_20px_rgba(245,158,11,0.15)] transition-all"
                                     />
                                     <span className="absolute right-3 top-2.5 text-[10px] font-mono font-bold bg-white/15 text-amber-300 px-2 py-1 rounded border border-white/10">CTRL + K</span>
                                 </div>
 
-                                <div className="flex gap-2 flex-wrap mb-3">
+                                {/* 4 Mode Trigger Buttons */}
+                                <div className="flex gap-2 flex-wrap mb-4">
                                     {[
-                                        '@ai summarize article',
-                                        'open youtube.com',
-                                        'switch to work space',
-                                        'clear history'
-                                    ].map((q, idx) => (
+                                        { label: '> ls (List Tabs)', query: '> ls', badge: 'Terminal' },
+                                        { label: '> sleep tabs (Free RAM)', query: '> sleep tabs', badge: 'Terminal' },
+                                        { label: '? Explain quantum AI', query: '? Explain quantum AI', badge: 'Qu-AI' },
+                                        { label: '144 / 12 * 5', query: '144 / 12 * 5', badge: 'Math' },
+                                        { label: 'github.com', query: 'github.com', badge: 'Web' }
+                                    ].map((item, idx) => (
                                         <button 
                                             key={idx}
-                                            onClick={() => handleSearchDemo(q)}
-                                            className="px-2.5 py-1 bg-white/5 hover:bg-amber-500/20 hover:border-amber-500/40 border border-white/10 rounded-lg text-[11px] font-mono text-white/70 hover:text-white transition-all scale-100 active:scale-95"
+                                            onClick={() => handleSearchDemo(item.query)}
+                                            className="px-2.5 py-1.5 bg-white/5 hover:bg-amber-500/20 hover:border-amber-500/40 border border-white/10 rounded-lg text-[11px] font-mono text-white/80 hover:text-white transition-all flex items-center gap-1.5 active:scale-95"
                                         >
-                                            {q}
+                                            <span>{item.label}</span>
+                                            <span className="text-[9px] font-bold opacity-60 bg-white/10 px-1 py-0.2 rounded">{item.badge}</span>
                                         </button>
                                     ))}
                                 </div>
 
-                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-mono flex items-center justify-between">
+                                <div className={`p-3.5 rounded-xl border text-xs font-mono flex items-center justify-between transition-all ${currentDemoStatus.color}`}>
                                     {isSimulatingSearch ? (
-                                        <span className="text-amber-300 flex items-center gap-2 animate-pulse font-bold">
-                                            <RefreshCw size={13} className="animate-spin" /> Executing command in real-time...
+                                        <span className="flex items-center gap-2 animate-pulse font-bold">
+                                            <RefreshCw size={14} className="animate-spin" /> Processing input in real-time...
                                         </span>
                                     ) : (
-                                        <span className="text-white/80 flex items-center gap-2 truncate">
-                                            <Check size={14} className="text-amber-400 flex-shrink-0" />
-                                            <span>Ready: <strong className="text-amber-300 font-bold">{demoQuery}</strong></span>
-                                        </span>
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <StatusIcon size={16} className="flex-shrink-0 animate-bounce" />
+                                            <div className="truncate">
+                                                <span className="font-bold uppercase tracking-wider text-[10px] opacity-75 block">{currentDemoStatus.type}</span>
+                                                <span className="font-semibold text-white/95 truncate block">{currentDemoStatus.desc}</span>
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -285,7 +314,7 @@ const TutorialWizard = () => {
                             </span>
                             <h3 className="text-3xl font-black text-white mb-3 tracking-tight">On-Device Llama AI.</h3>
                             <p className="text-xs text-white/60 mb-6 leading-relaxed max-w-lg">
-                                QBrowse features an embedded neural engine. Type <span className="font-mono bg-white/10 px-1.5 py-0.5 rounded text-purple-300 font-bold">@ai</span> in the search bar or open the Right Hub (<span className="font-mono bg-white/10 px-1.5 py-0.5 rounded text-purple-300 font-bold">Ctrl + J</span>) to summarize pages and chat with total privacy.
+                                QBrowse features an embedded neural engine. Type <span className="font-mono bg-white/10 px-1.5 py-0.5 rounded text-purple-300 font-bold">?</span> in the Omnibox (e.g., <span className="font-mono text-purple-300">? summarize</span>) or open the Tool Hub (<span className="font-mono bg-white/10 px-1.5 py-0.5 rounded text-purple-300 font-bold">Ctrl + J</span>) to chat with total privacy.
                             </p>
 
                             <div className="p-5 rounded-2xl bg-black/60 border border-purple-500/30 backdrop-blur-xl mb-6 shadow-2xl max-w-lg">
@@ -299,7 +328,7 @@ const TutorialWizard = () => {
                                     </div>
                                 </div>
                                 <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs font-mono text-purple-200 leading-relaxed">
-                                    <span className="font-bold text-purple-400">✨ Assistant:</span> "I have analyzed this webpage locally in your RAM. Ready to summarize or answer questions without cloud servers."
+                                    <span className="font-bold text-purple-400">✨ Qu-AI:</span> "I analyze web pages and answer questions entirely inside your machine's RAM without external APIs."
                                 </div>
                             </div>
 
