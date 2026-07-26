@@ -129,3 +129,30 @@ body {
 .drag-region {
   -webkit-app-region: drag;
 }
+
+@keyframes floatGentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulseBorder {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.1); box-shadow: 0 0 0px transparent; }
+  50% { border-color: var(--accent, #3b82f6); box-shadow: 0 0 20px var(--accent-30, rgba(59, 130, 246, 0.3)); }
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-float {
+  animation: floatGentle 4s ease-in-out infinite;
+}
+
+.animate-pulse-border {
+  animation: pulseBorder 3s infinite;
+}
+
+.animate-spin-slow {
+  animation: spinSlow 15s linear infinite;
+}
