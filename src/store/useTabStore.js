@@ -7,6 +7,9 @@ const useTabStore = create((set, get) => ({
       const updates = { activeSpace: space };
       if (state.activeSpace === 'ghost' && space !== 'ghost') {
           updates.ghostTabs = [{ id: 'g-' + Date.now(), title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+          if (window.electronAPI && window.electronAPI.clearGhostSession) {
+              window.electronAPI.clearGhostSession().catch(() => {});
+          }
       }
       return updates;
   }),
@@ -114,6 +117,47 @@ const useTabStore = create((set, get) => ({
       }
   },
 
+  cloudTabs: { privateTabs: [], workTabs: [] },
+  setCloudTabs: (tabs) => set({ cloudTabs: tabs || { privateTabs: [], workTabs: [] } }),
+
+  openCloudTab: (cloudTab, space = 'personal') => {
+      if (!cloudTab || !cloudTab.url) return;
+      const id = `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      get().setActiveSpace(space);
+      get().addTab({
+          id,
+          title: cloudTab.title || cloudTab.url,
+          url: cloudTab.url,
+          active: true,
+          folderId: null
+      });
+      useUIStore.getState().showToast(`Opened: ${cloudTab.title || cloudTab.url}`);
+  },
+
+  restoreAllCloudTabs: (space = 'personal') => {
+      const { cloudTabs } = get();
+      const list = (space === 'work') ? (cloudTabs.workTabs || []) : (cloudTabs.privateTabs || []);
+      if (!list || list.length === 0) {
+          useUIStore.getState().showToast('No cloud tabs found in this space');
+          return;
+      }
+      get().setActiveSpace(space);
+      let count = 0;
+      list.forEach((tab, index) => {
+          if (tab.url && tab.url !== 'about:blank') {
+              count++;
+              get().addTab({
+                  id: `t-cloud-${Date.now()}-${index}`,
+                  title: tab.title || tab.url,
+                  url: tab.url,
+                  active: index === 0,
+                  folderId: null
+              });
+          }
+      });
+      useUIStore.getState().showToast(`Restored ${count} cloud tabs!`);
+  },
+
   // Actions
   getActiveList: () => {
     const space = get().activeSpace;
@@ -148,21 +192,44 @@ const useTabStore = create((set, get) => ({
   },
 
   addTab: (tabObj) => {
+    const isGhost = get().activeSpace === 'ghost';
+    const defaultTitle = isGhost ? 'New Incognito Tab' : 'New Tab';
+    const safeTitle = (typeof tabObj.title === 'string' && tabObj.title.trim()) ? tabObj.title : defaultTitle;
+    const safeUrl = (typeof tabObj.url === 'string') ? tabObj.url : '';
     const setList = get().getActiveSetList();
-    setList(prev => [...prev.map(t => ({ ...t, active: false })), { ...tabObj, lastActiveAt: Date.now(), suspended: false }]);
-    useUIStore.getState().setCurrentUrl(tabObj.url || '');
-    useUIStore.getState().showToast('New tab created');
+    const newTab = {
+      ...tabObj,
+      title: safeTitle,
+      url: safeUrl,
+      lastActiveAt: Date.now(),
+      suspended: false
+    };
+    setList(prev => [...prev.map(t => ({ ...t, active: false })), newTab]);
+    useUIStore.getState().setCurrentUrl(safeUrl);
+    useUIStore.getState().showToast(isGhost ? 'New incognito tab created' : 'New tab created');
+    return newTab;
   },
 
   handleNewTab: (url = '') => {
+    const activeSpace = get().activeSpace;
+    const isGhost = activeSpace === 'ghost';
+    const cleanUrl = (typeof url === 'string') ? url.trim() : '';
     const list = get().getActiveList();
     const now = Date.now();
     // Prevent duplicate tab opening if same URL was opened within the last 800ms
-    if (url && url !== 'about:blank') {
-        const recentDuplicate = list.find(t => t.url === url && now - (t.lastActiveAt || 0) < 800);
+    if (cleanUrl && cleanUrl !== 'about:blank') {
+        const recentDuplicate = list.find(t => t.url === cleanUrl && now - (t.lastActiveAt || 0) < 800);
         if (recentDuplicate) return;
     }
-    get().addTab({ id: `t-${now}-${Math.floor(Math.random() * 1000)}`, title: url || 'New Tab', url: url, active: true, folderId: null });
+    const defaultTitle = isGhost ? 'New Incognito Tab' : 'New Tab';
+    const targetTitle = (cleanUrl && cleanUrl !== 'about:blank') ? cleanUrl : defaultTitle;
+    get().addTab({ 
+        id: `t-${now}-${Math.floor(Math.random() * 1000)}`, 
+        title: targetTitle, 
+        url: cleanUrl, 
+        active: true, 
+        folderId: null 
+    });
   },
 
   suspendTab: (tabId) => {
@@ -223,35 +290,94 @@ const useTabStore = create((set, get) => ({
   },
 
   handleCloseTab: (id) => {
+    // Dismiss hover preview immediately so tooltips never get stuck
+    useUIStore.getState().setHoverPreview(null);
+
     const list = get().getActiveList();
     const setList = get().getActiveSetList();
     
     const tabToClose = list.find(t => t.id === id);
-    if (!tabToClose) return;
+    if (!tabToClose || tabToClose.isClosing) return;
+
+    // Reset split view if the closing tab was in split view
+    const { splitRightTabId, setSplitRightTabId, isSplitView, toggleSplitView } = useUIStore.getState();
+    if (isSplitView && splitRightTabId === id) {
+        setSplitRightTabId(null);
+        toggleSplitView();
+    }
 
     if (list.length === 1) {
-        // Last tab: don't remove it, just reset it to Zen Dashboard
-        setList([{ ...tabToClose, url: '', title: 'New Tab', thumbnail: null, lastActiveAt: Date.now() }]);
+        // Last tab: trigger smooth transition and reset cleanly to Zen Dashboard
+        setList([{ ...tabToClose, isClosing: true, thumbnail: null }]);
         useUIStore.getState().setCurrentUrl('');
+        setTimeout(() => {
+            const current = get().getActiveList();
+            if (current.length > 0) {
+                setList([{
+                    ...current[0],
+                    url: '',
+                    title: get().activeSpace === 'ghost' ? 'New Incognito Tab' : 'New Tab',
+                    thumbnail: null,
+                    isClosing: false,
+                    lastActiveAt: Date.now()
+                }]);
+            }
+            if (get().activeSpace === 'ghost' && window.electronAPI && window.electronAPI.clearGhostSession) {
+                window.electronAPI.clearGhostSession().catch(() => {});
+            }
+        }, 250);
         return;
     }
 
-    setList(list.map(t => t.id === id ? { ...t, isClosing: true } : t));
-    
+    // Mark closing tab and immediately transfer active status if this tab was active
+    let nextActiveId = null;
+    let nextUrl = '';
+
+    if (tabToClose.active) {
+        const remaining = list.filter(t => t.id !== id && !t.isClosing);
+        if (remaining.length > 0) {
+            const closedIdx = list.findIndex(t => t.id === id);
+            // Activate previous tab or next tab
+            const targetIdx = Math.max(0, closedIdx > 0 ? closedIdx - 1 : 0);
+            const targetTab = remaining[Math.min(targetIdx, remaining.length - 1)];
+            if (targetTab) {
+                nextActiveId = targetTab.id;
+                nextUrl = targetTab.url || '';
+            }
+        }
+    }
+
+    // Set closing flag; if it was active, seamlessly transfer active to next tab right away
+    setList(list.map(t => {
+        if (t.id === id) {
+            return { ...t, isClosing: true, thumbnail: null, active: false };
+        }
+        if (nextActiveId && t.id === nextActiveId) {
+            return { ...t, active: true };
+        }
+        return t;
+    }));
+
+    if (nextUrl !== undefined && nextActiveId) {
+        useUIStore.getState().setCurrentUrl(nextUrl);
+    }
+
     setTimeout(() => {
         const currentList = get().getActiveList();
         const newList = currentList.filter(t => t.id !== id);
         
-        if (tabToClose.active && newList.length > 0) {
-            const closedIdx = currentList.findIndex(t => t.id === id);
-            const nextIdx = Math.max(0, closedIdx > 0 ? closedIdx - 1 : 0);
-            newList[nextIdx].active = true;
-            useUIStore.getState().setCurrentUrl(newList[nextIdx].url);
+        // Guarantee at least one active tab exists
+        const hasActive = newList.some(t => t.active && !t.isClosing);
+        if (!hasActive && newList.length > 0) {
+            const targetIdx = 0;
+            newList.forEach((t, i) => {
+                t.active = i === targetIdx;
+            });
+            useUIStore.getState().setCurrentUrl(newList[targetIdx].url || '');
         }
         
         setList(newList);
-    }, 200);
-    useUIStore.getState().showToast('Tab closed');
+    }, 250);
   },
   suspendTab: (tabId) => {
     const list = get().getActiveList();
@@ -273,6 +399,16 @@ const useTabStore = create((set, get) => ({
         suspended: t.id === tabId ? false : t.suspended,
         lastActiveAt: t.id === tabId ? Date.now() : t.lastActiveAt
     })));
+  },
+
+  updateTabThumbnail: (tabId, thumbnail) => {
+    if (!tabId || !thumbnail) return;
+    const updateList = (list) => list.map(t => t.id === tabId ? { ...t, thumbnail } : t);
+    set(state => ({
+        privateTabs: updateList(state.privateTabs),
+        workTabs: updateList(state.workTabs),
+        ghostTabs: updateList(state.ghostTabs),
+    }));
   },
 
   handleToggleMute: (id, spaceType) => {
@@ -433,5 +569,9 @@ const useTabStore = create((set, get) => ({
     get().setGhostTabs(update(get().ghostTabs));
   }
 }));
+
+if (typeof window !== 'undefined') {
+  window.__tabStore = useTabStore;
+}
 
 export default useTabStore;

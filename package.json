@@ -54,11 +54,25 @@
   "build": {
     "appId": "com.qbrowse.app",
     "productName": "QBrowse",
+    "executableName": "QBrowse",
+    "copyright": "Copyright © 2026 QuBI",
     "directories": {
       "output": "dist_electron"
     },
     "win": {
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "target": [
+        "nsis"
+      ],
+      "legalTrademarks": "QBrowse"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "QBrowse",
+      "runAfterFinish": true
     },
     "asar": true,
     "asarUnpack": [

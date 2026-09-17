@@ -44,6 +44,7 @@ export default function QVaultPopover({ isClosing }) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [passkeyRpId, setPasskeyRpId] = useState('');
+    const [passkeyCredId, setPasskeyCredId] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     // Generator Tab State
@@ -77,6 +78,31 @@ export default function QVaultPopover({ isClosing }) {
             res += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         setGeneratedResult(res);
+    };
+
+    const generatePasskeyPair = async () => {
+        try {
+            const keyPair = await window.crypto.subtle.generateKey(
+                { name: "ECDSA", namedCurve: "P-256" },
+                true,
+                ["sign", "verify"]
+            );
+            const pubExport = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+            const privExport = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
+            const randomBytes = new Uint8Array(32);
+            window.crypto.getRandomValues(randomBytes);
+            const credIdHex = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            setPasskeyCredId(credIdHex);
+            setPassword(JSON.stringify({ publicKey: pubExport, privateKey: privExport }));
+            showToast('Generated cryptographic passkey pair!');
+        } catch (e) {
+            console.error("Passkey gen error:", e);
+            const fallbackCredId = 'pk_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36);
+            setPasskeyCredId(fallbackCredId);
+            setPassword('secret_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
+            showToast('Generated passkey credentials!');
+        }
     };
 
     const handleUnlockSubmit = async (e) => {
@@ -157,6 +183,7 @@ export default function QVaultPopover({ isClosing }) {
         }
         setUsername('');
         setPassword('');
+        setPasskeyCredId('');
     };
 
     const handleOpenEditForm = (item) => {
@@ -167,6 +194,7 @@ export default function QVaultPopover({ isClosing }) {
         setPassword(item.password || '');
         setUrl(item.url || '');
         setPasskeyRpId(item.passkeyData?.rpId || item.url || '');
+        setPasskeyCredId(item.passkeyData?.credentialId || '');
         setViewMode('add');
     };
 
@@ -193,9 +221,20 @@ export default function QVaultPopover({ isClosing }) {
         try {
             let passkeyData = null;
             if (newItemType === 'passkey') {
+                const credId = passkeyCredId.trim() || ('pk_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36));
+                const existingPubKey = (editingItemId && passwords.find(p => p.id === editingItemId)?.passkeyData?.publicKey) || null;
+                let pubKey = existingPubKey;
+                try {
+                    if (password && password.startsWith('{')) {
+                        const parsed = JSON.parse(password);
+                        if (parsed.publicKey) pubKey = parsed.publicKey;
+                    }
+                } catch {}
+
                 passkeyData = {
                     rpId: passkeyRpId || url || title,
-                    credentialId: 'pk_' + Math.random().toString(36).substring(2, 12),
+                    credentialId: credId,
+                    publicKey: pubKey,
                     created: Date.now()
                 };
             }
@@ -286,20 +325,21 @@ export default function QVaultPopover({ isClosing }) {
 
     // Process stored items
     const parsedItems = passwords.map(p => {
-        let meta = { type: 'login', passkeyData: null };
+        let meta = { type: p.itemType || 'login', passkeyData: p.passkeyData || null };
         let cleanTitle = p.title || '';
         if (cleanTitle.includes('|||')) {
             const parts = cleanTitle.split('|||');
             cleanTitle = parts[0];
             try {
-                meta = JSON.parse(parts[1]);
+                const parsed = JSON.parse(parts[1]);
+                meta = { type: parsed.type || meta.type, passkeyData: parsed.passkeyData || meta.passkeyData };
             } catch {}
         }
         return {
             ...p,
             title: cleanTitle,
-            itemType: meta.type || 'login',
-            passkeyData: meta.passkeyData || null
+            itemType: p.itemType || meta.type || 'login',
+            passkeyData: p.passkeyData || meta.passkeyData || null
         };
     });
 
@@ -325,10 +365,30 @@ export default function QVaultPopover({ isClosing }) {
         }
     })();
 
+    const domainsMatch = (d1, d2) => {
+        if (!d1 || !d2) return false;
+        const clean1 = String(d1).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+        const clean2 = String(d2).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+        if (clean1 === clean2) return true;
+        if (clean1.endsWith('.' + clean2) || clean2.endsWith('.' + clean1)) return true;
+        const getRoots = (h) => {
+            const parts = h.split('.');
+            const c = [h];
+            if (parts.length >= 2) c.push(parts.slice(-2).join('.'));
+            if (parts.length >= 3) c.push(parts.slice(-3).join('.'));
+            return c;
+        };
+        const r1 = getRoots(clean1);
+        const r2 = getRoots(clean2);
+        return r1.some(r => r2.includes(r));
+    };
+
     const matchingSiteItems = parsedItems.filter(item => {
         if (!currentDomain) return false;
-        const itemHost = (item.url || item.title || '').toLowerCase();
-        return itemHost.includes(currentDomain) || currentDomain.includes(itemHost);
+        const itemHost = item.url || item.title || '';
+        if (domainsMatch(currentDomain, itemHost)) return true;
+        if (item.passkeyData?.rpId && domainsMatch(currentDomain, item.passkeyData.rpId)) return true;
+        return false;
     });
 
     return (

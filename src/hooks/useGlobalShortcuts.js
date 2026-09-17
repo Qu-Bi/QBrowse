@@ -2,61 +2,138 @@ import { useEffect } from 'react';
 import useUIStore from '../store/useUIStore';
 import useTabStore from '../store/useTabStore';
 
+export const handleEscapeDismissal = () => {
+    const uiStore = useUIStore.getState();
+    const tabStore = useTabStore.getState();
+
+    // 1. Passkey Verification Prompt
+    if (uiStore.passkeyPrompt) {
+        if (window.electronAPI && window.electronAPI.respondPasskeyVerification) {
+            window.electronAPI.respondPasskeyVerification(uiStore.passkeyPrompt.requestId, false).catch(() => {});
+        }
+        uiStore.setPasskeyPrompt(null);
+        return true;
+    }
+
+    // 2. Context Menus (tab, folder, general)
+    if (uiStore.contextMenu || uiStore.tabContextMenu || uiStore.folderContextMenu) {
+        uiStore.closeContextMenus();
+        return true;
+    }
+
+    // 3. Active Popover (Vault, SiteInfo, DarkMode, Adblock, Media, Downloads, UserProfile)
+    if (uiStore.activePopover) {
+        uiStore.closePopover();
+        return true;
+    }
+
+    // 4. Active Download Popup
+    if (uiStore.activeDownloadPopup) {
+        uiStore.setActiveDownloadPopup(null);
+        return true;
+    }
+
+    // 5. Find in Page Bar
+    if (uiStore.isFindOpen) {
+        uiStore.setIsFindOpen(false);
+        return true;
+    }
+
+    // 6. Omnibox
+    if (uiStore.isOmniboxOpen) {
+        uiStore.closeOmnibox();
+        // Clean up empty newly-opened tab if it was created when opening omnibox
+        const activeSpace = tabStore.activeSpace;
+        const list = activeSpace === 'personal' ? tabStore.privateTabs : (activeSpace === 'work' ? tabStore.workTabs : tabStore.ghostTabs);
+        const activeTab = list.find(t => t.active);
+        if (activeTab && (!activeTab.url || activeTab.url === '' || activeTab.url === 'about:blank') && list.length > 1) {
+            tabStore.handleCloseTab(activeTab.id);
+        }
+        return true;
+    }
+
+    // 7. Tab Switcher Overlay (Ctrl+Tab switcher)
+    if (uiStore.showSwitcher) {
+        if (uiStore.cancelSwitcher) uiStore.cancelSwitcher();
+        else uiStore.setShowSwitcher(false);
+        return true;
+    }
+
+    // 8. Tab Map (Mission Control)
+    if (uiStore.isTabMapOpen) {
+        uiStore.closeTabMap();
+        return true;
+    }
+
+    // 9. Active Modal (Settings, History, Auth, Cookies, AddPin, Onboarding, Tutorial)
+    if (uiStore.activeModal) {
+        uiStore.closeModal();
+        return true;
+    }
+
+    // 10. Peek Preview Window
+    if (uiStore.peekWindow) {
+        uiStore.closePeek();
+        return true;
+    }
+
+    // 11. Custom Picture-in-Picture Window
+    if (uiStore.pipWindow) {
+        uiStore.closePip();
+        return true;
+    }
+
+    // 12. Right Panel (Tool Hub / AI Assistant / Downloads)
+    if (uiStore.isRightPanelOpen) {
+        uiStore.setIsRightPanelOpen(false);
+        return true;
+    }
+
+    // 13. Hover Preview
+    if (uiStore.hoverPreview) {
+        uiStore.setHoverPreview(null);
+        return true;
+    }
+
+    // 14. Fullscreen Mode
+    if (uiStore.isFullscreen || uiStore.isWebviewFullscreen) {
+        if (window.electronAPI && window.electronAPI.setFullscreen) {
+            window.electronAPI.setFullscreen(false);
+        }
+        uiStore.setIsFullscreen(false);
+        uiStore.setIsWebviewFullscreen(false);
+        return true;
+    }
+
+    // 15. Focused Input / Textarea inside the browser UI
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.isContentEditable)) {
+        document.activeElement.blur();
+        return true;
+    }
+
+    return false;
+};
+
 export default function useGlobalShortcuts() {
     useEffect(() => {
         const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                const handled = handleEscapeDismissal();
+                if (handled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                return;
+            }
+
             // Do not trigger global shortcuts if the user is typing in an input or textarea
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-                // Allow Escape to close inputs like Omnibox or Find, but let the component handle it locally if needed
-                if (e.key === 'Escape') {
-                    // Let UI handle it natively
-                } else {
-                    return;
-                }
+                return;
             }
 
             const cmdOrCtrl = e.metaKey || e.ctrlKey;
             const uiStore = useUIStore.getState();
             const tabStore = useTabStore.getState();
-
-            if (e.key === 'Escape') {
-                if (uiStore.activePopover || uiStore.contextMenu || uiStore.tabContextMenu) {
-                    e.preventDefault();
-                    uiStore.closePopover();
-                    uiStore.closeContextMenus();
-                    return;
-                }
-                if (uiStore.isFindOpen) {
-                    e.preventDefault();
-                    uiStore.setIsFindOpen(false);
-                    return;
-                }
-                if (uiStore.isOmniboxOpen) {
-                    e.preventDefault();
-                    uiStore.closeOmnibox();
-                    return;
-                }
-                if (uiStore.isTabMapOpen) {
-                    e.preventDefault();
-                    uiStore.closeTabMap();
-                    return;
-                }
-                if (uiStore.activeModal) {
-                    e.preventDefault();
-                    uiStore.closeModal();
-                    return;
-                }
-                if (uiStore.peekWindow) {
-                    e.preventDefault();
-                    uiStore.closePeek();
-                    return;
-                }
-                if (uiStore.isRightPanelOpen) {
-                    e.preventDefault();
-                    uiStore.setIsRightPanelOpen(false);
-                    return;
-                }
-            }
 
             if (e.key === 'F11') {
                 e.preventDefault();
@@ -151,12 +228,10 @@ export default function useGlobalShortcuts() {
                         break;
                     case 'tab':
                         e.preventDefault();
-                        if (!window.__tabSwitcherTimer && !uiStore.showSwitcher) {
-                            // Fast switch placeholder
-                            // Wait a short bit before showing the heavy UI
-                            window.__tabSwitcherTimer = setTimeout(() => {
-                                uiStore.setShowSwitcher(true);
-                            }, 200);
+                        if (!uiStore.showSwitcher) {
+                            uiStore.openSwitcher();
+                        } else {
+                            uiStore.cycleSwitcher(e.shiftKey ? -1 : 1);
                         }
                         break;
                     case '+':
@@ -179,36 +254,10 @@ export default function useGlobalShortcuts() {
         };
 
         const handleKeyUp = (e) => {
-            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-            const cmdOrCtrlKey = isMac ? 'Meta' : 'Control';
-
-            if (e.key === cmdOrCtrlKey) {
-                let wasFastClick = false;
-                if (window.__tabSwitcherTimer) {
-                    clearTimeout(window.__tabSwitcherTimer);
-                    window.__tabSwitcherTimer = null;
-                    wasFastClick = true;
-                }
+            if (e.key === 'Control' || e.key === 'Meta') {
                 const uiStore = useUIStore.getState();
                 if (uiStore.showSwitcher) {
-                    uiStore.setShowSwitcher(false);
-                } else if (wasFastClick) {
-                    // FAST CLICK LOGIC: switch to previous tab
-                    const tabStore = useTabStore.getState();
-                    const allTabs = [
-                        ...tabStore.privateTabs.map(t => ({...t, spaceType: 'personal'})),
-                        ...tabStore.workTabs.map(t => ({...t, spaceType: 'work'})),
-                        ...tabStore.ghostTabs.map(t => ({...t, spaceType: 'ghost'}))
-                    ];
-                    
-                    const currentActive = allTabs.find(t => t.active && t.spaceType === tabStore.activeSpace);
-                    const others = allTabs.filter(t => t.id !== currentActive?.id);
-                    others.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
-                    
-                    const previous = others[0];
-                    if (previous) {
-                        tabStore.handleSwitchToTab(previous.id, previous.spaceType);
-                    }
+                    uiStore.confirmSwitcher();
                 }
             }
         };
@@ -242,8 +291,7 @@ export default function useGlobalShortcuts() {
                 }
                 
                 if (shortcut === 'escape') {
-                    if (uiStore.activePopover) uiStore.togglePopover(null);
-                    if (uiStore.isFindOpen) uiStore.setIsFindOpen(false);
+                    handleEscapeDismissal();
                     return;
                 }
                 
@@ -311,10 +359,11 @@ export default function useGlobalShortcuts() {
                             uiStore.setIsFindOpen(!uiStore.isFindOpen);
                             break;
                         case 'tab':
-                            if (!window.__tabSwitcherTimer && !uiStore.showSwitcher) {
-                                window.__tabSwitcherTimer = setTimeout(() => {
-                                    uiStore.setShowSwitcher(true);
-                                }, 200);
+                            const ui = useUIStore.getState();
+                            if (!ui.showSwitcher) {
+                                ui.openSwitcher();
+                            } else {
+                                ui.cycleSwitcher(shift ? -1 : 1);
                             }
                             break;
                         case '+':
@@ -344,10 +393,21 @@ export default function useGlobalShortcuts() {
             });
         }
 
+        if (window.electronAPI && window.electronAPI.onGlobalKeyUp) {
+            window.electronAPI.onGlobalKeyUp((data) => {
+                if (data.key === 'Control' || data.key === 'Meta') {
+                    const ui = useUIStore.getState();
+                    if (ui.showSwitcher) {
+                        ui.confirmSwitcher();
+                    }
+                }
+            });
+        }
+
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
-            if (window.__tabSwitcherTimer) clearTimeout(window.__tabSwitcherTimer);
+            if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
         };
     }, []);
 }

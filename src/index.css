@@ -156,3 +156,57 @@ body {
 .animate-spin-slow {
   animation: spinSlow 15s linear infinite;
 }
+
+@keyframes faceIdLaser {
+  0% { transform: translateY(-120%); opacity: 0; }
+  25% { opacity: 0.9; }
+  75% { opacity: 0.9; }
+  100% { transform: translateY(120%); opacity: 0; }
+}
+
+@keyframes checkmarkBloom {
+  0% { transform: scale(0.5) rotate(-15deg); opacity: 0; }
+  60% { transform: scale(1.18) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes successGlowPulse {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+  60% { box-shadow: 0 0 0 28px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+
+.animate-faceid-laser {
+  animation: faceIdLaser 1.5s ease-in-out infinite;
+}
+
+.animate-checkmark-bloom {
+  animation: checkmarkBloom 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-success-pulse {
+  animation: successGlowPulse 1.2s ease-out forwards;
+}
+
+/* Silky Smooth Tab & Webview Closing System */
+.tab-closing-anim {
+  max-height: 0px !important;
+  margin-top: 0px !important;
+  margin-bottom: 0px !important;
+  padding-top: 0px !important;
+  padding-bottom: 0px !important;
+  opacity: 0 !important;
+  transform: translateX(-16px) scale(0.9) !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  border-color: transparent !important;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+.webview-closing-anim {
+  transform: scale(0.96) !important;
+  opacity: 0 !important;
+  filter: blur(4px) !important;
+  pointer-events: none !important;
+  transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}

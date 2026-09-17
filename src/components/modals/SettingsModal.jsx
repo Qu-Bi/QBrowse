@@ -3,7 +3,8 @@ import {
     Palette, Shield, Cpu, ShieldAlert, Search, Download, X, 
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, 
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
-    Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor
+    Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
+    UploadCloud
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
@@ -732,6 +733,16 @@ const SettingsModal = () => {
                                             >
                                                 <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
                                                 {isSyncing ? 'Syncing...' : 'Sync Now'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    useSyncStore.getState().pushManualBackup('Manual Snapshot from Settings');
+                                                }}
+                                                className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+                                                title="Push Cloud Backup Version"
+                                            >
+                                                <UploadCloud size={13} className="text-accent" />
+                                                Push Backup
                                             </button>
                                             <button
                                                 onClick={logout}

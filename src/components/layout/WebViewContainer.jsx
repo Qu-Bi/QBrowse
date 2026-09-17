@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import useTabStore from '../../store/useTabStore';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
+import useVaultStore from '../../store/useVaultStore';
+import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import FlagsPage from '../pages/FlagsPage';
 
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
-const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions }) => {
+const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions }) => {
     const wvRef = useRef(null);
     const isInternalNavigation = useRef(false);
     const isDomReadyRef = useRef(false);
@@ -22,6 +24,20 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         }
         return u;
     });
+
+    const showSwitcher = useUIStore(state => state.showSwitcher);
+    useEffect(() => {
+        if (showSwitcher && isActive && isSpaceActive && wvRef.current && isDomReadyRef.current && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
+            try {
+                wvRef.current.capturePage().then(img => {
+                    if (!img) return;
+                    const thumbnail = img.toDataURL();
+                    setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
+                    useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                }).catch(() => {});
+            } catch(e) {}
+        }
+    }, [showSwitcher, isActive, isSpaceActive, setSpaceTabs, tab.id, tab.isClosing, tab.url]);
 
     // CSS for custom scrollbars
     const customScrollbarCSS = `
@@ -106,6 +122,8 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         const wv = wvRef.current;
         if (!wv) return;
 
+        const defaultFallbackTitle = space === 'ghost' ? 'New Incognito Tab' : 'New Tab';
+
         const handleNavigate = (e) => {
             isInternalNavigation.current = true;
             setSpaceTabs(prev => {
@@ -114,7 +132,7 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
                     const history = currentTab.history || [];
                     const currentIdx = currentTab.historyIndex !== undefined ? currentTab.historyIndex : -1;
                     const newHistory = [...history.slice(0, currentIdx + 1), e.url];
-                    const targetTitle = (e.url === 'about:blank' || !e.url) ? 'New Tab' : (currentTab.title || 'New Tab');
+                    const targetTitle = (e.url === 'about:blank' || !e.url) ? defaultFallbackTitle : (currentTab.title || defaultFallbackTitle);
                     return prev.map(t => t.id === tab.id ? { ...t, url: e.url, title: targetTitle, history: newHistory, historyIndex: newHistory.length - 1 } : t);
                 }
                 return prev;
@@ -122,17 +140,17 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
             if (isActive && isSpaceActive) {
                 useUIStore.getState().setCurrentUrl(e.url);
             }
-            if (e.url !== 'about:blank') {
+            if (e.url !== 'about:blank' && space !== 'ghost') {
                 useHistoryStore.getState().addEntry(e.url, e.url); // Initial entry without title
             }
         };
 
         const handleTitleUpdate = (e) => {
             const rawTitle = e.title ? e.title.trim() : '';
-            const newTitle = (rawTitle && rawTitle !== 'about:blank') ? rawTitle : 'New Tab';
+            const newTitle = (rawTitle && rawTitle !== 'about:blank') ? rawTitle : defaultFallbackTitle;
             setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, title: newTitle } : t));
             const currentUrl = wvRef.current?.getURL();
-            if (currentUrl && currentUrl !== 'about:blank') {
+            if (currentUrl && currentUrl !== 'about:blank' && space !== 'ghost') {
                 useHistoryStore.getState().updateLatestTitle(currentUrl, newTitle);
             }
         };
@@ -168,12 +186,13 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         };
 
         let captureInterval;
-        if (isActive && isSpaceActive) {
+        if (isActive && isSpaceActive && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
             captureInterval = setInterval(() => {
-                if (!wv || !isDomReadyRef.current || wv.hasCrashed) return;
+                if (!wv || !isDomReadyRef.current || wv.hasCrashed || tab.isClosing) return;
                 try {
                     if (typeof wv.isLoading === 'function' && wv.isLoading()) return;
                     wv.capturePage().then(img => {
+                        if (!img || tab.isClosing) return;
                         const thumbnail = img.toDataURL();
                         setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
                     }).catch(()=>{});
@@ -182,9 +201,10 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         }
 
         const handleStopLoading = () => {
-            if (isActive && isSpaceActive && isDomReadyRef.current && !wv.hasCrashed) {
+            if (isActive && isSpaceActive && isDomReadyRef.current && !wv.hasCrashed && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
                 try {
                     wv.capturePage().then(img => {
+                        if (!img || tab.isClosing) return;
                         const thumbnail = img.toDataURL();
                         setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
                     }).catch(()=>{});
@@ -318,6 +338,43 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
                     });
                     useTabStore.getState().updateTabAudible(tab.id, !!data.isPlaying);
                 }
+            } else if (e.channel === 'webauthn-credential-created') {
+                const data = e.args && e.args[0];
+                if (data) {
+                    console.log("[QVault WebAuthn] Received webauthn-credential-created in UI:", data.hostname);
+                    useVaultStore.getState().addNewItem({
+                        type: 'passkey',
+                        title: data.hostname,
+                        url: `https://${data.hostname}`,
+                        username: data.username || '',
+                        passkeyData: {
+                            rpId: data.rpId || data.hostname,
+                            credentialId: data.credentialId,
+                            publicKey: data.publicKey || null,
+                            privateKey: data.privateKey || null,
+                            created: Date.now()
+                        }
+                    }).then(() => {
+                        console.log("[QVault WebAuthn] Passkey saved successfully to vault for", data.hostname);
+                        useUIStore.getState().showToast(`Saved QVault passkey for ${data.hostname}!`);
+                    }).catch(err => {
+                        console.error("[QVault WebAuthn] Failed to save passkey:", err);
+                        useUIStore.getState().showToast(`Failed to save passkey: ${err.message}`, 'error');
+                    });
+                    if (data.autoOpen) {
+                        useUIStore.getState().openPopover('vault');
+                    }
+                }
+            } else if (e.channel === 'webauthn-used') {
+                const data = e.args && e.args[0];
+                if (data) {
+                    useUIStore.getState().showToast(`Signed in to ${data.hostname} using QVault passkey!`);
+                }
+            } else if (e.channel === 'webauthn-no-passkey') {
+                const data = e.args && e.args[0];
+                if (data) {
+                    useUIStore.getState().showToast(`No QVault passkey found for ${data.hostname}`, 'info');
+                }
             }
         };
 
@@ -396,9 +453,36 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         if (!wv) return;
 
         const handleBeforeInput = (e) => {
+            if (e.type === 'keyUp') {
+                if (e.key === 'Control' || e.key === 'Meta') {
+                    const uiStore = useUIStore.getState();
+                    if (uiStore.showSwitcher) {
+                        uiStore.confirmSwitcher();
+                    }
+                    const event = new KeyboardEvent('keyup', {
+                        key: e.key,
+                        code: e.code,
+                        bubbles: true,
+                        cancelable: true,
+                    });
+                    window.dispatchEvent(event);
+                }
+                return;
+            }
             if (e.type !== 'keyDown') return;
+
             if ((e.control || e.meta) && e.key.toLowerCase() === 'r') {
                 try { wv.reload(); } catch(err) {}
+            }
+            if ((e.control || e.meta) && e.key.toLowerCase() === 'tab') {
+                try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+                const ui = useUIStore.getState();
+                if (!ui.showSwitcher) {
+                    ui.openSwitcher();
+                } else {
+                    ui.cycleSwitcher(e.shift ? -1 : 1);
+                }
+                return;
             }
             // Fullscreen controls
             if (e.key === 'F11') {
@@ -409,12 +493,12 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
                 useUIStore.getState().setIsFullscreen(!isFs);
                 return;
             }
-            if (e.key === 'Escape' && useUIStore.getState().isFullscreen) {
-                if (window.electronAPI && window.electronAPI.setFullscreen) {
-                    window.electronAPI.setFullscreen(false);
+            if (e.key === 'Escape') {
+                const handled = handleEscapeDismissal();
+                if (handled) {
+                    try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+                    return;
                 }
-                useUIStore.getState().setIsFullscreen(false);
-                return;
             }
 
             // Dispatch global shortcuts back to the window
@@ -475,14 +559,20 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
 
         if (isDomReadyRef.current) {
             applySmartDark();
-        } else {
-            const onReady = () => {
-                applySmartDark();
-                wv.removeEventListener('dom-ready', onReady);
-            };
-            wv.addEventListener('dom-ready', onReady);
         }
+        
+        const onNav = () => applySmartDark();
+        wv.addEventListener('dom-ready', onNav);
+        wv.addEventListener('did-finish-load', onNav);
+        wv.addEventListener('did-navigate', onNav);
+        wv.addEventListener('did-navigate-in-page', onNav);
 
+        return () => {
+            wv.removeEventListener('dom-ready', onNav);
+            wv.removeEventListener('did-finish-load', onNav);
+            wv.removeEventListener('did-navigate', onNav);
+            wv.removeEventListener('did-navigate-in-page', onNav);
+        };
     }, [isForceDark, tab.url, darkExclusions]);
 
     const isFlagsPage = tab.url && (tab.url.startsWith('qbrowse://flags') || tab.url.startsWith('chrome://flags') || tab.url.startsWith('about:flags'));
@@ -499,25 +589,33 @@ const WebViewItem = ({ tab, isVisible, isActive, isSpaceActive, setSpaceTabs, zo
         );
     }
 
+    const shouldShow = isVisible && !tab.isClosing;
+
     return (
-        <div className={`w-full absolute bg-transparent transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]`} style={{ 
-            top: '0px',
-            left: '0px',
-            width: '100%',
-            height: '100%',
-            zIndex: isVisible ? 10 : -1,
-            opacity: isVisible ? 1 : 0,
-            pointerEvents: isVisible ? 'auto' : 'none'
-        }}>
+        <div 
+            className={`w-full absolute bg-transparent transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                tab.isClosing ? 'webview-closing-anim' : ''
+            }`} 
+            style={{ 
+                top: '0px',
+                left: '0px',
+                width: '100%',
+                height: '100%',
+                zIndex: shouldShow ? 10 : -1,
+                opacity: shouldShow ? 1 : 0,
+                pointerEvents: shouldShow ? 'auto' : 'none'
+            }}
+        >
             <webview
                 ref={wvRef}
                 id={`webview-${tab.id}`}
                 src={initialUrl}
+                partition={space === 'ghost' ? 'ghost' : undefined}
                 className="w-full h-full"
                 style={{ display: 'flex' }}
                 allowpopups="true"
-                useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-                webpreferences="autoplayPolicy=no-user-gesture-required"
+                plugins="true"
+                webpreferences="autoplayPolicy=no-user-gesture-required,plugins=yes"
             />
         </div>
     );
@@ -528,7 +626,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
     privateTabs, workTabs, ghostTabs, activeSpace,
     setPrivateTabs, setWorkTabs, setGhostTabs
   } = useTabStore();
-  const { isSidebarHidden, isRightPanelOpen, isFullscreen, isSplitView, splitRightTabId, zoomLevel, showSwitcher, currentUrl, isForceDark, darkExclusions } = useUIStore();
+  const { isSidebarHidden, isRightPanelOpen, isFullscreen, isSplitView, splitRightTabId, zoomLevel, showSwitcherUI, currentUrl, isForceDark, darkExclusions } = useUIStore();
 
   const isSpaceActive = activeSpace === space;
   let spaceTabs = [];
@@ -566,12 +664,13 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
           }
 
           const isActive = activeTab && tab.id === activeTab.id;
-          const isVisible = isActive && isSpaceActive && !showSwitcher;
+          const isVisible = isActive && isSpaceActive && !showSwitcherUI;
 
           return (
               <WebViewItem 
                   key={tab.id} 
                   tab={tab} 
+                  space={space}
                   isVisible={isVisible}
                   isActive={isActive}
                   isSpaceActive={isSpaceActive}

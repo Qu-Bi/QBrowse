@@ -1,11 +1,21 @@
 import { create } from 'zustand';
 import { unlockVault, unlockVaultWindowsHello, getPasswords, addPassword, deletePassword, updatePassword } from '../services/electronIPC';
 
+const triggerVaultSync = () => {
+    import('./useSyncStore').then(m => {
+        const syncStore = m.default.getState();
+        if (syncStore.syncCategories?.vault !== false) {
+            syncStore.syncDataToCloud('vault', useVaultStore.getState().passwords || []);
+        }
+    }).catch(() => {});
+};
+
 const useVaultStore = create((set, get) => ({
     isUnlocked: false,
     masterPassword: '',
     pinCode: localStorage.getItem('qbrowse_vault_pin') || '',
     passwords: [],
+    cloudVaultBackup: null,
     isLoading: false,
     error: null,
 
@@ -16,6 +26,11 @@ const useVaultStore = create((set, get) => ({
             if (unlocked) {
                 set({ isUnlocked: true, masterPassword: password, isLoading: false });
                 await get().fetchPasswords();
+                const { cloudVaultBackup } = get();
+                if (cloudVaultBackup) {
+                    await get().mergeRemoteVault(cloudVaultBackup);
+                    set({ cloudVaultBackup: null });
+                }
                 return true;
             } else {
                 set({ error: 'Invalid master password', isLoading: false });
@@ -34,6 +49,11 @@ const useVaultStore = create((set, get) => ({
             if (success) {
                 set({ isUnlocked: true, isLoading: false });
                 await get().fetchPasswords();
+                const { cloudVaultBackup } = get();
+                if (cloudVaultBackup) {
+                    await get().mergeRemoteVault(cloudVaultBackup);
+                    set({ cloudVaultBackup: null });
+                }
                 return true;
             } else {
                 set({ error: 'Windows Security authentication failed', isLoading: false });
@@ -58,6 +78,12 @@ const useVaultStore = create((set, get) => ({
                 return await get().unlock(storedPass);
             } else {
                 set({ isUnlocked: true });
+                await get().fetchPasswords();
+                const { cloudVaultBackup } = get();
+                if (cloudVaultBackup) {
+                    await get().mergeRemoteVault(cloudVaultBackup);
+                    set({ cloudVaultBackup: null });
+                }
                 return true;
             }
         } else {
@@ -88,15 +114,46 @@ const useVaultStore = create((set, get) => ({
         }
     },
 
+    mergeRemoteVault: async (remoteVault) => {
+        if (!Array.isArray(remoteVault)) return;
+        const { isUnlocked, masterPassword, passwords } = get();
+        if (!isUnlocked) {
+            set({ cloudVaultBackup: remoteVault });
+            return;
+        }
+        let addedAny = false;
+        for (const remoteItem of remoteVault) {
+            const exists = passwords.some(p => String(p.id) === String(remoteItem.id) || (p.title === remoteItem.title && p.username === remoteItem.username && p.itemType === remoteItem.itemType));
+            if (!exists) {
+                try {
+                    const payload = {
+                        type: remoteItem.itemType || 'login',
+                        notes: remoteItem.notes || '',
+                        passkeyData: remoteItem.passkeyData || null
+                    };
+                    const jsonPayload = JSON.stringify(payload);
+                    const combinedTitle = `${remoteItem.title}|||${jsonPayload}`;
+                    await addPassword(combinedTitle, remoteItem.username || '', remoteItem.password || '', remoteItem.url || '', masterPassword);
+                    addedAny = true;
+                } catch (e) {
+                    console.warn("[VaultStore] Failed to merge remote item:", remoteItem.title, e);
+                }
+            }
+        }
+        if (addedAny) {
+            await get().fetchPasswords();
+            triggerVaultSync();
+        }
+    },
+
     addNewItem: async ({ type = 'login', title, username = '', password = '', url = '', passkeyData = null, notes = '' }) => {
         const { isUnlocked, masterPassword } = get();
-        if (!isUnlocked) throw new Error("Vault is locked");
+        console.log("[VaultStore Debug] addNewItem called:", { type, title, username, url, isUnlocked });
 
         set({ isLoading: true });
         try {
-            // Format item metadata inside entry
             const payload = {
-                type, // 'login' | 'passkey' | 'note'
+                type,
                 notes,
                 passkeyData: type === 'passkey' ? (passkeyData || { rpId: url, created: Date.now() }) : null
             };
@@ -104,8 +161,14 @@ const useVaultStore = create((set, get) => ({
             const combinedTitle = `${title}|||${jsonPayload}`;
 
             await addPassword(combinedTitle, username, password, url, masterPassword);
-            await get().fetchPasswords();
+            console.log("[VaultStore Debug] addPassword IPC resolved successfully for:", title);
+            if (isUnlocked) {
+                await get().fetchPasswords();
+            }
+            set({ isLoading: false });
+            triggerVaultSync();
         } catch (err) {
+            console.error("[VaultStore Debug] addNewItem error:", err);
             set({ error: err.message, isLoading: false });
             throw err;
         }
@@ -125,6 +188,7 @@ const useVaultStore = create((set, get) => ({
                     isLoading: false
                 };
             });
+            triggerVaultSync();
             return res;
         } catch (err) {
             console.error('[VaultStore Debug] deleteItem error:', err);
@@ -147,6 +211,7 @@ const useVaultStore = create((set, get) => ({
             await updatePassword(id, combinedTitle, username, password, url);
             await get().fetchPasswords();
             set({ isLoading: false });
+            triggerVaultSync();
         } catch (err) {
             console.error("updateItem error:", err);
             set({ error: err.message, isLoading: false });

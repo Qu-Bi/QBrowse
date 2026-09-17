@@ -20,6 +20,7 @@ import CookiesModal from './components/modals/CookiesModal';
 import OnboardingWizard from './components/modals/OnboardingWizard';
 import TutorialWizard from './components/modals/TutorialWizard';
 import AddPinModal from './components/modals/AddPinModal';
+import PasskeyVerificationModal from './components/modals/PasskeyVerificationModal';
 import Overlays from './components/common/Overlays';
 import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
@@ -128,6 +129,12 @@ export default function App() {
                         status: metrics.status,
                         metrics: metrics
                     });
+                });
+            }
+            if (window.electronAPI.onPasskeyPrompt) {
+                window.electronAPI.onPasskeyPrompt((promptData) => {
+                    console.log("[App] Received passkey verification prompt:", promptData);
+                    useUIStore.getState().setPasskeyPrompt(promptData);
                 });
             }
         }
@@ -254,6 +261,7 @@ export default function App() {
                 <OnboardingWizard />
                 <TutorialWizard />
                 <AddPinModal />
+                <PasskeyVerificationModal />
 
                 <Overlays />
                 <TabSwitcherOverlay />

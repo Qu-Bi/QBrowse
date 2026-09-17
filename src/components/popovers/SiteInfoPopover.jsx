@@ -38,7 +38,7 @@ export default function SiteInfoPopover({ isClosing }) {
                 setDomain(cleanDomain);
 
                 if (window.electronAPI && window.electronAPI.getCookies) {
-                    window.electronAPI.getCookies({ domain: cleanDomain }).then(cookies => {
+                    window.electronAPI.getCookies({ domain: cleanDomain, partition: isIncognito ? 'ghost' : undefined }).then(cookies => {
                         setCookiesCount(cookies.length);
                     }).catch(() => setCookiesCount(0));
                 }
@@ -54,7 +54,7 @@ export default function SiteInfoPopover({ isClosing }) {
                 setDomain('');
             }
         }
-    }, [currentTab]);
+    }, [currentTab, isIncognito]);
 
     const handlePermissionChange = async (permKey, value) => {
         setPermissions(prev => ({ ...prev, [permKey]: value }));
@@ -68,7 +68,7 @@ export default function SiteInfoPopover({ isClosing }) {
         if (!domain) return;
         setIsClearing(true);
         if (window.electronAPI && window.electronAPI.clearSiteCookies) {
-            const count = await window.electronAPI.clearSiteCookies(domain);
+            const count = await window.electronAPI.clearSiteCookies(domain, isIncognito ? 'ghost' : undefined);
             showToast(`Cleared site data (${count || cookiesCount} items)`);
             setCookiesCount(0);
         }

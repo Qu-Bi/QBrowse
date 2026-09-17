@@ -68,6 +68,48 @@ const useHistoryStore = create((set, get) => ({
         });
     },
 
+    mergeRemoteHistory: (remoteHistory) => {
+        if (!Array.isArray(remoteHistory) || remoteHistory.length === 0) return;
+        set(state => {
+            const historyMap = new Map();
+            // Load current local history
+            state.history.forEach(item => {
+                if (item && item.url) historyMap.set(item.url, { ...item });
+            });
+            // Merge remote items
+            remoteHistory.forEach(remoteItem => {
+                if (!remoteItem || !remoteItem.url) return;
+                const existing = historyMap.get(remoteItem.url);
+                if (existing) {
+                    historyMap.set(remoteItem.url, {
+                        ...existing,
+                        title: (remoteItem.title && remoteItem.title !== remoteItem.url) ? remoteItem.title : existing.title,
+                        lastVisit: Math.max(existing.lastVisit || 0, remoteItem.lastVisit || 0),
+                        visits: Math.max(existing.visits || 1, remoteItem.visits || 1)
+                    });
+                } else {
+                    historyMap.set(remoteItem.url, {
+                        id: remoteItem.id || `cloud-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        url: remoteItem.url,
+                        title: remoteItem.title || remoteItem.url,
+                        lastVisit: remoteItem.lastVisit || Date.now(),
+                        visits: remoteItem.visits || 1
+                    });
+                }
+            });
+
+            const merged = Array.from(historyMap.values())
+                .sort((a, b) => (b.lastVisit || 0) - (a.lastVisit || 0))
+                .slice(0, 1000);
+
+            try {
+                localStorage.setItem('qbrowse_history', JSON.stringify(merged));
+            } catch (e) {}
+
+            return { history: merged };
+        });
+    },
+
     clearHistory: () => {
         set({ history: [] });
         try {

@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPasswords: () => ipcRenderer.invoke('vault-get-passwords'),
     getMatchingCredentials: (hostname) => ipcRenderer.invoke('vault-get-matching', hostname),
     changeMasterPassword: (oldPass, newPass) => ipcRenderer.invoke('vault-change-password', oldPass, newPass),
+    checkVaultPassword: (password) => ipcRenderer.invoke('vault-check-password', password),
+    verifyWindowsHello: (message) => ipcRenderer.invoke('verify-windows-hello', message),
+    respondPasskeyVerification: (requestId, verified) => ipcRenderer.invoke('respond-passkey-verification', { requestId, verified }),
+    onPasskeyPrompt: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('prompt-passkey-verification', handler);
+        return () => ipcRenderer.removeListener('prompt-passkey-verification', handler);
+    },
 
     // Local AI & llama.cpp
     startLocalAi: () => ipcRenderer.invoke('start-local-ai'),
@@ -76,6 +84,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.removeAllListeners('global-shortcut');
         ipcRenderer.on('global-shortcut', (event, data) => callback(data));
     },
+    onGlobalKeyUp: (callback) => {
+        ipcRenderer.removeAllListeners('global-keyup');
+        ipcRenderer.on('global-keyup', (event, data) => callback(data));
+    },
 
     // Adblocker
     setAdblock: (active) => ipcRenderer.send('set-adblock', active),
@@ -107,6 +119,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeCookie: (url, name) => ipcRenderer.invoke('remove-cookie', url, name),
     clearSiteCookies: (domain) => ipcRenderer.invoke('clear-site-cookies', domain),
     clearAllData: (options) => ipcRenderer.invoke('clear-all-data', options),
+    clearGhostSession: () => ipcRenderer.invoke('clear-ghost-session'),
     getSitePermissions: (domain) => ipcRenderer.invoke('get-site-permissions', domain),
     setSitePermission: (domain, permission, value) => ipcRenderer.invoke('set-site-permission', domain, permission, value),
     getAllSitePermissions: () => ipcRenderer.invoke('get-all-site-permissions'),

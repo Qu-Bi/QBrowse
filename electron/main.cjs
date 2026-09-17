@@ -19,7 +19,7 @@ ipcMain.handle('write-clipboard-text', (event, text) => {
         return false;
     }
 });
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
 
@@ -43,7 +43,8 @@ app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,Med
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-// Vault setup
+// Settings & Vault setup
+let settingsStore = {};
 const appDataPath = app.getPath('userData');
 const vaultPath = path.join(appDataPath, 'vault.json');
 let masterKey = null;
@@ -127,6 +128,7 @@ function createWindow() {
           }
       }
   });
+}
 
   // Setup Ghostery Adblocker (EasyList + EasyPrivacy)
   let isNativeAdblockActive = true;
@@ -150,56 +152,66 @@ function createWindow() {
 
   const { fromElectronDetails } = require('@ghostery/adblocker-electron');
 
+  function applyAdblockerToSession(sess) {
+      if (!sess || !sess.webRequest) return;
+      try {
+          sess.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+              if (!isNativeAdblockActive) return callback({ cancel: false });
+              
+              const url = details.url;
+              if (!url) return callback({ cancel: false });
+              const u = url.toLowerCase();
+
+              // HYBRID BYPASS: Instantly allow media streams before Ghostery serialization to prevent IPC crash
+              if (
+                  u.includes('googlevideo.com/videoplayback') ||
+                  u.includes('manifest.googlevideo.com') ||
+                  u.includes('.ttvnw.net/v1/')
+              ) {
+                  return callback({ cancel: false });
+              }
+
+              // Social Tracking Check
+              const isSocialBlocked = settingsStore.social !== false;
+              if (isSocialBlocked) {
+                  if (
+                      u.includes('connect.facebook.net') ||
+                      u.includes('facebook.com/tr') ||
+                      u.includes('static.ads-twitter.com') ||
+                      u.includes('analytics.tiktok.com') ||
+                      u.includes('snap.licdn.com')
+                  ) {
+                      return callback({ cancel: true });
+                  }
+              }
+
+              if (!globalBlocker) {
+                  return callback({ cancel: false });
+              }
+
+              // Feed to Ghostery manually
+              try {
+                  const requestObj = fromElectronDetails(details);
+                  const match = globalBlocker.match(requestObj);
+                  
+                  if (match.match) {
+                      if (mainWindow && !mainWindow.isDestroyed()) {
+                          mainWindow.webContents.send('tracker-blocked', url);
+                      }
+                      return callback({ cancel: true });
+                  }
+                  callback({ cancel: false });
+              } catch(e) {
+                  callback({ cancel: false });
+              }
+          });
+      } catch(e) {
+          console.warn('[Adblocker] Failed to attach to session:', e);
+      }
+  }
+
   ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
       globalBlocker = blocker;
-      
-      session.defaultSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-          if (!isNativeAdblockActive) return callback({ cancel: false });
-          
-          const url = details.url;
-          if (!url) return callback({ cancel: false });
-          const u = url.toLowerCase();
-
-          // HYBRID BYPASS: Instantly allow media streams before Ghostery serialization to prevent IPC crash
-          if (
-              u.includes('googlevideo.com/videoplayback') ||
-              u.includes('manifest.googlevideo.com') ||
-              u.includes('.ttvnw.net/v1/')
-          ) {
-              return callback({ cancel: false });
-          }
-
-          // Social Tracking Check
-          const isSocialBlocked = settingsStore.social !== false;
-          if (isSocialBlocked) {
-              if (
-                  u.includes('connect.facebook.net') ||
-                  u.includes('facebook.com/tr') ||
-                  u.includes('static.ads-twitter.com') ||
-                  u.includes('analytics.tiktok.com') ||
-                  u.includes('snap.licdn.com')
-              ) {
-                  return callback({ cancel: true });
-              }
-          }
-
-          // Feed to Ghostery manually
-          try {
-              const requestObj = fromElectronDetails(details);
-              const match = blocker.match(requestObj);
-              
-              if (match.match) {
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                      mainWindow.webContents.send('tracker-blocked', url);
-                  }
-                  return callback({ cancel: true });
-              }
-              callback({ cancel: false });
-          } catch(e) {
-              callback({ cancel: false });
-          }
-      });
-      
       console.log('Ghostery Adblocker initialized successfully (Hybrid Mode).');
   }).catch(err => {
       console.error('Failed to initialize Adblocker:', err);
@@ -235,6 +247,16 @@ function createWindow() {
         contents.setBackgroundThrottling(false);
 
         contents.on('before-input-event', (event, input) => {
+            if (input.type === 'keyUp') {
+                if (input.key === 'Control' || input.key === 'Meta') {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        try {
+                            mainWindow.webContents.send('global-keyup', { key: input.key });
+                        } catch(e) {}
+                    }
+                }
+                return;
+            }
             if (input.type !== 'keyDown') return;
 
             const isCmdOrCtrl = input.control || input.meta;
@@ -247,7 +269,29 @@ function createWindow() {
                 }
 
                 if (shortcut) {
-                    const overrideKeys = ['cmd+w', 'cmd+r', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 'cmd+n', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd+tab', 'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'f11', 'f12', 'escape'];
+                    if (shortcut === 'escape') {
+                        // Notify renderer so any active QBrowse overlays (modals, omnibox, popovers) are dismissed
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            try {
+                                mainWindow.webContents.send('global-shortcut', { shortcut: 'escape', shift: input.shift });
+                            } catch(e) {}
+                        }
+                        // CRITICAL: Do not preventDefault or steal focus on escape!
+                        // This allows webviews to handle native Escape (e.g. exiting HTML5 fullscreen, closing in-page dialogs/modals)
+                        return;
+                    }
+
+                    if (shortcut === 'cmd+tab') {
+                        event.preventDefault();
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            try {
+                                mainWindow.webContents.send('global-shortcut', { shortcut: 'cmd+tab', shift: input.shift });
+                            } catch(e) {}
+                        }
+                        return;
+                    }
+
+                    const overrideKeys = ['cmd+w', 'cmd+r', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 'cmd+n', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'f11', 'f12'];
                     if (overrideKeys.includes(shortcut)) {
                         event.preventDefault();
                         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -265,96 +309,198 @@ function createWindow() {
             }
         });
     });
-}
 
-const chromeVersionFull = process.versions.chrome || '130.0.0.0';
-const chromeVersionMajor = chromeVersionFull.split('.')[0] || '130';
-const dynamicCleanUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersionFull} Safari/537.36`;
-const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
-app.userAgentFallback = dynamicCleanUA;
+// Spoof Firefox to bypass Google's strict Chromium-based embedded browser restrictions (rrk=46 / BotGuard)
+const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0';
+app.userAgentFallback = firefoxUA;
 
 app.setName('QBrowse');
 app.setAppUserModelId('com.qbrowse.app');
 
 const { components } = require('electron');
 
+const configuredSessions = new WeakSet();
+
+function setupHeadersHandler(sess) {
+    if (!sess || !sess.webRequest) return;
+    sess.webRequest.onBeforeSendHeaders((details, callback) => {
+        delete details.requestHeaders['X-Electron-Version'];
+        
+        // CRITICAL: When spoofing Firefox, we MUST NOT send Chromium's Client Hints headers.
+        // Google BotGuard actively flags Firefox User-Agents that send sec-ch-ua headers!
+        delete details.requestHeaders['sec-ch-ua'];
+        delete details.requestHeaders['Sec-CH-UA'];
+        delete details.requestHeaders['sec-ch-ua-mobile'];
+        delete details.requestHeaders['Sec-CH-UA-Mobile'];
+        delete details.requestHeaders['sec-ch-ua-platform'];
+        delete details.requestHeaders['Sec-CH-UA-Platform'];
+
+        if (settingsStore.dnt !== false) {
+            details.requestHeaders['DNT'] = '1';
+        }
+        
+        details.requestHeaders['User-Agent'] = firefoxUA;
+
+        callback({ cancel: false, requestHeaders: details.requestHeaders });
+    });
+}
+
+function setupDownloadHandler(sess) {
+    if (!sess) return;
+    sess.on('will-download', (event, item, webContents) => {
+        const id = Date.now().toString();
+        const fileName = item.getFilename();
+        const totalBytes = item.getTotalBytes();
+        const url = item.getURL();
+
+        const askSave = settingsStore.askSave === true;
+        const downloadsPath = settingsStore.downloadsPath;
+
+        if (!askSave && downloadsPath) {
+            try {
+                item.setSavePath(path.join(downloadsPath, fileName));
+            } catch(e) {}
+        } else {
+            item.setSaveDialogOptions({
+                title: `Save ${fileName} - QBrowse`,
+                defaultPath: downloadsPath ? path.join(downloadsPath, fileName) : fileName
+            });
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('download-started', { id, fileName, totalBytes, url });
+        }
+
+        let lastDownloadUpdateTime = Date.now();
+        let lastReceivedBytes = 0;
+
+        item.on('updated', (event, state) => {
+            if (state === 'interrupted') {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('download-updated', { id, state: 'interrupted' });
+                }
+            } else if (state === 'progressing') {
+                if (item.isPaused()) {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('download-updated', { id, state: 'paused' });
+                    }
+                } else {
+                    const now = Date.now();
+                    const receivedBytes = item.getReceivedBytes();
+                    const timeDiff = (now - lastDownloadUpdateTime) / 1000;
+                    
+                    let speedBytesPerSec = 0;
+                    if (timeDiff > 0.5) {
+                        speedBytesPerSec = (receivedBytes - lastReceivedBytes) / timeDiff;
+                        lastDownloadUpdateTime = now;
+                        lastReceivedBytes = receivedBytes;
+                    }
+
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('download-updated', { 
+                            id, 
+                            state: 'progressing', 
+                            receivedBytes,
+                            speedBytesPerSec
+                        });
+                    }
+                }
+            }
+        });
+
+        item.once('done', (event, state) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('download-done', { id, state, savePath: item.getSavePath() });
+            }
+        });
+    });
+}
+
+function setupWebviewSession(sess) {
+    if (!sess || configuredSessions.has(sess)) return;
+    configuredSessions.add(sess);
+
+    try {
+        sess.setPreloads([path.join(__dirname, 'webview_preload.cjs')]);
+    } catch(e) {
+        console.warn('[Session] Failed to set preloads:', e);
+    }
+
+    setupHeadersHandler(sess);
+    applyAdblockerToSession(sess);
+
+    sess.setPermissionRequestHandler((webContents, permission, callback, details) => {
+        try {
+            const requestingUrl = details.requestingUrl || webContents.getURL();
+            if (requestingUrl) {
+                const domain = new URL(requestingUrl).hostname.replace(/^www\./, '').toLowerCase();
+                if (permissionsData[domain] && permissionsData[domain][permission]) {
+                    const setting = permissionsData[domain][permission];
+                    if (setting === 'allow') return callback(true);
+                    if (setting === 'block') return callback(false);
+                }
+            }
+        } catch(e) {}
+        callback(true);
+    });
+
+    sess.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+        try {
+            if (requestingOrigin) {
+                const domain = new URL(requestingOrigin).hostname.replace(/^www\./, '').toLowerCase();
+                if (permissionsData[domain] && permissionsData[domain][permission]) {
+                    const setting = permissionsData[domain][permission];
+                    if (setting === 'allow') return true;
+                    if (setting === 'block') return false;
+                }
+            }
+        } catch(e) {}
+        return true;
+    });
+
+    if (sess.setWebAuthenticationHandler) {
+        sess.setWebAuthenticationHandler((details, callback) => {
+            // Allow native OS Windows Security dialog so hardware security keys (YubiKey, FIDO2) work seamlessly
+            callback({ action: 'allow' });
+        });
+    }
+
+    setupDownloadHandler(sess);
+}
+
 app.whenReady().then(async () => {
   try {
-      await components.whenReady();
-      console.log('Widevine and components loaded successfully.');
+      if (components && typeof components.whenReady === 'function') {
+          await components.whenReady();
+          console.log('Widevine and components loaded successfully.');
+      }
   } catch(e) {
       console.error('Components failed to load:', e);
   }
 
-  // Fix YouTube stuck loading by wiping its service workers and caches on boot
+  // Fix YouTube and Google login stuck/rejected state by wiping service workers and caches on boot
   session.defaultSession.clearStorageData({
       origin: 'https://www.youtube.com',
       storages: ['serviceworkers', 'cachestorage']
   }).catch(() => {});
+  session.defaultSession.clearStorageData({
+      origin: 'https://accounts.google.com',
+      storages: ['serviceworkers', 'cachestorage']
+  }).catch(() => {});
 
-  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-      delete details.requestHeaders['X-Electron-Version'];
-      if (settingsStore.dnt !== false) {
-          details.requestHeaders['DNT'] = '1';
-      }
-      const url = details.url || '';
-      
-      // Delete client hints for all Google domains to bypass strict bot fingerprinting
-      if (url.includes('google.com') || url.includes('googleapis.com') || url.includes('youtube.com') || url.includes('googlevideo.com')) {
-          details.requestHeaders['User-Agent'] = dynamicCleanUA;
-          delete details.requestHeaders['Sec-CH-UA'];
-          delete details.requestHeaders['Sec-CH-UA-Mobile'];
-          delete details.requestHeaders['Sec-CH-UA-Platform'];
-          delete details.requestHeaders['Sec-CH-UA-Platform-Version'];
-          delete details.requestHeaders['Sec-CH-UA-Full-Version-List'];
-      } else {
-          details.requestHeaders['User-Agent'] = dynamicCleanUA;
-          details.requestHeaders['Sec-CH-UA'] = `"Chromium";v="${chromeVersionMajor}", "Google Chrome";v="${chromeVersionMajor}", "Not?A_Brand";v="99"`;
-          details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
-          details.requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
-      }
-      callback({ cancel: false, requestHeaders: details.requestHeaders });
-  });
-
-  session.defaultSession.setPreloads([path.join(__dirname, 'webview_preload.cjs')]);
-  
   ensurePermissionsFile();
 
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
-      try {
-          const requestingUrl = details.requestingUrl || webContents.getURL();
-          if (requestingUrl) {
-              const domain = new URL(requestingUrl).hostname.replace(/^www\./, '').toLowerCase();
-              if (permissionsData[domain] && permissionsData[domain][permission]) {
-                  const setting = permissionsData[domain][permission];
-                  if (setting === 'allow') return callback(true);
-                  if (setting === 'block') return callback(false);
-              }
-          }
-      } catch(e) {}
-      callback(true);
-  });
+  // Configure default session (Personal and Work spaces)
+  setupWebviewSession(session.defaultSession);
 
-  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-      try {
-          if (requestingOrigin) {
-              const domain = new URL(requestingOrigin).hostname.replace(/^www\./, '').toLowerCase();
-              if (permissionsData[domain] && permissionsData[domain][permission]) {
-                  const setting = permissionsData[domain][permission];
-                  if (setting === 'allow') return true;
-                  if (setting === 'block') return false;
-              }
-          }
-      } catch(e) {}
-      return true;
-  });
+  // Proactively configure in-memory ghost partition (Incognito space)
+  const ghostSession = session.fromPartition('ghost');
+  setupWebviewSession(ghostSession);
 
-  if (session.defaultSession.setWebAuthenticationHandler) {
-      session.defaultSession.setWebAuthenticationHandler((details, callback) => {
-          // Allow native OS Windows Security dialog so hardware security keys (YubiKey, FIDO2) work seamlessly
-          callback({ action: 'allow' });
-      });
-  }
+  // Auto-configure any dynamic sessions created by webviews
+  app.on('session-created', (sess) => {
+      setupWebviewSession(sess);
+  });
 
   createWindow();
 
@@ -362,75 +508,6 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
-  });
-
-  session.defaultSession.on('will-download', (event, item, webContents) => {
-      const id = Date.now().toString();
-      const fileName = item.getFilename();
-      const totalBytes = item.getTotalBytes();
-      const url = item.getURL();
-
-      const askSave = settingsStore.askSave === true;
-      const downloadsPath = settingsStore.downloadsPath;
-
-      if (!askSave && downloadsPath) {
-          try {
-              item.setSavePath(path.join(downloadsPath, fileName));
-          } catch(e) {}
-      } else {
-          item.setSaveDialogOptions({
-              title: `Save ${fileName} - QBrowse`,
-              defaultPath: downloadsPath ? path.join(downloadsPath, fileName) : fileName
-          });
-      }
-
-      if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('download-started', { id, fileName, totalBytes, url });
-      }
-
-
-      let lastDownloadUpdateTime = Date.now();
-      let lastReceivedBytes = 0;
-
-      item.on('updated', (event, state) => {
-          if (state === 'interrupted') {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.send('download-updated', { id, state: 'interrupted' });
-              }
-          } else if (state === 'progressing') {
-              if (item.isPaused()) {
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                      mainWindow.webContents.send('download-updated', { id, state: 'paused' });
-                  }
-              } else {
-                  const now = Date.now();
-                  const receivedBytes = item.getReceivedBytes();
-                  const timeDiff = (now - lastDownloadUpdateTime) / 1000;
-                  
-                  let speedBytesPerSec = 0;
-                  if (timeDiff > 0.5) {
-                      speedBytesPerSec = (receivedBytes - lastReceivedBytes) / timeDiff;
-                      lastDownloadUpdateTime = now;
-                      lastReceivedBytes = receivedBytes;
-                  }
-
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                      mainWindow.webContents.send('download-updated', { 
-                          id, 
-                          state: 'progressing', 
-                          receivedBytes,
-                          speedBytesPerSec
-                      });
-                  }
-              }
-          }
-      });
-
-      item.once('done', (event, state) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('download-done', { id, state, savePath: item.getSavePath() });
-          }
-      });
   });
 
   ipcMain.handle('open-file', async (event, path) => {
@@ -530,15 +607,104 @@ ipcMain.handle('vault-unlock', async (event, masterPassword) => {
     }
 });
 
+function requestWindowsHelloVerification(message = "Verify your identity for QBrowse Passkey") {
+    return new Promise((resolve) => {
+        if (process.platform !== 'win32') {
+            return resolve({ verified: false, status: 'NotSupported' });
+        }
+        const scriptPath = path.join(__dirname, 'verify_hello.ps1');
+        execFile('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, message], (err, stdout, stderr) => {
+            if (err) {
+                console.warn('[Windows Hello] Exec error:', err);
+                return resolve({ verified: false, status: 'Error', error: err.message });
+            }
+            const output = (stdout || '').trim();
+            console.log('[Windows Hello] Result:', output);
+            if (output.includes('Verified')) {
+                resolve({ verified: true, status: 'Verified' });
+            } else if (output.includes('Canceled')) {
+                resolve({ verified: false, status: 'Canceled' });
+            } else if (output.includes('NotAvailable')) {
+                resolve({ verified: false, status: 'NotAvailable' });
+            } else {
+                resolve({ verified: false, status: output || 'Failed' });
+            }
+        });
+    });
+}
+
+const pendingPasskeyVerifications = new Map();
+
+ipcMain.handle('vault-verify-passkey-usage', async (event, details) => {
+    return new Promise((resolve) => {
+        const requestId = 'pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+        const timer = setTimeout(() => {
+            if (pendingPasskeyVerifications.has(requestId)) {
+                pendingPasskeyVerifications.delete(requestId);
+                resolve({ verified: false, error: 'Timeout' });
+            }
+        }, 60000); // 60s timeout matching WebAuthn standard
+
+        pendingPasskeyVerifications.set(requestId, { resolve, timer });
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('prompt-passkey-verification', {
+                requestId,
+                rpId: details.rpId,
+                username: details.username,
+                hostname: details.hostname,
+                credentialId: details.credentialId
+            });
+        } else {
+            clearTimeout(timer);
+            pendingPasskeyVerifications.delete(requestId);
+            resolve({ verified: false, error: 'NoWindow' });
+        }
+    });
+});
+
+ipcMain.handle('respond-passkey-verification', async (event, { requestId, verified }) => {
+    const pending = pendingPasskeyVerifications.get(requestId);
+    if (pending) {
+        clearTimeout(pending.timer);
+        pendingPasskeyVerifications.delete(requestId);
+        pending.resolve({ verified: !!verified });
+        return true;
+    }
+    return false;
+});
+
+ipcMain.handle('verify-windows-hello', async (event, message) => {
+    return await requestWindowsHelloVerification(message || "Verify your identity for QBrowse Passkey");
+});
+
+ipcMain.handle('vault-check-password', async (event, password) => {
+    try {
+        await ensureVault();
+        const key = deriveKey(password);
+        const data = await fs.readFile(vaultPath, 'utf8');
+        const vault = JSON.parse(data);
+        if (vault.testEncryption) {
+            decrypt(vault.testEncryption, key);
+        }
+        masterKey = key;
+        return true;
+    } catch (e) {
+        return false;
+    }
+});
+
 ipcMain.handle('vault-unlock-windows-hello', async () => {
     try {
         await ensureVault();
-        const data = await fs.readFile(vaultPath, 'utf8');
-        const vault = JSON.parse(data);
-        if (!masterKey) {
-            masterKey = deriveKey('QBrowseWindowsHelloVaultKey');
+        const res = await requestWindowsHelloVerification("Unlock your QVault with Windows Hello");
+        if (res && res.verified) {
+            if (!masterKey) {
+                masterKey = deriveKey('QBrowseWindowsHelloVaultKey');
+            }
+            return true;
         }
-        return true;
+        return false;
     } catch (e) {
         return false;
     }
@@ -622,6 +788,40 @@ ipcMain.handle('vault-update-password', async (event, id, title, url, username, 
     return null;
 });
 
+function getDomainRoots(hostOrUrl) {
+    if (!hostOrUrl) return [];
+    try {
+        let clean = String(hostOrUrl).trim().toLowerCase();
+        if (clean.includes('://')) {
+            clean = new URL(clean).hostname;
+        }
+        clean = clean.split('/')[0].split(':')[0].replace(/^www\./, '');
+        const parts = clean.split('.');
+        const candidates = [clean];
+        if (parts.length >= 2) {
+            candidates.push(parts.slice(-2).join('.'));
+        }
+        if (parts.length >= 3) {
+            candidates.push(parts.slice(-3).join('.'));
+        }
+        return candidates;
+    } catch {
+        return [];
+    }
+}
+
+function domainsMatch(d1, d2) {
+    if (!d1 || !d2) return false;
+    const clean1 = String(d1).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+    const clean2 = String(d2).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+    if (clean1 === clean2) return true;
+    if (clean1.endsWith('.' + clean2) || clean2.endsWith('.' + clean1)) return true;
+
+    const roots1 = getDomainRoots(clean1);
+    const roots2 = getDomainRoots(clean2);
+    return roots1.some(r => roots2.includes(r));
+}
+
 ipcMain.handle('vault-get-passwords', async () => {
     await ensureVault();
     if (!masterKey) {
@@ -635,6 +835,20 @@ ipcMain.handle('vault-get-passwords', async () => {
     if (!vault.passwords) vault.passwords = [];
     
     return vault.passwords.map(p => {
+        let cleanTitle = p.title || '';
+        let meta = { type: p.itemType || 'login', passkeyData: p.passkeyData || null };
+        if (cleanTitle.includes('|||')) {
+            const parts = cleanTitle.split('|||');
+            cleanTitle = parts[0];
+            try {
+                const parsed = JSON.parse(parts[1]);
+                meta = {
+                    type: parsed.type || meta.type,
+                    notes: parsed.notes || '',
+                    passkeyData: parsed.passkeyData || meta.passkeyData
+                };
+            } catch(e) {}
+        }
         let decPass = '';
         try {
             decPass = decrypt(p.password, masterKey);
@@ -643,41 +857,98 @@ ipcMain.handle('vault-get-passwords', async () => {
         }
         return {
             ...p,
+            title: cleanTitle,
+            itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
+            passkeyData: meta.passkeyData,
             password: decPass
         };
     });
 });
 
-ipcMain.handle('vault-get-matching', async (event, hostname) => {
-    if (!masterKey) return [];
+ipcMain.handle('vault-get-matching', async (event, query) => {
+    await ensureVault();
+    if (!masterKey) {
+        masterKey = deriveKey('QBrowseDefaultVaultKey');
+    }
+
+    let targetHost = '';
+    let targetRpId = '';
+    let allowCreds = [];
+
+    if (typeof query === 'string') {
+        targetHost = query;
+    } else if (query && typeof query === 'object') {
+        targetHost = query.hostname || '';
+        targetRpId = query.rpId || '';
+        allowCreds = Array.isArray(query.allowCredentials) ? query.allowCredentials : [];
+    }
+
     try {
-        await ensureVault();
         const data = await fs.readFile(vaultPath, 'utf8');
         const vault = JSON.parse(data);
-        if (!vault.passwords) return [];
-        
+        if (!vault.passwords || !Array.isArray(vault.passwords)) return [];
+
         return vault.passwords
             .map(p => {
                 let cleanTitle = p.title || '';
+                let meta = { type: p.itemType || 'login', passkeyData: p.passkeyData || null };
                 if (cleanTitle.includes('|||')) {
-                    cleanTitle = cleanTitle.split('|||')[0];
+                    const parts = cleanTitle.split('|||');
+                    cleanTitle = parts[0];
+                    try {
+                        const parsed = JSON.parse(parts[1]);
+                        meta = {
+                            type: parsed.type || meta.type,
+                            notes: parsed.notes || '',
+                            passkeyData: parsed.passkeyData || meta.passkeyData
+                        };
+                    } catch (e) {}
                 }
+
+                let decPass = '';
+                try {
+                    decPass = decrypt(p.password, masterKey);
+                } catch {
+                    decPass = p.password || '';
+                }
+
                 return {
-                    id: p.id,
+                    ...p,
                     title: cleanTitle,
-                    url: p.url || '',
-                    username: p.username || '',
-                    password: decrypt(p.password, masterKey)
+                    itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
+                    passkeyData: meta.passkeyData,
+                    password: decPass
                 };
             })
             .filter(p => {
-                if (!p.username || !p.password) return false;
-                if (!hostname) return true;
-                const cleanHost = hostname.replace('www.', '').toLowerCase();
-                const itemHost = (p.url || p.title).toLowerCase();
-                return itemHost.includes(cleanHost) || cleanHost.includes(itemHost);
+                const isPasskey = p.itemType === 'passkey' || !!p.passkeyData;
+                if (!isPasskey && (!p.username || !p.password)) return false;
+
+                // 1. Direct Credential ID match from allowCredentials
+                if (isPasskey && allowCreds.length > 0 && p.passkeyData?.credentialId) {
+                    const credId = String(p.passkeyData.credentialId).toLowerCase();
+                    if (allowCreds.some(id => id && String(id).toLowerCase() === credId)) {
+                        return true;
+                    }
+                }
+
+                if (!targetHost && !targetRpId) return true;
+
+                // 2. Check RP ID match
+                if (isPasskey && targetRpId && p.passkeyData?.rpId) {
+                    if (domainsMatch(targetRpId, p.passkeyData.rpId)) return true;
+                }
+
+                // 3. Check Hostname / Domain match across URL, title, rpId
+                const itemHost = p.url || p.title || '';
+                if (targetHost && domainsMatch(targetHost, itemHost)) return true;
+                if (targetHost && isPasskey && p.passkeyData?.rpId && domainsMatch(targetHost, p.passkeyData.rpId)) return true;
+                if (targetRpId && domainsMatch(targetRpId, itemHost)) return true;
+
+                return false;
             });
-    } catch {
+    } catch (e) {
+        console.error('[vault-get-matching] Error:', e);
         return [];
     }
 });
@@ -753,9 +1024,19 @@ async function savePermissionsData() {
     } catch (e) {}
 }
 
+function getSessionByPartition(partition) {
+    if (partition && typeof partition === 'string' && partition.trim()) {
+        return session.fromPartition(partition.trim());
+    }
+    return session.defaultSession;
+}
+
 ipcMain.handle('get-cookies', async (event, filter = {}) => {
     try {
-        const cookies = await session.defaultSession.cookies.get(filter);
+        const targetSession = getSessionByPartition(filter.partition);
+        const cookieFilter = { ...filter };
+        delete cookieFilter.partition;
+        const cookies = await targetSession.cookies.get(cookieFilter);
         return cookies.map(c => ({
             name: c.name,
             value: c.value,
@@ -771,30 +1052,32 @@ ipcMain.handle('get-cookies', async (event, filter = {}) => {
     }
 });
 
-ipcMain.handle('remove-cookie', async (event, url, name) => {
+ipcMain.handle('remove-cookie', async (event, url, name, partition) => {
     try {
-        await session.defaultSession.cookies.remove(url, name);
+        const targetSession = getSessionByPartition(partition);
+        await targetSession.cookies.remove(url, name);
         return true;
     } catch (e) {
         return false;
     }
 });
 
-ipcMain.handle('clear-site-cookies', async (event, domain) => {
+ipcMain.handle('clear-site-cookies', async (event, domain, partition) => {
     try {
+        const targetSession = getSessionByPartition(partition);
         const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
-        const cookies = await session.defaultSession.cookies.get({});
+        const cookies = await targetSession.cookies.get({});
         let count = 0;
         for (const c of cookies) {
             if (c.domain.toLowerCase().includes(cleanDomain)) {
                 const protocol = c.secure ? 'https' : 'http';
                 const cleanCookieDomain = c.domain.startsWith('.') ? c.domain.substring(1) : c.domain;
                 const url = `${protocol}://${cleanCookieDomain}${c.path}`;
-                await session.defaultSession.cookies.remove(url, c.name);
+                await targetSession.cookies.remove(url, c.name);
                 count++;
             }
         }
-        await session.defaultSession.clearStorageData({
+        await targetSession.clearStorageData({
             origin: `https://${cleanDomain}`,
             storages: ['cookies', 'localstorage', 'caches', 'indexdb', 'websql']
         });
@@ -811,11 +1094,27 @@ ipcMain.handle('clear-all-data', async (event, options = {}) => {
         if (options.cache) storages.push('caches');
         if (options.storage) storages.push('localstorage', 'indexdb', 'websql');
         
-        await session.defaultSession.clearStorageData({
+        const targetSession = getSessionByPartition(options.partition);
+        await targetSession.clearStorageData({
             storages: storages.length > 0 ? storages : ['cookies', 'localstorage', 'caches']
         });
         return true;
     } catch (e) {
+        return false;
+    }
+});
+
+ipcMain.handle('clear-ghost-session', async () => {
+    try {
+        const ghostSess = session.fromPartition('ghost');
+        if (ghostSess) {
+            await ghostSess.clearStorageData();
+            await ghostSess.clearCache();
+            console.log('[Ghost Mode] In-memory ghost session data and cache cleared.');
+        }
+        return true;
+    } catch (e) {
+        console.warn('[Ghost Mode] Error clearing ghost session:', e);
         return false;
     }
 });
@@ -873,16 +1172,19 @@ ipcMain.handle('set-doh', async (event, provider) => {
         else if (provider === 'google') dohUrl = 'https://dns.google/dns-query';
         else if (provider === 'nextdns' || provider === 'custom') dohUrl = 'https://dns.nextdns.io';
         
-        if (dohUrl && session.defaultSession.setModeAndCodeOfDOH) {
-            session.defaultSession.setModeAndCodeOfDOH('automatic', dohUrl);
+        if (dohUrl) {
+            const sessions = [session.defaultSession, session.fromPartition('ghost')];
+            sessions.forEach(s => {
+                if (s && s.setModeAndCodeOfDOH) {
+                    s.setModeAndCodeOfDOH('automatic', dohUrl);
+                }
+            });
         }
         return true;
     } catch {
         return false;
     }
 });
-
-let settingsStore = {};
 
 ipcMain.handle('save-setting', (event, data) => {
     if (data && data.key) {
@@ -893,9 +1195,13 @@ ipcMain.handle('save-setting', (event, data) => {
 
 ipcMain.handle('set-webrtc', async (event, enabled) => {
     try {
-        if (session.defaultSession.setWebRTCIPHandlingPolicy) {
-            session.defaultSession.setWebRTCIPHandlingPolicy(enabled ? 'disable_non_proxied_udp' : 'default');
-        }
+        const policy = enabled ? 'disable_non_proxied_udp' : 'default';
+        const sessions = [session.defaultSession, session.fromPartition('ghost')];
+        sessions.forEach(s => {
+            if (s && s.setWebRTCIPHandlingPolicy) {
+                s.setWebRTCIPHandlingPolicy(policy);
+            }
+        });
         return true;
     } catch {
         return false;

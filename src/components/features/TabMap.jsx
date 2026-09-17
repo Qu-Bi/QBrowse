@@ -115,7 +115,7 @@ export default function TabMap() {
                                 <X size={14} strokeWidth={3} />
                                 </button>
                                 
-                                <div className="w-[200px] md:w-[260px] aspect-video rounded-[1.5rem] md:rounded-[2rem] bg-black/60 shadow-[0_40px_80px_rgba(0,0,0,0.6)] overflow-hidden relative backdrop-blur-xl border border-white/10 group-hover/card:border-white/30 group-hover/card:bg-[#0a0a0c] group-hover/card:shadow-[0_60px_120px_rgba(0,0,0,0.9)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu group-hover/card:scale-[1.04]">
+                                <div className={`w-[200px] md:w-[260px] aspect-video rounded-[1.5rem] md:rounded-[2rem] bg-black/60 shadow-[0_40px_80px_rgba(0,0,0,0.6)] overflow-hidden relative backdrop-blur-xl border border-white/10 group-hover/card:border-white/30 group-hover/card:bg-[#0a0a0c] group-hover/card:shadow-[0_60px_120px_rgba(0,0,0,0.9)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu ${tab.isClosing ? 'scale-75 opacity-0 pointer-events-none' : 'group-hover/card:scale-[1.04]'}`}>
                                     {renderNodeInterior(tab, false)}
                                     <div className="absolute inset-0 bg-black/40 group-hover/card:bg-transparent transition-colors duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"></div>
                                     

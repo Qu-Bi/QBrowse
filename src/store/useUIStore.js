@@ -160,8 +160,6 @@ const useUIStore = create((set) => ({
     }
   },
 
-  showSwitcher: false,
-  setShowSwitcher: (val) => set({ showSwitcher: val }),
 
   currentUrl: '',
   setCurrentUrl: (url) => set({ currentUrl: url }),
@@ -323,6 +321,10 @@ const useUIStore = create((set) => ({
   hoverPreview: null,
   setHoverPreview: (preview) => set({ hoverPreview: preview }),
 
+  // Passkey Prompt
+  passkeyPrompt: null,
+  setPasskeyPrompt: (prompt) => set({ passkeyPrompt: prompt }),
+
   // Modals & Settings
   activeModal: localStorage.getItem('qbrowse_setup_complete') !== 'true' 
     ? 'onboarding' 
@@ -445,7 +447,76 @@ const useUIStore = create((set) => ({
 
   // Tab Switcher Overlay
   showSwitcher: false,
-  setShowSwitcher: (val) => set({ showSwitcher: val }),
+  showSwitcherUI: false,
+  switcherIndex: 0,
+  switcherTabs: [],
+  setShowSwitcher: (val) => set({ showSwitcher: val, showSwitcherUI: val }),
+  setSwitcherIndex: (idx) => set({ switcherIndex: idx }),
+  setSwitcherTabs: (tabs) => set({ switcherTabs: tabs }),
+  openSwitcher: () => {
+    const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+    if (!tabStore) return;
+    const list = tabStore.getActiveList ? tabStore.getActiveList() : [];
+    if (!list || list.length <= 1) return;
+
+    // Arrange in MRU order: current active tab is index 0, last active tab is index 1
+    const activeTab = list.find(t => t.active);
+    const otherTabs = list.filter(t => !t.active).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+    const mruTabs = activeTab ? [activeTab, ...otherTabs] : otherTabs;
+
+    if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
+    window.__switcherTimer = setTimeout(() => {
+      set({ showSwitcherUI: true });
+    }, 140);
+
+    set({
+      showSwitcher: true,
+      showSwitcherUI: false,
+      switcherTabs: mruTabs,
+      switcherIndex: 1
+    });
+  },
+  cycleSwitcher: (direction = 1) => {
+    const state = useUIStore.getState();
+    if (!state.showSwitcher) {
+      useUIStore.getState().openSwitcher();
+      return;
+    }
+    if (window.__switcherTimer) {
+      clearTimeout(window.__switcherTimer);
+      window.__switcherTimer = null;
+    }
+    const len = state.switcherTabs.length;
+    if (len === 0) return;
+    const nextIdx = (state.switcherIndex + direction + len) % len;
+    set({ switcherIndex: nextIdx, showSwitcherUI: true });
+  },
+  confirmSwitcher: () => {
+    if (window.__switcherTimer) {
+      clearTimeout(window.__switcherTimer);
+      window.__switcherTimer = null;
+    }
+    const { showSwitcher, switcherTabs, switcherIndex } = useUIStore.getState();
+    if (!showSwitcher) return;
+
+    const targetTab = switcherTabs[switcherIndex];
+    set({ showSwitcher: false, showSwitcherUI: false });
+
+    if (targetTab) {
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      if (tabStore) {
+        tabStore.handleSwitchToTab(targetTab.id, tabStore.activeSpace);
+        useUIStore.getState().setCurrentUrl(targetTab.url || '');
+      }
+    }
+  },
+  cancelSwitcher: () => {
+    if (window.__switcherTimer) {
+      clearTimeout(window.__switcherTimer);
+      window.__switcherTimer = null;
+    }
+    set({ showSwitcher: false, showSwitcherUI: false });
+  },
 }));
 
 export default useUIStore;

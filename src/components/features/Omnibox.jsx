@@ -292,20 +292,16 @@ export default function Omnibox() {
     const handleCloseOmnibox = (navigated = false) => {
         closeOmnibox();
         if (!navigated) {
-            const cleanupTabs = (list, setList) => {
+            const cleanupTabs = (list) => {
                 const activeTab = list.find(t => t.active);
-                if (activeTab && activeTab.url === '') {
-                    setList(list.map(t => t.id === activeTab.id ? { ...t, isClosing: true } : t));
-                    setTimeout(() => {
-                        setList(list.filter(t => t.id !== activeTab.id));
-                        // A bit tricky without state updater pattern, but let TabStore handle it later if needed
-                    }, 200);
+                if (activeTab && activeTab.url === '' && list.length > 1) {
+                    useTabStore.getState().handleCloseTab(activeTab.id);
                 }
             };
 
-            if (activeSpace === 'personal') cleanupTabs(privateTabs, setPrivateTabs);
-            else if (activeSpace === 'work') cleanupTabs(workTabs, setWorkTabs);
-            else cleanupTabs(ghostTabs, setGhostTabs);
+            if (activeSpace === 'personal') cleanupTabs(privateTabs);
+            else if (activeSpace === 'work') cleanupTabs(workTabs);
+            else cleanupTabs(ghostTabs);
         }
     };
 
@@ -348,7 +344,11 @@ export default function Omnibox() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                         
                         onKeyDown={(e) => {
-                            if (e.key === 'ArrowDown') {
+                            if (e.key === 'Escape') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleCloseOmnibox(false);
+                            } else if (e.key === 'ArrowDown') {
                                 e.preventDefault();
                                 const max = isCommandMode ? filteredCommands.length : filteredPredictions.length;
                                 setSelectedIndex(s => Math.min(s + 1, Math.max(0, max - 1)));

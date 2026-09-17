@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { X, Minus, Maximize2, UserPlus, Clock, Settings, Home, Plus, ChevronRight, User, Layers, Ghost, PictureInPicture2, VolumeX, Volume2, Pin, Globe, FolderPlus, Check, Edit2, FolderOpen } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import useSyncStore from '../../store/useSyncStore';
 
 export default function Sidebar() {
     // UI Store State
@@ -118,7 +119,16 @@ export default function Sidebar() {
                 clearTimeout(hoverTimeout.current);
                 setHoverPreview(null);
             }}
-            className={`group relative flex items-center justify-between p-3 rounded-xl ${tab.active ? 'bg-accent-20 text-accent border-accent-30 shadow-accent' : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent'} border cursor-grab active:cursor-grabbing transition w-full ${tab.isClosing ? 'animate-pop-out' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''}`}>
+            onAuxClick={(e) => {
+                if (e.button === 1) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    clearTimeout(hoverTimeout.current);
+                    setHoverPreview(null);
+                    handleCloseTab(tab.id);
+                }
+            }}
+            className={`group relative flex items-center justify-between p-3 rounded-xl ${tab.active ? 'bg-accent-20 text-accent border-accent-30 shadow-accent' : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent'} border cursor-grab active:cursor-grabbing w-full ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''}`}>
             <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                 {spaceType === 'ghost' ? (
                     <Ghost size={14} className={`flex-shrink-0 opacity-50 ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
@@ -158,10 +168,25 @@ export default function Sidebar() {
                 {spaceType !== 'ghost' && tab.url && tab.url !== 'about:blank' && (
                     <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className="p-1 text-accent opacity-70 hover:opacity-100 hover:bg-accent-10 rounded transition" title="Pin Tab"><Pin size={12} /></button>
                 )}
-                <button onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }} className="p-1 text-accent opacity-70 hover:opacity-100 hover:bg-accent-10 rounded transition" title="Close Tab"><X size={12} /></button>
+                <button 
+                    onClick={(e) => { 
+                        e.stopPropagation(); 
+                        clearTimeout(hoverTimeout.current);
+                        setHoverPreview(null);
+                        handleCloseTab(tab.id); 
+                    }} 
+                    className="p-1 text-accent opacity-70 hover:opacity-100 hover:bg-accent-10 rounded transition" 
+                    title="Close Tab"
+                >
+                    <X size={12} />
+                </button>
             </div>
         </div>
     );
+
+    const syncUser = useSyncStore(state => state.user);
+    const syncStatus = useSyncStore(state => state.syncStatus);
+    const isSyncing = useSyncStore(state => state.isSyncing);
 
     return (
         <aside className={`flex-shrink-0 flex flex-col backdrop-blur-2xl rounded-[2rem] shadow-2xl overflow-hidden relative z-50 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isForceDark || isIncognito ? 'bg-black/50 border border-white/10 text-white/90 sidebar-dark' : 'bg-white/60 border border-black/10 text-black/90 sidebar-light'} ${isFullscreen || isSidebarHidden ? 'w-0 opacity-0 border-none m-0' : 'w-16 md:w-64 opacity-100'}`}>
@@ -175,7 +200,7 @@ export default function Sidebar() {
                 <div className="hidden md:flex gap-3 text-[color:var(--sidebar-text-muted)] items-center" style={{ WebkitAppRegion: 'no-drag' }}>
                     <button 
                         onClick={() => togglePopover('user')} 
-                        className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all hover:scale-110 cursor-pointer ${
+                        className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all hover:scale-110 cursor-pointer relative ${
                             activePopover === 'user'
                                 ? 'bg-accent-20 border-accent text-accent shadow-[0_0_10px_var(--accent)]'
                                 : 'bg-white/10 border-white/20 text-white/70 hover:text-white'
@@ -192,6 +217,13 @@ export default function Sidebar() {
                                     return emojis[preset] || '🚀';
                                 })()}
                             </span>
+                        )}
+                        {syncUser && (
+                            <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-black ${
+                                isSyncing ? 'bg-blue-400 animate-ping' :
+                                syncStatus === 'synced' ? 'bg-emerald-400' :
+                                'bg-white/40'
+                            }`} />
                         )}
                     </button>
                     <button onClick={() => setActiveModal('history')} className="hover:text-accent transition" title="History"><Clock size={14} /></button>
@@ -231,7 +263,7 @@ export default function Sidebar() {
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-personal' ? 'border-accent border-dashed bg-accent-10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={handleNewTab} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
+                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
                                 <Plus size={12} strokeWidth={2.5} />
                             </button>
                         </div>
@@ -239,7 +271,7 @@ export default function Sidebar() {
                             const filtered = privateTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={handleNewTab} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
@@ -259,7 +291,7 @@ export default function Sidebar() {
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-work' ? 'border-blue-400 border-dashed bg-blue-500/10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={handleNewTab} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
+                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
                                 <Plus size={12} strokeWidth={2.5} />
                             </button>
                         </div>
@@ -267,7 +299,7 @@ export default function Sidebar() {
                             const filtered = workTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={handleNewTab} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
@@ -287,7 +319,7 @@ export default function Sidebar() {
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-ghost' ? 'border-[#a855f7] border-dashed bg-[#a855f7]/10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/50 tracking-widest">Incognito Tabs</h3>
-                            <button onClick={handleNewTab} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Tab (CMD+T)">
+                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T)">
                                 <Plus size={12} strokeWidth={2.5} />
                             </button>
                         </div>
@@ -295,10 +327,10 @@ export default function Sidebar() {
                             const filtered = ghostTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={handleNewTab} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50" />
-                                            <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
+                                            <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
                                         </div>
                                     </button>
                                 );
