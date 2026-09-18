@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 let globalToastTimeout = null;
+let globalZoomTimeout = null;
 
 const defaultSettings = {
     httpsOnly: true,
@@ -45,7 +46,7 @@ const useUIStore = create((set) => ({
   historySearchQuery: '',
   setSearchQuery: (query) => set({ searchQuery: query }),
   setHistorySearchQuery: (query) => set({ historySearchQuery: query }),
-  openOmnibox: (url = '') => set({ isOmniboxOpen: true, isOmniboxClosing: false, searchQuery: url }),
+  openOmnibox: (url = '') => set({ isOmniboxOpen: true, isOmniboxClosing: false, searchQuery: (!url || url === 'about:blank') ? '' : url }),
   closeOmnibox: () => {
     set({ isOmniboxClosing: true });
     setTimeout(() => {
@@ -62,17 +63,50 @@ const useUIStore = create((set) => ({
   setSplitRightTabId: (id) => set({ splitRightTabId: id }),
   setFocusedPane: (pane) => set({ focusedPane: pane }),
   setSplitRatio: (ratio) => set({ splitRatio: ratio }),
-  toggleSplitView: (targetRightId = null) => set((state) => {
-      const nextState = !state.isSplitView;
-      if (!nextState) {
-          return { isSplitView: false, splitRightTabId: null, focusedPane: 'left' };
+  toggleSplitView: (targetRightId = null) => {
+    const currentState = useUIStore.getState();
+    const nextState = !currentState.isSplitView;
+
+    if (!nextState) {
+      useUIStore.setState({ isSplitView: false, splitRightTabId: null, focusedPane: 'left' });
+      useUIStore.getState().showToast('Split View: Disabled');
+      return;
+    }
+
+    let rightId = targetRightId;
+    let spaceTabs = [];
+    let activeTab = null;
+    try {
+      const tabStore = window.__tabStore?.getState();
+      if (tabStore) {
+        const space = tabStore.activeSpace;
+        spaceTabs = space === 'personal' ? tabStore.privateTabs : (space === 'work' ? tabStore.workTabs : tabStore.ghostTabs);
+        activeTab = spaceTabs.find(t => t.active);
       }
-      return { 
-          isSplitView: true, 
-          splitRightTabId: targetRightId !== null ? targetRightId : state.splitRightTabId,
-          focusedPane: targetRightId ? 'right' : 'left'
-      };
-  }),
+    } catch (_) {}
+
+    if (rightId && (!spaceTabs.some(t => t.id === rightId) || (activeTab && rightId === activeTab.id))) {
+      rightId = null;
+    }
+
+    if (!rightId) {
+      if (currentState.splitRightTabId && spaceTabs.some(t => t.id === currentState.splitRightTabId) && (!activeTab || currentState.splitRightTabId !== activeTab.id)) {
+        rightId = currentState.splitRightTabId;
+      } else {
+        const candidate = spaceTabs.find(t => t.id !== activeTab?.id);
+        if (candidate) {
+          rightId = candidate.id;
+        }
+      }
+    }
+
+    useUIStore.setState({ 
+      isSplitView: true, 
+      splitRightTabId: rightId || null,
+      focusedPane: rightId ? 'right' : 'left'
+    });
+    useUIStore.getState().showToast(rightId ? 'Split View: Enabled' : 'Split View: Select a tab');
+  },
   isFullscreen: false,
   setIsFullscreen: async (val) => {
     set({ isFullscreen: val });
@@ -411,7 +445,19 @@ const useUIStore = create((set) => ({
   },
 
   zoomLevel: 100,
-  setZoomLevel: (val) => set({ zoomLevel: val }),
+  isZoomHUDVisible: false,
+  setZoomLevel: (val) => {
+    const clamped = Math.min(200, Math.max(50, Math.round(val)));
+    set({ zoomLevel: clamped, isZoomHUDVisible: true });
+    if (globalZoomTimeout) clearTimeout(globalZoomTimeout);
+    globalZoomTimeout = setTimeout(() => {
+      set({ isZoomHUDVisible: false });
+    }, 1800);
+  },
+  hideZoomHUD: () => {
+    if (globalZoomTimeout) clearTimeout(globalZoomTimeout);
+    set({ isZoomHUDVisible: false });
+  },
   isGlassEnabled: true,
   setIsGlassEnabled: (val) => set({ isGlassEnabled: val }),
   isSwipeEnabled: true,

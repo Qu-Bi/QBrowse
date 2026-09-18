@@ -3,7 +3,8 @@ import {
     Command, Search, ChevronUp, ChevronDown, X, Moon, Trash2, 
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
-    RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe
+    RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
+    ZoomIn, RotateCcw
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -12,6 +13,7 @@ import WebViewContainer from './WebViewContainer';
 import QVaultPopover from '../popovers/QVaultPopover';
 import SiteInfoPopover from '../popovers/SiteInfoPopover';
 import UserProfilePopover from '../popovers/UserProfilePopover';
+import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
 
 const DownloadPopup = () => {
@@ -128,6 +130,8 @@ export default function MainFrame() {
     const isFindOpen = useUIStore(state => state.isFindOpen);
     const setIsFindOpen = useUIStore(state => state.setIsFindOpen);
     const zoomLevel = useUIStore(state => state.zoomLevel);
+    const isZoomHUDVisible = useUIStore(state => state.isZoomHUDVisible);
+    const setZoomLevel = useUIStore(state => state.setZoomLevel);
     const isSplitView = useUIStore(state => state.isSplitView);
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const refresh = useUIStore(state => state.refresh);
@@ -141,11 +145,14 @@ export default function MainFrame() {
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
+    const torTabs = useTabStore(state => state.torTabs) || [];
 
     const isIncognito = activeSpace === 'ghost';
+    const isTor = activeSpace === 'tor';
     const isPrywatneEmpty = privateTabs.find(t => t.active)?.url === '' || privateTabs.find(t => t.active)?.url === 'about:blank';
     const isPracaEmpty = workTabs.find(t => t.active)?.url === '' || workTabs.find(t => t.active)?.url === 'about:blank';
     const isGhostEmpty = ghostTabs.find(t => t.active)?.url === '' || ghostTabs.find(t => t.active)?.url === 'about:blank';
+    const isTorEmpty = torTabs.find(t => t.active)?.url === '' || torTabs.find(t => t.active)?.url === 'about:blank';
     
     const isAdblockActive = useUIStore(state => state.isAdblockActive);
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive);
@@ -183,28 +190,37 @@ export default function MainFrame() {
 
 
     const renderZenDashboard = () => {
-        const isDark = isForceDark || isIncognito;
+        const isDark = isForceDark || isIncognito || isTor;
         const greeting = "Welcome";
 
         return (
             <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden animate-pop-in z-10 w-full h-full">
                 <div className="relative z-10 flex flex-col items-center transition-transform duration-500 w-full mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
                     <div className="flex flex-col items-center mb-10 md:mb-14 px-4 w-full text-center">
-                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isDark ? 'text-white/50' : 'text-slate-500/80'}`}>{dateString}</span>
-                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isDark ? 'from-white via-white/90 to-white/20' : 'from-slate-800 via-slate-600 to-slate-400'} select-none transition-colors duration-500 px-4`} style={{ textShadow: isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)' }}>
+                        {isTor ? (
+                            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-semibold mb-4 shadow-[0_0_15px_rgba(168,85,247,0.2)] animate-pulse">
+                                <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                                <span>Tor Onion Routing • Zero-Disk Memory Mode</span>
+                            </div>
+                        ) : (
+                            <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isDark ? 'text-white/50' : 'text-slate-500/80'}`}>{dateString}</span>
+                        )}
+                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isTor ? 'from-purple-200 via-purple-300/80 to-purple-500/20' : (isDark ? 'from-white via-white/90 to-white/20' : 'from-slate-800 via-slate-600 to-slate-400')} select-none transition-colors duration-500 px-4`} style={{ textShadow: isTor ? '0 20px 50px rgba(168,85,247,0.3)' : (isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)') }}>
                             {timeString}
                         </h1>
                     </div>
 
                     <button
                         onClick={() => openOmnibox('')}
-                        className={`group relative w-[90%] max-w-2xl backdrop-blur-3xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-500 hover:scale-[1.02] ${isDark ? 'bg-black/40 border-white/10 hover:border-accent/50 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_80px_var(--accent-20)]' : 'bg-white/60 border-black/5 hover:border-accent/40 shadow-[0_20px_50px_rgba(0,0,0,0.05)] hover:shadow-[0_20px_80px_var(--accent-20)]'}`}
+                        className={`group relative w-[90%] max-w-2xl backdrop-blur-3xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-500 hover:scale-[1.02] ${isTor ? 'bg-purple-950/40 border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_20px_80px_rgba(168,85,247,0.35)]' : (isDark ? 'bg-black/40 border-white/10 hover:border-accent/50 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_80px_var(--accent-20)]' : 'bg-white/60 border-black/5 hover:border-accent/40 shadow-[0_20px_50px_rgba(0,0,0,0.05)] hover:shadow-[0_20px_80px_var(--accent-20)]')}`}
                     >
-                        <Search size={22} className={`transition-colors ${isDark ? 'text-white/40 group-hover:text-accent' : 'text-slate-400 group-hover:text-accent'}`} />
-                        <span className={`text-lg font-medium transition-colors flex-1 text-left ${isDark ? 'text-white/30 group-hover:text-white/80' : 'text-slate-400 group-hover:text-slate-700'}`}>Search the web, or type a command...</span>
-                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-inner transition-colors duration-300 ${isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30' : 'bg-black/5 border-black/5 group-hover:bg-accent/10 group-hover:border-accent/30'}`}>
-                            <Command size={12} className={`transition-colors ${isDark ? 'text-white/60 group-hover:text-accent' : 'text-slate-500 group-hover:text-accent'}`} />
-                            <span className={`text-xs font-bold transition-colors ${isDark ? 'text-white/60 group-hover:text-accent' : 'text-slate-500 group-hover:text-accent'}`}>K</span>
+                        <Search size={22} className={`transition-colors ${isTor ? 'text-purple-400 group-hover:text-purple-300' : (isDark ? 'text-white/40 group-hover:text-accent' : 'text-slate-400 group-hover:text-accent')}`} />
+                        <span className={`text-lg font-medium transition-colors flex-1 text-left ${isTor ? 'text-purple-200/70 group-hover:text-purple-100' : (isDark ? 'text-white/30 group-hover:text-white/80' : 'text-slate-400 group-hover:text-slate-700')}`}>
+                            {isTor ? 'Search the web via Tor, enter .onion address...' : 'Search the web, or type a command...'}
+                        </span>
+                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-inner transition-colors duration-300 ${isTor ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' : (isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30 text-white/60' : 'bg-black/5 border-black/5 group-hover:bg-accent/10 group-hover:border-accent/30 text-slate-500')}`}>
+                            <Command size={12} className={`transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-slate-500 group-hover:text-accent')}`} />
+                            <span className={`text-xs font-bold transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-slate-500 group-hover:text-accent')}`}>K</span>
                         </div>
                     </button>
 
@@ -228,7 +244,7 @@ export default function MainFrame() {
     const rightPaneRef = useRef(null);
     const currentRatioRef = useRef(splitRatio);
 
-    const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : ghostTabs);
+    const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
     const activeLeftTab = spaceTabs.find(t => t.active);
     const rightTab = isSplitView && splitRightTabId ? spaceTabs.find(t => t.id === splitRightTabId) : null;
     const availableRightTabs = spaceTabs.filter(t => t.id !== activeLeftTab?.id);
@@ -443,8 +459,11 @@ export default function MainFrame() {
                     {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
                         <QVaultPopover isClosing={isPopoverClosing} />
                     )}
-                    {(activePopover === 'user' || (isPopoverClosing && activePopover === 'user')) && (
+                    {((activePopover === 'user' || activePopover === 'userProfile') || (isPopoverClosing && (activePopover === 'user' || activePopover === 'userProfile'))) && (
                         <UserProfilePopover isClosing={isPopoverClosing} />
+                    )}
+                    {(activePopover === 'tor' || (isPopoverClosing && activePopover === 'tor')) && (
+                        <TorCircuitPopover isClosing={isPopoverClosing} />
                     )}
                     {(activePopover || isPopoverClosing) && (
                         <div className={`absolute inset-0 z-[50] transition-colors duration-200 ${isPopoverClosing ? 'bg-transparent' : 'bg-black/60'}`} onClick={closePopover} />
@@ -459,33 +478,42 @@ export default function MainFrame() {
                         }`}
                         style={{ width: isSplitView ? `${splitRatio}%` : '100%' }}
                     >
-                        <div className={`absolute inset-y-0 left-0 w-[300%] flex ${isSwipeEnabled !== false ? 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : 'transition-none'}`}
-                            style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-33.333%)' : 'translateX(-66.666%)' }}>
+                        <div className={`absolute inset-y-0 left-0 w-[400%] flex ${isSwipeEnabled !== false ? 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : 'transition-none'}`}
+                            style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-25%)' : activeSpace === 'ghost' ? 'translateX(-50%)' : 'translateX(-75%)' }}>
 
-                            {/* PRYWATNE */}
-                            <div className="w-1/3 flex-shrink-0 h-full flex flex-col items-center justify-center relative">
+                            {/* PERSONAL */}
+                            <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative">
                                 {isPrywatneEmpty && <div key="dash">{renderZenDashboard()}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPrywatneEmpty ? 1 : 0.2 }}></div>
+                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPrywatneEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPrywatneEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="personal" />
                                 </div>
                             </div>
 
-                            {/* PRACA */}
-                            <div className={`w-1/3 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito ? 'text-white' : 'text-black'}`}>
+                            {/* WORK */}
+                            <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito || isTor ? 'text-white' : 'text-black'}`}>
                                 {isPracaEmpty && <div key="dash">{renderZenDashboard()}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPracaEmpty ? 1 : 0.2 }}></div>
+                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPracaEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPracaEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="work" />
                                 </div>
                             </div>
 
                             {/* GHOST */}
-                            <div className={`w-1/3 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito ? 'text-white' : 'text-black'}`}>
+                            <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito || isTor ? 'text-white' : 'text-black'}`}>
                                 {isGhostEmpty && <div key="dash">{renderZenDashboard()}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isGhostEmpty ? 1 : 0.2 }}></div>
+                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isGhostEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isGhostEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="ghost" />
+                                </div>
+                            </div>
+
+                            {/* TOR ONION */}
+                            <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative text-white">
+                                {isTorEmpty && <div key="dash">{renderZenDashboard()}</div>}
+                                <div key="bg" className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_1px,transparent_1px)] pointer-events-none z-0 opacity-30 invert" style={{ backgroundSize: '24px 24px', opacity: isTorEmpty ? 1 : 0.2 }}></div>
+                                <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isTorEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                    <WebViewContainer space="tor" />
                                 </div>
                             </div>
                         </div>
@@ -648,6 +676,55 @@ export default function MainFrame() {
                     </div>
                 </div>
             )}
+
+            {/* FLOATING ZOOM HUD */}
+            <div className={`absolute bottom-8 right-8 z-[9990] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                isZoomHUDVisible 
+                    ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' 
+                    : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
+            }`}>
+                <div 
+                    className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all ${
+                        isForceDark || isIncognito 
+                            ? 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]' 
+                            : 'bg-white/90 border-black/10 text-gray-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]'
+                    }`}
+                >
+                    <ZoomIn size={14} className="text-accent" />
+                    <span className="text-xs font-bold font-mono tracking-tight min-w-[42px] text-center select-none">
+                        {zoomLevel}%
+                    </span>
+                    <div className={`flex items-center gap-1 pl-2 border-l ${isForceDark || isIncognito ? 'border-white/10' : 'border-black/10'}`}>
+                        <button 
+                            onClick={() => setZoomLevel(zoomLevel - 10)}
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
+                                isForceDark || isIncognito ? 'hover:bg-white/10 text-white' : 'hover:bg-black/5 text-gray-700'
+                            }`}
+                            title="Zoom Out (Ctrl -)"
+                        >
+                            -
+                        </button>
+                        <button 
+                            onClick={() => setZoomLevel(zoomLevel + 10)}
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
+                                isForceDark || isIncognito ? 'hover:bg-white/10 text-white' : 'hover:bg-black/5 text-gray-700'
+                            }`}
+                            title="Zoom In (Ctrl +)"
+                        >
+                            +
+                        </button>
+                        {zoomLevel !== 100 && (
+                            <button 
+                                onClick={() => setZoomLevel(100)}
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1"
+                                title="Reset Zoom (Ctrl 0)"
+                            >
+                                <RotateCcw size={10} /> Reset
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
 
             {/* TOAST POPUP (Centered in MainFrame) */}
             {toast && (

@@ -1,17 +1,49 @@
 import { create } from 'zustand';
 
+const getActiveHistoryKey = () => {
+    try {
+        const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+        return profileId === 'default' ? 'qbrowse_history' : `qbrowse_history_${profileId}`;
+    } catch (e) {
+        return 'qbrowse_history';
+    }
+};
+
 // Persistent history store
 const useHistoryStore = create((set, get) => ({
     history: [],
 
     loadHistory: () => {
         try {
-            const data = localStorage.getItem('qbrowse_history');
+            const key = getActiveHistoryKey();
+            const data = localStorage.getItem(key);
             if (data) {
                 set({ history: JSON.parse(data) });
+            } else {
+                set({ history: [] });
             }
         } catch (e) {
             console.error('Failed to load history', e);
+        }
+    },
+
+    serializeCurrentProfileHistory: (profileId) => {
+        try {
+            const key = (!profileId || profileId === 'default') ? 'qbrowse_history' : `qbrowse_history_${profileId}`;
+            localStorage.setItem(key, JSON.stringify(get().history));
+        } catch (e) {
+            console.error('Failed to serialize profile history', e);
+        }
+    },
+
+    loadProfileHistory: (profileId) => {
+        try {
+            const key = (!profileId || profileId === 'default') ? 'qbrowse_history' : `qbrowse_history_${profileId}`;
+            const data = localStorage.getItem(key);
+            set({ history: data ? JSON.parse(data) : [] });
+        } catch (e) {
+            console.error('Failed to load profile history', e);
+            set({ history: [] });
         }
     },
 
@@ -45,7 +77,7 @@ const useHistoryStore = create((set, get) => ({
 
             const slicedHistory = newHistory.slice(0, 1000);
             try {
-                localStorage.setItem('qbrowse_history', JSON.stringify(slicedHistory));
+                localStorage.setItem(getActiveHistoryKey(), JSON.stringify(slicedHistory));
             } catch (e) {}
 
             return { history: slicedHistory };
@@ -60,7 +92,7 @@ const useHistoryStore = create((set, get) => ({
             if (newHistory[0].url === url || newHistory[0].title === newHistory[0].url) {
                 newHistory[0] = { ...newHistory[0], title };
                 try {
-                    localStorage.setItem('qbrowse_history', JSON.stringify(newHistory));
+                    localStorage.setItem(getActiveHistoryKey(), JSON.stringify(newHistory));
                 } catch (e) {}
                 return { history: newHistory };
             }
@@ -103,7 +135,7 @@ const useHistoryStore = create((set, get) => ({
                 .slice(0, 1000);
 
             try {
-                localStorage.setItem('qbrowse_history', JSON.stringify(merged));
+                localStorage.setItem(getActiveHistoryKey(), JSON.stringify(merged));
             } catch (e) {}
 
             return { history: merged };
@@ -113,12 +145,16 @@ const useHistoryStore = create((set, get) => ({
     clearHistory: () => {
         set({ history: [] });
         try {
-            localStorage.removeItem('qbrowse_history');
+            localStorage.removeItem(getActiveHistoryKey());
         } catch (e) {}
     }
 }));
 
 // Load initially
 useHistoryStore.getState().loadHistory();
+
+if (typeof window !== 'undefined') {
+    window.__historyStore = useHistoryStore;
+}
 
 export default useHistoryStore;

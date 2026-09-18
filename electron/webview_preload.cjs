@@ -37,6 +37,15 @@ window.addEventListener('mouseup', (e) => {
     }
 }, true);
 
+// Listen to Ctrl + Wheel inside webview for pinch-to-zoom / smooth zoom gestures
+window.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 5 : -5;
+        ipcRenderer.sendToHost('webview-zoom-wheel', delta);
+    }
+}, { passive: false });
+
 // --- QVAULT PASSKEY INTEGRATION (MAIN WORLD INJECTION) ---
 try {
     contextBridge.exposeInMainWorld('__qbrowse_passkey_bridge', {

@@ -31,7 +31,7 @@ jobs:
         unzip -o llama.zip -d electron/bin/ || true
         chmod +x electron/bin/* || true
 
-    - name: Build Linux (DEB & AppImage)
+    - name: Build Linux (DEB, AppImage, Pacman, Tar.gz)
       run: npm run build:linux
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,3 +43,5 @@ jobs:
         path: |
           dist_electron/*.deb
           dist_electron/*.AppImage
+          dist_electron/*.pacman
+          dist_electron/*.tar.gz

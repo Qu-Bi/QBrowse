@@ -3,6 +3,7 @@ import { PanelLeft, Lock, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, Shield
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
+import useTorStore from '../../store/useTorStore';
 import { onGlobalNavigateBack, onGlobalNavigateForward } from '../../services/electronIPC';
 
 function formatDisplayUrl(rawUrl) {
@@ -77,8 +78,13 @@ export default function TopBar() {
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
+    const torTabs = useTabStore(state => state.torTabs) || [];
+    const torStatus = useTorStore(state => state.status);
 
-    const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : ghostTabs);
+    const isIncognito = activeSpace === 'ghost';
+    const isTor = activeSpace === 'tor';
+
+    const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
     const leftTab = spaceTabs.find(t => t.active);
     const rightTab = isSplitView && splitRightTabId ? spaceTabs.find(t => t.id === splitRightTabId) : null;
     
@@ -90,8 +96,6 @@ export default function TopBar() {
 
     const canGoBack = focusedTab ? !!focusedTab.canGoBack : false;
     const canGoForward = focusedTab ? !!focusedTab.canGoForward : false;
-
-    const isIncognito = activeSpace === 'ghost';
 
     const activeTabId = focusedTab?.id;
 
@@ -231,14 +235,31 @@ export default function TopBar() {
 
                             {/* Left Security Icon */}
                             <div 
-                                className="p-1 rounded-full hover:bg-white/20 transition-colors z-10 cursor-pointer group/lock flex-shrink-0"
+                                className="p-1 rounded-full hover:bg-white/20 transition-colors z-10 cursor-pointer group/lock flex-shrink-0 relative"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    togglePopover('siteinfo');
+                                    if (isTor) {
+                                        togglePopover('tor');
+                                    } else {
+                                        togglePopover('siteinfo');
+                                    }
                                 }}
-                                title="Site Security & Permissions"
+                                title={isTor ? "Tor Circuit & Security HUD" : "Site Security & Permissions"}
                             >
-                                {isRefreshing ? <X size={12} className="text-gray-400" /> : <Lock size={12} className={`group-hover/lock:scale-110 transition-transform ${isForceDark || isIncognito ? 'text-emerald-400' : 'text-emerald-500'}`} />}
+                                {isTor ? (
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400 group-hover/lock:scale-110 transition-transform">
+                                        <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
+                                        <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
+                                        <circle cx="12" cy="12" r="1.5"/>
+                                    </svg>
+                                ) : isRefreshing ? (
+                                    <X size={12} className="text-gray-400" />
+                                ) : (
+                                    <Lock size={12} className={`group-hover/lock:scale-110 transition-transform ${isForceDark || isIncognito ? 'text-emerald-400' : 'text-emerald-500'}`} />
+                                )}
+                                {isTor && torStatus === 'connected' && (
+                                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_5px_#a855f7]"></span>
+                                )}
                             </div>
 
                             {/* Center URL Text (Clean truncation, no icon overlap) */}
@@ -250,8 +271,8 @@ export default function TopBar() {
                             <div className="flex items-center gap-1 z-10 flex-shrink-0">
                                 {zoomLevel !== 100 && (
                                     <div
-                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider transition-colors cursor-pointer ${isForceDark || isIncognito ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-gray-200/50 text-gray-600 hover:bg-gray-300/50'}`}
-                                        onClick={(e) => { e.stopPropagation(); setZoomLevel(100); showToast('Zoom: 100%'); }}
+                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider transition-all cursor-pointer animate-pop-in hover:scale-105 active:scale-95 ${isForceDark || isIncognito ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-gray-200/50 text-gray-600 hover:bg-gray-300/50'}`}
+                                        onClick={(e) => { e.stopPropagation(); setZoomLevel(100); }}
                                         title="Reset Zoom (CMD+0)"
                                     >
                                         {zoomLevel}%
@@ -270,7 +291,7 @@ export default function TopBar() {
                     {/* RIGHT BLOCK: Extensions & Toggles */}
                     <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-1 flex items-center justify-end min-w-max z-20">
                         <div className={`flex items-center gap-1 flex-shrink-0 min-w-max h-9 rounded-full shadow-sm border px-2 ${isForceDark || isIncognito ? 'bg-black/20 border-white/5 shadow-inner' : 'bg-white/40 border-white/20'}`}>
-                            <button onClick={() => setIsSplitView(!isSplitView)} className={`p-1.5 rounded-full transition group border-r pr-3 mr-1 ${isForceDark || isIncognito ? (isSplitView ? 'border-accent/30 text-accent bg-accent/10' : 'border-white/10 text-white/60 hover:text-white') : (isSplitView ? 'border-gray-200/50 text-accent bg-accent/10' : 'border-gray-200/50 text-gray-500 hover:bg-black/5')} `} title="Split View">
+                            <button onClick={() => toggleSplitView()} className={`p-1.5 rounded-full transition group border-r pr-3 mr-1 ${isForceDark || isIncognito ? (isSplitView ? 'border-accent/30 text-accent bg-accent/10' : 'border-white/10 text-white/60 hover:text-white') : (isSplitView ? 'border-gray-200/50 text-accent bg-accent/10' : 'border-gray-200/50 text-gray-500 hover:bg-black/5')} `} title="Split View (Ctrl+\ or Ctrl+Shift+D)">
                                 <SplitSquareHorizontal size={14} className="group-hover:scale-110 transition-transform" />
                             </button>
                             <button onClick={() => togglePopover('darkmode')} className={`p-1.5 rounded-full transition group ${activePopover === 'darkmode' || isForceDark ? 'bg-indigo-500/20 text-indigo-400' : (isForceDark || isIncognito ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-800 hover:bg-black/10')}`}>
@@ -290,6 +311,21 @@ export default function TopBar() {
                             </button>
 
                             <div className={`w-px h-4 mx-1 ${isForceDark || isIncognito ? 'bg-white/10' : 'bg-gray-200/50'}`}></div>
+
+                            <button 
+                                onClick={() => togglePopover('tor')} 
+                                className={`p-1.5 rounded-full transition group relative ${activePopover === 'tor' || isTor ? 'bg-purple-500/25 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.3)]' : (isForceDark || isIncognito ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-800 hover:bg-black/10')}`} 
+                                title="Tor Circuit & Onion Network"
+                            >
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
+                                    <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
+                                    <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
+                                    <circle cx="12" cy="12" r="1.5"/>
+                                </svg>
+                                {torStatus === 'connected' && (
+                                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_5px_#a855f7]"></span>
+                                )}
+                            </button>
 
                             <button onClick={() => togglePopover('vault')} className={`p-1.5 rounded-full transition group ${activePopover === 'vault' ? 'bg-blue-500/20 text-blue-400' : (isForceDark || isIncognito ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-800 hover:bg-black/10')}`} title="QVault Passwords">
                                 <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>

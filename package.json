@@ -14,8 +14,10 @@
     "electron:dev": "concurrently -k \"vite\" \"cross-env NODE_ENV=development wait-on http://localhost:1420 && electron .\"",
     "build": "vite build",
     "preview": "vite preview",
-    "build:app": "vite build && electron-builder build --win --x64",
-    "build:linux": "vite build && electron-builder build --linux --x64"
+    "build:app": "vite build && electron-builder build --win --x64 --publish never",
+    "build:win": "vite build && electron-builder build --win --x64 --publish never",
+    "build:linux": "vite build && electron-builder build --linux --x64 --publish never",
+    "build:all": "vite build && electron-builder build -w -l --x64 --publish never"
   },
   "dependencies": {
     "@cliqz/adblocker-electron": "^1.34.0",
@@ -39,6 +41,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
+    "@tailwindcss/line-clamp": "^0.4.4",
     "autoprefixer": "^10.4.16",
     "concurrently": "^10.0.3",
     "cross-env": "^10.1.0",
@@ -56,6 +59,7 @@
     "productName": "QBrowse",
     "executableName": "QBrowse",
     "copyright": "Copyright © 2026 QuBI",
+    "publish": null,
     "directories": {
       "output": "dist_electron"
     },
@@ -83,9 +87,22 @@
     },
     "linux": {
       "target": [
+        "AppImage",
         "deb",
-        "AppImage"
-      ]
+        "pacman",
+        "tar.gz"
+      ],
+      "category": "Network;WebBrowser;",
+      "icon": "icon.png",
+      "maintainer": "QuBI <qu@qubirpi3b.tk>",
+      "synopsis": "Next-generation privacy browser with Tor, AI & Cloud Sync",
+      "description": "Next-generation privacy-first browser with built-in Tor onion routing, local Gemma AI, and encrypted cloud sync."
+    },
+    "deb": {
+      "priority": "optional"
+    },
+    "pacman": {
+      "compression": "xz"
     }
   }
 }

@@ -4,7 +4,7 @@ import {
     Sparkles, Bot, CheckCircle, X, ArrowRight, Zap, 
     Compass, Keyboard, Shield, ChevronRight, Terminal,
     Sidebar as SidebarIcon, Sliders, Play, Check, Globe, RefreshCw, Eye, Lock,
-    Calculator, Trash2, Cpu
+    Calculator, Trash2, Cpu, SplitSquareHorizontal
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 
@@ -41,14 +41,19 @@ const TutorialWizard = () => {
     ];
 
     const shortcutsList = [
-        { key: 'Ctrl / Cmd + K', name: 'Command Palette', desc: 'Summon Omnibox for instant web search, terminal commands (>), AI queries (?), and math.', cat: 'Navigation', icon: Command },
+        { key: 'Ctrl / Cmd + K / L', name: 'Command Palette / Address Bar', desc: 'Summon Omnibox for instant web search, terminal commands (>), AI queries (?), and math.', cat: 'Navigation', icon: Command },
+        { key: 'Ctrl / Cmd + N', name: 'New Window', desc: 'Open a new QBrowse window instance in your default space.', cat: 'Navigation', icon: Layers },
+        { key: 'Ctrl / Cmd + Shift + N / P', name: 'New Private Window', desc: 'Open a dedicated Incognito window with zero history, isolated cookies, and RAM-only storage.', cat: 'Spaces', icon: Eye },
+        { key: 'Ctrl / Cmd + T / W', name: 'New / Close Tab', desc: 'Instantly open a new Zen tab in the current space or terminate the active view.', cat: 'Tabs', icon: RefreshCw },
+        { key: 'Ctrl / Cmd + Shift + T', name: 'Reopen Closed Tab', desc: 'Restore your most recently closed tab and seamlessly return to your work.', cat: 'Tabs', icon: RefreshCw },
         { key: 'Ctrl / Cmd + E', name: 'Spatial Tab Map', desc: 'Enter 3D spatial overview mode to see live web view thumbnails of all open tabs.', cat: 'Navigation', icon: MapIcon },
         { key: 'Ctrl / Cmd + 1 / 2 / 3', name: 'Switch Spaces', desc: 'Instantly jump between Personal (1), Work (2), and Ghost Mode (3) environments.', cat: 'Spaces', icon: Layers },
-        { key: 'Ctrl / Cmd + Shift + N', name: 'Toggle Ghost Mode', desc: 'Activate zero-footprint private browsing where no history or cookies are stored.', cat: 'Spaces', icon: Eye },
+        { key: 'Ctrl / Cmd + H / Y', name: 'Browsing Archive', desc: 'Open and search your local encrypted browsing history.', cat: 'Navigation', icon: RefreshCw },
+        { key: 'Shift + Escape', name: 'Resource & Task Manager', desc: 'Launch live telemetry monitor to inspect RAM/CPU and hibernate background tabs.', cat: 'Interface', icon: Cpu },
         { key: 'Ctrl / Cmd + B', name: 'Toggle Left Sidebar', desc: 'Hide or show the sidebar for an edge-to-edge, distraction-free Zen browsing experience.', cat: 'Interface', icon: SidebarIcon },
         { key: 'Ctrl / Cmd + J', name: 'Toggle Right Panel', desc: 'Open or close the Tool Hub, built-in AI assistant, and downloads drawer.', cat: 'Interface', icon: Sliders },
-        { key: 'Ctrl / Cmd + T / W', name: 'New / Close Tab', desc: 'Instantly open a new Zen tab in the current space or terminate the active view.', cat: 'Tabs', icon: RefreshCw },
         { key: 'Ctrl / Cmd + Tab', name: 'Fast Tab Switcher', desc: 'Quickly toggle back to your previously active tab, or hold to open the switcher grid.', cat: 'Tabs', icon: Monitor },
+        { key: 'Ctrl / Cmd + \\ or Shift + D', name: 'Toggle Split View', desc: 'Open side-by-side split screen view with another tab or open the split launcher.', cat: 'Tabs', icon: SplitSquareHorizontal },
         { key: 'F11', name: 'Fullscreen Zen', desc: 'Expand the web viewport to fill your entire screen without OS menus or toolbars.', cat: 'Interface', icon: Zap }
     ];
 

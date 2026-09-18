@@ -93,8 +93,38 @@ const useVaultStore = create((set, get) => ({
     },
 
     setPin: (pin) => {
-        localStorage.setItem('qbrowse_vault_pin', pin);
+        const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+        const key = (!profileId || profileId === 'default') ? 'qbrowse_vault_pin' : `qbrowse_vault_pin_${profileId}`;
+        localStorage.setItem(key, pin);
         set({ pinCode: pin });
+    },
+
+    serializeCurrentProfileVault: (profileId) => {
+        try {
+            const key = (!profileId || profileId === 'default') ? 'qbrowse_vault_pin' : `qbrowse_vault_pin_${profileId}`;
+            if (get().pinCode) {
+                localStorage.setItem(key, get().pinCode);
+            }
+        } catch (e) {
+            console.error('Failed to serialize profile vault pin', e);
+        }
+    },
+
+    loadProfileVault: (profileId) => {
+        try {
+            const key = (!profileId || profileId === 'default') ? 'qbrowse_vault_pin' : `qbrowse_vault_pin_${profileId}`;
+            const pin = localStorage.getItem(key) || '';
+            set({
+                isUnlocked: false,
+                masterPassword: '',
+                passwords: [],
+                cloudVaultBackup: null,
+                pinCode: pin,
+                error: null
+            });
+        } catch (e) {
+            console.error('Failed to load profile vault', e);
+        }
     },
 
     lock: () => {
@@ -129,7 +159,9 @@ const useVaultStore = create((set, get) => ({
                     const payload = {
                         type: remoteItem.itemType || 'login',
                         notes: remoteItem.notes || '',
-                        passkeyData: remoteItem.passkeyData || null
+                        passkeyData: remoteItem.passkeyData || null,
+                        cardData: remoteItem.cardData || null,
+                        addressData: remoteItem.addressData || null
                     };
                     const jsonPayload = JSON.stringify(payload);
                     const combinedTitle = `${remoteItem.title}|||${jsonPayload}`;
@@ -146,7 +178,7 @@ const useVaultStore = create((set, get) => ({
         }
     },
 
-    addNewItem: async ({ type = 'login', title, username = '', password = '', url = '', passkeyData = null, notes = '' }) => {
+    addNewItem: async ({ type = 'login', title, username = '', password = '', url = '', passkeyData = null, cardData = null, addressData = null, notes = '' }) => {
         const { isUnlocked, masterPassword } = get();
         console.log("[VaultStore Debug] addNewItem called:", { type, title, username, url, isUnlocked });
 
@@ -155,7 +187,9 @@ const useVaultStore = create((set, get) => ({
             const payload = {
                 type,
                 notes,
-                passkeyData: type === 'passkey' ? (passkeyData || { rpId: url, created: Date.now() }) : null
+                passkeyData: type === 'passkey' ? (passkeyData || { rpId: url, created: Date.now() }) : null,
+                cardData: type === 'card' ? cardData : null,
+                addressData: type === 'address' ? addressData : null
             };
             const jsonPayload = JSON.stringify(payload);
             const combinedTitle = `${title}|||${jsonPayload}`;
@@ -197,13 +231,15 @@ const useVaultStore = create((set, get) => ({
         }
     },
 
-    updateItem: async ({ id, type = 'login', title, username = '', password = '', url = '', passkeyData = null, notes = '' }) => {
+    updateItem: async ({ id, type = 'login', title, username = '', password = '', url = '', passkeyData = null, cardData = null, addressData = null, notes = '' }) => {
         set({ isLoading: true, error: null });
         try {
             const payload = {
                 type,
                 notes,
-                passkeyData: type === 'passkey' ? (passkeyData || { rpId: url, created: Date.now() }) : null
+                passkeyData: type === 'passkey' ? (passkeyData || { rpId: url, created: Date.now() }) : null,
+                cardData: type === 'card' ? cardData : null,
+                addressData: type === 'address' ? addressData : null
             };
             const jsonPayload = JSON.stringify(payload);
             const combinedTitle = `${title}|||${jsonPayload}`;
@@ -219,5 +255,9 @@ const useVaultStore = create((set, get) => ({
         }
     }
 }));
+
+if (typeof window !== 'undefined') {
+    window.__vaultStore = useVaultStore;
+}
 
 export default useVaultStore;

@@ -3,6 +3,8 @@ import { X, Minus, Maximize2, UserPlus, Clock, Settings, Home, Plus, ChevronRigh
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
+import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
+import useTorStore from '../../store/useTorStore';
 
 export default function Sidebar() {
     // UI Store State
@@ -19,12 +21,17 @@ export default function Sidebar() {
     const togglePopover = useUIStore(state => state.togglePopover);
     const activePopover = useUIStore(state => state.activePopover);
 
+    const activeProfileId = useProfileStore(state => state.activeProfileId);
+    const profiles = useProfileStore(state => state.profiles);
+    const activeProfile = profiles.find(p => p.id === activeProfileId) || profiles[0];
+
     // Tab Store State
     const activeSpace = useTabStore(state => state.activeSpace);
     const setActiveSpace = useTabStore(state => state.setActiveSpace);
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
+    const torTabs = useTabStore(state => state.torTabs) || [];
     const pinnedTabs = useTabStore(state => state.pinnedTabs);
     const draggedItem = useTabStore(state => state.draggedItem);
     const dragOverItem = useTabStore(state => state.dragOverItem);
@@ -53,8 +60,12 @@ export default function Sidebar() {
     const setPrivateTabs = useTabStore(state => state.setPrivateTabs);
     const setWorkTabs = useTabStore(state => state.setWorkTabs);
     const setGhostTabs = useTabStore(state => state.setGhostTabs);
+    const setTorTabs = useTabStore(state => state.setTorTabs);
 
+    const torStatus = useTorStore(state => state.status);
+    const isTorEnabled = useTorStore(state => state.isTorEnabled);
     const isIncognito = activeSpace === 'ghost';
+    const isTor = activeSpace === 'tor';
     const isForceDark = useUIStore(state => state.isForceDark);
     const hoverTimeout = useRef(null);
 
@@ -75,8 +86,8 @@ export default function Sidebar() {
     };
 
     const handlePinnedTabClick = (pin) => {
-        const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : ghostTabs;
-        const setTabs = activeSpace === 'personal' ? setPrivateTabs : activeSpace === 'work' ? setWorkTabs : setGhostTabs;
+        const tabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
+        const setTabs = activeSpace === 'personal' ? setPrivateTabs : (activeSpace === 'work' ? setWorkTabs : (activeSpace === 'ghost' ? setGhostTabs : setTorTabs));
         
         const existingTab = tabs.find(t => t.pinnedId === pin.id || (t.url && typeof t.url === 'string' && t.url.includes(pin.domain)));
         
@@ -102,8 +113,8 @@ export default function Sidebar() {
                     setSplitRightTabId(tab.id);
                     useUIStore.getState().setCurrentUrl(tab.url || '');
                 } else {
-                    const list = spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : ghostTabs);
-                    const setList = spaceType === 'personal' ? setPrivateTabs : (spaceType === 'work' ? setWorkTabs : setGhostTabs);
+                    const list = spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs));
+                    const setList = spaceType === 'personal' ? setPrivateTabs : (spaceType === 'work' ? setWorkTabs : (spaceType === 'ghost' ? setGhostTabs : setTorTabs));
                     setList(list.map(t => ({ ...t, active: t.id === tab.id })));
                     useUIStore.getState().setCurrentUrl(tab.url || '');
                 }
@@ -132,6 +143,12 @@ export default function Sidebar() {
             <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                 {spaceType === 'ghost' ? (
                     <Ghost size={14} className={`flex-shrink-0 opacity-50 ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
+                ) : spaceType === 'tor' ? (
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
+                        <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
+                        <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
+                        <circle cx="12" cy="12" r="1.5"/>
+                    </svg>
                 ) : (
                     tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="icon" className={`w-4 h-4 rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} onError={(e) => e.target.style.display = 'none'} /> : <Globe size={14} className={`flex-shrink-0 opacity-50 ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
                 )}<span className="text-sm font-medium truncate hidden md:block">{tab.title}</span>
@@ -165,7 +182,7 @@ export default function Sidebar() {
                         <PictureInPicture2 size={12} />
                     </button>
                 )}
-                {spaceType !== 'ghost' && tab.url && tab.url !== 'about:blank' && (
+                {spaceType !== 'ghost' && spaceType !== 'tor' && tab.url && tab.url !== 'about:blank' && (
                     <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className="p-1 text-accent opacity-70 hover:opacity-100 hover:bg-accent-10 rounded transition" title="Pin Tab"><Pin size={12} /></button>
                 )}
                 <button 
@@ -201,21 +218,18 @@ export default function Sidebar() {
                     <button 
                         onClick={() => togglePopover('user')} 
                         className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all hover:scale-110 cursor-pointer relative ${
-                            activePopover === 'user'
+                            activePopover === 'user' || activePopover === 'userProfile'
                                 ? 'bg-accent-20 border-accent text-accent shadow-[0_0_10px_var(--accent)]'
                                 : 'bg-white/10 border-white/20 text-white/70 hover:text-white'
                         }`} 
-                        title="User Profile & Cloud Sync"
+                        style={{ borderColor: activeProfile?.color || '#d4bc94' }}
+                        title={`Profile: ${activeProfile?.name || 'Default'} & Cloud Sync`}
                     >
                         {localStorage.getItem('qbrowse_profile_avatar_url') ? (
                             <img src={localStorage.getItem('qbrowse_profile_avatar_url')} alt="Avatar" className="w-full h-full rounded-full object-cover" />
                         ) : (
                             <span className="text-xs">
-                                {(() => {
-                                    const preset = localStorage.getItem('qbrowse_profile_avatar_preset') || 'rocket';
-                                    const emojis = { rocket: '🚀', zap: '⚡', fox: '🦊', alien: '👾', galaxy: '🌌', gem: '💎', dragon: '🐉', crown: '👑', shield: '🛡️', dna: '🧬' };
-                                    return emojis[preset] || '🚀';
-                                })()}
+                                {getAvatarEmoji(activeProfile?.avatar)}
                             </span>
                         )}
                         {syncUser && (
@@ -234,7 +248,7 @@ export default function Sidebar() {
 
             <div className="px-4 py-4 hidden md:grid grid-cols-4 gap-2 border-b border-[color:var(--sidebar-border)] relative z-10">
                 {pinnedTabs.map((pin) => {
-                    const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : ghostTabs;
+                    const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs);
                     const isActive = tabs.find(t => t.active)?.pinnedId === pin.id || tabs.find(t => t.active && t.url && typeof t.url === 'string' && t.url.includes(pin.domain));
                     return (
                     <div key={pin.id} className="relative group flex justify-center animate-pin-in" onContextMenu={(e) => handleTabContextMenuClick(e, pin, 'pinned')}>
@@ -252,11 +266,12 @@ export default function Sidebar() {
             </div>
 
             <div className="relative flex-1 w-full overflow-hidden min-w-[64px]">
-                <div className="absolute inset-y-0 left-0 w-[300%] flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                    style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-33.333%)' : 'translateX(-66.666%)' }}>
+                <div className="absolute inset-y-0 left-0 w-[400%] flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                    style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-25%)' : activeSpace === 'ghost' ? 'translateX(-50%)' : 'translateX(-75%)' }}>
 
+                    {/* PERSONAL TABS */}
                     <div 
-                        className="w-1/3 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
                         onDragOver={(e) => { e.preventDefault(); handleDragOver('root-personal'); }}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'personal')}
@@ -283,8 +298,9 @@ export default function Sidebar() {
                         })()}
                     </div>
 
+                    {/* WORK TABS */}
                     <div 
-                        className="w-1/3 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
                         onDragOver={(e) => { e.preventDefault(); handleDragOver('root-work'); }}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'work')}
@@ -311,17 +327,29 @@ export default function Sidebar() {
                         })()}
                     </div>
 
+                    {/* GHOST TABS */}
                     <div 
-                        className="w-1/3 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
                         onDragOver={(e) => { e.preventDefault(); handleDragOver('root-ghost'); }}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'ghost')}
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-ghost' ? 'border-[#a855f7] border-dashed bg-[#a855f7]/10 py-1' : 'border-transparent'}`}>
-                            <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/50 tracking-widest">Incognito Tabs</h3>
-                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T)">
-                                <Plus size={12} strokeWidth={2.5} />
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                                <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">Incognito Tabs</h3>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button 
+                                    onClick={() => useTorStore.getState().toggleTorEnabled(true)}
+                                    className="hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition border border-purple-500/20" 
+                                    title="Enable Tor Onion Routing (converts private space to Tor space)"
+                                >
+                                    <span>🧅</span> Tor Mode
+                                </button>
+                                <button onClick={() => handleNewTab()} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T)">
+                                    <Plus size={12} strokeWidth={2.5} />
+                                </button>
+                            </div>
                         </div>
                         {(() => {
                             const filtered = ghostTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
@@ -339,24 +367,132 @@ export default function Sidebar() {
                         })()}
                     </div>
 
+                    {/* TOR TABS */}
+                    <div 
+                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        onDragOver={(e) => { e.preventDefault(); handleDragOver('root-tor'); }}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDropRoot(e, 'tor')}
+                    >
+                        <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-tor' ? 'border-purple-400 border-dashed bg-purple-500/10 py-1' : 'border-transparent'}`}>
+                            <div className="flex items-center gap-1.5">
+                                <span className={`w-1.5 h-1.5 rounded-full ${torStatus === 'connected' ? 'bg-purple-400 shadow-[0_0_6px_#c084fc]' : 'bg-amber-400'}`}></span>
+                                <h3 className="hidden md:block text-[10px] uppercase font-bold text-purple-400/80 tracking-widest">Tor Tabs</h3>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button 
+                                    onClick={() => useTorStore.getState().toggleTorEnabled(false)}
+                                    className="hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition border border-white/10" 
+                                    title="Turn off Tor and return to Ghost mode"
+                                >
+                                    <span>👻</span> Ghost
+                                </button>
+                                <button onClick={() => handleNewTab()} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T)">
+                                    <Plus size={12} strokeWidth={2.5} />
+                                </button>
+                            </div>
+                        </div>
+                        {(() => {
+                            const filtered = (torTabs || []).filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
+                            if (filtered.length === 0) {
+                                return (
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                        <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+                                            <Plus size={14} className="flex-shrink-0 opacity-50" />
+                                            <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>
+                                        </div>
+                                    </button>
+                                );
+                            }
+                            return filtered.map(tab => renderTab(tab, 'tor'));
+                        })()}
+                    </div>
+
                 </div>
             </div>
 
             <div className="p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-2">
                 <div className="relative flex-1 flex bg-[color:var(--sidebar-bg-hover)] p-1 rounded-xl border border-[color:var(--sidebar-border)]">
-                    <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent-20 border border-accent-30 rounded-lg transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-sm ${isIncognito ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`} style={{ transform: activeSpace === 'work' ? 'translateX(100%)' : 'translateX(0)' }}></div>
+                    <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent-20 border border-accent-30 rounded-lg transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-sm ${isIncognito || isTor ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`} style={{ transform: activeSpace === 'work' ? 'translateX(100%)' : 'translateX(0)' }}></div>
                     <button onClick={() => setActiveSpace('personal')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold transition-colors duration-300 ${activeSpace === 'personal' ? 'text-accent' : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><User size={14} /> <span className="hidden md:block">Personal</span></button>
                     <button onClick={() => setActiveSpace('work')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold transition-colors duration-300 ${activeSpace === 'work' ? 'text-accent' : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><Layers size={14} /> <span className="hidden md:block">Work</span></button>
                 </div>
+
+                {/* Animated Morphing Ghost <-> Onion Button */}
                 <button
                     onClick={() => {
-                        setActiveSpace(isIncognito ? 'personal' : 'ghost');
-                        showToast(!isIncognito ? 'Ghost Mode: Activated' : 'Ghost Mode: Deactivated');
+                        if (isTorEnabled) {
+                            setActiveSpace(isTor ? 'personal' : 'tor');
+                            showToast(!isTor ? 'Tor Space: Activated' : 'Tor Space: Deactivated');
+                        } else {
+                            setActiveSpace(isIncognito ? 'personal' : 'ghost');
+                            showToast(!isIncognito ? 'Ghost Mode: Activated' : 'Ghost Mode: Deactivated');
+                        }
                     }}
-                    className={`p-2 rounded-xl transition-all border flex-shrink-0 ${isIncognito ? 'border-accent-30 text-accent bg-accent-20 shadow-accent' : 'border-transparent text-[color:var(--sidebar-text-muted)] hover:bg-[color:var(--sidebar-bg-hover)] hover:text-[color:var(--sidebar-text-hover)]'}`}
-                    title="Ghost Mode (CMD+Shift+N)"
+                    onContextMenu={(e) => {
+                        e.preventDefault();
+                        useTorStore.getState().toggleTorEnabled();
+                    }}
+                    className={`relative p-2 rounded-xl transition-all duration-300 border flex-shrink-0 overflow-hidden group ${
+                        (isTorEnabled ? isTor : isIncognito)
+                            ? (isTorEnabled 
+                                ? 'border-purple-500/40 text-purple-300 bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.35)]' 
+                                : 'border-accent-30 text-accent bg-accent-20 shadow-accent')
+                            : (isTorEnabled
+                                ? 'border-transparent text-purple-400/60 hover:text-purple-300 hover:bg-purple-500/10'
+                                : 'border-transparent text-[color:var(--sidebar-text-muted)] hover:bg-[color:var(--sidebar-bg-hover)] hover:text-[color:var(--sidebar-text-hover)]')
+                    }`}
+                    title={isTorEnabled 
+                        ? (isTor ? "Tor Space Active (Click to switch to Personal • Right-click to switch to Ghost)" : "Enter Tor Space • Right-click to switch to Ghost")
+                        : (isIncognito ? "Ghost Mode Active (Click to switch to Personal • Right-click to enable Tor)" : "Ghost Mode (CMD+Shift+N) • Right-click to enable Tor")
+                    }
                 >
-                    <Ghost size={16} className={isIncognito ? 'text-accent' : ''} />
+                    {/* Dual Layered Icons Container with Spring 3D Rotation */}
+                    <div className="relative w-4 h-4 flex items-center justify-center pointer-events-none">
+                        {/* Ghost Icon */}
+                        <div
+                            className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                                isTorEnabled
+                                    ? 'opacity-0 rotate-90 scale-0 pointer-events-none'
+                                    : 'opacity-100 rotate-0 scale-100'
+                            }`}
+                        >
+                            <Ghost size={16} className={isIncognito ? 'text-accent' : ''} />
+                        </div>
+
+                        {/* Onion Icon */}
+                        <div
+                            className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                                isTorEnabled
+                                    ? 'opacity-100 rotate-0 scale-100'
+                                    : 'opacity-0 -rotate-90 scale-0 pointer-events-none'
+                            }`}
+                        >
+                            <svg 
+                                viewBox="0 0 24 24" 
+                                width="16" 
+                                height="16" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2.2" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round"
+                                className={isTor ? 'text-purple-300' : 'text-purple-400'}
+                            >
+                                <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
+                                <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
+                                <circle cx="12" cy="12" r="1.5"/>
+                            </svg>
+                        </div>
+                    </div>
+
+                    {/* Tor Active / Bootstrapping Status Dot */}
+                    {isTorEnabled && torStatus === 'connected' && (
+                        <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_6px_#c084fc] animate-pulse"></span>
+                    )}
+                    {isTorEnabled && (torStatus === 'starting' || torStatus === 'downloading') && (
+                        <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_#fbbf24] animate-ping"></span>
+                    )}
                 </button>
             </div>
         </aside>

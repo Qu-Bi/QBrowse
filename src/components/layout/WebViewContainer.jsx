@@ -3,19 +3,27 @@ import useTabStore from '../../store/useTabStore';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useVaultStore from '../../store/useVaultStore';
+import useProfileStore from '../../store/useProfileStore';
+import useTorStore from '../../store/useTorStore';
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import FlagsPage from '../pages/FlagsPage';
 
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
-const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions }) => {
+const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions }) => {
     const wvRef = useRef(null);
     const isInternalNavigation = useRef(false);
     const isDomReadyRef = useRef(false);
+    const torSecurityLevel = useTorStore(state => state.securityLevel);
+    const torStatus = useTorStore(state => state.status);
+    const torBootstrapProgress = useTorStore(state => state.bootstrapProgress);
+
     const [initialUrl] = useState(() => {
         let u = tab.url;
-        if (!u) return 'about:blank';
-        if (u === 'about:blank') return u;
+        if (!u || u === 'about:blank') return 'about:blank';
+        if (space === 'tor' && useTorStore.getState().status !== 'connected') {
+            return 'about:blank';
+        }
         if (u.startsWith('qbrowse://ai')) {
             return u.replace('qbrowse://ai', 'http://127.0.0.1:8080');
         }
@@ -24,6 +32,9 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
         }
         return u;
     });
+
+    // Track the URL currently being loaded or displayed so we never initiate duplicate loadURL calls
+    const currentRequestedUrlRef = useRef(initialUrl);
 
     const showSwitcher = useUIStore(state => state.showSwitcher);
     useEffect(() => {
@@ -76,7 +87,7 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
         };
     }, [tab.id]);
 
-    // Handle subsequent navigations from Omnibox
+    // Handle navigations from Omnibox and Tor connection
     useEffect(() => {
         const wv = wvRef.current;
         if (!wv) return;
@@ -86,24 +97,49 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
             return;
         }
 
+        // If the tab is an empty new tab or about:blank, do not perform any web navigation
+        if (!tab.url || tab.url === '' || tab.url === 'about:blank') {
+            return;
+        }
+
+        // In Tor space, wait until Tor is connected before loading destination
+        if (space === 'tor' && torStatus !== 'connected') {
+            return;
+        }
+
         let targetUrl = tab.url;
-        if (!targetUrl) targetUrl = 'about:blank';
-        if (targetUrl !== 'about:blank' && !targetUrl.includes('://')) {
+        if (!targetUrl.includes('://')) {
             targetUrl = `https://${targetUrl}`;
         }
         
         let actualLoadUrl = targetUrl;
-        if (actualLoadUrl && actualLoadUrl.startsWith('qbrowse://ai')) {
+        if (actualLoadUrl.startsWith('qbrowse://ai')) {
             actualLoadUrl = actualLoadUrl.replace('qbrowse://ai', 'http://127.0.0.1:8080');
         }
+
+        // If we already requested this URL, do not trigger a duplicate loadURL call
+        if (currentRequestedUrlRef.current === actualLoadUrl) {
+            return;
+        }
+
+        currentRequestedUrlRef.current = actualLoadUrl;
 
         const doLoad = () => {
             try {
                 if (typeof wv.getURL === 'function') {
                     const currentWvUrl = wv.getURL();
-                    if (currentWvUrl !== actualLoadUrl && currentWvUrl !== actualLoadUrl + '/') {
-                        wv.loadURL(actualLoadUrl).catch(() => {});
+                    if (currentWvUrl === actualLoadUrl || currentWvUrl === actualLoadUrl + '/') {
+                        return;
                     }
+                }
+                // Stop any previous in-flight load cleanly before issuing the new destination
+                if (typeof wv.stop === 'function' && typeof wv.isLoading === 'function') {
+                    if (wv.isLoading()) {
+                        try { wv.stop(); } catch (_) {}
+                    }
+                }
+                if (typeof wv.loadURL === 'function') {
+                    wv.loadURL(actualLoadUrl).catch(() => {});
                 }
             } catch (e) {
                 // Ignore
@@ -115,7 +151,7 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
         } else {
             wv.addEventListener('dom-ready', doLoad, { once: true });
         }
-    }, [tab.url]);
+    }, [tab.url, torStatus, space]);
 
     // Setup Webview Event Listeners
     useEffect(() => {
@@ -125,7 +161,9 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
         const defaultFallbackTitle = space === 'ghost' ? 'New Incognito Tab' : 'New Tab';
 
         const handleNavigate = (e) => {
+            if (!e.url || e.url === 'about:blank') return;
             isInternalNavigation.current = true;
+            currentRequestedUrlRef.current = e.url;
             setSpaceTabs(prev => {
                 const currentTab = prev.find(t => t.id === tab.id);
                 if (currentTab && currentTab.url !== e.url) {
@@ -214,6 +252,12 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
 
         const handleFailLoad = (e) => {
             if (!e.isMainFrame || e.errorCode === -3) return; // Ignore aborted requests
+            if (space === 'tor') {
+                const tor = useTorStore.getState();
+                if (tor.status !== 'connected') {
+                    return; // The bootstrap overlay / offline screen handles the UI
+                }
+            }
             wv.hasCrashed = true;
             
             let errorTitle = 'This site can’t be reached';
@@ -296,7 +340,7 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
                 </body>
                 </html>
             `;
-            wv.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+            wv.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {});
         };
         const updateNavState = () => {
             try {
@@ -328,6 +372,12 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
                     wv.goBack();
                 } else if (action === 'forward' && wv.canGoForward && wv.canGoForward()) {
                     wv.goForward();
+                }
+            } else if (e.channel === 'webview-zoom-wheel') {
+                const delta = e.args && e.args[0];
+                if (typeof delta === 'number') {
+                    const ui = useUIStore.getState();
+                    ui.setZoomLevel(ui.zoomLevel + delta);
                 }
             } else if (e.channel === 'media-state-changed') {
                 const data = e.args && e.args[0];
@@ -388,6 +438,7 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
             updateNavState();
         };
         const handleFailLoadLogged = (e) => {
+            if (e.errorCode === -3) return;
             console.error(`[WebView ${tab.id}] did-fail-load or crashed. Code:`, e.errorCode, 'Desc:', e.errorDescription, 'URL:', e.validatedURL);
             handleFailLoad(e);
             updateNavState();
@@ -531,15 +582,87 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
         }
     }, [isRefreshing, isActive, isSpaceActive]);
 
-    // Zoom
+    // Smooth Website Zoom Animation
+    const currentZoomFactor = useRef(zoomLevel / 100);
+    const prevActiveRef = useRef(isActive);
+    const prevZoomLevelRef = useRef(zoomLevel);
+    const zoomAnimFrameRef = useRef(null);
+
     useEffect(() => {
         const wv = wvRef.current;
-        if (wv && wv.setZoomFactor && isActive) {
+        if (!wv || typeof wv.setZoomFactor !== 'function' || !isActive) {
+            prevActiveRef.current = isActive;
+            prevZoomLevelRef.current = zoomLevel;
+            return;
+        }
+
+        const targetFactor = zoomLevel / 100;
+        const justBecameActive = !prevActiveRef.current && isActive;
+        prevActiveRef.current = isActive;
+
+        // If tab just switched or factor already matches target, apply instantly without animation
+        if (justBecameActive || Math.abs(currentZoomFactor.current - targetFactor) < 0.001) {
+            currentZoomFactor.current = targetFactor;
+            prevZoomLevelRef.current = zoomLevel;
             try {
-                wv.setZoomFactor(zoomLevel / 100);
+                wv.setZoomFactor(targetFactor);
+            } catch(e) {}
+            return;
+        }
+
+        // Active tab zoom level changed: smoothly animate factor transition
+        if (zoomAnimFrameRef.current) {
+            cancelAnimationFrame(zoomAnimFrameRef.current);
+            zoomAnimFrameRef.current = null;
+        }
+
+        const startFactor = currentZoomFactor.current;
+        const duration = 220; // Silky smooth 220ms duration
+        const startTime = performance.now();
+
+        const animate = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Cubic ease-out: 1 - (1 - progress)^3
+            const ease = 1 - Math.pow(1 - progress, 3);
+            const nextFactor = startFactor + (targetFactor - startFactor) * ease;
+
+            currentZoomFactor.current = nextFactor;
+            try {
+                wv.setZoomFactor(nextFactor);
+            } catch(e) {}
+
+            if (progress < 1) {
+                zoomAnimFrameRef.current = requestAnimationFrame(animate);
+            } else {
+                currentZoomFactor.current = targetFactor;
+                try {
+                    wv.setZoomFactor(targetFactor);
+                } catch(e) {}
+                zoomAnimFrameRef.current = null;
+            }
+        };
+
+        prevZoomLevelRef.current = zoomLevel;
+        zoomAnimFrameRef.current = requestAnimationFrame(animate);
+
+        return () => {
+            if (zoomAnimFrameRef.current) {
+                cancelAnimationFrame(zoomAnimFrameRef.current);
+                zoomAnimFrameRef.current = null;
+            }
+        };
+    }, [zoomLevel, isActive]);
+
+    // Sync Audio Muting with webview
+    useEffect(() => {
+        const wv = wvRef.current;
+        if (wv && typeof wv.setAudioMuted === 'function') {
+            try {
+                wv.setAudioMuted(!!tab.isMuted);
             } catch(e) {}
         }
-    }, [zoomLevel, isActive]);
+    }, [tab.isMuted]);
 
     // Smart Force Dark Mode Engine (Detects white sites and inverts, leaves native dark sites untouched)
     useEffect(() => {
@@ -606,16 +729,56 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
                 pointerEvents: shouldShow ? 'auto' : 'none'
             }}
         >
+            {space === 'tor' && torStatus !== 'connected' && shouldShow && tab.url && tab.url !== 'about:blank' && (
+                <div className="absolute inset-0 z-30 bg-[#0a0a0c] flex flex-col items-center justify-center text-white select-none">
+                    <div className={`w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(168,85,247,0.2)] ${torStatus === 'starting' || torStatus === 'downloading' ? 'animate-pulse' : ''}`}>
+                        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2" className="text-purple-400">
+                            <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
+                            <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
+                            <circle cx="12" cy="12" r="1.5"/>
+                        </svg>
+                    </div>
+                    {torStatus === 'starting' || torStatus === 'downloading' ? (
+                        <>
+                            <h3 className="text-sm font-bold text-white tracking-wide">
+                                {torStatus === 'downloading' ? 'Downloading Tor Expert Bundle...' : 'Establishing Tor Circuit...'}
+                            </h3>
+                            <p className="text-[11px] text-white/50 mt-1 font-mono">
+                                {torStatus === 'downloading' ? 'Fetching official bundle...' : `Bootstrapping onion relays (${torBootstrapProgress || 0}%)`}
+                            </p>
+                            <div className="w-48 h-1.5 bg-white/10 rounded-full mt-4 overflow-hidden">
+                                <div className="h-full bg-purple-500 transition-all duration-300 rounded-full shadow-[0_0_8px_#a855f7]" style={{ width: `${Math.max(10, torBootstrapProgress || 0)}%` }} />
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <h3 className="text-sm font-bold text-white tracking-wide">
+                                Tor Onion Routing Offline
+                            </h3>
+                            <p className="text-[12px] text-white/50 mt-1 max-w-sm text-center">
+                                Connect to Tor to safely resolve .onion services and route ephemeral traffic.
+                            </p>
+                            <button
+                                onClick={() => useTorStore.getState().startTor()}
+                                className="mt-4 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.4)] active:scale-95"
+                            >
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                Connect to Tor Network
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
             <webview
                 ref={wvRef}
                 id={`webview-${tab.id}`}
                 src={initialUrl}
-                partition={space === 'ghost' ? 'ghost' : undefined}
+                partition={space === 'ghost' ? 'ghost' : (space === 'tor' ? 'tor' : `persist:profile_${activeProfileId || 'default'}`)}
                 className="w-full h-full"
                 style={{ display: 'flex' }}
                 allowpopups="true"
                 plugins="true"
-                webpreferences="autoplayPolicy=no-user-gesture-required,plugins=yes"
+                webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}
             />
         </div>
     );
@@ -623,10 +786,11 @@ const WebViewItem = ({ tab, space, isVisible, isActive, isSpaceActive, setSpaceT
 
 export default function WebViewContainer({ space, targetTabId, isSplitPane = false }) {
   const { 
-    privateTabs, workTabs, ghostTabs, activeSpace,
-    setPrivateTabs, setWorkTabs, setGhostTabs
+    privateTabs, workTabs, ghostTabs, torTabs, activeSpace,
+    setPrivateTabs, setWorkTabs, setGhostTabs, setTorTabs
   } = useTabStore();
   const { isSidebarHidden, isRightPanelOpen, isFullscreen, isSplitView, splitRightTabId, zoomLevel, showSwitcherUI, currentUrl, isForceDark, darkExclusions } = useUIStore();
+  const activeProfileId = useProfileStore(state => state.activeProfileId);
 
   const isSpaceActive = activeSpace === space;
   let spaceTabs = [];
@@ -641,6 +805,9 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
   } else if (space === 'ghost') {
     spaceTabs = ghostTabs;
     setSpaceTabs = setGhostTabs;
+  } else if (space === 'tor') {
+    spaceTabs = torTabs || [];
+    setSpaceTabs = setTorTabs;
   }
 
   const activeTab = targetTabId 
@@ -668,9 +835,10 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
 
           return (
               <WebViewItem 
-                  key={tab.id} 
+                  key={`${activeProfileId || 'default'}-${tab.id}`} 
                   tab={tab} 
                   space={space}
+                  activeProfileId={activeProfileId}
                   isVisible={isVisible}
                   isActive={isActive}
                   isSpaceActive={isSpaceActive}

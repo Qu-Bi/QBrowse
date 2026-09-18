@@ -1,14 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    // Hardware Specs
+    // Platform & Hardware Specs
+    platform: process.platform,
     getHardwareSpecs: () => ipcRenderer.invoke('get-hardware-specs'),
     
     // Window controls
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
     setFullscreen: (state) => ipcRenderer.send('window-set-fullscreen', state),
-    maximize: () => ipcRenderer.send('window-maximize'),
     close: () => ipcRenderer.send('window-close'),
     openDevTools: () => ipcRenderer.send('open-devtools'),
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
@@ -128,5 +128,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setDoh: (provider) => ipcRenderer.invoke('set-doh', provider),
     setWebRTC: (enabled) => ipcRenderer.invoke('set-webrtc', enabled),
     saveSetting: (key, value) => ipcRenderer.invoke('save-setting', { key, value }),
+    getAppMetrics: () => ipcRenderer.invoke('get-app-metrics'),
+    killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
+    openNewWindow: (options) => ipcRenderer.invoke('open-new-window', options),
+    closeCurrentWindow: () => ipcRenderer.invoke('close-current-window'),
+
+    // Tor Engine & HUD
+    torGetStatus: () => ipcRenderer.invoke('tor-get-status'),
+    torStart: () => ipcRenderer.invoke('tor-start'),
+    torStop: () => ipcRenderer.invoke('tor-stop'),
+    torNewCircuit: () => ipcRenderer.invoke('tor-new-circuit'),
+    torCheckIp: () => ipcRenderer.invoke('tor-check-ip'),
+    torGetCircuit: () => ipcRenderer.invoke('tor-get-circuit'),
+    torDownloadBinary: () => ipcRenderer.invoke('tor-download-binary'),
+    torSetSecurityLevel: (level) => ipcRenderer.invoke('tor-set-security', level),
+    onTorStatus: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('tor-status-changed', handler);
+        return () => ipcRenderer.removeListener('tor-status-changed', handler);
+    },
+    onTorBootstrap: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('tor-bootstrap-progress', handler);
+        return () => ipcRenderer.removeListener('tor-bootstrap-progress', handler);
+    },
+    onTorDownloadProgress: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('tor-download-progress', handler);
+        return () => ipcRenderer.removeListener('tor-download-progress', handler);
+    },
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });

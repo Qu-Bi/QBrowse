@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, d
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
+const os = require('os');
 
 ipcMain.handle('read-clipboard-text', () => {
     try {
@@ -22,6 +23,7 @@ ipcMain.handle('write-clipboard-text', (event, text) => {
 const { spawn, execFile } = require('child_process');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
+const torEngine = require('./torEngine.cjs');
 
 crashReporter.start({
   uploadToServer: false,
@@ -42,6 +44,18 @@ app.commandLine.appendSwitch('enable-picture-in-picture');
 app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs');
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
+
+process.on('unhandledRejection', (reason) => {
+    const isAborted = reason && (
+        reason.errno === -3 || 
+        reason.code === 'ERR_ABORTED' || 
+        String(reason?.message || reason).includes('-3') || 
+        String(reason?.message || reason).includes('ERR_ABORTED')
+    );
+    if (isAborted) return;
+    console.warn('[Unhandled Promise Rejection]:', reason);
+});
 
 // Settings & Vault setup
 let settingsStore = {};
@@ -84,10 +98,12 @@ function decrypt(text, key) {
     return decrypted;
 }
 
-function createWindow() {
+const browserWindows = new Set();
+
+function createWindow(options = {}) {
   ensureVault();
 
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1580,
     height: 1000,
     minWidth: 1280,
@@ -105,29 +121,48 @@ function createWindow() {
     }
   });
 
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:1420');
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  browserWindows.add(win);
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = win;
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+  win.on('closed', () => {
+    browserWindows.delete(win);
+    if (mainWindow === win) {
+      mainWindow = browserWindows.values().next().value || null;
+    }
   });
 
-  mainWindow.on('app-command', (e, cmd) => {
+  const queryParams = {};
+  if (options.space) queryParams.space = options.space;
+  if (options.profileId) queryParams.profileId = options.profileId;
+  const searchStr = new URLSearchParams(queryParams).toString();
+  const query = searchStr ? `?${searchStr}` : '';
+  if (isDev) {
+    win.loadURL(`http://localhost:1420/${query}`);
+  } else {
+    win.loadFile(path.join(__dirname, '../dist/index.html'), { query: queryParams });
+  }
+
+  win.once('ready-to-show', () => {
+    win.show();
+  });
+
+  win.on('app-command', (e, cmd) => {
       if (cmd === 'browser-backward') {
           e.preventDefault();
-          if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('global-navigate-back');
+          if (win && !win.isDestroyed()) {
+              win.webContents.send('global-navigate-back');
           }
       } else if (cmd === 'browser-forward') {
           e.preventDefault();
-          if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('global-navigate-forward');
+          if (win && !win.isDestroyed()) {
+              win.webContents.send('global-navigate-forward');
           }
       }
   });
+
+  return win;
 }
 
   // Setup Ghostery Adblocker (EasyList + EasyPrivacy)
@@ -220,12 +255,17 @@ function createWindow() {
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
         
+        const getTargetWindow = () => {
+            return BrowserWindow.fromWebContents(contents) || BrowserWindow.getFocusedWindow() || mainWindow;
+        };
+
         // CRITICAL: Prevent new OS windows when webview scripts or target="_blank" links open URLs!
         contents.setWindowOpenHandler(({ url, frameName, disposition, features }) => {
             console.log('[Electron Main] setWindowOpenHandler intercepted:', url, disposition);
             if (url && url !== 'about:blank') {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('open-new-tab-url', { url, disposition });
+                const targetWin = getTargetWindow();
+                if (targetWin && !targetWin.isDestroyed()) {
+                    targetWin.webContents.send('open-new-tab-url', { url, disposition });
                 }
             }
             return { action: 'deny' };
@@ -243,21 +283,69 @@ function createWindow() {
             }
         };
 
+        // CRITICAL: Safely wrap loadURL to gracefully absorb ERR_ABORTED (-3) when navigations are superseded or cancelled
+        const originalLoadURL = contents.loadURL;
+        contents.loadURL = function(url, options) {
+            try {
+                return originalLoadURL.call(this, url, options).catch(err => {
+                    const isAborted = err && (
+                        err.errno === -3 || 
+                        err.code === 'ERR_ABORTED' || 
+                        String(err.message || '').includes('-3') || 
+                        String(err.message || '').includes('ERR_ABORTED')
+                    );
+                    if (isAborted) return;
+                    throw err;
+                });
+            } catch (err) {
+                const isAborted = err && (
+                    err.errno === -3 || 
+                    err.code === 'ERR_ABORTED' || 
+                    String(err.message || '').includes('-3') || 
+                    String(err.message || '').includes('ERR_ABORTED')
+                );
+                if (isAborted) return Promise.resolve();
+                return Promise.reject(err);
+            }
+        };
+
         // CRITICAL: Disable background throttling so YouTube media plays perfectly in the background
         contents.setBackgroundThrottling(false);
 
         contents.on('before-input-event', (event, input) => {
+            const targetWin = getTargetWindow();
+            if (!targetWin || targetWin.isDestroyed()) return;
+
             if (input.type === 'keyUp') {
                 if (input.key === 'Control' || input.key === 'Meta') {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        try {
-                            mainWindow.webContents.send('global-keyup', { key: input.key });
-                        } catch(e) {}
-                    }
+                    try {
+                        targetWin.webContents.send('global-keyup', { key: input.key });
+                    } catch(e) {}
                 }
                 return;
             }
             if (input.type !== 'keyDown') return;
+
+            // Shift+Escape -> Task Manager
+            if (input.shift && (input.key === 'Escape' || input.key === 'escape')) {
+                event.preventDefault();
+                try {
+                    targetWin.webContents.send('global-shortcut', { shortcut: 'shift+escape', shift: true });
+                } catch(e) {}
+                return;
+            }
+
+            // Alt+Left / Alt+Right -> History Navigation
+            if (input.alt && (input.key === 'ArrowLeft' || input.key === 'ArrowRight')) {
+                event.preventDefault();
+                try {
+                    targetWin.webContents.send('global-shortcut', { 
+                        shortcut: input.key === 'ArrowLeft' ? 'alt+arrowleft' : 'alt+arrowright', 
+                        shift: false 
+                    });
+                } catch(e) {}
+                return;
+            }
 
             const isCmdOrCtrl = input.control || input.meta;
             if (isCmdOrCtrl || input.key === 'F11' || input.key === 'F12' || input.key === 'Escape') {
@@ -271,39 +359,38 @@ function createWindow() {
                 if (shortcut) {
                     if (shortcut === 'escape') {
                         // Notify renderer so any active QBrowse overlays (modals, omnibox, popovers) are dismissed
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            try {
-                                mainWindow.webContents.send('global-shortcut', { shortcut: 'escape', shift: input.shift });
-                            } catch(e) {}
-                        }
+                        try {
+                            targetWin.webContents.send('global-shortcut', { shortcut: 'escape', shift: input.shift });
+                        } catch(e) {}
                         // CRITICAL: Do not preventDefault or steal focus on escape!
-                        // This allows webviews to handle native Escape (e.g. exiting HTML5 fullscreen, closing in-page dialogs/modals)
                         return;
                     }
 
                     if (shortcut === 'cmd+tab') {
                         event.preventDefault();
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            try {
-                                mainWindow.webContents.send('global-shortcut', { shortcut: 'cmd+tab', shift: input.shift });
-                            } catch(e) {}
-                        }
+                        try {
+                            targetWin.webContents.send('global-shortcut', { shortcut: 'cmd+tab', shift: input.shift });
+                        } catch(e) {}
                         return;
                     }
 
-                    const overrideKeys = ['cmd+w', 'cmd+r', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 'cmd+n', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'f11', 'f12'];
+                    const overrideKeys = [
+                        'cmd+w', 'cmd+r', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 
+                        'cmd+n', 'cmd+p', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd+h', 
+                        'cmd+l', 'cmd+y', 'cmd+\\', 'cmd+|', 'cmd+d', 'cmd+[', 'cmd+]',
+                        'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'f11', 'f12'
+                    ];
+
                     if (overrideKeys.includes(shortcut)) {
                         event.preventDefault();
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            mainWindow.focus();
-                            mainWindow.webContents.focus();
-                            setTimeout(() => {
-                                if (!mainWindow && !mainWindow.isDestroyed()) return;
-                                try {
-                                    mainWindow.webContents.send('global-shortcut', { shortcut, shift: input.shift });
-                                } catch(e) {}
-                            }, 10);
-                        }
+                        targetWin.focus();
+                        targetWin.webContents.focus();
+                        setTimeout(() => {
+                            if (!targetWin || targetWin.isDestroyed()) return;
+                            try {
+                                targetWin.webContents.send('global-shortcut', { shortcut, shift: input.shift });
+                            } catch(e) {}
+                        }, 10);
                     }
                 }
             }
@@ -421,9 +508,15 @@ function setupWebviewSession(sess) {
     configuredSessions.add(sess);
 
     try {
-        sess.setPreloads([path.join(__dirname, 'webview_preload.cjs')]);
+        if (typeof sess.registerPreloadScript === 'function') {
+            sess.registerPreloadScript({ filePath: path.join(__dirname, 'webview_preload.cjs') });
+        } else if (typeof sess.setPreloads === 'function') {
+            sess.setPreloads([path.join(__dirname, 'webview_preload.cjs')]);
+        }
     } catch(e) {
-        console.warn('[Session] Failed to set preloads:', e);
+        try {
+            sess.setPreloads([path.join(__dirname, 'webview_preload.cjs')]);
+        } catch (_) {}
     }
 
     setupHeadersHandler(sess);
@@ -497,6 +590,13 @@ app.whenReady().then(async () => {
   const ghostSession = session.fromPartition('ghost');
   setupWebviewSession(ghostSession);
 
+  // Proactively configure in-memory tor partition (Tor Onion space)
+  const torSession = session.fromPartition('tor');
+  setupWebviewSession(torSession);
+  if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
+      torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+  }
+
   // Auto-configure any dynamic sessions created by webviews
   app.on('session-created', (sess) => {
       setupWebviewSession(sess);
@@ -525,17 +625,36 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('will-quit', () => {
+  try {
+    torEngine.stopTor();
+  } catch (_) {}
+});
+
 // IPC Handlers
-ipcMain.on('window-minimize', () => mainWindow.minimize());
-ipcMain.on('window-maximize', () => {
-    if (mainWindow.isMaximized()) mainWindow.unmaximize();
-    else mainWindow.maximize();
+ipcMain.on('window-minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (win) win.minimize();
+});
+ipcMain.on('window-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (win) {
+        if (win.isMaximized()) win.unmaximize();
+        else win.maximize();
+    }
 });
 ipcMain.on('window-set-fullscreen', (event, state) => {
-    if (mainWindow) mainWindow.setFullScreen(state);
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (win) win.setFullScreen(state);
 });
-ipcMain.on('window-close', () => mainWindow.close());
-ipcMain.on('open-devtools', (e) => mainWindow.webContents.openDevTools());
+ipcMain.on('window-close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (win) win.close();
+});
+ipcMain.on('open-devtools', (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
+    if (win) win.webContents.openDevTools();
+});
 
 ipcMain.handle('get-hardware-specs', () => {
     const os = require('os');
@@ -845,7 +964,9 @@ ipcMain.handle('vault-get-passwords', async () => {
                 meta = {
                     type: parsed.type || meta.type,
                     notes: parsed.notes || '',
-                    passkeyData: parsed.passkeyData || meta.passkeyData
+                    passkeyData: parsed.passkeyData || meta.passkeyData,
+                    cardData: parsed.cardData || null,
+                    addressData: parsed.addressData || null
                 };
             } catch(e) {}
         }
@@ -860,6 +981,9 @@ ipcMain.handle('vault-get-passwords', async () => {
             title: cleanTitle,
             itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
             passkeyData: meta.passkeyData,
+            cardData: meta.cardData,
+            addressData: meta.addressData,
+            notes: meta.notes || '',
             password: decPass
         };
     });
@@ -891,7 +1015,7 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
         return vault.passwords
             .map(p => {
                 let cleanTitle = p.title || '';
-                let meta = { type: p.itemType || 'login', passkeyData: p.passkeyData || null };
+                let meta = { type: p.itemType || 'login', passkeyData: p.passkeyData || null, cardData: null, addressData: null };
                 if (cleanTitle.includes('|||')) {
                     const parts = cleanTitle.split('|||');
                     cleanTitle = parts[0];
@@ -900,7 +1024,9 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
                         meta = {
                             type: parsed.type || meta.type,
                             notes: parsed.notes || '',
-                            passkeyData: parsed.passkeyData || meta.passkeyData
+                            passkeyData: parsed.passkeyData || meta.passkeyData,
+                            cardData: parsed.cardData || null,
+                            addressData: parsed.addressData || null
                         };
                     } catch (e) {}
                 }
@@ -917,6 +1043,9 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
                     title: cleanTitle,
                     itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
                     passkeyData: meta.passkeyData,
+                    cardData: meta.cardData,
+                    addressData: meta.addressData,
+                    notes: meta.notes || '',
                     password: decPass
                 };
             })
@@ -1091,17 +1220,82 @@ ipcMain.handle('clear-all-data', async (event, options = {}) => {
     try {
         const storages = [];
         if (options.cookies) storages.push('cookies');
-        if (options.cache) storages.push('caches');
+        if (options.cache) storages.push('caches', 'shadercache');
         if (options.storage) storages.push('localstorage', 'indexdb', 'websql');
         
         const targetSession = getSessionByPartition(options.partition);
         await targetSession.clearStorageData({
-            storages: storages.length > 0 ? storages : ['cookies', 'localstorage', 'caches']
+            storages: storages.length > 0 ? storages : ['cookies', 'localstorage', 'caches', 'shadercache']
         });
+        await targetSession.clearCache();
         return true;
     } catch (e) {
         return false;
     }
+});
+
+ipcMain.handle('get-app-metrics', async () => {
+    try {
+        const metrics = app.getAppMetrics();
+        const procList = metrics.map(m => ({
+            pid: m.pid,
+            type: m.type,
+            cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10,
+            memoryMB: Math.round((m.memory?.workingSetSize || 0) / 1024),
+            peakMemoryMB: Math.round((m.memory?.peakWorkingSetSize || 0) / 1024),
+            isMain: m.pid === process.pid
+        }));
+
+        try {
+            const totalSysMemMB = Math.round(os.totalmem() / (1024 * 1024));
+            const freeSysMemMB = Math.round(os.freemem() / (1024 * 1024));
+            procList.system = {
+                totalMB: totalSysMemMB,
+                freeMB: freeSysMemMB,
+                usedMB: totalSysMemMB - freeSysMemMB
+            };
+        } catch (sysErr) {}
+
+        return procList;
+    } catch (e) {
+        return [];
+    }
+});
+
+ipcMain.handle('kill-process', async (event, pid) => {
+    try {
+        if (!pid || pid === process.pid) {
+            console.warn('[TaskManager] Cannot terminate the main browser process via IPC.');
+            return false;
+        }
+        process.kill(pid);
+        console.log(`[TaskManager] Terminated process ${pid}`);
+        return true;
+    } catch (err) {
+        console.warn(`[TaskManager] Failed to terminate process ${pid}:`, err);
+        return false;
+    }
+});
+
+ipcMain.handle('open-new-window', async (event, options = {}) => {
+    try {
+        createWindow(options);
+        return true;
+    } catch (err) {
+        console.warn('Failed to open new window:', err);
+        return false;
+    }
+});
+
+ipcMain.handle('close-current-window', async (event) => {
+    try {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win && !win.isDestroyed()) {
+            win.close();
+            return true;
+        }
+    } catch (err) {}
+    return false;
 });
 
 ipcMain.handle('clear-ghost-session', async () => {
@@ -1342,4 +1536,91 @@ ipcMain.handle('ai-web-search', async (event, query) => {
     } catch (err) {
         return `Web search error: ${err.message}`;
     }
+});
+
+// --- TOR NETWORK & HUD IPC HANDLERS ---
+ipcMain.handle('tor-get-status', async () => {
+    return torEngine.getStatus();
+});
+
+ipcMain.handle('tor-start', async () => {
+    try {
+        const result = await torEngine.startTor(
+            (status) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('tor-status-changed', status);
+                }
+            },
+            (progress) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('tor-bootstrap-progress', progress);
+                }
+            }
+        );
+
+        // Configure tor partition proxy with SOCKS5 to route traffic through Tor
+        const torSession = session.fromPartition('tor');
+        const socksPort = torEngine.getStatus().socksPort || 9050;
+        await torSession.setProxy({
+            proxyRules: `socks5://127.0.0.1:${socksPort}`,
+            proxyBypassRules: '<local>'
+        });
+        if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
+            torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+        }
+        await torSession.closeAllConnections();
+
+        return { success: true, ...result };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('tor-stop', async () => {
+    torEngine.stopTor();
+    try {
+        const torSession = session.fromPartition('tor');
+        await torSession.setProxy({ proxyRules: '' });
+        await torSession.clearStorageData();
+    } catch (_) {}
+    return { success: true };
+});
+
+ipcMain.handle('tor-new-circuit', async () => {
+    const res = await torEngine.requestNewTorCircuit();
+    try {
+        const torSession = session.fromPartition('tor');
+        await torSession.clearStorageData({ storages: ['cookies', 'cachestorage'] });
+    } catch (_) {}
+    return res;
+});
+
+ipcMain.handle('tor-check-ip', async () => {
+    const torSession = session.fromPartition('tor');
+    const fetchFn = async (url) => {
+        const { net } = require('electron');
+        return net.fetch(url, { session: torSession });
+    };
+    return torEngine.checkTorExitIp(fetchFn);
+});
+
+ipcMain.handle('tor-get-circuit', async () => {
+    return torEngine.getCircuitStatus();
+});
+
+ipcMain.handle('tor-download-binary', async () => {
+    try {
+        const res = await torEngine.downloadAndInstallTor((progress) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('tor-download-progress', progress);
+            }
+        });
+        return { success: true, path: res };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('tor-set-security', async (event, level) => {
+    return torEngine.setSecurityLevel(level);
 });

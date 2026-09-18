@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import useUIStore from '../store/useUIStore';
 import useTabStore from '../store/useTabStore';
+import useTorStore from '../store/useTorStore';
 
 export const handleEscapeDismissal = () => {
     const uiStore = useUIStore.getState();
@@ -114,15 +115,266 @@ export const handleEscapeDismissal = () => {
     return false;
 };
 
+export const executeShortcut = (key, shift = false) => {
+    const uiStore = useUIStore.getState();
+    const tabStore = useTabStore.getState();
+    const cleanKey = (key || '').toLowerCase();
+
+    switch (cleanKey) {
+        // Space Switching
+        case '1':
+            tabStore.setActiveSpace('personal');
+            uiStore.showToast('Space: Personal');
+            break;
+        case '2':
+            tabStore.setActiveSpace('work');
+            uiStore.showToast('Space: Work');
+            break;
+        case '3': {
+            const isTor = useTorStore.getState().isTorEnabled;
+            tabStore.setActiveSpace(isTor ? 'tor' : 'ghost');
+            uiStore.showToast(isTor ? 'Space: Tor Onion' : 'Space: Ghost Mode');
+            break;
+        }
+
+        // New Window (Cmd+N) & New Private Window (Cmd+Shift+N)
+        case 'n':
+            if (shift) {
+                // New Private Window / Tor Window
+                const isTor = useTorStore.getState().isTorEnabled;
+                const targetSpace = isTor ? 'tor' : 'ghost';
+                if (window.electronAPI && window.electronAPI.openNewWindow) {
+                    window.electronAPI.openNewWindow({ space: targetSpace });
+                    uiStore.showToast(isTor ? 'Opening new Tor window...' : 'Opening new private window...');
+                } else {
+                    tabStore.setActiveSpace(targetSpace);
+                    uiStore.showToast(isTor ? 'Tor Space: Activated' : 'Ghost Mode: Activated');
+                }
+            } else {
+                // New Window
+                if (window.electronAPI && window.electronAPI.openNewWindow) {
+                    window.electronAPI.openNewWindow({ space: 'personal' });
+                    uiStore.showToast('Opening new window...');
+                } else {
+                    tabStore.handleNewTab();
+                }
+            }
+            break;
+
+        // Alternative New Private Window (Firefox-style Cmd+Shift+P)
+        case 'p':
+            if (shift) {
+                const isTor = useTorStore.getState().isTorEnabled;
+                const targetSpace = isTor ? 'tor' : 'ghost';
+                if (window.electronAPI && window.electronAPI.openNewWindow) {
+                    window.electronAPI.openNewWindow({ space: targetSpace });
+                    uiStore.showToast(isTor ? 'Opening new Tor window...' : 'Opening new private window...');
+                } else {
+                    tabStore.setActiveSpace(targetSpace);
+                    uiStore.showToast(isTor ? 'Tor Space: Activated' : 'Ghost Mode: Activated');
+                }
+            }
+            break;
+
+        // Tabs: New Tab (Cmd+T) & Reopen Closed Tab (Cmd+Shift+T)
+        case 't':
+            if (shift) {
+                tabStore.restoreRecentlyClosedTab();
+            } else {
+                tabStore.handleNewTab();
+            }
+            break;
+
+        // Close Tab (Cmd+W) & Close Window (Cmd+Shift+W)
+        case 'w':
+            if (shift) {
+                if (window.electronAPI && window.electronAPI.closeCurrentWindow) {
+                    window.electronAPI.closeCurrentWindow();
+                } else {
+                    window.close();
+                }
+            } else {
+                const activeTab = tabStore.getActiveTab();
+                if (activeTab) {
+                    tabStore.handleCloseTab(activeTab.id);
+                }
+            }
+            break;
+
+        // Reload (Cmd+R) & Hard Reload (Cmd+Shift+R)
+        case 'r':
+            if (shift) {
+                if (window.electronAPI && window.electronAPI.clearAllData) {
+                    window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
+                }
+                uiStore.refresh();
+                uiStore.showToast('Hard Reload: Cache purged & refreshed');
+            } else {
+                uiStore.refresh();
+            }
+            break;
+
+        // Omnibox & Address Bar (Cmd+K and Cmd+L)
+        case 'k':
+        case 'l':
+            if (uiStore.isOmniboxOpen) {
+                uiStore.closeOmnibox();
+            } else {
+                const activeTab = tabStore.getActiveTab();
+                const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
+                uiStore.openOmnibox(activeUrl);
+            }
+            break;
+
+        // History Archive (Cmd+H and Cmd+Y)
+        case 'h':
+        case 'y':
+            if (uiStore.activeModal === 'history') {
+                uiStore.closeModal();
+            } else {
+                uiStore.openModal('history');
+            }
+            break;
+
+        // Bookmarks / Pin Tab (Cmd+D without shift, Cmd+Shift+D is Split)
+        case 'd':
+            if (shift) {
+                uiStore.toggleSplitView();
+            } else {
+                if (uiStore.activeModal === 'addPin') {
+                    uiStore.closeModal();
+                } else {
+                    uiStore.openModal('addPin');
+                }
+            }
+            break;
+
+        // Split View (Cmd+\ or Cmd+|)
+        case '\\':
+        case '|':
+            uiStore.toggleSplitView();
+            break;
+
+        // Tab Map / Mission Control (Cmd+E)
+        case 'e':
+            if (uiStore.isTabMapOpen) {
+                uiStore.closeTabMap();
+            } else {
+                uiStore.openTabMap();
+            }
+            break;
+
+        // Sidebar Toggle (Cmd+B)
+        case 'b':
+            uiStore.setIsSidebarHidden(!uiStore.isSidebarHidden);
+            uiStore.showToast(uiStore.isSidebarHidden ? 'Sidebar: Hidden' : 'Sidebar: Visible');
+            break;
+
+        // Tool Hub / Right Panel (Cmd+J)
+        case 'j':
+            uiStore.setIsRightPanelOpen(!uiStore.isRightPanelOpen);
+            break;
+
+        // Find in Page (Cmd+F)
+        case 'f':
+            uiStore.setIsFindOpen(!uiStore.isFindOpen);
+            break;
+
+        // Tab Switcher (Cmd+Tab)
+        case 'tab':
+            if (!uiStore.showSwitcher) {
+                uiStore.openSwitcher();
+            } else {
+                uiStore.cycleSwitcher(shift ? -1 : 1);
+            }
+            break;
+
+        // History Navigation (Cmd+[ and Cmd+], Alt+Left and Alt+Right)
+        case '[':
+        case 'alt+arrowleft': {
+            const activeTab = tabStore.getActiveTab();
+            if (activeTab) {
+                tabStore.navigateTabBack(activeTab.id);
+            }
+            break;
+        }
+        case ']':
+        case 'alt+arrowright': {
+            const activeTab = tabStore.getActiveTab();
+            if (activeTab) {
+                tabStore.navigateTabForward(activeTab.id);
+            }
+            break;
+        }
+
+        // Zoom Controls
+        case '+':
+        case '=':
+            uiStore.setZoomLevel(uiStore.zoomLevel + 10);
+            break;
+        case '-':
+        case '_':
+            uiStore.setZoomLevel(uiStore.zoomLevel - 10);
+            break;
+        case '0':
+            uiStore.setZoomLevel(100);
+            break;
+
+        // Resource & Task Manager (Shift+Escape)
+        case 'shift+escape':
+        case 'task-manager':
+            if (uiStore.activeModal === 'tasks') {
+                uiStore.closeModal();
+            } else {
+                uiStore.openModal('tasks');
+            }
+            break;
+
+        // Fullscreen (F11)
+        case 'f11': {
+            const newFullscreenState = !uiStore.isFullscreen;
+            if (window.electronAPI && window.electronAPI.setFullscreen) {
+                window.electronAPI.setFullscreen(newFullscreenState);
+            }
+            uiStore.setIsFullscreen(newFullscreenState);
+            break;
+        }
+
+        // DevTools (F12)
+        case 'f12':
+            if (window.electronAPI && window.electronAPI.openDevTools) {
+                window.electronAPI.openDevTools();
+            }
+            break;
+
+        default:
+            break;
+    }
+};
+
 export default function useGlobalShortcuts() {
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
+                if (e.shiftKey) {
+                    // Shift+Escape -> Task Manager
+                    e.preventDefault();
+                    e.stopPropagation();
+                    executeShortcut('shift+escape', true);
+                    return;
+                }
                 const handled = handleEscapeDismissal();
                 if (handled) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
+                return;
+            }
+
+            // Alt+Left / Alt+Right for history navigation
+            if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                e.preventDefault();
+                executeShortcut(e.key === 'ArrowLeft' ? 'alt+arrowleft' : 'alt+arrowright', false);
                 return;
             }
 
@@ -132,124 +384,16 @@ export default function useGlobalShortcuts() {
             }
 
             const cmdOrCtrl = e.metaKey || e.ctrlKey;
-            const uiStore = useUIStore.getState();
-            const tabStore = useTabStore.getState();
 
-            if (e.key === 'F11') {
+            if (e.key === 'F11' || e.key === 'F12') {
                 e.preventDefault();
-                const newFullscreenState = !uiStore.isFullscreen;
-                if (window.electronAPI && window.electronAPI.setFullscreen) {
-                    window.electronAPI.setFullscreen(newFullscreenState);
-                }
-                uiStore.setIsFullscreen(newFullscreenState);
-                return;
-            }
-
-            if (e.key === 'F12') {
-                e.preventDefault();
-                if (window.electronAPI && window.electronAPI.openDevTools) {
-                    window.electronAPI.openDevTools();
-                }
+                executeShortcut(e.key.toLowerCase(), false);
                 return;
             }
 
             if (cmdOrCtrl) {
-                switch (e.key.toLowerCase()) {
-                    case 'r':
-                        e.preventDefault();
-                        uiStore.refresh();
-                        break;
-                    case '1':
-                        e.preventDefault();
-                        tabStore.setActiveSpace('personal');
-                        uiStore.showToast('Space: Personal');
-                        break;
-                    case '2':
-                        e.preventDefault();
-                        tabStore.setActiveSpace('work');
-                        uiStore.showToast('Space: Work');
-                        break;
-                    case '3':
-                        e.preventDefault();
-                        tabStore.setActiveSpace('ghost');
-                        uiStore.showToast('Space: Ghost Mode');
-                        break;
-                    case 'n':
-                        if (e.shiftKey) {
-                            e.preventDefault();
-                            const current = tabStore.activeSpace;
-                            tabStore.setActiveSpace(current === 'ghost' ? 'personal' : 'ghost');
-                            uiStore.showToast(current !== 'ghost' ? 'Ghost Mode: Activated' : 'Ghost Mode: Deactivated');
-                        }
-                        break;
-                    case 'k':
-                        e.preventDefault();
-                        if (uiStore.isOmniboxOpen) {
-                            uiStore.closeOmnibox();
-                        } else {
-                            uiStore.openOmnibox('');
-                        }
-                        break;
-                    case 't':
-                        e.preventDefault();
-                        tabStore.handleNewTab();
-                        break;
-                    case 'w':
-                        e.preventDefault();
-                        {
-                            const activeSpace = tabStore.activeSpace;
-                            const list = activeSpace === 'personal' ? tabStore.privateTabs : (activeSpace === 'work' ? tabStore.workTabs : tabStore.ghostTabs);
-                            const activeTab = list.find(t => t.active);
-                            if (activeTab) {
-                                tabStore.handleCloseTab(activeTab.id);
-                            }
-                        }
-                        break;
-                    case 'e':
-                        e.preventDefault();
-                        if (uiStore.isTabMapOpen) {
-                            uiStore.closeTabMap();
-                        } else {
-                            uiStore.openTabMap();
-                        }
-                        break;
-                    case 'b':
-                        e.preventDefault();
-                        uiStore.setIsSidebarHidden(!uiStore.isSidebarHidden);
-                        uiStore.showToast(uiStore.isSidebarHidden ? 'Sidebar: Visible' : 'Sidebar: Hidden');
-                        break;
-                    case 'j': // Right panel (tool hub) / Downloads
-                        e.preventDefault();
-                        uiStore.setIsRightPanelOpen(!uiStore.isRightPanelOpen);
-                        break;
-                    case 'f':
-                        e.preventDefault();
-                        uiStore.setIsFindOpen(!uiStore.isFindOpen);
-                        break;
-                    case 'tab':
-                        e.preventDefault();
-                        if (!uiStore.showSwitcher) {
-                            uiStore.openSwitcher();
-                        } else {
-                            uiStore.cycleSwitcher(e.shiftKey ? -1 : 1);
-                        }
-                        break;
-                    case '+':
-                    case '=':
-                        e.preventDefault();
-                        uiStore.setZoomLevel(Math.min(uiStore.zoomLevel + 10, 200));
-                        break;
-                    case '-':
-                        e.preventDefault();
-                        uiStore.setZoomLevel(Math.max(uiStore.zoomLevel - 10, 50));
-                        break;
-                    case '0':
-                        e.preventDefault();
-                        uiStore.setZoomLevel(100);
-                        break;
-                    default:
-                        break;
-                }
+                e.preventDefault();
+                executeShortcut(e.key.toLowerCase(), e.shiftKey);
             }
         };
 
@@ -262,8 +406,18 @@ export default function useGlobalShortcuts() {
             }
         };
 
+        const handleWheel = (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const delta = e.deltaY < 0 ? 5 : -5;
+                const ui = useUIStore.getState();
+                ui.setZoomLevel(ui.zoomLevel + delta);
+            }
+        };
+
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
+        window.addEventListener('wheel', handleWheel, { passive: false });
 
         // Listen for shortcuts captured natively by Electron (e.g. when webview has focus)
         if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
@@ -271,124 +425,29 @@ export default function useGlobalShortcuts() {
                 const shortcut = typeof data === 'string' ? data : data.shortcut;
                 const shift = typeof data === 'string' ? false : data.shift;
                 
-                const tabStore = useTabStore.getState();
-                const uiStore = useUIStore.getState();
-                
-                if (shortcut === 'f11') {
-                    const isFull = !uiStore.isFullscreen;
-                    if (window.electronAPI && window.electronAPI.setFullscreen) {
-                        window.electronAPI.setFullscreen(isFull);
-                    }
-                    uiStore.setIsFullscreen(isFull);
-                    return;
-                }
-                
-                if (shortcut === 'f12') {
-                    if (window.electronAPI && window.electronAPI.openDevTools) {
-                        window.electronAPI.openDevTools();
-                    }
-                    return;
-                }
-                
                 if (shortcut === 'escape') {
                     handleEscapeDismissal();
                     return;
                 }
-                
+
+                if (shortcut === 'shift+escape') {
+                    executeShortcut('shift+escape', true);
+                    return;
+                }
+
+                if (shortcut.startsWith('alt+')) {
+                    executeShortcut(shortcut, false);
+                    return;
+                }
+
                 if (shortcut.startsWith('cmd+')) {
                     const key = shortcut.replace('cmd+', '');
-                    // Create a synthetic event object that matches what the switch case expects
-                    const syntheticEvent = {
-                        key: key,
-                        preventDefault: () => {},
-                        shiftKey: false
-                    };
-                    
-                    // We can reuse the same switch case logic! Let's just duplicate the switch here for safety
-                    switch (key.toLowerCase()) {
-                        case 'r':
-                            uiStore.refresh();
-                            break;
-                        case '1':
-                            tabStore.setActiveSpace('personal');
-                            uiStore.showToast('Space: Personal');
-                            break;
-                        case '2':
-                            tabStore.setActiveSpace('work');
-                            uiStore.showToast('Space: Work');
-                            break;
-                        case '3':
-                            tabStore.setActiveSpace('ghost');
-                            uiStore.showToast('Space: Ghost Mode');
-                            break;
-                        case 'k':
-                            if (uiStore.isOmniboxOpen) {
-                                uiStore.closeOmnibox();
-                            } else {
-                                uiStore.openOmnibox('');
-                            }
-                            break;
-                        case 't':
-                            tabStore.handleNewTab();
-                            break;
-                        case 'w':
-                            {
-                                const activeSpace = tabStore.activeSpace;
-                                const list = activeSpace === 'personal' ? tabStore.privateTabs : (activeSpace === 'work' ? tabStore.workTabs : tabStore.ghostTabs);
-                                const activeTab = list.find(t => t.active);
-                                if (activeTab) {
-                                    tabStore.handleCloseTab(activeTab.id);
-                                }
-                            }
-                            break;
-                        case 'e':
-                            if (uiStore.isTabMapOpen) {
-                                uiStore.closeTabMap();
-                            } else {
-                                uiStore.openTabMap();
-                            }
-                            break;
-                        case 'b':
-                            uiStore.setIsSidebarHidden(!uiStore.isSidebarHidden);
-                            uiStore.showToast(uiStore.isSidebarHidden ? 'Sidebar: Visible' : 'Sidebar: Hidden');
-                            break;
-                        case 'j':
-                            uiStore.setIsRightPanelOpen(!uiStore.isRightPanelOpen);
-                            break;
-                        case 'f':
-                            uiStore.setIsFindOpen(!uiStore.isFindOpen);
-                            break;
-                        case 'tab':
-                            const ui = useUIStore.getState();
-                            if (!ui.showSwitcher) {
-                                ui.openSwitcher();
-                            } else {
-                                ui.cycleSwitcher(shift ? -1 : 1);
-                            }
-                            break;
-                        case '+':
-                        case '=':
-                            uiStore.setZoomLevel(Math.min(uiStore.zoomLevel + 10, 200));
-                            break;
-                        case '-':
-                            uiStore.setZoomLevel(Math.max(uiStore.zoomLevel - 10, 50));
-                            break;
-                        case '0':
-                            uiStore.setZoomLevel(100);
-                            break;
-                        case 'f11':
-                            const newFullscreenState = !uiStore.isFullscreen;
-                            if (window.electronAPI && window.electronAPI.setFullscreen) {
-                                window.electronAPI.setFullscreen(newFullscreenState);
-                            }
-                            uiStore.setIsFullscreen(newFullscreenState);
-                            break;
-                        case 'f12':
-                            if (window.electronAPI && window.electronAPI.openDevTools) {
-                                window.electronAPI.openDevTools();
-                            }
-                            break;
-                    }
+                    executeShortcut(key, shift);
+                    return;
+                }
+
+                if (shortcut === 'f11' || shortcut === 'f12') {
+                    executeShortcut(shortcut, false);
                 }
             });
         }
@@ -407,6 +466,7 @@ export default function useGlobalShortcuts() {
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
+            window.removeEventListener('wheel', handleWheel);
             if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
         };
     }, []);

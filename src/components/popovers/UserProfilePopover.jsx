@@ -5,13 +5,14 @@ import {
     Lock, ArrowRight, BookOpen, AlertCircle, Eye, EyeOff, Sliders,
     Palette, Layers, History, HelpCircle, Info, Cloud, UploadCloud,
     DownloadCloud, Trash2, Download, Upload,
-    CheckCircle2, ChevronDown, ChevronUp
+    CheckCircle2, ChevronDown, ChevronUp, Users, Plus, ExternalLink
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTabStore from '../../store/useTabStore';
 import useVaultStore from '../../store/useVaultStore';
 import useHistoryStore from '../../store/useHistoryStore';
+import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
 
 const AVATAR_PRESETS = [
     { id: 'rocket', emoji: '🚀', name: 'Rocket' },
@@ -26,6 +27,17 @@ const AVATAR_PRESETS = [
     { id: 'dna', emoji: '🧬', name: 'Genesis' }
 ];
 
+const PROFILE_COLORS = [
+    { name: 'Amber Gold', hex: '#d4bc94' },
+    { name: 'Cyber Blue', hex: '#3b82f6' },
+    { name: 'Emerald', hex: '#10b981' },
+    { name: 'Purple', hex: '#a855f7' },
+    { name: 'Rose', hex: '#f43f5e' },
+    { name: 'Cyan', hex: '#06b6d4' }
+];
+
+const PROFILE_AVATARS = ['🚀', '⚡', '🦊', '👾', '🌌', '💎', '🐉', '👑', '🛡️', '🧬', '☕', '🎯'];
+
 export default function UserProfilePopover({ isClosing }) {
     const { closePopover, openModal, showToast } = useUIStore();
     const { 
@@ -34,8 +46,16 @@ export default function UserProfilePopover({ isClosing }) {
         syncCategories, toggleSyncCategory, authError,
         cloudBackups, isLoadingBackups, isCreatingBackup,
         pushManualBackup, restoreCloudBackup, deleteCloudBackup,
-        exportLocalBackup, importLocalBackup
+        exportLocalBackup, importLocalBackup,
+        autoSyncEnabled, toggleAutoSync
     } = useSyncStore();
+
+    const { 
+        profiles, activeProfileId, switchProfile, 
+        createProfile, updateProfile, deleteProfile 
+    } = useProfileStore();
+
+    const activeProfile = profiles.find(p => p.id === activeProfileId) || profiles[0];
 
     const cloudTabs = useTabStore(state => state.cloudTabs);
     const openCloudTab = useTabStore(state => state.openCloudTab);
@@ -46,11 +66,16 @@ export default function UserProfilePopover({ isClosing }) {
     const workTabCount = useTabStore(state => state.workTabs?.length || 0);
     const historyCount = useHistoryStore(state => state.history?.length || 0);
 
-    const [username, setUsername] = useState(() => localStorage.getItem('qbrowse_profile_username') || (user ? user.email.split('@')[0] : 'Zen Explorer'));
+    const [username, setUsername] = useState(() => localStorage.getItem('qbrowse_profile_username') || activeProfile?.name || (user ? user.email.split('@')[0] : 'Zen Explorer'));
     const [statusQuote, setStatusQuote] = useState(() => localStorage.getItem('qbrowse_profile_status') || 'Exploring the Zen web 🌌');
     const [avatarPreset, setAvatarPreset] = useState(() => localStorage.getItem('qbrowse_profile_avatar_preset') || 'rocket');
     const [customAvatarUrl, setCustomAvatarUrl] = useState(() => localStorage.getItem('qbrowse_profile_avatar_url') || '');
     
+    const [showAddProfile, setShowAddProfile] = useState(false);
+    const [newProfileName, setNewProfileName] = useState('');
+    const [newProfileAvatar, setNewProfileAvatar] = useState('🚀');
+    const [newProfileColor, setNewProfileColor] = useState('#d4bc94');
+
     const [isEditing, setIsEditing] = useState(false);
     const [showAvatarPicker, setShowAvatarPicker] = useState(false);
     const [showSecuritySection, setShowSecuritySection] = useState(false);
@@ -70,11 +95,54 @@ export default function UserProfilePopover({ isClosing }) {
     const [isChangingPass, setIsChangingPass] = useState(false);
     const [showPassText, setShowPassText] = useState(false);
 
+    const handleSwitchProfile = async (targetId) => {
+        if (targetId === activeProfileId) return;
+        await switchProfile(targetId);
+        const target = profiles.find(p => p.id === targetId);
+        if (target) {
+            setUsername(target.name);
+            showToast(`Switched to profile: ${target.name}`);
+        }
+    };
+
+    const handleCreateProfile = async (e) => {
+        e.preventDefault();
+        if (!newProfileName.trim()) return;
+        const prof = createProfile({
+            name: newProfileName.trim(),
+            avatar: newProfileAvatar,
+            color: newProfileColor
+        });
+        setNewProfileName('');
+        setShowAddProfile(false);
+        showToast(`Created profile "${prof.name}"`);
+        await handleSwitchProfile(prof.id);
+    };
+
+    const handleOpenInNewWindow = (targetId) => {
+        if (window.electronAPI && window.electronAPI.openNewWindow) {
+            window.electronAPI.openNewWindow({ profileId: targetId });
+            showToast('Opened profile in new window');
+        }
+    };
+
+    const handleDeleteProfile = (id, name) => {
+        if (window.confirm(`Are you sure you want to delete profile "${name}"? All associated local data will be removed.`)) {
+            deleteProfile(id);
+            showToast(`Profile "${name}" deleted`);
+        }
+    };
+
     const handleSaveProfile = () => {
         localStorage.setItem('qbrowse_profile_username', username);
         localStorage.setItem('qbrowse_profile_status', statusQuote);
         localStorage.setItem('qbrowse_profile_avatar_preset', avatarPreset);
         localStorage.setItem('qbrowse_profile_avatar_url', customAvatarUrl);
+        
+        if (activeProfile) {
+            updateProfile(activeProfile.id, { name: username });
+        }
+
         setIsEditing(false);
         setShowAvatarPicker(false);
         showToast('Profile updated!');
@@ -103,10 +171,14 @@ export default function UserProfilePopover({ isClosing }) {
         setIsChangingPass(true);
         setPassMsg(null);
         try {
-            await changePassword(currPass, newPass);
-            setCurrPass('');
-            setNewPass('');
-            setPassMsg({ type: 'success', text: 'Account password updated successfully!' });
+            const res = await changePassword(currPass, newPass);
+            if (res && res.success === false) {
+                setPassMsg({ type: 'error', text: res.error || 'Failed to update password' });
+            } else {
+                setCurrPass('');
+                setNewPass('');
+                setPassMsg({ type: 'success', text: 'Account password updated successfully!' });
+            }
         } catch(err) {
             setPassMsg({ type: 'error', text: err.message });
         } finally {
@@ -126,7 +198,7 @@ export default function UserProfilePopover({ isClosing }) {
     };
 
     const totalCloudTabs = (cloudTabs?.privateTabs?.length || 0) + (cloudTabs?.workTabs?.length || 0);
-    const activeEmoji = AVATAR_PRESETS.find(p => p.id === avatarPreset)?.emoji || '🚀';
+    const activeEmoji = AVATAR_PRESETS.find(p => p.id === avatarPreset)?.emoji || getAvatarEmoji(activeProfile?.avatar) || '🚀';
 
     // Format status label and color
     const getStatusDetails = () => {
@@ -151,7 +223,10 @@ export default function UserProfilePopover({ isClosing }) {
             {/* Profile Avatar & Header */}
             <div className="flex flex-col items-center text-center relative mb-4">
                 <div className="relative group cursor-pointer" onClick={() => setShowAvatarPicker(!showAvatarPicker)}>
-                    <div className="w-20 h-20 rounded-3xl bg-accent-10 text-accent border-2 border-accent/40 flex items-center justify-center text-3xl shadow-xl shadow-accent/10 transition-transform group-hover:scale-105 overflow-hidden">
+                    <div 
+                        className="w-20 h-20 rounded-3xl bg-accent-10 text-accent border-2 flex items-center justify-center text-3xl shadow-xl transition-transform group-hover:scale-105 overflow-hidden"
+                        style={{ borderColor: activeProfile?.color || '#d4bc94' }}
+                    >
                         {customAvatarUrl ? (
                             <img src={customAvatarUrl} alt="Avatar" className="w-full h-full object-cover" onError={() => setCustomAvatarUrl('')} />
                         ) : (
@@ -174,6 +249,9 @@ export default function UserProfilePopover({ isClosing }) {
                                     onClick={() => {
                                         setAvatarPreset(preset.id);
                                         setCustomAvatarUrl('');
+                                        if (activeProfile) {
+                                            updateProfile(activeProfile.id, { avatar: preset.emoji });
+                                        }
                                     }}
                                     className={`h-9 rounded-xl border flex items-center justify-center text-lg transition cursor-pointer ${avatarPreset === preset.id && !customAvatarUrl ? 'bg-accent/20 border-accent text-accent scale-105' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                                     title={preset.name}
@@ -233,9 +311,184 @@ export default function UserProfilePopover({ isClosing }) {
                                 <Edit3 size={13} />
                             </button>
                         </div>
+                        <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                            <span 
+                                className="w-2 h-2 rounded-full inline-block" 
+                                style={{ backgroundColor: activeProfile?.color || '#d4bc94' }}
+                            />
+                            <span className="text-[11px] font-semibold text-white/70">
+                                {activeProfile?.name || 'Default Profile'}
+                            </span>
+                        </div>
                         <p className="text-xs text-white/50 mt-0.5">{statusQuote}</p>
                         {user && <p className="text-[10px] text-accent/80 font-mono mt-0.5">{user.email}</p>}
                     </div>
+                )}
+            </div>
+
+            {/* Chrome-like Profile Switcher Section */}
+            <div className="p-3 bg-white/5 border border-white/10 rounded-2xl mb-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Users size={15} className="text-accent" />
+                        <span className="text-xs font-semibold text-white">Browser Profiles</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-white/70 font-mono">
+                            {profiles.length}
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setShowAddProfile(!showAddProfile)}
+                        className="text-xs text-accent hover:text-accent/80 flex items-center gap-1 font-medium cursor-pointer transition"
+                    >
+                        <Plus size={13} /> Add
+                    </button>
+                </div>
+
+                {/* List of profiles */}
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {profiles.map(p => {
+                        const isCurrent = p.id === activeProfileId;
+                        return (
+                            <div
+                                key={p.id}
+                                className={`flex items-center justify-between p-2 rounded-xl border transition ${
+                                    isCurrent 
+                                        ? 'bg-accent/15 border-accent/40 shadow-sm' 
+                                        : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/15'
+                                }`}
+                            >
+                                <div 
+                                    className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+                                    onClick={() => {
+                                        if (!isCurrent) handleSwitchProfile(p.id);
+                                    }}
+                                >
+                                    <div 
+                                        className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shadow-inner shrink-0"
+                                        style={{ backgroundColor: `${p.color || '#d4bc94'}25`, border: `1px solid ${p.color || '#d4bc94'}60` }}
+                                    >
+                                        <span>{getAvatarEmoji(p.avatar)}</span>
+                                    </div>
+                                    <div className="min-w-0 flex-1 text-left">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`text-xs font-medium truncate ${isCurrent ? 'text-white font-bold' : 'text-white/80'}`}>
+                                                {p.name}
+                                            </span>
+                                            {isCurrent && (
+                                                <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-accent text-black font-bold tracking-wide uppercase">
+                                                    Active
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-1 shrink-0 ml-2">
+                                    {/* Open in new window button */}
+                                    <button
+                                        onClick={() => handleOpenInNewWindow(p.id)}
+                                        className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition cursor-pointer"
+                                        title="Open in new window"
+                                    >
+                                        <ExternalLink size={13} />
+                                    </button>
+
+                                    {/* Switch button if not current */}
+                                    {!isCurrent && (
+                                        <button
+                                            onClick={() => handleSwitchProfile(p.id)}
+                                            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-medium transition cursor-pointer"
+                                        >
+                                            Switch
+                                        </button>
+                                    )}
+
+                                    {/* Delete button if more than 1 profile and not current */}
+                                    {profiles.length > 1 && !isCurrent && (
+                                        <button
+                                            onClick={() => handleDeleteProfile(p.id, p.name)}
+                                            className="p-1.5 text-red-400/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
+                                            title="Delete profile"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Add Profile Inline Drawer/Form */}
+                {showAddProfile && (
+                    <form onSubmit={handleCreateProfile} className="p-2.5 bg-black/40 border border-white/10 rounded-xl space-y-2.5 animate-pop-in text-left">
+                        <span className="text-[10px] font-bold text-accent uppercase tracking-wider block">Create New Profile</span>
+                        <input
+                            type="text"
+                            value={newProfileName}
+                            onChange={(e) => setNewProfileName(e.target.value)}
+                            placeholder="Profile name (e.g. Work, Research)"
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
+                            autoFocus
+                        />
+
+                        {/* Avatar presets */}
+                        <div>
+                            <label className="text-[10px] text-white/50 block mb-1">Choose Avatar</label>
+                            <div className="grid grid-cols-6 gap-1">
+                                {PROFILE_AVATARS.map(emoji => (
+                                    <button
+                                        type="button"
+                                        key={emoji}
+                                        onClick={() => setNewProfileAvatar(emoji)}
+                                        className={`h-7 rounded-lg border text-sm flex items-center justify-center transition cursor-pointer ${
+                                            newProfileAvatar === emoji ? 'bg-accent/30 border-accent scale-105' : 'bg-white/5 border-white/10 hover:bg-white/10'
+                                        }`}
+                                    >
+                                        {emoji}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Accent Color presets */}
+                        <div>
+                            <label className="text-[10px] text-white/50 block mb-1">Accent Theme</label>
+                            <div className="flex items-center gap-2">
+                                {PROFILE_COLORS.map(c => (
+                                    <button
+                                        type="button"
+                                        key={c.hex}
+                                        onClick={() => setNewProfileColor(c.hex)}
+                                        className={`w-5 h-5 rounded-full border transition cursor-pointer flex items-center justify-center ${
+                                            newProfileColor === c.hex ? 'scale-125 border-white shadow-md' : 'border-white/20 hover:scale-110'
+                                        }`}
+                                        style={{ backgroundColor: c.hex }}
+                                        title={c.name}
+                                    >
+                                        {newProfileColor === c.hex && <Check size={10} className="text-black font-bold" />}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setShowAddProfile(false)}
+                                className="flex-1 py-1.5 bg-white/5 hover:bg-white/10 text-white/70 rounded-xl text-xs font-medium transition cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={!newProfileName.trim()}
+                                className="flex-1 py-1.5 bg-accent hover:bg-accent/90 text-black rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                            >
+                                Create Profile
+                            </button>
+                        </div>
+                    </form>
                 )}
             </div>
 
@@ -260,22 +513,57 @@ export default function UserProfilePopover({ isClosing }) {
 
                 {/* Main Action Buttons */}
                 {user ? (
-                    <div className="flex gap-2">
-                        <button
-                            onClick={syncNow}
-                            disabled={isSyncing}
-                            className="flex-1 py-2 bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                        >
-                            <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
-                            {isSyncing ? 'Syncing...' : 'Sync Now'}
-                        </button>
-                        <button
-                            onClick={() => setShowPushBackupForm(!showPushBackupForm)}
-                            className="flex-1 py-2 bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                            <UploadCloud size={13} className="text-accent" />
-                            Push Backup
-                        </button>
+                    <div className="space-y-2.5">
+                        <div className="flex gap-2">
+                            <button
+                                onClick={syncNow}
+                                disabled={isSyncing}
+                                className="flex-1 py-2 bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                            >
+                                <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
+                                {isSyncing ? 'Syncing...' : 'Sync Now'}
+                            </button>
+                            <button
+                                onClick={() => setShowPushBackupForm(!showPushBackupForm)}
+                                className="flex-1 py-2 bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                                <UploadCloud size={13} className="text-accent" />
+                                Push Backup
+                            </button>
+                        </div>
+
+                        {/* Auto-Sync Toggle Row */}
+                        <div className="pt-2.5 border-t border-white/10 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-left">
+                                <span className={`w-2 h-2 rounded-full ${autoSyncEnabled ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]' : 'bg-white/30'}`} />
+                                <div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-semibold text-white">Auto-Sync</span>
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-white/10 text-white/70 font-mono">
+                                            {autoSyncEnabled ? '5 min' : 'OFF'}
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] text-white/50 block">
+                                        {autoSyncEnabled ? 'Syncs every 5 mins & on changes' : 'Manual sync only'}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={toggleAutoSync}
+                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-all cursor-pointer ${
+                                    autoSyncEnabled ? 'bg-accent shadow-[0_0_10px_var(--accent-40)]' : 'bg-white/20'
+                                }`}
+                                title={autoSyncEnabled ? 'Disable Auto-Sync' : 'Enable Auto-Sync'}
+                            >
+                                <div
+                                    className="w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200"
+                                    style={{
+                                        transform: autoSyncEnabled ? 'translateX(16px)' : 'translateX(0px)'
+                                    }}
+                                />
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     <button

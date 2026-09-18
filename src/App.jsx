@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import useUIStore from './store/useUIStore';
 import useTabStore from './store/useTabStore';
 import useAIStore from './store/useAIStore';
+import useProfileStore from './store/useProfileStore';
 import useGlobalShortcuts from './hooks/useGlobalShortcuts';
 import useDragAndDrop from './hooks/useDragAndDrop';
 import { listenToEvent, windowShow } from './services/electronIPC';
@@ -17,6 +18,7 @@ import ToolHub from './components/features/ToolHub';
 import SettingsModal from './components/modals/SettingsModal';
 import HistoryModal from './components/modals/HistoryModal';
 import CookiesModal from './components/modals/CookiesModal';
+import ResourceManagerModal from './components/modals/ResourceManagerModal';
 import OnboardingWizard from './components/modals/OnboardingWizard';
 import TutorialWizard from './components/modals/TutorialWizard';
 import AddPinModal from './components/modals/AddPinModal';
@@ -42,6 +44,21 @@ export default function App() {
 
     // Initialize global shortcuts
     useGlobalShortcuts();
+
+    // Check for window launch query parameters (e.g., ?space=ghost or ?profileId=...)
+    useEffect(() => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const profileParam = params.get('profileId');
+            if (profileParam) {
+                useProfileStore.getState().switchProfile(profileParam);
+            }
+            const spaceParam = params.get('space');
+            if (spaceParam && ['personal', 'work', 'ghost'].includes(spaceParam)) {
+                useTabStore.getState().setActiveSpace(spaceParam);
+            }
+        } catch(e) {}
+    }, []);
 
     // Memory Saver Engine: Auto-suspend inactive background tabs
     useEffect(() => {
@@ -258,6 +275,7 @@ export default function App() {
                 <SettingsModal />
                 <CookiesModal />
                 <HistoryModal />
+                <ResourceManagerModal />
                 <OnboardingWizard />
                 <TutorialWizard />
                 <AddPinModal />

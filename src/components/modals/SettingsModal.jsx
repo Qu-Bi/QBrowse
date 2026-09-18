@@ -10,6 +10,7 @@ import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
+import useTorStore from '../../store/useTorStore';
 import AIEngineSettings from '../settings/AIEngineSettings';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
@@ -81,7 +82,9 @@ const SettingsModal = () => {
         setDarkExclusions
     } = useUIStore();
 
-    const { user, isSyncing, lastSyncTime, syncedItemsCount, syncNow, logout } = useSyncStore();
+    const { user, isSyncing, lastSyncTime, syncedItemsCount, syncNow, logout, autoSyncEnabled, toggleAutoSync } = useSyncStore();
+    const isTorEnabled = useTorStore(state => state.isTorEnabled);
+    const toggleTorEnabled = useTorStore(state => state.toggleTorEnabled);
 
     const [allPermissions, setAllPermissions] = useState({});
     const [searchFilter, setSearchFilter] = useState('');
@@ -357,6 +360,39 @@ const SettingsModal = () => {
 
                             <SettingCard icon={Eye} title="Send 'Do Not Track' (DNT) Header" description="Request that web networks and advertisers omit cross-site tracking.">
                                 <SettingToggle isChecked={!!settings.dnt} onToggle={() => toggleSetting('dnt')} />
+                            </SettingCard>
+
+                            {/* Tor Onion Network Routing */}
+                            <SettingCard 
+                                icon={Globe} 
+                                title="Tor Onion Network Routing" 
+                                description="Route Private space through the Tor network. Onion icon dynamically replaces Ghost in the bottom spaces bar."
+                            >
+                                <SettingToggle 
+                                    isChecked={isTorEnabled} 
+                                    onToggle={() => toggleTorEnabled()} 
+                                />
+                            </SettingCard>
+
+                            {/* Encrypted Cloud Auto-Sync */}
+                            <SettingCard 
+                                icon={RefreshCw} 
+                                title="Encrypted Cloud Auto-Sync" 
+                                description={user 
+                                    ? `Automatically encrypts (AES-256) and syncs tabs, vault, and settings every 5 minutes and on local changes. (Last sync: ${lastSyncTime || 'Pending'})`
+                                    : "Sign in to your account from the user profile popover to enable automatic encrypted cloud sync across devices."
+                                }
+                            >
+                                <SettingToggle 
+                                    isChecked={!!user && autoSyncEnabled} 
+                                    onToggle={() => {
+                                        if (!user) {
+                                            openModal('auth');
+                                        } else {
+                                            toggleAutoSync();
+                                        }
+                                    }} 
+                                />
                             </SettingCard>
 
                             {/* DoH Provider Selector */}
@@ -812,7 +848,9 @@ const SettingsModal = () => {
                                     </div>
                                     <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
                                         <span className="text-white/40">Architecture</span>
-                                        <span className="font-mono font-semibold text-emerald-400">Windows x64 (x86_64)</span>
+                                        <span className="font-mono font-semibold text-emerald-400">
+                                            {window.electronAPI?.platform === 'linux' || navigator.userAgent.includes('Linux') ? 'Linux x64 (x86_64)' : window.electronAPI?.platform === 'darwin' || navigator.userAgent.includes('Mac') ? 'macOS (ARM/x64)' : 'Windows x64 (x86_64)'}
+                                        </span>
                                     </div>
                                 </div>
                             </div>

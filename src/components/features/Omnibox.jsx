@@ -2,28 +2,46 @@ import React, { useRef, useEffect, useState } from 'react';
 import { 
     Terminal, Search, Calculator, Globe, ArrowRight, 
     VolumeX, Volume2, Cpu, Zap, Moon, Sun, PanelLeft, Layers, Puzzle,
-    Trash2, XCircle, Sparkles 
+    Trash2, XCircle, Sparkles, SplitSquareHorizontal,
+    RotateCw, Plus, Settings, History, Download, Maximize, Key, Activity, HardDrive, Users
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useAIStore from '../../store/useAIStore';
+import useTorStore from '../../store/useTorStore';
 import { topSites } from '../../utils/topSites';
 
 const availableCommands = [
-    { id: 'ls', title: 'List open tabs in current space', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
-    { id: 'clear', title: 'Clear tab history & cache', cmd: 'clear', icon: Trash2, color: 'text-gray-400' },
-    { id: 'top', title: 'Show top memory-consuming tabs', cmd: 'top', icon: Cpu, color: 'text-red-400' },
-    { id: 'kill', title: 'Kill active tab', cmd: 'kill', icon: XCircle, color: 'text-red-500' },
+    { id: 'ls', title: 'List open tabs (Mission Control)', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
+    { id: 'clear', title: 'Clear history & browser cache', cmd: 'clear', icon: Trash2, color: 'text-amber-400' },
+    { id: 'top', title: 'Open Resource & Task Manager', cmd: 'top', icon: Cpu, color: 'text-cyan-400' },
+    { id: 'tasks', title: 'Open Resource & Task Manager', cmd: 'tasks', icon: Activity, color: 'text-emerald-400' },
+    { id: 'resources', title: 'Open Resource & Task Manager', cmd: 'resources', icon: HardDrive, color: 'text-blue-400' },
+    { id: 'ps', title: 'Process list & activity monitor', cmd: 'ps', icon: Terminal, color: 'text-purple-400' },
+    { id: 'kill', title: 'Kill / close active tab', cmd: 'kill', icon: XCircle, color: 'text-red-500' },
+    { id: 'new', title: 'Open a new tab in current space', cmd: 'new tab', icon: Plus, color: 'text-emerald-400' },
+    { id: 'reload', title: 'Reload / refresh active tab', cmd: 'reload', icon: RotateCw, color: 'text-cyan-400' },
     { id: 'mute', title: 'Mute all tabs globally', cmd: 'mute all', icon: VolumeX, color: 'text-red-400' },
     { id: 'unmute', title: 'Unmute all tabs globally', cmd: 'unmute all', icon: Volume2, color: 'text-green-400' },
     { id: 'sleep', title: 'Sleep background tabs (Free RAM)', cmd: 'sleep tabs', icon: Cpu, color: 'text-blue-400' },
     { id: 'wake', title: 'Wake all background tabs', cmd: 'wake tabs', icon: Zap, color: 'text-yellow-400' },
-    { id: 'dark', title: 'Enable Dark Mode', cmd: 'dark mode', icon: Moon, color: 'text-indigo-400' },
+    { id: 'dark', title: 'Enable Smart Dark Mode', cmd: 'dark mode', icon: Moon, color: 'text-indigo-400' },
     { id: 'light', title: 'Enable Light Mode', cmd: 'light mode', icon: Sun, color: 'text-yellow-500' },
-    { id: 'zen', title: 'Toggle Zen Mode', cmd: 'zen mode', icon: PanelLeft, color: 'text-emerald-400' },
+    { id: 'zen', title: 'Toggle Zen Mode (Hide/Show Sidebar)', cmd: 'zen mode', icon: PanelLeft, color: 'text-emerald-400' },
     { id: 'tab_map', title: 'Open Tab Map (Mission Control)', cmd: 'tab map', icon: Layers, color: 'text-purple-400' },
-    { id: 'tool_hub', title: 'Toggle Tool Hub (Notes/AI)', cmd: 'tool hub', icon: Puzzle, color: 'text-fuchsia-400' }
+    { id: 'tool_hub', title: 'Toggle Tool Hub (Notes/AI)', cmd: 'tool hub', icon: Puzzle, color: 'text-fuchsia-400' },
+    { id: 'split', title: 'Toggle Split Screen (Ctrl+\\ or ⇧⌘D)', cmd: 'split screen', icon: SplitSquareHorizontal, color: 'text-cyan-400' },
+    { id: 'settings', title: 'Open Browser Settings', cmd: 'settings', icon: Settings, color: 'text-slate-400' },
+    { id: 'history', title: 'Open Browsing History', cmd: 'history', icon: History, color: 'text-orange-400' },
+    { id: 'downloads', title: 'Open Downloads Manager', cmd: 'downloads', icon: Download, color: 'text-lime-400' },
+    { id: 'fullscreen', title: 'Toggle Fullscreen Mode', cmd: 'fullscreen', icon: Maximize, color: 'text-violet-400' },
+    { id: 'vault', title: 'Open QVault Passwords & Passkeys', cmd: 'vault', icon: Key, color: 'text-blue-400' },
+    { id: 'profiles', title: 'Manage Browser Profiles & Cloud Sync', cmd: 'profiles', icon: Users, color: 'text-amber-400' },
+    { id: 'profile', title: 'Manage Browser Profiles & Cloud Sync', cmd: 'profile', icon: Users, color: 'text-amber-400' },
+    { id: 'tor', title: 'Toggle Tor Onion Routing Mode', cmd: 'tor', icon: Globe, color: 'text-purple-400' },
+    { id: 'newnym', title: 'Request new Tor identity (SIGNAL NEWNYM)', cmd: 'newnym', icon: RotateCw, color: 'text-purple-400' },
+    { id: 'circuit', title: 'Open Tor Circuit & Security HUD', cmd: 'circuit', icon: Terminal, color: 'text-purple-400' }
 ];
 
 const parseUrlInput = (input) => {
@@ -41,16 +59,24 @@ const parseUrlInput = (input) => {
     const isUrl = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(:\d+)?(\/.*)?$/i.test(trimmed) || isLocal;
                   
     if (isUrl) {
+        const isOnion = /\.onion(\/.*)?$/i.test(trimmed);
         const httpsOnly = useUIStore.getState().settings?.httpsOnly !== false;
-        if (trimmed.startsWith('http://') && !isLocal && httpsOnly) {
+        if (trimmed.startsWith('http://') && !isLocal && httpsOnly && !isOnion) {
             return trimmed.replace(/^http:\/\//i, 'https://');
         }
         if (trimmed.startsWith('http')) return trimmed;
+        // .onion services default to http
+        if (isOnion) return `http://${trimmed}`;
         return isLocal ? `http://${trimmed}` : `https://${trimmed}`;
     }
 
-    const engine = useUIStore.getState().settings?.searchEngine || 'google';
+    const activeSpace = useTabStore.getState().activeSpace;
     const q = encodeURIComponent(trimmed);
+    if (activeSpace === 'tor') {
+        return `https://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/?q=${q}`;
+    }
+
+    const engine = useUIStore.getState().settings?.searchEngine || 'google';
     if (engine === 'duckduckgo') return `https://duckduckgo.com/?q=${q}`;
     if (engine === 'bing') return `https://www.bing.com/search?q=${q}`;
     if (engine === 'brave') return `https://search.brave.com/search?q=${q}`;
@@ -76,12 +102,15 @@ export default function Omnibox() {
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
+    const torTabs = useTabStore(state => state.torTabs) || [];
     const historyStoreData = useHistoryStore(state => state.history);
     const setPrivateTabs = useTabStore(state => state.setPrivateTabs);
     const setWorkTabs = useTabStore(state => state.setWorkTabs);
     const setGhostTabs = useTabStore(state => state.setGhostTabs);
+    const setTorTabs = useTabStore(state => state.setTorTabs);
 
     const isIncognito = activeSpace === 'ghost';
+    const isTor = activeSpace === 'tor';
     const liveSearch = useUIStore(state => state.settings?.liveSearch);
     const searchEngine = useUIStore(state => state.settings?.searchEngine) || 'google';
     const engineNames = {
@@ -91,7 +120,7 @@ export default function Omnibox() {
         brave: 'Brave',
         ecosia: 'Ecosia'
     };
-    const currentEngineName = engineNames[searchEngine] || 'Google';
+    const currentEngineName = isTor ? 'DuckDuckGo Onion' : (engineNames[searchEngine] || 'Google');
     const searchInputRef = useRef(null);
 
     const [liveSuggestions, setLiveSuggestions] = useState([]);
@@ -99,7 +128,7 @@ export default function Omnibox() {
 
     useEffect(() => {
         setSelectedIndex(0);
-        if (!searchQuery || searchQuery.startsWith('>')) {
+        if (isTor || !searchQuery || searchQuery.startsWith('>')) {
             setLiveSuggestions([]);
             return;
         }
@@ -213,10 +242,28 @@ export default function Omnibox() {
     });
 
     const parsedInput = parseUrlInput(searchQuery);
-    const isDirectUrl = parsedInput && !parsedInput.includes('google.com/search?q=');
+    const isSearchEngineUrl = parsedInput.includes('google.com/search?q=') ||
+                              parsedInput.includes('duckduckgo.com/?q=') ||
+                              parsedInput.includes('duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion') ||
+                              parsedInput.includes('bing.com/search?q=') ||
+                              parsedInput.includes('search.brave.com/search?q=') ||
+                              parsedInput.includes('ecosia.org/search?q=');
+    const isDirectUrl = parsedInput && !isSearchEngineUrl;
     const directUrlPrediction = isDirectUrl ? { url: parsedInput, title: `Go to ${searchQuery}`, score: 100000 } : null;
 
-    let finalPredictions = aiPrediction ? [aiPrediction, ...merged] : mathPrediction ? [mathPrediction, ...merged] : merged;
+    const searchPrediction = (!isDirectUrl && searchQuery.trim().length > 0) ? [{
+        url: parsedInput,
+        title: `Search ${currentEngineName}: "${searchQuery.trim()}"`,
+        score: 150000,
+        isSearch: true
+    }] : [];
+
+    let finalPredictions = aiPrediction 
+        ? [aiPrediction, ...merged] 
+        : mathPrediction 
+            ? [mathPrediction, ...merged] 
+            : [...searchPrediction, ...merged];
+
     if (directUrlPrediction && !aiPrediction) {
         finalPredictions = [directUrlPrediction, ...finalPredictions.filter(p => p.url !== directUrlPrediction.url)];
     }
@@ -228,61 +275,206 @@ export default function Omnibox() {
     const commandQuery = searchQuery.slice(1).trim().toLowerCase();
     const filteredCommands = availableCommands.filter(c => c.cmd.includes(commandQuery) || c.title.toLowerCase().includes(commandQuery));
 
-    const handleExecuteCommand = (cmdId) => {
-        switch (cmdId) {
-            
-            case 'ls':
-                showToast('Terminal: Listing active tabs...');
-                openTabMap();
-                break;
-            case 'clear':
-                showToast('Terminal: Cache cleared');
-                break;
-            case 'top':
-                showToast('Terminal: Tab resources analyzed');
-                break;
-            case 'kill':
-                const activeTab = activeSpace === 'personal' ? privateTabs.find(t => t.active) : activeSpace === 'work' ? workTabs.find(t => t.active) : ghostTabs.find(t => t.active);
-                if (activeTab) useTabStore.getState().handleCloseTab(activeTab.id);
-                showToast('Terminal: Process terminated');
-                break;
-            case 'mute':
+    const handleExecuteCommand = async (cmdId) => {
+        const tabStore = useTabStore.getState();
+        const uiStore = useUIStore.getState();
+        const activeSpace = tabStore.activeSpace;
+        const spaceTabs = activeSpace === 'personal' 
+            ? tabStore.privateTabs 
+            : (activeSpace === 'work' 
+                ? tabStore.workTabs 
+                : (activeSpace === 'tor' ? (tabStore.torTabs || []) : tabStore.ghostTabs));
 
+        switch (cmdId) {
+            case 'ls':
+            case 'tab_map':
+                openTabMap();
+                showToast('Terminal: Tab Map activated');
+                break;
+
+            case 'clear':
+                useHistoryStore.getState().clearHistory();
+                if (window.electronAPI && window.electronAPI.clearAllData) {
+                    window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
+                }
+                showToast('Terminal: History & browser cache cleared!');
+                break;
+
+            case 'top':
+            case 'tasks':
+            case 'resources':
+            case 'ps': {
+                closeOmnibox();
+                uiStore.openModal('tasks');
+                showToast('Terminal: Resource & Task Manager opened');
+                break;
+            }
+
+            case 'kill':
+            case 'close': {
+                const activeTab = spaceTabs.find(t => t.active);
+                if (activeTab) {
+                    tabStore.handleCloseTab(activeTab.id);
+                    showToast('Terminal: Active tab closed');
+                }
+                break;
+            }
+
+            case 'new':
+                tabStore.handleNewTab();
+                showToast('Terminal: New tab opened');
+                break;
+
+            case 'reload':
+                uiStore.refresh();
+                showToast('Terminal: Reloading tab...');
+                break;
+
+            case 'mute':
             case 'unmute': {
                 const isMuting = cmdId === 'mute';
                 const muteAll = (list, setList) => setList(list.map(t => ({ ...t, isMuted: isMuting })));
-                muteAll(privateTabs, setPrivateTabs); 
-                muteAll(workTabs, setWorkTabs); 
-                muteAll(ghostTabs, setGhostTabs);
+                muteAll(tabStore.privateTabs, tabStore.setPrivateTabs); 
+                muteAll(tabStore.workTabs, tabStore.setWorkTabs); 
+                muteAll(tabStore.ghostTabs, tabStore.setGhostTabs);
+                muteAll(tabStore.torTabs || [], tabStore.setTorTabs);
+                if (window.qbrowseWebviews) {
+                    Object.values(window.qbrowseWebviews).forEach(wv => {
+                        if (wv && typeof wv.setAudioMuted === 'function') {
+                            try { wv.setAudioMuted(isMuting); } catch(e) {}
+                        }
+                    });
+                }
                 showToast(`Terminal: All tabs ${isMuting ? 'muted' : 'unmuted'}`);
                 break;
             }
-            case 'sleep':
-                showToast('Terminal: Background tabs suspended');
+
+            case 'sleep': {
+                let count = 0;
+                const suspendList = (tabs, setTabs) => {
+                    const updated = tabs.map(t => {
+                        if (!t.active && !t.suspended && t.url && t.url !== 'about:blank') {
+                            count++;
+                            return { ...t, suspended: true };
+                        }
+                        return t;
+                    });
+                    setTabs(updated);
+                };
+                suspendList(tabStore.privateTabs, tabStore.setPrivateTabs);
+                suspendList(tabStore.workTabs, tabStore.setWorkTabs);
+                suspendList(tabStore.ghostTabs, tabStore.setGhostTabs);
+                suspendList(tabStore.torTabs || [], tabStore.setTorTabs);
+                showToast(`Terminal: Suspended ${count} background tab${count === 1 ? '' : 's'} (Freed RAM)`);
                 break;
-            case 'wake':
-                showToast('Terminal: Background tabs woken up');
+            }
+
+            case 'wake': {
+                let count = 0;
+                const wakeList = (tabs, setTabs) => {
+                    const updated = tabs.map(t => {
+                        if (t.suspended) {
+                            count++;
+                            return { ...t, suspended: false };
+                        }
+                        return t;
+                    });
+                    setTabs(updated);
+                };
+                wakeList(tabStore.privateTabs, tabStore.setPrivateTabs);
+                wakeList(tabStore.workTabs, tabStore.setWorkTabs);
+                wakeList(tabStore.ghostTabs, tabStore.setGhostTabs);
+                wakeList(tabStore.torTabs || [], tabStore.setTorTabs);
+                showToast(`Terminal: Woke ${count} suspended tab${count === 1 ? '' : 's'}`);
                 break;
+            }
+
             case 'dark':
                 setIsForceDark(true);
-                showToast('Terminal: Dark Mode enabled');
+                showToast('Terminal: Smart Dark Mode enabled');
                 break;
+
             case 'light':
                 setIsForceDark(false);
-                showToast('Terminal: Light Mode enabled');
+                showToast('Terminal: Smart Dark Mode disabled');
                 break;
-            case 'zen':
-                setIsSidebarHidden(true); // actually it should toggle, but simplified here
-                showToast('Terminal: Zen Mode activated');
+
+            case 'zen': {
+                const nextHidden = !uiStore.isSidebarHidden;
+                uiStore.setIsSidebarHidden(nextHidden);
+                showToast(`Terminal: Zen Mode ${nextHidden ? 'activated (Sidebar hidden)' : 'deactivated (Sidebar visible)'}`);
                 break;
-            case 'tab_map':
-                openTabMap();
-                showToast('Terminal: Mission Control activated');
+            }
+
+            case 'tool_hub': {
+                const nextOpen = !uiStore.isRightPanelOpen;
+                uiStore.setIsRightPanelOpen(nextOpen);
+                if (nextOpen) uiStore.setRightPanelTab('ai');
+                showToast(`Terminal: Tool Hub ${nextOpen ? 'opened' : 'closed'}`);
                 break;
-            case 'tool_hub':
-                setIsRightPanelOpen(true);
-                showToast('Terminal: Tool Hub opened');
+            }
+
+            case 'split':
+                uiStore.toggleSplitView();
                 break;
+
+            case 'settings':
+                uiStore.openModal('settings');
+                showToast('Terminal: Settings opened');
+                break;
+
+            case 'history':
+                uiStore.openModal('history');
+                showToast('Terminal: History opened');
+                break;
+
+            case 'downloads':
+                uiStore.setIsRightPanelOpen(true);
+                uiStore.setRightPanelTab('downloads');
+                showToast('Terminal: Downloads opened');
+                break;
+
+            case 'fullscreen': {
+                const nextFull = !uiStore.isFullscreen;
+                if (window.electronAPI && window.electronAPI.setFullscreen) {
+                    window.electronAPI.setFullscreen(nextFull);
+                }
+                uiStore.setIsFullscreen(nextFull);
+                showToast(`Terminal: Fullscreen ${nextFull ? 'enabled' : 'exited'}`);
+                break;
+            }
+
+            case 'vault':
+                uiStore.togglePopover('vault');
+                showToast('Terminal: QVault opened');
+                break;
+
+            case 'profiles':
+            case 'profile':
+                uiStore.openPopover('userProfile');
+                showToast('Terminal: Profiles & Cloud Sync opened');
+                break;
+
+            case 'tor': {
+                import('../../store/useTorStore').then(m => {
+                    m.default.getState().toggleTorEnabled();
+                }).catch(() => {});
+                break;
+            }
+
+            case 'newnym': {
+                import('../../store/useTorStore').then(m => {
+                    m.default.getState().newCircuit();
+                }).catch(() => {});
+                showToast('Terminal: Requesting new Tor identity...');
+                break;
+            }
+
+            case 'circuit':
+                uiStore.openPopover('tor');
+                showToast('Terminal: Tor Circuit HUD opened');
+                break;
+
             default:
                 break;
         }
@@ -301,6 +493,7 @@ export default function Omnibox() {
 
             if (activeSpace === 'personal') cleanupTabs(privateTabs);
             else if (activeSpace === 'work') cleanupTabs(workTabs);
+            else if (activeSpace === 'tor') cleanupTabs(torTabs);
             else cleanupTabs(ghostTabs);
         }
     };
@@ -325,13 +518,20 @@ export default function Omnibox() {
             const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: pred.url, title: pred.title } : t));
             if (activeSpace === 'personal') updateTab(privateTabs, setPrivateTabs);
             else if (activeSpace === 'work') updateTab(workTabs, setWorkTabs);
+            else if (activeSpace === 'tor') {
+                updateTab(torTabs, setTorTabs);
+                const torStatus = useTorStore.getState().status;
+                if (torStatus !== 'connected') {
+                    useUIStore.getState().showToast('Tor is offline. Click "Connect to Tor Network" to browse.');
+                }
+            }
             else updateTab(ghostTabs, setGhostTabs);
             handleCloseOmnibox(true);
         }
     };
 
     return (
-        <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[15vh] bg-black/50 backdrop-blur-md transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
+        <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] bg-black/50 backdrop-blur-md transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
             <div className={`w-full max-w-2xl mx-4 flex flex-col ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => e.stopPropagation()}>
 
                 <div className={`w-full bg-[#121214]/80 backdrop-blur-3xl border border-white/10 rounded-[1.5rem] p-5 flex items-center gap-4 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${isCommandMode ? 'shadow-[0_0_80px_rgba(234,179,8,0.15)] border-yellow-500/30 scale-[1.02]' : (isIncognito ? 'shadow-[0_0_80px_rgba(168,85,247,0.3)]' : 'shadow-[0_30px_80px_rgba(0,0,0,0.8)]')}`}>
@@ -405,8 +605,8 @@ export default function Omnibox() {
                                 filteredPredictions.length > 0 ? (
                                     filteredPredictions.map((pred, i) => (
                                         <button key={i} data-selected={i === selectedIndex} onClick={() => handleSelectPrediction(pred)} className={`w-full flex items-center gap-4 p-3 rounded-xl transition-colors group text-left ${i === selectedIndex ? 'bg-white/10' : 'hover:bg-white/10'}`}>
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${pred.isMath ? 'bg-accent-20 text-accent group-hover:bg-accent-30' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent'} ${i === selectedIndex && !pred.isMath ? 'bg-white/10 text-accent' : ''}`}>
-                                                {pred.isMath ? <Calculator size={16} /> : <Globe size={16} />}
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${pred.isMath ? 'bg-accent-20 text-accent group-hover:bg-accent-30' : (pred.isSearch ? 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent')} ${i === selectedIndex && !pred.isMath ? 'bg-white/10 text-accent' : ''}`}>
+                                                {pred.isMath ? <Calculator size={16} /> : (pred.isSearch ? <Search size={16} /> : <Globe size={16} />)}
                                             </div>
                                             <div className="flex flex-col flex-1 overflow-hidden">
                                                 <span className={`font-semibold truncate ${pred.isMath ? 'text-accent text-lg' : 'transition-colors'} ${i === selectedIndex && !pred.isMath ? 'text-white' : 'text-white/90 group-hover:text-white'}`}>{pred.title}</span>

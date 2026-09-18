@@ -114,6 +114,47 @@ function formatAuthError(error) {
 
 // Global active snapshot listener unsubscribers
 let unsubscribeCloudListeners = [];
+let isApplyingCloudUpdate = false;
+let autoSyncIntervalTimer = null;
+let debounceSyncTimer = null;
+let storeUnsubscribers = [];
+
+function setupLocalStoreWatchers() {
+    if (storeUnsubscribers.length > 0) return;
+
+    try {
+        const unsubTabs = useTabStore.subscribe((state, prevState) => {
+            if (isApplyingCloudUpdate) return;
+            const current = useSyncStore.getState();
+            if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
+            if (state.privateTabs !== prevState?.privateTabs || state.workTabs !== prevState?.workTabs) {
+                current.triggerDebouncedSync(12000);
+            }
+        });
+
+        const unsubVault = useVaultStore.subscribe((state, prevState) => {
+            if (isApplyingCloudUpdate) return;
+            const current = useSyncStore.getState();
+            if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
+            if (state.passwords !== prevState?.passwords) {
+                current.triggerDebouncedSync(6000);
+            }
+        });
+
+        const unsubUI = useUIStore.subscribe((state, prevState) => {
+            if (isApplyingCloudUpdate) return;
+            const current = useSyncStore.getState();
+            if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
+            if (state.settings !== prevState?.settings) {
+                current.triggerDebouncedSync(15000);
+            }
+        });
+
+        storeUnsubscribers.push(unsubTabs, unsubVault, unsubUI);
+    } catch (e) {
+        console.warn('[AutoSync] Notice on store subscribers:', e);
+    }
+}
 
 const useSyncStore = create((set, get) => ({
     user: null,
@@ -127,6 +168,10 @@ const useSyncStore = create((set, get) => ({
     cloudBackups: [],
     isLoadingBackups: false,
     isCreatingBackup: false,
+
+    // Auto-Sync Configuration
+    autoSyncEnabled: localStorage.getItem('qbrowse_auto_sync') !== 'false',
+    autoSyncIntervalMinutes: 5,
 
     syncCategories: (() => {
         try {
@@ -149,6 +194,80 @@ const useSyncStore = create((set, get) => ({
         localStorage.setItem('qbrowse_master_passphrase', passphrase);
     },
 
+    startAutoSync: (intervalMinutes = 5) => {
+        if (autoSyncIntervalTimer) {
+            clearInterval(autoSyncIntervalTimer);
+            autoSyncIntervalTimer = null;
+        }
+        setupLocalStoreWatchers();
+
+        const ms = Math.max(1, intervalMinutes) * 60 * 1000;
+        autoSyncIntervalTimer = setInterval(() => {
+            const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
+            if (autoSyncEnabled && user && masterPassword && !isSyncing && !isApplyingCloudUpdate) {
+                get().syncNow({ silent: true }).catch(() => {});
+            }
+        }, ms);
+
+        // Silent warm-up sync after 4 seconds if ready
+        setTimeout(() => {
+            const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
+            if (autoSyncEnabled && user && masterPassword && !isSyncing && !isApplyingCloudUpdate) {
+                get().syncNow({ silent: true }).catch(() => {});
+            }
+        }, 4000);
+    },
+
+    stopAutoSync: () => {
+        if (autoSyncIntervalTimer) {
+            clearInterval(autoSyncIntervalTimer);
+            autoSyncIntervalTimer = null;
+        }
+        if (debounceSyncTimer) {
+            clearTimeout(debounceSyncTimer);
+            debounceSyncTimer = null;
+        }
+    },
+
+    triggerDebouncedSync: (delayMs = 15000) => {
+        const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
+        if (!autoSyncEnabled || !user || !masterPassword || isSyncing || isApplyingCloudUpdate) {
+            return;
+        }
+        if (debounceSyncTimer) {
+            clearTimeout(debounceSyncTimer);
+        }
+        debounceSyncTimer = setTimeout(() => {
+            const state = get();
+            if (state.autoSyncEnabled && state.user && state.masterPassword && !state.isSyncing && !isApplyingCloudUpdate) {
+                state.syncNow({ silent: true }).catch(() => {});
+            }
+        }, delayMs);
+    },
+
+    toggleAutoSync: () => {
+        const next = !get().autoSyncEnabled;
+        set({ autoSyncEnabled: next });
+        localStorage.setItem('qbrowse_auto_sync', next ? 'true' : 'false');
+        if (next) {
+            get().startAutoSync();
+            useUIStore.getState().showToast("Auto-Sync active (syncs every 5m & on changes)");
+        } else {
+            get().stopAutoSync();
+            useUIStore.getState().showToast("Auto-Sync turned off");
+        }
+    },
+
+    setAutoSyncEnabled: (enabled) => {
+        set({ autoSyncEnabled: enabled });
+        localStorage.setItem('qbrowse_auto_sync', enabled ? 'true' : 'false');
+        if (enabled) {
+            get().startAutoSync();
+        } else {
+            get().stopAutoSync();
+        }
+    },
+
     initAuth: () => {
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -165,10 +284,14 @@ const useSyncStore = create((set, get) => ({
                 setTimeout(() => {
                     get().listenToCloudSync();
                     get().fetchCloudBackups();
+                    if (get().autoSyncEnabled) {
+                        get().startAutoSync();
+                    }
                 }, 100);
             } else {
                 set({ user: null, isAuthInitialized: true, syncStatus: 'offline' });
                 get().stopListening();
+                get().stopAutoSync();
             }
         });
     },
@@ -181,6 +304,9 @@ const useSyncStore = create((set, get) => ({
             get().setMasterPassword(passToUse);
             set({ isSyncing: false, user: userCred.user, syncStatus: 'synced' });
             useUIStore.getState().setSetupComplete(true);
+            if (get().autoSyncEnabled) {
+                get().startAutoSync();
+            }
             useUIStore.getState().showToast("Account Created & Cloud Sync Active!");
             return true;
         } catch (error) {
@@ -198,6 +324,9 @@ const useSyncStore = create((set, get) => ({
             get().setMasterPassword(passToUse);
             set({ isSyncing: false, user: userCred.user, syncStatus: 'synced' });
             useUIStore.getState().setSetupComplete(true);
+            if (get().autoSyncEnabled) {
+                get().startAutoSync();
+            }
             useUIStore.getState().showToast("Signed In to QBrowse Cloud Sync");
             return true;
         } catch (error) {
@@ -209,6 +338,7 @@ const useSyncStore = create((set, get) => ({
 
     logout: async () => {
         get().stopListening();
+        get().stopAutoSync();
         await signOut(auth);
         set({ 
             user: null, 
@@ -293,14 +423,15 @@ const useSyncStore = create((set, get) => ({
         }
     },
 
-    syncNow: async () => {
+    syncNow: async (options = { silent: false }) => {
+        const isSilent = options && options.silent === true;
         const { user, masterPassword, syncCategories } = get();
         if (!user) {
-            useUIStore.getState().showToast("Sign in to sync your data");
+            if (!isSilent) useUIStore.getState().showToast("Sign in to sync your data");
             return;
         }
         if (!masterPassword) {
-            useUIStore.getState().showToast("Encryption key required. Please enter your account password in profile.");
+            if (!isSilent) useUIStore.getState().showToast("Encryption key required. Please enter your account password in profile.");
             set({ syncStatus: 'error', authError: 'Master encryption passphrase missing.' });
             return;
         }
@@ -317,7 +448,7 @@ const useSyncStore = create((set, get) => ({
                 totalItems += Object.keys(uiSettings).length;
             }
 
-            // 2. Sync Vault (Passwords, Passkeys & Notes)
+            // 2. Sync Vault (Passwords, Passkeys, Cards, Addresses & Notes)
             if (syncCategories?.vault !== false) {
                 const vaultItems = useVaultStore.getState().passwords || [];
                 await get().syncDataToCloud('vault', vaultItems);
@@ -354,7 +485,9 @@ const useSyncStore = create((set, get) => ({
 
             const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             set({ isSyncing: false, syncStatus: 'synced', lastSyncTime: nowTime, syncedItemsCount: totalItems, authError: null });
-            useUIStore.getState().showToast(`Cloud Sync Complete! (${totalItems} items encrypted)`);
+            if (!isSilent) {
+                useUIStore.getState().showToast(`Cloud Sync Complete! (${totalItems} items encrypted)`);
+            }
         } catch(e) {
             console.warn("[Sync] syncNow notice:", e);
             set({ 
@@ -362,7 +495,9 @@ const useSyncStore = create((set, get) => ({
                 syncStatus: 'offline', 
                 authError: null 
             });
-            useUIStore.getState().showToast("Cloud sync paused. Changes saved locally.");
+            if (!isSilent) {
+                useUIStore.getState().showToast("Cloud sync paused. Changes saved locally.");
+            }
         }
     },
 
@@ -632,67 +767,127 @@ const useSyncStore = create((set, get) => ({
         const rootDocRef = doc(db, 'users', user.uid);
         const unsubRoot = onSnapshot(rootDocRef, async (docSnap) => {
             if (!docSnap.exists()) return;
-            const data = docSnap.data();
+            isApplyingCloudUpdate = true;
+            try {
+                const data = docSnap.data();
 
-            // Handle manual backups update
-            if (Array.isArray(data.manual_backups)) {
-                set({ cloudBackups: data.manual_backups });
-            }
+                // Handle manual backups update
+                if (Array.isArray(data.manual_backups)) {
+                    set({ cloudBackups: data.manual_backups });
+                }
 
-            // Sync Settings
-            if (syncCategories?.settings !== false && data.settings?.encrypted) {
-                try {
-                    const decrypted = await decryptData(data.settings.encrypted, masterPassword);
-                    const currentSettings = useUIStore.getState().settings;
-                    Object.keys(decrypted).forEach(key => {
-                        if (key !== 'syncedCloudSettings' && currentSettings[key] !== decrypted[key]) {
-                            useUIStore.getState().setSettingValue(key, decrypted[key]);
+                // Sync Settings
+                if (syncCategories?.settings !== false && data.settings?.encrypted) {
+                    try {
+                        const decrypted = await decryptData(data.settings.encrypted, masterPassword);
+                        const currentSettings = useUIStore.getState().settings;
+                        Object.keys(decrypted).forEach(key => {
+                            if (key !== 'syncedCloudSettings' && currentSettings[key] !== decrypted[key]) {
+                                useUIStore.getState().setSettingValue(key, decrypted[key]);
+                            }
+                        });
+                    } catch(e) {}
+                }
+
+                // Sync Vault
+                if (syncCategories?.vault !== false && data.vault?.encrypted) {
+                    try {
+                        const remoteVault = await decryptData(data.vault.encrypted, masterPassword);
+                        if (Array.isArray(remoteVault)) {
+                            useVaultStore.getState().mergeRemoteVault(remoteVault);
                         }
-                    });
-                } catch(e) {}
-            }
+                    } catch(e) {}
+                }
 
-            // Sync Vault
-            if (syncCategories?.vault !== false && data.vault?.encrypted) {
-                try {
-                    const remoteVault = await decryptData(data.vault.encrypted, masterPassword);
-                    if (Array.isArray(remoteVault)) {
-                        useVaultStore.getState().mergeRemoteVault(remoteVault);
-                    }
-                } catch(e) {}
-            }
+                // Sync Tabs
+                if (syncCategories?.tabs !== false && data.tabs?.encrypted) {
+                    try {
+                        const remoteTabs = await decryptData(data.tabs.encrypted, masterPassword);
+                        if (remoteTabs && (remoteTabs.privateTabs || remoteTabs.workTabs)) {
+                            useTabStore.getState().setCloudTabs(remoteTabs);
+                        }
+                    } catch(e) {}
+                }
 
-            // Sync Tabs
-            if (syncCategories?.tabs !== false && data.tabs?.encrypted) {
-                try {
-                    const remoteTabs = await decryptData(data.tabs.encrypted, masterPassword);
-                    if (remoteTabs && (remoteTabs.privateTabs || remoteTabs.workTabs)) {
-                        useTabStore.getState().setCloudTabs(remoteTabs);
-                    }
-                } catch(e) {}
-            }
+                // Sync History
+                if (syncCategories?.history !== false && data.history?.encrypted) {
+                    try {
+                        const remoteHistory = await decryptData(data.history.encrypted, masterPassword);
+                        if (Array.isArray(remoteHistory)) {
+                            useHistoryStore.getState().mergeRemoteHistory(remoteHistory);
+                        }
+                    } catch(e) {}
+                }
 
-            // Sync History
-            if (syncCategories?.history !== false && data.history?.encrypted) {
-                try {
-                    const remoteHistory = await decryptData(data.history.encrypted, masterPassword);
-                    if (Array.isArray(remoteHistory)) {
-                        useHistoryStore.getState().mergeRemoteHistory(remoteHistory);
-                    }
-                } catch(e) {}
+                set({ syncStatus: 'synced', authError: null });
+            } finally {
+                setTimeout(() => {
+                    isApplyingCloudUpdate = false;
+                }, 1500);
             }
-
-            set({ syncStatus: 'synced', authError: null });
         }, (err) => {
             console.warn("[Sync] Root user listener notice:", err.message);
             set({ syncStatus: 'offline', authError: null });
         });
 
         unsubscribeCloudListeners.push(unsubRoot);
+    },
+
+    serializeCurrentProfileSync: (profileId) => {
+        try {
+            const passKey = (!profileId || profileId === 'default') ? 'qbrowse_master_passphrase' : `qbrowse_master_passphrase_${profileId}`;
+            const syncKey = (!profileId || profileId === 'default') ? 'qbrowse_last_sync' : `qbrowse_last_sync_${profileId}`;
+            const catKey = (!profileId || profileId === 'default') ? 'qbrowse_sync_categories' : `qbrowse_sync_categories_${profileId}`;
+
+            if (get().masterPassword) localStorage.setItem(passKey, get().masterPassword);
+            if (get().lastSyncTime) localStorage.setItem(syncKey, get().lastSyncTime);
+            localStorage.setItem(catKey, JSON.stringify(get().syncCategories));
+        } catch (e) {
+            console.error('Failed to serialize profile sync data', e);
+        }
+    },
+
+    loadProfileSync: (profileId) => {
+        try {
+            const passKey = (!profileId || profileId === 'default') ? 'qbrowse_master_passphrase' : `qbrowse_master_passphrase_${profileId}`;
+            const syncKey = (!profileId || profileId === 'default') ? 'qbrowse_last_sync' : `qbrowse_last_sync_${profileId}`;
+            const catKey = (!profileId || profileId === 'default') ? 'qbrowse_sync_categories' : `qbrowse_sync_categories_${profileId}`;
+
+            const masterPass = localStorage.getItem(passKey) || '';
+            const lastSync = localStorage.getItem(syncKey) || null;
+            let cats = { vault: true, settings: true, tabs: true, history: true };
+            try {
+                const storedCats = localStorage.getItem(catKey);
+                if (storedCats) cats = JSON.parse(storedCats);
+            } catch(e) {}
+
+            set({
+                masterPassword: masterPass,
+                lastSyncTime: lastSync,
+                syncCategories: cats,
+                cloudBackups: [],
+                isLoadingBackups: false
+            });
+
+            // If user is authenticated, refresh cloud backups and listener for this profile
+            if (get().user) {
+                get().stopListening();
+                setTimeout(() => {
+                    get().listenToCloudSync();
+                    get().fetchCloudBackups();
+                }, 50);
+            }
+        } catch (e) {
+            console.error('Failed to load profile sync data', e);
+        }
     }
 }));
 
 // Initialize Firebase auth observer immediately
 useSyncStore.getState().initAuth();
+
+if (typeof window !== 'undefined') {
+    window.__syncStore = useSyncStore;
+}
 
 export default useSyncStore;
