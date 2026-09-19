@@ -94,6 +94,7 @@
       ],
       "category": "Network;WebBrowser;",
       "icon": "icon.png",
+      "desktopName": "QBrowse",
       "maintainer": "QuBI <qu@qubirpi3b.tk>",
       "synopsis": "Next-generation privacy browser with Tor, AI & Cloud Sync",
       "description": "Next-generation privacy-first browser with built-in Tor onion routing, local Gemma AI, and encrypted cloud sync."
