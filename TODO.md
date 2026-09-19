@@ -10,12 +10,12 @@ This document tracks our point-by-point execution of flagship browser features a
   - *Status*: ✅ COMPLETED
   - *Outcome*: Removed unsolicited inline DOM badge injection in `webview_preload.cjs`. Fixed `main.cjs` so `vault-get-matching` strictly returns `[]` when `targetHost` is missing, preventing random popups over search bars and inputs.
 
-- [ ] **Task 2: Find in Page (`Ctrl+F`)**
-  - *Status*: 🟡 NEXT UP (Ready for implementation plan)
-  - *Goal*: Floating glassmorphic search overlay with live match counter (`X of Y`), Next/Prev navigation (`Enter` / `Shift+Enter`), case matching, and native Chromium keyword highlighting.
+- [x] **Task 2: Find in Page (`Ctrl+F`)**
+  - *Status*: ✅ COMPLETED
+  - *Outcome*: Implemented floating glassmorphic Find in Page bar with real-time Chromium keyword highlighting, live match counter (`X of Y` / `0 of 0`), Next/Prev navigation (`Enter`/`Shift+Enter` and `F3`/`Shift+F3`), case-sensitive toggle (`Aa`), global `Esc` dismissal, right-click context menu item, and Omnibox `>find` command.
 
 - [ ] **Task 3: Page Printing & Clean PDF Export (`Ctrl+P`)**
-  - *Status*: ⚪ PENDING
+  - *Status*: 🟡 NEXT UP (Ready for design & interview)
   - *Goal*: Native system print dialog (`webContents.print()`) and one-click "Save Clean PDF" (`webContents.printToPDF()`) with save file dialog.
 
 - [ ] **Task 4: Webpage Screenshot & Snipping Tool**

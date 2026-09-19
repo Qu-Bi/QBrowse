@@ -41,7 +41,8 @@ const availableCommands = [
     { id: 'profile', title: 'Manage Browser Profiles & Cloud Sync', cmd: 'profile', icon: Users, color: 'text-amber-400' },
     { id: 'tor', title: 'Toggle Tor Onion Routing Mode', cmd: 'tor', icon: Globe, color: 'text-purple-400' },
     { id: 'newnym', title: 'Request new Tor identity (SIGNAL NEWNYM)', cmd: 'newnym', icon: RotateCw, color: 'text-purple-400' },
-    { id: 'circuit', title: 'Open Tor Circuit & Security HUD', cmd: 'circuit', icon: Terminal, color: 'text-purple-400' }
+    { id: 'circuit', title: 'Open Tor Circuit & Security HUD', cmd: 'circuit', icon: Terminal, color: 'text-purple-400' },
+    { id: 'find', title: 'Find in page (Ctrl+F)', cmd: 'find', icon: Search, color: 'text-amber-400' }
 ];
 
 const parseUrlInput = (input) => {
@@ -328,6 +329,11 @@ export default function Omnibox() {
             case 'reload':
                 uiStore.refresh();
                 showToast('Terminal: Reloading tab...');
+                break;
+
+            case 'find':
+                uiStore.setIsFindOpen(true);
+                showToast('Find in page opened');
                 break;
 
             case 'mute':

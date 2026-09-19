@@ -236,8 +236,85 @@ const useUIStore = create((set) => ({
   // Find in Page
   isFindOpen: false,
   findQuery: '',
-  setIsFindOpen: (val) => set({ isFindOpen: val, findQuery: val ? useUIStore.getState().findQuery : '' }),
-  setFindQuery: (query) => set({ findQuery: query }),
+  findMatchCase: false,
+  findResults: { activeMatchOrdinal: 0, matches: 0 },
+  getActiveWebView: () => {
+    try {
+      return Array.from(document.querySelectorAll('webview')).find(w => w.style.visibility !== 'hidden' && w.style.display !== 'none');
+    } catch {
+      return null;
+    }
+  },
+  setIsFindOpen: (val) => {
+    const currentState = get();
+    if (!val && currentState.isFindOpen) {
+      try {
+        const wv = currentState.getActiveWebView();
+        if (wv && typeof wv.stopFindInPage === 'function') {
+          wv.stopFindInPage('clearSelection');
+        }
+      } catch (e) {}
+      set({ isFindOpen: false, findResults: { activeMatchOrdinal: 0, matches: 0 } });
+      try {
+        const wv = currentState.getActiveWebView();
+        if (wv && typeof wv.focus === 'function') {
+          wv.focus();
+        }
+      } catch (e) {}
+      return;
+    }
+
+    set({ isFindOpen: !!val });
+    if (val) {
+      const q = currentState.findQuery;
+      if (q) {
+        get().executeFind(q, { forward: true, findNext: false });
+      }
+    }
+  },
+  setFindQuery: (query) => {
+    set({ findQuery: query });
+    if (!query) {
+      try {
+        const wv = get().getActiveWebView();
+        if (wv && typeof wv.stopFindInPage === 'function') {
+          wv.stopFindInPage('clearSelection');
+        }
+      } catch (e) {}
+      set({ findResults: { activeMatchOrdinal: 0, matches: 0 } });
+      return;
+    }
+    get().executeFind(query, { forward: true, findNext: false });
+  },
+  setFindMatchCase: (matchCase) => {
+    set({ findMatchCase: matchCase });
+    const q = get().findQuery;
+    if (q) {
+      get().executeFind(q, { forward: true, findNext: false, matchCase });
+    }
+  },
+  setFindResults: (results) => set({ findResults: results }),
+  executeFind: (query, { forward = true, findNext = false, matchCase } = {}) => {
+    if (!query) return;
+    const caseSensitive = typeof matchCase === 'boolean' ? matchCase : get().findMatchCase;
+    try {
+      const wv = get().getActiveWebView();
+      if (wv && typeof wv.findInPage === 'function') {
+        wv.findInPage(query, { forward, findNext, matchCase: caseSensitive });
+      }
+    } catch (e) {
+      console.warn('[FindInPage] execute error:', e);
+    }
+  },
+  findNextMatch: (forward = true) => {
+    const { findQuery, isFindOpen } = get();
+    if (!isFindOpen) {
+      get().setIsFindOpen(true);
+      return;
+    }
+    if (!findQuery) return;
+    get().executeFind(findQuery, { forward, findNext: true });
+  },
 
   // Notifications
   toast: null,

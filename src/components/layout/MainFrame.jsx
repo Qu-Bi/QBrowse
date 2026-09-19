@@ -15,6 +15,7 @@ import SiteInfoPopover from '../popovers/SiteInfoPopover';
 import UserProfilePopover from '../popovers/UserProfilePopover';
 import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
+import FindInPageBar from '../common/FindInPageBar';
 
 const DownloadPopup = () => {
     const downloads = useUIStore(state => state.downloads);
@@ -456,6 +457,7 @@ export default function MainFrame() {
             <div ref={mainContainerRef} className={`flex-1 min-w-0 relative overflow-hidden transition-colors duration-700 ease-in-out flex ${isForceDark || isIncognito ? 'text-white' : 'text-black'} ${isFullscreen ? '' : 'pb-0 pt-2'}`}>
                 <div className={`relative w-full h-full overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.1)] transition-[background-color,border] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border border-white/20'} ${isForceDark || isIncognito ? 'bg-black/60 backdrop-blur-3xl' : 'bg-white/60 backdrop-blur-3xl'}`}>
                     <DownloadPopup />
+                    <FindInPageBar />
                     {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
                         <QVaultPopover isClosing={isPopoverClosing} />
                     )}

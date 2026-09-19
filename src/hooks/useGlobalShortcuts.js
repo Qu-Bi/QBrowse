@@ -277,7 +277,12 @@ export const executeShortcut = (key, shift = false) => {
 
         // Find in Page (Cmd+F)
         case 'f':
-            uiStore.setIsFindOpen(!uiStore.isFindOpen);
+            uiStore.setIsFindOpen(true);
+            break;
+
+        // Find Next / Prev Match (F3 / Shift+F3)
+        case 'f3':
+            uiStore.findNextMatch(!shift);
             break;
 
         // Tab Switcher (Cmd+Tab)
@@ -385,9 +390,9 @@ export default function useGlobalShortcuts() {
 
             const cmdOrCtrl = e.metaKey || e.ctrlKey;
 
-            if (e.key === 'F11' || e.key === 'F12') {
+            if (e.key === 'F11' || e.key === 'F12' || e.key === 'F3') {
                 e.preventDefault();
-                executeShortcut(e.key.toLowerCase(), false);
+                executeShortcut(e.key.toLowerCase(), e.shiftKey);
                 return;
             }
 
@@ -446,8 +451,8 @@ export default function useGlobalShortcuts() {
                     return;
                 }
 
-                if (shortcut === 'f11' || shortcut === 'f12') {
-                    executeShortcut(shortcut, false);
+                if (shortcut === 'f11' || shortcut === 'f12' || shortcut === 'f3') {
+                    executeShortcut(shortcut, shift);
                 }
             });
         }

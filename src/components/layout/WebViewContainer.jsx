@@ -459,6 +459,16 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
         };
 
+        const handleFoundInPage = (event) => {
+            if (isActive && isSpaceActive && event.result) {
+                useUIStore.getState().setFindResults({
+                    activeMatchOrdinal: event.result.activeMatchOrdinal || 0,
+                    matches: event.result.matches || 0
+                });
+            }
+        };
+
+        wv.addEventListener('found-in-page', handleFoundInPage);
         wv.addEventListener('did-start-loading', handleDidStartLoading);
         wv.addEventListener('did-navigate', handleNavigateSafe);
         wv.addEventListener('did-navigate-in-page', handleNavigateInPage);
@@ -494,10 +504,24 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             wv.removeEventListener('console-message', handleConsoleMessage);
             wv.removeEventListener('plugin-crashed', handleFailLoadLogged);
             wv.removeEventListener('ipc-message', handleIpcMessage);
+            wv.removeEventListener('found-in-page', handleFoundInPage);
             wv.removeEventListener('new-window', handleNewWindow);
             wv.removeEventListener('did-create-window', handleNewWindow);
         };
     }, [isActive, isSpaceActive, setSpaceTabs, tab.id]);
+
+    useEffect(() => {
+        if (!isActive) {
+            if (wvRef.current && typeof wvRef.current.stopFindInPage === 'function') {
+                try {
+                    wvRef.current.stopFindInPage('clearSelection');
+                } catch(e) {}
+            }
+            if (useUIStore.getState().isFindOpen) {
+                useUIStore.getState().setIsFindOpen(false);
+            }
+        }
+    }, [isActive]);
 
     useEffect(() => {
         const wv = wvRef.current;
@@ -521,6 +545,19 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 return;
             }
             if (e.type !== 'keyDown') return;
+
+            // Find in Page (Ctrl+F)
+            if ((e.control || e.meta) && e.key.toLowerCase() === 'f') {
+                try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+                useUIStore.getState().setIsFindOpen(true);
+                return;
+            }
+            // Find Next / Prev (F3 / Shift+F3)
+            if (e.key === 'F3') {
+                try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+                useUIStore.getState().findNextMatch(!e.shift);
+                return;
+            }
 
             if ((e.control || e.meta) && e.key.toLowerCase() === 'r') {
                 try { wv.reload(); } catch(err) {}
