@@ -4,7 +4,7 @@ import {
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, 
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
-    UploadCloud
+    UploadCloud, Compass, ExternalLink
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
@@ -89,6 +89,61 @@ const SettingsModal = () => {
     const [allPermissions, setAllPermissions] = useState({});
     const [searchFilter, setSearchFilter] = useState('');
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+    const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
+    const [isCheckingDefault, setIsCheckingDefault] = useState(false);
+    const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
+        return localStorage.getItem('qbrowse_dismiss_default_browser') !== 'true';
+    });
+
+    const refreshDefaultBrowserStatus = async () => {
+        if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
+            setIsCheckingDefault(true);
+            try {
+                const res = await window.electronAPI.checkDefaultBrowser();
+                setIsDefaultBrowser(!!res.isDefault);
+            } catch (_) {}
+            setIsCheckingDefault(false);
+        }
+    };
+
+    const handleSetDefaultBrowser = async () => {
+        if (window.electronAPI && window.electronAPI.setDefaultBrowser) {
+            try {
+                const res = await window.electronAPI.setDefaultBrowser();
+                setIsDefaultBrowser(!!res.isDefault);
+                if (res.isDefault) {
+                    showToast('QBrowse set as default browser! 🎉');
+                } else {
+                    showToast('Default browser settings opened.');
+                }
+            } catch (_) {
+                showToast('Failed to set default browser.');
+            }
+        }
+    };
+
+    const handleOpenDefaultAppsSettings = () => {
+        if (window.electronAPI && window.electronAPI.openDefaultAppsSettings) {
+            window.electronAPI.openDefaultAppsSettings();
+            showToast('Opening system default apps settings...');
+        }
+    };
+
+    const handleToggleStartupCheck = () => {
+        const next = !checkDefaultOnStartup;
+        setCheckDefaultOnStartup(next);
+        if (next) {
+            localStorage.removeItem('qbrowse_dismiss_default_browser');
+            showToast('Will check default browser on startup.');
+        } else {
+            localStorage.setItem('qbrowse_dismiss_default_browser', 'true');
+            showToast('Startup default browser check disabled.');
+        }
+    };
+
+    useEffect(() => {
+        refreshDefaultBrowserStatus();
+    }, [settingsTab]);
 
     useEffect(() => {
         if (settingsTab === 'cookies' && window.electronAPI && window.electronAPI.getAllSitePermissions) {
@@ -795,6 +850,77 @@ const SettingsModal = () => {
                                             Sign In / Register
                                         </button>
                                     )}
+                                </div>
+                            </div>
+
+                            {/* Default Browser Management Card */}
+                            <div className="p-6 bg-white/5 border border-white/10 rounded-3xl space-y-4 hover:border-accent-30 transition-all duration-300">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border ${
+                                            isDefaultBrowser 
+                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-emerald-500/10 shadow-lg' 
+                                                : 'bg-accent-10 text-accent border-accent-30 shadow-sm'
+                                        }`}>
+                                            <Compass size={24} />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-base text-white flex items-center gap-2">
+                                                Default Web Browser
+                                                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                                    isDefaultBrowser 
+                                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
+                                                        : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                                }`}>
+                                                    {isDefaultBrowser ? 'Default Browser' : 'Not Default'}
+                                                </span>
+                                            </h4>
+                                            <p className="text-xs text-white/40 mt-0.5">
+                                                {isDefaultBrowser 
+                                                    ? 'QBrowse is currently your primary browser for all web links, HTML documents, and protocol requests.' 
+                                                    : 'Make QBrowse your default browser to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        {!isDefaultBrowser && (
+                                            <button
+                                                onClick={handleSetDefaultBrowser}
+                                                className="px-4 py-2 bg-accent text-black font-bold rounded-xl text-xs transition hover:scale-105 active:scale-95 cursor-pointer shadow-lg shadow-accent/20 flex items-center gap-1.5"
+                                            >
+                                                <CheckCircle2 size={14} />
+                                                Set as Default
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleOpenDefaultAppsSettings}
+                                            className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/10 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+                                            title="Open OS Default Apps Settings"
+                                        >
+                                            <ExternalLink size={13} />
+                                            System Settings
+                                        </button>
+                                        <button
+                                            onClick={refreshDefaultBrowserStatus}
+                                            disabled={isCheckingDefault}
+                                            className="p-2 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 rounded-xl text-xs transition cursor-pointer"
+                                            title="Refresh status"
+                                        >
+                                            <RefreshCw size={14} className={isCheckingDefault ? 'animate-spin text-accent' : ''} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-xs text-white/70 font-medium">Check if QBrowse is default on startup</p>
+                                        <span className="text-[10px] text-white/40">(Prompts banner if not default)</span>
+                                    </div>
+                                    <SettingToggle 
+                                        isChecked={checkDefaultOnStartup} 
+                                        onToggle={handleToggleStartupCheck} 
+                                    />
                                 </div>
                             </div>
 

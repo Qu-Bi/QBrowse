@@ -63,6 +63,20 @@
     "executableName": "QBrowse",
     "copyright": "Copyright © 2026 QuBI",
     "publish": null,
+    "protocols": [
+      {
+        "name": "HTTP",
+        "schemes": [
+          "http"
+        ]
+      },
+      {
+        "name": "HTTPS",
+        "schemes": [
+          "https"
+        ]
+      }
+    ],
     "directories": {
       "output": "dist_electron"
     },

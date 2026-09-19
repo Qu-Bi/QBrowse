@@ -36,6 +36,41 @@ if (process.platform === 'win32') {
     app.setAppUserModelId('com.qbrowse.app');
 }
 
+// Single Instance Lock for Default Browser link routing
+const gotTheLock = app.requestSingleInstanceLock();
+let initialUrlToOpen = null;
+
+const extractUrlFromArgs = (argv) => {
+    if (!Array.isArray(argv)) return null;
+    return argv.find(arg => arg && typeof arg === 'string' && (arg.startsWith('http://') || arg.startsWith('https://')));
+};
+
+if (!gotTheLock) {
+    app.quit();
+} else {
+    initialUrlToOpen = extractUrlFromArgs(process.argv);
+
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+            const incomingUrl = extractUrlFromArgs(commandLine);
+            if (incomingUrl) {
+                mainWindow.webContents.send('open-new-tab-url', { url: incomingUrl, disposition: 'default' });
+            }
+        }
+    });
+}
+
+app.on('open-url', (event, url) => {
+    event.preventDefault();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('open-new-tab-url', { url, disposition: 'default' });
+    } else {
+        initialUrlToOpen = url;
+    }
+});
+
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -146,6 +181,14 @@ function createWindow(options = {}) {
 
   win.once('ready-to-show', () => {
     win.show();
+    if (initialUrlToOpen) {
+      setTimeout(() => {
+        if (win && !win.isDestroyed() && initialUrlToOpen) {
+          win.webContents.send('open-new-tab-url', { url: initialUrlToOpen, disposition: 'default' });
+          initialUrlToOpen = null;
+        }
+      }, 1200);
+    }
   });
 
   win.on('app-command', (e, cmd) => {
@@ -1624,3 +1667,65 @@ ipcMain.handle('tor-download-binary', async () => {
 ipcMain.handle('tor-set-security', async (event, level) => {
     return torEngine.setSecurityLevel(level);
 });
+
+// Default Browser Handlers
+ipcMain.handle('system-check-default-browser', async () => {
+    try {
+        const isHttp = app.isDefaultProtocolClient('http');
+        const isHttps = app.isDefaultProtocolClient('https');
+        return { isDefault: Boolean(isHttp && isHttps) };
+    } catch (e) {
+        return { isDefault: false, error: e.message };
+    }
+});
+
+ipcMain.handle('system-set-default-browser', async () => {
+    try {
+        let setHttp = false;
+        let setHttps = false;
+
+        if (typeof app.setAsDefaultProtocolClient === 'function') {
+            setHttp = app.setAsDefaultProtocolClient('http');
+            setHttps = app.setAsDefaultProtocolClient('https');
+        }
+
+        if (process.platform === 'linux') {
+            try {
+                const { exec } = require('child_process');
+                exec('xdg-settings set default-web-browser qbrowse.desktop || xdg-mime default qbrowse.desktop x-scheme-handler/http x-scheme-handler/https text/html');
+            } catch (_) {}
+        } else if (process.platform === 'win32') {
+            try {
+                shell.openExternal('ms-settings:defaultapps');
+            } catch (_) {}
+        }
+
+        const isDefault = Boolean(app.isDefaultProtocolClient('http') && app.isDefaultProtocolClient('https'));
+        return { success: true, isDefault };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('system-open-default-apps-settings', async () => {
+    try {
+        if (process.platform === 'win32') {
+            await shell.openExternal('ms-settings:defaultapps');
+            return { success: true };
+        } else if (process.platform === 'linux') {
+            const { exec } = require('child_process');
+            exec('gnome-control-center default-apps || xfce4-mime-settings || kcmshell5 componentchooser');
+            return { success: true };
+        }
+        return { success: false };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('get-initial-launch-url', () => {
+    const url = initialUrlToOpen;
+    initialUrlToOpen = null;
+    return url;
+});
+

@@ -26,6 +26,7 @@ import PasskeyVerificationModal from './components/modals/PasskeyVerificationMod
 import Overlays from './components/common/Overlays';
 import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
+import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
 
 
 export default function App() {
@@ -58,6 +59,18 @@ export default function App() {
                 useTabStore.getState().setActiveSpace(spaceParam);
             }
         } catch(e) {}
+
+        // Listen for URLs opened externally from other apps when QBrowse is default browser
+        if (window.electronAPI && window.electronAPI.onOpenUrl) {
+            const unlisten = window.electronAPI.onOpenUrl(({ url }) => {
+                if (url && url !== 'about:blank') {
+                    useTabStore.getState().handleNewTab(url);
+                }
+            });
+            return () => {
+                if (typeof unlisten === 'function') unlisten();
+            };
+        }
     }, []);
 
     // Memory Saver Engine: Auto-suspend inactive background tabs
@@ -283,6 +296,7 @@ export default function App() {
 
                 <Overlays />
                 <TabSwitcherOverlay />
+                <DefaultBrowserBanner />
             </div>
         </ContextMenuProvider>
     );

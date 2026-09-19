@@ -158,5 +158,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('tor-download-progress', handler);
     },
 
+    // Default Browser & External URLs
+    checkDefaultBrowser: () => ipcRenderer.invoke('system-check-default-browser'),
+    setDefaultBrowser: () => ipcRenderer.invoke('system-set-default-browser'),
+    openDefaultAppsSettings: () => ipcRenderer.invoke('system-open-default-apps-settings'),
+    getInitialLaunchUrl: () => ipcRenderer.invoke('get-initial-launch-url'),
+    onOpenUrl: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('open-new-tab-url', handler);
+        return () => ipcRenderer.removeListener('open-new-tab-url', handler);
+    },
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
+
