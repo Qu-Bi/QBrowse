@@ -6,7 +6,7 @@ import useVaultStore from '../../store/useVaultStore';
 import useProfileStore from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
-import { checkIsArticle } from '../../utils/readerExtractor';
+import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 import FlagsPage from '../pages/FlagsPage';
 
 // We extract WebViewItem so we can freeze its initial URL 
@@ -198,6 +198,28 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
         };
         
+        const checkReaderAvailability = () => {
+            if (!isActive || !isSpaceActive || !wv || wv.hasCrashed || tab.isClosing) return;
+            if (!tab.url || tab.url === '' || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) {
+                useUIStore.getState().setIsReaderAvailable(false);
+                return;
+            }
+
+            try {
+                if (typeof wv.executeJavaScript === 'function') {
+                    wv.executeJavaScript(CHECK_ARTICLE_DOM_SCRIPT).then(isArticle => {
+                        if (isActive && isSpaceActive) {
+                            useUIStore.getState().setIsReaderAvailable(!!isArticle);
+                        }
+                    }).catch(() => {
+                        if (isActive && isSpaceActive) {
+                            useUIStore.getState().setIsReaderAvailable(false);
+                        }
+                    });
+                }
+            } catch(e) {}
+        };
+
         const handleDomReady = () => {
             isDomReadyRef.current = true;
             try { wv.insertCSS(customScrollbarCSS).catch(() => {}); } catch(e){}
@@ -213,6 +235,10 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     wv.insertCSS(`.ad-container, .adsbygoogle, div[id^="google_ads_"], div[aria-label="Advertisement"], .ytd-ad-slot-renderer, .trc_rbox_outer, .OUTBRAIN, #taboola-below-article-thumbnails { display: none !important; height: 0 !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }`).catch(() => {});
                 }
             } catch(e) {}
+
+            if (isActive && isSpaceActive) {
+                setTimeout(checkReaderAvailability, 150);
+            }
         };
         
         const handleEnterHtmlFullScreen = () => {
@@ -244,7 +270,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         }
 
         const handleStopLoading = () => {
-            if (isActive && isSpaceActive && isDomReadyRef.current && !wv.hasCrashed && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
+            if (isActive && isSpaceActive && !wv.hasCrashed && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
                 try {
                     wv.capturePage().then(img => {
                         if (!img || tab.isClosing) return;
@@ -254,19 +280,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 } catch(e) {}
 
                 // Check Reader Mode availability for active tab
-                try {
-                    if (typeof wv.executeJavaScript === 'function') {
-                        wv.executeJavaScript('document.documentElement.outerHTML').then(html => {
-                            if (html && checkIsArticle(html, tab.url)) {
-                                useUIStore.getState().setIsReaderAvailable(true);
-                            } else {
-                                useUIStore.getState().setIsReaderAvailable(false);
-                            }
-                        }).catch(() => {
-                            useUIStore.getState().setIsReaderAvailable(false);
-                        });
-                    }
-                } catch(e) {}
+                checkReaderAvailability();
             }
         };
 
@@ -383,6 +397,9 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         const handleNavigateInPage = (e) => {
             console.log(`[WebView ${tab.id}] did-navigate-in-page:`, e.url);
             handleNavigateSafe(e);
+            if (isActive && isSpaceActive) {
+                setTimeout(checkReaderAvailability, 250);
+            }
         };
 
         const handleIpcMessage = (e) => {
@@ -451,7 +468,12 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         const handleMediaPlay = () => useTabStore.getState().updateTabAudible(tab.id, true);
         const handleMediaPause = () => useTabStore.getState().updateTabAudible(tab.id, false);
         
-        const handleDidStartLoading = () => console.log(`[WebView ${tab.id}] did-start-loading`);
+        const handleDidStartLoading = () => {
+            console.log(`[WebView ${tab.id}] did-start-loading`);
+            if (isActive && isSpaceActive) {
+                useUIStore.getState().setIsReaderAvailable(false);
+            }
+        };
         const handleDidStopLoading = (e) => {
             console.log(`[WebView ${tab.id}] did-stop-loading`);
             handleStopLoading(e);
@@ -542,6 +564,28 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
         }
     }, [isActive]);
+
+    // Re-check Reader Mode availability when this tab becomes the active tab
+    useEffect(() => {
+        if (isActive && isSpaceActive && !tab.isClosing) {
+            if (!tab.url || tab.url === '' || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) {
+                useUIStore.getState().setIsReaderAvailable(false);
+                return;
+            }
+            const wv = wvRef.current;
+            if (wv && typeof wv.executeJavaScript === 'function') {
+                wv.executeJavaScript(CHECK_ARTICLE_DOM_SCRIPT).then(isArticle => {
+                    if (isActive && isSpaceActive) {
+                        useUIStore.getState().setIsReaderAvailable(!!isArticle);
+                    }
+                }).catch(() => {
+                    if (isActive && isSpaceActive) {
+                        useUIStore.getState().setIsReaderAvailable(false);
+                    }
+                });
+            }
+        }
+    }, [isActive, isSpaceActive, tab.id, tab.url]);
 
     useEffect(() => {
         const wv = wvRef.current;

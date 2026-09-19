@@ -105,6 +105,38 @@ body {
   transform-origin: top left;
 }
 
+@keyframes readerFadeInScale {
+  0% {
+    opacity: 0;
+    transform: scale(0.985) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes readerFadeOutScale {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.98) translateY(8px);
+  }
+}
+
+.animate-reader-enter {
+  animation: readerFadeInScale 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  transform-origin: center center;
+}
+
+.animate-reader-exit {
+  animation: readerFadeOutScale 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  transform-origin: center center;
+}
+
 .sidebar-light {
   --sidebar-text-muted: rgba(0, 0, 0, 0.5);
   --sidebar-text-normal: rgba(0, 0, 0, 0.7);

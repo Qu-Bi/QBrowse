@@ -5,7 +5,7 @@ import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
-import { checkIsArticle } from '../../utils/readerExtractor';
+import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 
 export default function Sidebar() {
     // UI Store State
@@ -127,8 +127,8 @@ export default function Sidebar() {
                 // Check Reader Mode availability for the selected tab
                 const wv = window.qbrowseWebviews ? window.qbrowseWebviews[tab.id] : null;
                 if (wv && typeof wv.executeJavaScript === 'function') {
-                    wv.executeJavaScript('document.documentElement.outerHTML').then(html => {
-                        useUIStore.getState().setIsReaderAvailable(!!(html && checkIsArticle(html, tab.url)));
+                    wv.executeJavaScript(CHECK_ARTICLE_DOM_SCRIPT).then(isArticle => {
+                        useUIStore.getState().setIsReaderAvailable(!!isArticle);
                     }).catch(() => {
                         useUIStore.getState().setIsReaderAvailable(false);
                     });

@@ -138,6 +138,14 @@ export default function MainFrame() {
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const refresh = useUIStore(state => state.refresh);
     const openOmnibox = useUIStore(state => state.openOmnibox);
+
+    const [localDarkExclusions, setLocalDarkExclusions] = useState(() => (darkExclusions || []).join('\n'));
+
+    useEffect(() => {
+        if (activePopover === 'darkmode') {
+            setLocalDarkExclusions((darkExclusions || []).join('\n'));
+        }
+    }, [activePopover]);
     const peekWindow = useUIStore(state => state.peekWindow);
     const setPeekWindow = useUIStore(state => state.setPeekWindow);
     const isPeekClosing = useUIStore(state => state.isPeekClosing);
@@ -334,12 +342,19 @@ export default function MainFrame() {
                         <span className="text-xs font-bold uppercase text-white/40 tracking-wider mb-2 block">Site List (One per line)</span>
                         <textarea 
                             className="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-2 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
-                            value={darkExclusions.join('\n')}
+                            value={localDarkExclusions}
                             onChange={(e) => {
-                                const newExclusions = e.target.value.split('\n').map(d => d.trim()).filter(d => d.length > 0);
+                                const val = e.target.value;
+                                setLocalDarkExclusions(val);
+                                const newExclusions = val.split('\n').map(d => d.trim()).filter(Boolean);
                                 setDarkExclusions(newExclusions);
                             }}
-                            placeholder="example.com\ngithub.com"
+                            onBlur={() => {
+                                const cleaned = (localDarkExclusions || '').split('\n').map(d => d.trim()).filter(Boolean);
+                                setDarkExclusions(cleaned);
+                                setLocalDarkExclusions(cleaned.join('\n'));
+                            }}
+                            placeholder="example.com&#10;github.com"
                         />
                     </div>
                 </div>

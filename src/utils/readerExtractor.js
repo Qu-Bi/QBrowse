@@ -1,13 +1,54 @@
 import { Readability, isProbablyReaderable } from '@mozilla/readability';
 
 /**
+ * Fast in-webview DOM script that evaluates readerability directly in the guest DOM
+ * in <1ms without serializing megabytes of HTML over IPC.
+ */
+export const CHECK_ARTICLE_DOM_SCRIPT = `
+(() => {
+    try {
+        if (!document || !document.body) return false;
+        const articleSelectors = 'article, [role="article"], .article-body, .post-content, .entry-content, .story-body, .article__content, #mw-content-text, main article, [itemprop="articleBody"], .post-body, .content-article';
+        const articleTag = document.querySelector(articleSelectors);
+        if (articleTag && (articleTag.innerText || articleTag.textContent || '').trim().length > 200) {
+            return true;
+        }
+
+        const paragraphs = Array.from(document.querySelectorAll('p')).filter(p => !p.closest('footer, nav, .comments, #comments, .sidebar, aside'));
+        let validPCount = 0;
+        let totalPText = 0;
+        for (const p of paragraphs) {
+            const t = (p.innerText || p.textContent || '').trim();
+            if (t.length > 40) {
+                validPCount++;
+                totalPText += t.length;
+            }
+        }
+
+        if (validPCount >= 2 && totalPText > 200) {
+            return true;
+        }
+
+        const h1 = document.querySelector('h1, h2');
+        if (h1 && validPCount >= 1 && totalPText > 120) {
+            return true;
+        }
+
+        return false;
+    } catch (e) {
+        return false;
+    }
+})()
+`;
+
+/**
  * Checks whether a given HTML string and URL is likely an article suitable for Reader Mode.
  * @param {string} html 
  * @param {string} url 
  * @returns {boolean}
  */
 export function checkIsArticle(html, url = '') {
-    if (!html || typeof html !== 'string' || html.length < 400) return false;
+    if (!html || typeof html !== 'string' || html.length < 250) return false;
 
     try {
         const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -17,20 +58,36 @@ export function checkIsArticle(html, url = '') {
             doc.head?.appendChild(base);
         }
 
-        // 1. Standard Mozilla Readerable check
-        if (isProbablyReaderable(doc, { minContentLength: 140, minScore: 20 })) {
+        // 1. Standard Mozilla Readerable check with relaxed thresholds
+        if (isProbablyReaderable(doc, { minContentLength: 80, minScore: 5 })) {
             return true;
         }
 
-        // 2. Fallback heuristic: check for article tag or paragraph text volume
-        const articleTag = doc.querySelector('article, [role="article"], .article-body, .post-content, .entry-content');
-        if (articleTag && (articleTag.textContent || '').trim().length > 350) {
+        // 2. Comprehensive article / main content selectors (including Wikipedia, news, blogs)
+        const articleSelectors = 'article, [role="article"], .article-body, .post-content, .entry-content, .story-body, .article__content, #mw-content-text, main article, [itemprop="articleBody"], .post-body, .content-article';
+        const articleTag = doc.querySelector(articleSelectors);
+        if (articleTag && (articleTag.textContent || '').trim().length > 200) {
             return true;
         }
 
-        const paragraphs = Array.from(doc.querySelectorAll('p'));
-        const totalPText = paragraphs.reduce((sum, p) => sum + (p.textContent || '').trim().length, 0);
-        if (paragraphs.length >= 3 && totalPText > 500) {
+        // 3. Fallback heuristic: check paragraph volume (ignoring headers/footers/nav)
+        const paragraphs = Array.from(doc.querySelectorAll('p')).filter(p => !p.closest('footer, nav, .comments, #comments, .sidebar, aside'));
+        let validPCount = 0;
+        let totalPText = 0;
+        for (const p of paragraphs) {
+            const t = (p.textContent || '').trim();
+            if (t.length > 40) {
+                validPCount++;
+                totalPText += t.length;
+            }
+        }
+
+        if (validPCount >= 2 && totalPText > 200) {
+            return true;
+        }
+
+        const h1 = doc.querySelector('h1, h2');
+        if (h1 && validPCount >= 1 && totalPText > 120) {
             return true;
         }
 

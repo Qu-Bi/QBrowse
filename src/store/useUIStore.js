@@ -876,7 +876,7 @@ const useUIStore = create((set, get) => ({
           const stored = localStorage.getItem('qbrowse_dark_exclusions');
           if (stored) return JSON.parse(stored);
       } catch (e) {}
-      return ['youtube.com'];
+      return ['youtube.com', 'github.com', 'figma.com'];
   })(),
   setDarkExclusions: (exclusions) => {
       set({ darkExclusions: exclusions });
@@ -959,7 +959,6 @@ const useUIStore = create((set, get) => ({
   setIsWebviewFullscreen: (val) => set({ isWebviewFullscreen: val }),
 
   // Theme & Appearance
-  darkExclusions: ['youtube.com', 'github.com', 'figma.com'],
   accentColor: '#d4bc94',
   setAccentColor: (color) => set({ accentColor: color }),
 
@@ -1058,16 +1057,22 @@ const useUIStore = create((set, get) => ({
 
   // Reader Mode
   isReaderOpen: false,
+  isReaderClosing: false,
   isReaderAvailable: false,
   isReaderLoading: false,
   readerArticle: null,
   setIsReaderAvailable: (available) => set({ isReaderAvailable: !!available }),
-  openReaderMode: (articleData) => set({ isReaderOpen: true, readerArticle: articleData, isReaderLoading: false }),
+  openReaderMode: (articleData) => set({ isReaderOpen: true, isReaderClosing: false, readerArticle: articleData, isReaderLoading: false }),
   closeReaderMode: () => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try { window.speechSynthesis.cancel(); } catch (_) {}
     }
-    set({ isReaderOpen: false });
+    const state = get();
+    if (!state.isReaderOpen || state.isReaderClosing) return;
+    set({ isReaderClosing: true });
+    setTimeout(() => {
+      set({ isReaderOpen: false, isReaderClosing: false, readerArticle: null });
+    }, 220);
   },
   toggleReaderMode: async () => {
     const state = get();

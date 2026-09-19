@@ -104,6 +104,14 @@ const SettingsModal = () => {
         return localStorage.getItem('qbrowse_dismiss_default_browser') !== 'true';
     });
 
+    const [localDarkExclusions, setLocalDarkExclusions] = useState(() => (darkExclusions || []).join('\n'));
+
+    useEffect(() => {
+        if (activeModal === 'settings') {
+            setLocalDarkExclusions((darkExclusions || []).join('\n'));
+        }
+    }, [activeModal]);
+
     const refreshDefaultBrowserStatus = async () => {
         if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
             setIsCheckingDefault(true);
@@ -343,8 +351,18 @@ const SettingsModal = () => {
                                 <div className="mt-2">
                                     <p className="text-xs text-white/50 mb-1.5 font-semibold">Excluded Domains (One per line):</p>
                                     <textarea
-                                        value={darkExclusions.join('\n')}
-                                        onChange={(e) => setDarkExclusions(e.target.value.split('\n').map(s => s.trim()).filter(s => s))}
+                                        value={localDarkExclusions}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setLocalDarkExclusions(val);
+                                            const parsed = val.split('\n').map(s => s.trim()).filter(Boolean);
+                                            setDarkExclusions(parsed);
+                                        }}
+                                        onBlur={() => {
+                                            const cleaned = (localDarkExclusions || '').split('\n').map(s => s.trim()).filter(Boolean);
+                                            setDarkExclusions(cleaned);
+                                            setLocalDarkExclusions(cleaned.join('\n'));
+                                        }}
                                         placeholder={"example.com\ngithub.com"}
                                         className="w-full h-24 bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
                                     />

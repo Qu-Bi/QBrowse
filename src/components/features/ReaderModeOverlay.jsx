@@ -75,6 +75,7 @@ const WIDTHS = {
 
 export default function ReaderModeOverlay() {
     const isReaderOpen = useUIStore(state => state.isReaderOpen);
+    const isReaderClosing = useUIStore(state => state.isReaderClosing);
     const closeReaderMode = useUIStore(state => state.closeReaderMode);
     const article = useUIStore(state => state.readerArticle);
     const settings = useUIStore(state => state.settings);
@@ -292,11 +293,13 @@ export default function ReaderModeOverlay() {
         }
     };
 
-    if (!isReaderOpen || !article) return null;
+    if ((!isReaderOpen && !isReaderClosing) || !article) return null;
 
     return (
         <div 
-            className={`absolute inset-0 z-[65] flex flex-col overflow-hidden animate-pop-in select-text transition-colors duration-300 ${currentTheme.themeClass}`}
+            className={`absolute inset-0 z-[65] flex flex-col overflow-hidden select-text transition-colors duration-300 ${
+                isReaderClosing ? 'animate-reader-exit pointer-events-none' : 'animate-reader-enter'
+            } ${currentTheme.themeClass}`}
             style={{ 
                 backgroundColor: currentTheme.bg,
                 color: currentTheme.text
