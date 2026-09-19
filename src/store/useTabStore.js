@@ -38,6 +38,17 @@ export const getCleanTabTitle = (tab) => {
 
 const useTabStore = create((set, get) => ({
   activeSpace: 'personal',
+  getActiveTab: () => {
+    const state = get();
+    const space = state.activeSpace;
+    const list = space === 'personal' ? state.privateTabs : (space === 'work' ? state.workTabs : (space === 'tor' ? (state.torTabs || []) : state.ghostTabs));
+    return list.find(t => t.active) || list[0] || null;
+  },
+  getActiveList: () => {
+    const state = get();
+    const space = state.activeSpace;
+    return space === 'personal' ? state.privateTabs : (space === 'work' ? state.workTabs : (space === 'tor' ? (state.torTabs || []) : state.ghostTabs));
+  },
   setActiveSpace: (space) => set((state) => {
       const updates = { activeSpace: space };
       if (state.activeSpace === 'ghost' && space !== 'ghost') {

@@ -38,7 +38,7 @@ const loadSettings = () => {
     return defaultSettings;
 };
 
-const useUIStore = create((set) => ({
+const useUIStore = create((set, get) => ({
   // Omnibox
   isOmniboxOpen: false,
   isOmniboxClosing: false,
@@ -240,7 +240,21 @@ const useUIStore = create((set) => ({
   findResults: { activeMatchOrdinal: 0, matches: 0 },
   getActiveWebView: () => {
     try {
-      return Array.from(document.querySelectorAll('webview')).find(w => w.style.visibility !== 'hidden' && w.style.display !== 'none');
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
+      if (activeTab?.id) {
+        const wv = document.getElementById(`webview-${activeTab.id}`);
+        if (wv) return wv;
+      }
+      const webviews = Array.from(document.querySelectorAll('webview'));
+      const visibleWv = webviews.find(w => {
+        const parent = w.parentElement;
+        if (!parent) return false;
+        const style = window.getComputedStyle(parent);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && parseInt(style.zIndex, 10) > 0;
+      });
+      if (visibleWv) return visibleWv;
+      return webviews[0] || null;
     } catch {
       return null;
     }
@@ -367,7 +381,6 @@ const useUIStore = create((set) => ({
         landscape: false,
         displayHeaderFooter: false,
         printBackground: true,
-        preferCSSPageSize: true,
         pageSize: 'A4'
       });
 

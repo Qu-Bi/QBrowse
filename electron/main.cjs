@@ -425,11 +425,11 @@ function createWindow(options = {}) {
             }
 
             const isCmdOrCtrl = input.control || input.meta;
-            if (isCmdOrCtrl || input.key === 'F11' || input.key === 'F12' || input.key === 'Escape') {
+            if (isCmdOrCtrl || input.key === 'F11' || input.key === 'F12' || input.key === 'Escape' || input.key === 'F3') {
                 let shortcut = null;
                 if (isCmdOrCtrl && input.key) {
                     shortcut = `cmd+${input.key.toLowerCase()}`;
-                } else if (input.key === 'F11' || input.key === 'F12' || input.key === 'Escape') {
+                } else if (input.key === 'F11' || input.key === 'F12' || input.key === 'Escape' || input.key === 'F3') {
                     shortcut = input.key.toLowerCase();
                 }
 
@@ -455,7 +455,7 @@ function createWindow(options = {}) {
                         'cmd+w', 'cmd+r', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 
                         'cmd+n', 'cmd+p', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd+h', 
                         'cmd+l', 'cmd+y', 'cmd+\\', 'cmd+|', 'cmd+d', 'cmd+[', 'cmd+]',
-                        'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'f11', 'f12'
+                        'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'f11', 'f12', 'f3'
                     ];
 
                     if (overrideKeys.includes(shortcut)) {
@@ -1813,7 +1813,17 @@ ipcMain.handle('save-pdf-file', async (event, { defaultName, data }) => {
             return { success: false, canceled: true };
         }
 
-        const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        let buffer;
+        if (Buffer.isBuffer(data)) {
+            buffer = data;
+        } else if (data instanceof Uint8Array || (data && data.buffer)) {
+            buffer = Buffer.from(data.buffer || data, data.byteOffset || 0, data.byteLength || data.length);
+        } else if (typeof data === 'string') {
+            buffer = Buffer.from(data, 'base64');
+        } else {
+            buffer = Buffer.from(data);
+        }
+
         await fs.writeFile(filePath, buffer);
         return { success: true, filePath };
     } catch (e) {

@@ -161,7 +161,7 @@ export const executeShortcut = (key, shift = false) => {
             }
             break;
 
-        // Alternative New Private Window (Firefox-style Cmd+Shift+P)
+        // Print Page (Cmd+P) & New Private Window (Cmd+Shift+P)
         case 'p':
             if (shift) {
                 const isTor = useTorStore.getState().isTorEnabled;
@@ -173,6 +173,8 @@ export const executeShortcut = (key, shift = false) => {
                     tabStore.setActiveSpace(targetSpace);
                     uiStore.showToast(isTor ? 'Tor Space: Activated' : 'Ghost Mode: Activated');
                 }
+            } else {
+                uiStore.printActivePage();
             }
             break;
 
@@ -280,10 +282,6 @@ export const executeShortcut = (key, shift = false) => {
             uiStore.setIsFindOpen(true);
             break;
 
-        // Print Page (Cmd+P)
-        case 'p':
-            uiStore.printActivePage();
-            break;
 
         // Find Next / Prev Match (F3 / Shift+F3)
         case 'f3':
