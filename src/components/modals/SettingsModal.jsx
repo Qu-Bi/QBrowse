@@ -663,101 +663,103 @@ const SettingsModal = () => {
                                         onClick={() => setIsAddingBang(!isAddingBang)}
                                         className="px-3.5 py-1.5 rounded-xl bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent text-xs font-bold transition flex items-center gap-1.5 flex-shrink-0 cursor-pointer active:scale-95"
                                     >
-                                        <Plus size={14} />
+                                        <Plus size={14} className={`transition-transform duration-300 ${isAddingBang ? 'rotate-45' : ''}`} />
                                         <span>{isAddingBang ? 'Close' : 'Add Custom Bang'}</span>
                                     </button>
                                 </div>
 
-                                {/* Add Custom Bang Form */}
-                                {isAddingBang && (
-                                    <div className="p-4 rounded-xl bg-black/40 border border-accent/30 flex flex-col gap-3 animate-pop-in">
-                                        <p className="text-xs font-bold text-accent uppercase tracking-wider">Create Custom Search Bang</p>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                            <div>
-                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Shortcut Prefix</label>
-                                                <div className="relative flex items-center">
-                                                    <span className="absolute left-3 text-xs font-mono text-white/40">! / @</span>
+                                {/* Add Custom Bang Form Accordion */}
+                                <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAddingBang ? 'grid-rows-[1fr] opacity-100 mb-1' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}>
+                                    <div className="overflow-hidden min-h-0">
+                                        <div className="p-4 rounded-xl bg-black/40 border border-accent/30 flex flex-col gap-3 my-1">
+                                            <p className="text-xs font-bold text-accent uppercase tracking-wider">Create Custom Search Bang</p>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div>
+                                                    <label className="text-[10px] text-white/50 block mb-1 font-semibold">Shortcut Prefix</label>
+                                                    <div className="relative flex items-center">
+                                                        <span className="absolute left-3 text-xs font-mono text-white/40">! / @</span>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="e.g. keep or aw"
+                                                            value={newBangPrefix}
+                                                            onChange={(e) => setNewBangPrefix(e.target.value.replace(/^[!@]/, ''))}
+                                                            className="w-full pl-12 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] text-white/50 block mb-1 font-semibold">Engine Name</label>
                                                     <input
                                                         type="text"
-                                                        placeholder="e.g. keep or aw"
-                                                        value={newBangPrefix}
-                                                        onChange={(e) => setNewBangPrefix(e.target.value.replace(/^[!@]/, ''))}
-                                                        className="w-full pl-12 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                        placeholder="e.g. Google Keep or ArchWiki"
+                                                        value={newBangName}
+                                                        onChange={(e) => setNewBangName(e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent"
                                                     />
                                                 </div>
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Engine Name</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="e.g. Google Keep or ArchWiki"
-                                                    value={newBangName}
-                                                    onChange={(e) => setNewBangName(e.target.value)}
-                                                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Color Accent</label>
-                                                <div className="flex items-center gap-2 pt-1">
-                                                    {['#d4bc94', '#4285F4', '#FF0000', '#A855F7', '#10B981', '#F59E0B', '#38BDF8'].map(c => (
-                                                        <button
-                                                            key={c}
-                                                            type="button"
-                                                            onClick={() => setNewBangColor(c)}
-                                                            className={`w-5 h-5 rounded-full transition-transform cursor-pointer border ${newBangColor === c ? 'scale-125 border-white shadow-md' : 'border-transparent hover:scale-110'}`}
-                                                            style={{ backgroundColor: c }}
-                                                        />
-                                                    ))}
+                                                <div>
+                                                    <label className="text-[10px] text-white/50 block mb-1 font-semibold">Color Accent</label>
+                                                    <div className="flex items-center gap-2 pt-1">
+                                                        {['#d4bc94', '#4285F4', '#FF0000', '#A855F7', '#10B981', '#F59E0B', '#38BDF8'].map(c => (
+                                                            <button
+                                                                key={c}
+                                                                type="button"
+                                                                onClick={() => setNewBangColor(c)}
+                                                                className={`w-5 h-5 rounded-full transition-transform cursor-pointer border ${newBangColor === c ? 'scale-125 border-white shadow-md' : 'border-transparent hover:scale-110'}`}
+                                                                style={{ backgroundColor: c }}
+                                                            />
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-white/50 block mb-1 font-semibold">Search URL Template (Use {'{q}'} for search query)</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. https://wiki.archlinux.org/index.php?search={q}"
-                                                value={newBangUrl}
-                                                onChange={(e) => setNewBangUrl(e.target.value)}
-                                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
-                                            />
-                                        </div>
-                                        <div className="flex justify-end gap-2 mt-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setIsAddingBang(false);
-                                                    setNewBangPrefix('');
-                                                    setNewBangName('');
-                                                    setNewBangUrl('');
-                                                }}
-                                                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold transition cursor-pointer"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const p = newBangPrefix.trim().toLowerCase();
-                                                    const n = newBangName.trim() || p;
-                                                    const u = newBangUrl.trim();
-                                                    if (!p || !u) {
-                                                        showToast('Please enter both shortcut prefix and search URL');
-                                                        return;
-                                                    }
-                                                    addCustomBang({ prefix: p, name: n, url: u, color: newBangColor });
-                                                    showToast(`Custom bang "!${p}" added!`);
-                                                    setIsAddingBang(false);
-                                                    setNewBangPrefix('');
-                                                    setNewBangName('');
-                                                    setNewBangUrl('');
-                                                }}
-                                                className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-black font-bold text-xs shadow-md transition cursor-pointer"
-                                            >
-                                                Save Bang
-                                            </button>
+                                            <div>
+                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Search URL Template (Use {'{q}'} for search query)</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. https://wiki.archlinux.org/index.php?search={q}"
+                                                    value={newBangUrl}
+                                                    onChange={(e) => setNewBangUrl(e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                />
+                                            </div>
+                                            <div className="flex justify-end gap-2 mt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIsAddingBang(false);
+                                                        setNewBangPrefix('');
+                                                        setNewBangName('');
+                                                        setNewBangUrl('');
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold transition cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const p = newBangPrefix.trim().toLowerCase();
+                                                        const n = newBangName.trim() || p;
+                                                        const u = newBangUrl.trim();
+                                                        if (!p || !u) {
+                                                            showToast('Please enter both shortcut prefix and search URL');
+                                                            return;
+                                                        }
+                                                        addCustomBang({ prefix: p, name: n, url: u, color: newBangColor });
+                                                        showToast(`Custom bang "!${p}" added!`);
+                                                        setIsAddingBang(false);
+                                                        setNewBangPrefix('');
+                                                        setNewBangName('');
+                                                        setNewBangUrl('');
+                                                    }}
+                                                    className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-black font-bold text-xs shadow-md transition cursor-pointer"
+                                                >
+                                                    Save Bang
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                )}
+                                </div>
 
                                 {/* Filter Search Bar */}
                                 <div className="relative">
