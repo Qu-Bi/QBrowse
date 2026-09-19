@@ -360,7 +360,7 @@ function createWindow(options = {}) {
             }
         };
 
-        // CRITICAL: Safely wrap loadURL to gracefully absorb ERR_ABORTED (-3) when navigations are superseded or cancelled
+        // CRITICAL: Safely wrap loadURL to gracefully absorb ERR_ABORTED (-3), ERR_FAILED (-2), and any navigation rejections
         const originalLoadURL = contents.loadURL;
         contents.loadURL = function(url, options) {
             try {
@@ -371,18 +371,14 @@ function createWindow(options = {}) {
                         String(err.message || '').includes('-3') || 
                         String(err.message || '').includes('ERR_ABORTED')
                     );
-                    if (isAborted) return;
-                    throw err;
+                    if (!isAborted) {
+                        console.warn('[Electron Main] loadURL absorbed navigation error:', err?.code || err?.message || err);
+                    }
+                    return Promise.resolve();
                 });
             } catch (err) {
-                const isAborted = err && (
-                    err.errno === -3 || 
-                    err.code === 'ERR_ABORTED' || 
-                    String(err.message || '').includes('-3') || 
-                    String(err.message || '').includes('ERR_ABORTED')
-                );
-                if (isAborted) return Promise.resolve();
-                return Promise.reject(err);
+                console.warn('[Electron Main] loadURL absorbed sync error:', err?.code || err?.message || err);
+                return Promise.resolve();
             }
         };
 

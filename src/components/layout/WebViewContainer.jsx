@@ -127,17 +127,12 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         currentRequestedUrlRef.current = actualLoadUrl;
 
         const doLoad = () => {
+            if (!wv || !isDomReadyRef.current) return;
             try {
                 if (typeof wv.getURL === 'function') {
                     const currentWvUrl = wv.getURL();
                     if (currentWvUrl === actualLoadUrl || currentWvUrl === actualLoadUrl + '/') {
                         return;
-                    }
-                }
-                // Stop any previous in-flight load cleanly before issuing the new destination
-                if (typeof wv.stop === 'function' && typeof wv.isLoading === 'function') {
-                    if (wv.isLoading()) {
-                        try { wv.stop(); } catch (_) {}
                     }
                 }
                 if (typeof wv.loadURL === 'function') {
@@ -148,7 +143,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
         };
 
-        if (typeof wv.loadURL === 'function') {
+        if (isDomReadyRef.current && typeof wv.loadURL === 'function') {
             doLoad();
         } else {
             wv.addEventListener('dom-ready', doLoad, { once: true });
@@ -200,7 +195,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         };
         
         const checkReaderAvailability = () => {
-            if (!isActive || !isSpaceActive || !wv || wv.hasCrashed || tab.isClosing) return;
+            if (!isActive || !isSpaceActive || !wv || !isDomReadyRef.current || wv.hasCrashed || tab.isClosing) return;
             if (!tab.url || tab.url === '' || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) {
                 useUIStore.getState().setIsReaderAvailable(false);
                 return;
@@ -619,23 +614,25 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
 
     // Re-check Reader Mode availability when this tab becomes the active tab
     useEffect(() => {
-        if (isActive && isSpaceActive && !tab.isClosing) {
+        if (isActive && isSpaceActive && !tab.isClosing && isDomReadyRef.current) {
             if (!tab.url || tab.url === '' || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) {
                 useUIStore.getState().setIsReaderAvailable(false);
                 return;
             }
             const wv = wvRef.current;
-            if (wv && typeof wv.executeJavaScript === 'function') {
-                wv.executeJavaScript(CHECK_ARTICLE_DOM_SCRIPT).then(isArticle => {
-                    if (isActive && isSpaceActive) {
-                        useUIStore.getState().setIsReaderAvailable(!!isArticle);
-                    }
-                }).catch(() => {
-                    if (isActive && isSpaceActive) {
-                        useUIStore.getState().setIsReaderAvailable(false);
-                    }
-                });
-            }
+            try {
+                if (wv && typeof wv.executeJavaScript === 'function') {
+                    wv.executeJavaScript(CHECK_ARTICLE_DOM_SCRIPT).then(isArticle => {
+                        if (isActive && isSpaceActive) {
+                            useUIStore.getState().setIsReaderAvailable(!!isArticle);
+                        }
+                    }).catch(() => {
+                        if (isActive && isSpaceActive) {
+                            useUIStore.getState().setIsReaderAvailable(false);
+                        }
+                    });
+                }
+            } catch (_) {}
         }
     }, [isActive, isSpaceActive, tab.id, tab.url]);
 
