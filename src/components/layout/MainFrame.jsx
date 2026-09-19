@@ -128,8 +128,6 @@ export default function MainFrame() {
     const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
     const closePopover = useUIStore(state => state.closePopover);
     const isSwipeEnabled = useUIStore(state => state.isSwipeEnabled);
-    const isFindOpen = useUIStore(state => state.isFindOpen);
-    const setIsFindOpen = useUIStore(state => state.setIsFindOpen);
     const zoomLevel = useUIStore(state => state.zoomLevel);
     const isZoomHUDVisible = useUIStore(state => state.isZoomHUDVisible);
     const setZoomLevel = useUIStore(state => state.setZoomLevel);
@@ -161,26 +159,6 @@ export default function MainFrame() {
     const accentColor = useUIStore(state => state.accentColor);
     
     
-    const [findQuery, setFindQuery] = useState('');
-    const findInputRef = useRef(null);
-
-    const [currentTime, setCurrentTime] = useState(new Date());
-
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        return () => clearInterval(timer);
-    }, []);
-
-    useEffect(() => {
-        if (isFindOpen) {
-            setTimeout(() => {
-                findInputRef.current?.focus();
-                findInputRef.current?.select();
-            }, 50);
-        } else {
-            setFindQuery('');
-        }
-    }, [isFindOpen]);
 
     const dateString = currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const timeString = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -329,28 +307,6 @@ export default function MainFrame() {
             
             <TopBar />
 
-            {isFindOpen && (
-                <div className={`absolute top-16 right-6 z-[55] flex items-center gap-2 px-3 py-1.5 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.3)] border animate-pop-in ${isForceDark || isIncognito ? 'bg-black/80 border-white/20 backdrop-blur-xl' : 'bg-white/90 border-gray-300 backdrop-blur-xl'}`}>
-                    <Search size={14} className={isForceDark || isIncognito ? 'text-white/40' : 'text-gray-400'} />
-                    <input
-                        ref={findInputRef}
-                        type="text"
-                        value={findQuery}
-                        onChange={e => setFindQuery(e.target.value)}
-                        placeholder="Find in page..."
-                        className={`bg-transparent border-none outline-none text-sm w-32 md:w-48 font-medium ${isForceDark || isIncognito ? 'text-white placeholder-white/30' : 'text-gray-800 placeholder-gray-400'}`}
-                    />
-                    <span className={`text-xs font-mono px-2 border-r ${isForceDark || isIncognito ? 'text-white/40 border-white/10' : 'text-gray-400 border-gray-200'}`}>
-                        {findQuery.length > 0 ? '1/4' : '0/0'}
-                    </span>
-                    <div className="flex items-center gap-1 pl-1">
-                        <button className={`p-1 rounded-md transition ${isForceDark || isIncognito ? 'hover:bg-white/10 text-white/60 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-800'}`}><ChevronUp size={14} /></button>
-                        <button className={`p-1 rounded-md transition ${isForceDark || isIncognito ? 'hover:bg-white/10 text-white/60 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-800'}`}><ChevronDown size={14} /></button>
-                        <div className={`w-px h-4 mx-1 ${isForceDark || isIncognito ? 'bg-white/10' : 'bg-gray-200'}`}></div>
-                        <button onClick={() => setIsFindOpen(false)} className={`p-1 rounded-md transition ${isForceDark || isIncognito ? 'hover:bg-red-500/20 text-white/60 hover:text-red-400' : 'hover:bg-red-50 text-gray-500 hover:text-red-500'}`}><X size={14} /></button>
-                    </div>
-                </div>
-            )}
 
             {(activePopover === 'siteinfo' || (isPopoverClosing && activePopover === 'siteinfo')) && (
                 <SiteInfoPopover isClosing={isPopoverClosing} />
