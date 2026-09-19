@@ -1138,7 +1138,7 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
                     }
                 }
 
-                if (!targetHost && !targetRpId) return true;
+                if (!targetHost && !targetRpId) return false;
 
                 // 2. Check RP ID match
                 if (isPasskey && targetRpId && p.passkeyData?.rpId) {

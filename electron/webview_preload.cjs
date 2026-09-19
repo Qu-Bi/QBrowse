@@ -404,177 +404,31 @@ const injectMainWorldPasskeyOverride = () => {
 injectMainWorldPasskeyOverride();
 if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', injectMainWorldPasskeyOverride);
 
-// Webview Preload Script for In-Page QVault Autofill (TrustedTypes Safe)
-let activeBadge = null;
-
-function removeBadge() {
-    if (activeBadge) {
-        activeBadge.remove();
-        activeBadge = null;
-    }
-}
-
-async function handleInputFocus(event) {
-    const target = event.target;
-    if (!target || !(target.tagName === 'INPUT')) return;
-
-    const inputType = (target.type || 'text').toLowerCase();
-    if (!['text', 'email', 'password'].includes(inputType)) return;
-
-    try {
-        const hostname = window.location.hostname;
-        const matches = await ipcRenderer.invoke('vault-get-matching', hostname);
-        if (!matches || matches.length === 0) return;
-
-        removeBadge();
-
-        const rect = target.getBoundingClientRect();
-
-        const badge = document.createElement('div');
-        badge.id = 'qvault-inline-autofill-badge';
-        badge.style.position = 'fixed';
-        badge.style.top = `${rect.bottom + 6}px`;
-        badge.style.left = `${rect.left}px`;
-        badge.style.zIndex = '2147483647';
-        badge.style.backgroundColor = '#121316';
-        badge.style.color = '#ffffff';
-        badge.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-        badge.style.borderRadius = '14px';
-        badge.style.padding = '8px 12px';
-        badge.style.fontSize = '12px';
-        badge.style.fontWeight = '600';
-        badge.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-        badge.style.boxShadow = '0 12px 30px rgba(0,0,0,0.6)';
-        badge.style.cursor = 'pointer';
-        badge.style.display = 'flex';
-        badge.style.flexDirection = 'column';
-        badge.style.gap = '4px';
-        badge.style.userSelect = 'none';
-
-        if (matches.length === 1) {
-            const match = matches[0];
-            
-            const container = document.createElement('div');
-            container.style.display = 'flex';
-            container.style.alignItems = 'center';
-            container.style.gap = '6px';
-
-            const keyIcon = document.createElement('span');
-            keyIcon.style.color = '#3b82f6';
-            keyIcon.textContent = '🔑';
-
-            const textSpan = document.createElement('span');
-            textSpan.textContent = `Fill ${match.username || match.title}`;
-
-            container.appendChild(keyIcon);
-            container.appendChild(textSpan);
-            badge.appendChild(container);
-
-            badge.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                fillCredentials(target, match);
-                removeBadge();
-            });
-        } else {
-            // MULTIPLE ACCOUNTS SELECTOR (TrustedTypes Safe)
-            const header = document.createElement('div');
-            header.style.fontSize = '10px';
-            header.style.textTransform = 'uppercase';
-            header.style.letterSpacing = '0.05em';
-            header.style.color = 'rgba(255,255,255,0.5)';
-            header.style.marginBottom = '2px';
-            header.style.display = 'flex';
-            header.style.alignItems = 'center';
-            header.style.gap = '4px';
-
-            const keyIcon = document.createElement('span');
-            keyIcon.style.color = '#3b82f6';
-            keyIcon.textContent = '🔑';
-
-            const headerText = document.createElement('span');
-            headerText.textContent = `Select Account (${matches.length})`;
-
-            header.appendChild(keyIcon);
-            header.appendChild(headerText);
-            badge.appendChild(header);
-
-            matches.forEach((m) => {
-                const item = document.createElement('div');
-                item.style.padding = '6px 10px';
-                item.style.borderRadius = '10px';
-                item.style.backgroundColor = 'rgba(255,255,255,0.06)';
-                item.style.marginTop = '2px';
-                item.style.display = 'flex';
-                item.style.justifyContent = 'space-between';
-                item.style.alignItems = 'center';
-                item.style.gap = '12px';
-                item.style.cursor = 'pointer';
-
-                const titleSpan = document.createElement('span');
-                titleSpan.style.fontWeight = '600';
-                titleSpan.style.color = '#ffffff';
-                titleSpan.textContent = m.title;
-
-                const userSpan = document.createElement('span');
-                userSpan.style.fontSize = '10px';
-                userSpan.style.color = 'rgba(255,255,255,0.5)';
-                userSpan.textContent = m.username || '';
-
-                item.appendChild(titleSpan);
-                item.appendChild(userSpan);
-
-                item.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    fillCredentials(target, m);
-                    removeBadge();
-                });
-
-                badge.appendChild(item);
-            });
-        }
-
-        document.body.appendChild(badge);
-        activeBadge = badge;
-    } catch (e) {
-        console.error('QVault inline autofill error:', e);
-    }
-}
-
-function fillCredentials(target, match) {
-    const form = target.form || document;
-    const userInputs = form.querySelectorAll('input[type="text"], input[type="email"], input[name*="user"], input[name*="login"]');
-    const passInputs = form.querySelectorAll('input[type="password"], input[name*="pass"]');
+// QVault On-Demand Autofill (Safe & Non-intrusive: Never auto-injects into DOM)
+function fillCredentials(match) {
+    if (!match) return;
+    const userInputs = document.querySelectorAll('input[type="text"], input[type="email"], input[name*="user"], input[name*="login"]');
+    const passInputs = document.querySelectorAll('input[type="password"], input[name*="pass"]');
 
     if (userInputs.length > 0 && match.username) {
         userInputs[0].value = match.username;
         userInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
         userInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-    } else if (target.type !== 'password' && match.username) {
-        target.value = match.username;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     if (passInputs.length > 0 && match.password) {
         passInputs[0].value = match.password;
         passInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
         passInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-    } else if (target.type === 'password' && match.password) {
-        target.value = match.password;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    document.addEventListener('focusin', handleInputFocus);
-    document.addEventListener('click', (e) => {
-        if (e.target && (e.target.tagName === 'INPUT')) {
-            handleInputFocus(e);
-        } else if (activeBadge && !activeBadge.contains(e.target)) {
-            removeBadge();
-        }
-    });
+ipcRenderer.on('qvault-fill-credentials', (event, match) => {
+    try {
+        fillCredentials(match);
+    } catch (e) {
+        console.warn('[QVault] fillCredentials error:', e);
+    }
 });
 
 // --- LIVE MEDIA SESSION & PLAYBACK MONITOR ---
