@@ -157,8 +157,13 @@ export default function MainFrame() {
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive);
     const adblockStats = useUIStore(state => state.adblockStats);
     const accentColor = useUIStore(state => state.accentColor);
-    
-    
+
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     const dateString = currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const timeString = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
