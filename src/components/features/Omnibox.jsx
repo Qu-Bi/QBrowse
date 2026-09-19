@@ -615,7 +615,7 @@ export default function Omnibox() {
 
     return (
         <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] bg-black/50 backdrop-blur-md transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
-            <div className={`w-full max-w-3xl lg:max-w-4xl mx-4 flex flex-col ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => e.stopPropagation()}>
+            <div className={`w-full max-w-[720px] mx-4 flex flex-col ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => e.stopPropagation()}>
 
                 <div className={`w-full bg-[#121214]/80 backdrop-blur-3xl border border-white/10 rounded-[1.5rem] p-4 md:p-5 flex items-center gap-3 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${isCommandMode ? 'shadow-[0_0_80px_rgba(234,179,8,0.15)] border-yellow-500/30 scale-[1.02]' : (isIncognito ? 'shadow-[0_0_80px_rgba(168,85,247,0.3)]' : 'shadow-[0_30px_80px_rgba(0,0,0,0.8)]')}`}>
                     {isCommandMode ? (
@@ -723,7 +723,7 @@ export default function Omnibox() {
                                     ? `Search ${activeBang.name} directly...` 
                                     : `Search ${currentEngineName}, type '!bang' or '>' for commands...`
                         }
-                        className={`flex-1 min-w-0 bg-transparent border-none text-lg md:text-xl font-light text-white placeholder-white/30 focus:outline-none focus:ring-0 transition-all duration-300 ${isCommandMode ? 'font-mono text-yellow-500 tracking-wide' : ''}`}
+                        className={`flex-1 min-w-0 bg-transparent border-none text-lg font-light text-white placeholder-white/30 focus:outline-none focus:ring-0 transition-all duration-300 ${isCommandMode ? 'font-mono text-yellow-500 tracking-wide' : ''}`}
                         spellCheck="false"
                     />
 
