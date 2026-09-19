@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, X, Crop } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 
@@ -6,7 +7,6 @@ export default function SnippingOverlay() {
     const isSnippingMode = useUIStore(state => state.isSnippingMode);
     const setIsSnippingMode = useUIStore(state => state.setIsSnippingMode);
     const captureSelectedArea = useUIStore(state => state.captureSelectedArea);
-    const getActiveWebView = useUIStore(state => state.getActiveWebView);
 
     const [startPos, setStartPos] = useState(null);
     const [currentPos, setCurrentPos] = useState(null);
@@ -40,10 +40,9 @@ export default function SnippingOverlay() {
 
     const handleMouseDown = (e) => {
         if (e.button !== 0) return; // Left click only
-        const rect = overlayRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        const x = e.clientX;
-        const y = e.clientY;
+        const rect = overlayRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+        const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
         setStartPos({ x, y });
         setCurrentPos({ x, y });
         setIsDragging(true);
@@ -52,8 +51,9 @@ export default function SnippingOverlay() {
 
     const handleMouseMove = (e) => {
         if (!isDragging || !startPos) return;
-        const x = e.clientX;
-        const y = e.clientY;
+        const rect = overlayRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+        const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
         setCurrentPos({ x, y });
 
         const left = Math.min(startPos.x, x);
@@ -75,36 +75,21 @@ export default function SnippingOverlay() {
     const handleConfirmCapture = useCallback(async () => {
         if (!selection || selection.width < 10 || selection.height < 10) return;
 
-        const wv = getActiveWebView();
-        const wvRect = wv ? wv.getBoundingClientRect() : overlayRef.current?.getBoundingClientRect();
-
-        let cropX = 0;
-        let cropY = 0;
-        let cropWidth = selection.width;
-        let cropHeight = selection.height;
-
-        if (wvRect) {
-            cropX = Math.max(0, selection.left - wvRect.left);
-            cropY = Math.max(0, selection.top - wvRect.top);
-            cropWidth = Math.min(wvRect.width - cropX, selection.width);
-            cropHeight = Math.min(wvRect.height - cropY, selection.height);
-        }
-
         setIsSnippingMode(false);
         await captureSelectedArea({
-            x: Math.round(cropX),
-            y: Math.round(cropY),
-            width: Math.round(cropWidth),
-            height: Math.round(cropHeight)
+            x: Math.round(selection.left),
+            y: Math.round(selection.top),
+            width: Math.round(selection.width),
+            height: Math.round(selection.height)
         });
-    }, [selection, getActiveWebView, captureSelectedArea, setIsSnippingMode]);
+    }, [selection, captureSelectedArea, setIsSnippingMode]);
 
     if (!isSnippingMode) return null;
 
-    return (
+    return createPortal(
         <div
             ref={overlayRef}
-            className="fixed inset-0 z-[100000] cursor-crosshair select-none bg-black/45 backdrop-blur-[1px] overflow-hidden"
+            className="fixed inset-0 z-[100000] cursor-crosshair select-none bg-black/40 backdrop-blur-[0.5px] overflow-hidden"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -121,7 +106,7 @@ export default function SnippingOverlay() {
             {/* Dragged Selection Box */}
             {selection && (
                 <div
-                    className="absolute border-2 border-accent bg-accent/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none rounded-sm transition-none"
+                    className="absolute border-2 border-accent bg-accent/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] pointer-events-none rounded-sm transition-none"
                     style={{
                         left: `${selection.left}px`,
                         top: `${selection.top}px`,
@@ -171,6 +156,7 @@ export default function SnippingOverlay() {
                     </button>
                 </div>
             )}
-        </div>
+        </div>,
+        document.body
     );
 }

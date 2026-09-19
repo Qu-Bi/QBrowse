@@ -691,8 +691,16 @@ app.whenReady().then(async () => {
       if (path) await shell.openPath(path);
   });
   
-  ipcMain.handle('show-item-in-folder', (event, path) => {
-      if (path) shell.showItemInFolder(path);
+  ipcMain.handle('show-item-in-folder', async (event, path) => {
+      try {
+          if (path) {
+              shell.showItemInFolder(path);
+              return { success: true };
+          }
+          return { success: false, error: 'No path provided' };
+      } catch (e) {
+          return { success: false, error: e.message };
+      }
   });
 });
 
@@ -1832,11 +1840,34 @@ ipcMain.handle('save-pdf-file', async (event, { defaultName, data }) => {
     }
 });
 
-// Full Page & Screenshot IPC Handlers
-ipcMain.handle('capture-full-page', async (event, { webContentsId } = {}) => {
+// Full Page, Rect Snipping & Screenshot IPC Handlers
+ipcMain.handle('capture-screen-rect', async (event, rect) => {
     try {
-        const wc = webContentsId ? webContents.fromId(webContentsId) : (mainWindow ? mainWindow.webContents : null);
-        if (!wc || wc.isDestroyed()) throw new Error('Target page not found');
+        if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Main window not available');
+        let img;
+        if (rect && typeof rect.width === 'number' && typeof rect.height === 'number' && rect.width > 0 && rect.height > 0) {
+            img = await mainWindow.webContents.capturePage({
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height)
+            });
+        } else {
+            img = await mainWindow.webContents.capturePage();
+        }
+        return { success: true, data: img.toPNG() };
+    } catch (e) {
+        console.error('[CaptureScreenRect] Error:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('capture-full-page', async (event, target) => {
+    try {
+        const id = typeof target === 'number' ? target : (target && target.webContentsId);
+        if (!id) throw new Error('Valid target webContentsId is required for full page capture');
+        const wc = webContents.fromId(id);
+        if (!wc || wc.isDestroyed()) throw new Error('Target webview not found');
 
         let isAttached = false;
         try {
@@ -1850,25 +1881,23 @@ ipcMain.handle('capture-full-page', async (event, { webContentsId } = {}) => {
 
         if (wc.debugger.isAttached()) {
             try {
+                await wc.debugger.sendCommand('Page.enable');
                 const metrics = await wc.debugger.sendCommand('Page.getLayoutMetrics');
                 const contentSize = metrics.contentSize || metrics.cssContentSize || { width: 1280, height: 800 };
-                const width = Math.ceil(contentSize.width) || 1280;
-                const height = Math.min(16000, Math.ceil(contentSize.height) || 800);
-
-                await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
-                    width,
-                    height,
-                    deviceScaleFactor: 1,
-                    mobile: false
-                });
+                const width = Math.max(100, Math.ceil(contentSize.width) || 1280);
+                const height = Math.max(100, Math.ceil(contentSize.height) || 800);
 
                 const result = await wc.debugger.sendCommand('Page.captureScreenshot', {
                     format: 'png',
                     captureBeyondViewport: true,
-                    fromSurface: true
+                    clip: {
+                        x: 0,
+                        y: 0,
+                        width,
+                        height,
+                        scale: 1
+                    }
                 });
-
-                await wc.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');
 
                 if (isAttached && wc.debugger.isAttached()) {
                     try { wc.debugger.detach(); } catch (_) {}
@@ -1927,18 +1956,6 @@ ipcMain.handle('save-screenshot', async (event, { data, title, copyToClipboard =
         return { success: true, filePath, fileName };
     } catch (e) {
         console.error('[SaveScreenshot] Error saving screenshot:', e);
-        return { success: false, error: e.message };
-    }
-});
-
-ipcMain.handle('show-item-in-folder', async (event, filePath) => {
-    try {
-        if (filePath) {
-            shell.showItemInFolder(filePath);
-            return { success: true };
-        }
-        return { success: false, error: 'No path specified' };
-    } catch (e) {
         return { success: false, error: e.message };
     }
 });

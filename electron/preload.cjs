@@ -180,8 +180,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Screenshot & Snipping
     captureFullPage: (webContentsId) => ipcRenderer.invoke('capture-full-page', { webContentsId }),
+    captureScreenRect: (rect) => ipcRenderer.invoke('capture-screen-rect', rect),
     saveScreenshot: (opts) => ipcRenderer.invoke('save-screenshot', opts),
-    showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
 
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });

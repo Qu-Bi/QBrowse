@@ -459,29 +459,48 @@ const useUIStore = create((set, get) => ({
 
   captureVisibleViewport: async () => {
     try {
+      get().showToast('Capturing screenshot...');
       const wv = get().getActiveWebView();
-      if (!wv) {
-        get().showToast('No active page to capture');
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
+      const isOnNewTab = !activeTab || !activeTab.url || activeTab.url === '' || activeTab.url === 'about:blank';
+
+      let title = activeTab?.title || 'Webpage';
+      let data = null;
+
+      // 1. Try webview page capture if on a real webpage
+      if (!isOnNewTab && wv && typeof wv.capturePage === 'function') {
+        try {
+          const img = await wv.capturePage();
+          if (img && !img.isEmpty()) {
+            data = img.toPNG();
+          }
+        } catch (wvErr) {
+          console.warn('[Screenshot] wv.capturePage failed, falling back to window capture:', wvErr);
+        }
+      }
+
+      // 2. Fall back to window surface capture (works on New Tab / Zen Dashboard too!)
+      if (!data && window.electronAPI && typeof window.electronAPI.captureScreenRect === 'function') {
+        const res = await window.electronAPI.captureScreenRect();
+        if (res?.success && res.data) {
+          data = res.data;
+        }
+      }
+
+      // 3. Fall back to wv.capturePage if still nothing
+      if (!data && wv && typeof wv.capturePage === 'function') {
+        const img = await wv.capturePage();
+        data = img.toPNG();
+      }
+
+      if (!data) {
+        get().showToast('Failed to capture visible screen');
         return;
       }
-      get().showToast('Capturing screenshot...');
-
-      let title = 'Webpage';
-      try {
-        if (typeof wv.getTitle === 'function') title = wv.getTitle() || title;
-      } catch (_) {}
-      if (title === 'Webpage' && window.__tabStore) {
-        try {
-          const tab = window.__tabStore.getState()?.getActiveTab?.();
-          if (tab?.title) title = tab.title;
-        } catch (_) {}
-      }
-
-      const img = await wv.capturePage();
-      const pngBuffer = img.toPNG();
 
       if (window.electronAPI && typeof window.electronAPI.saveScreenshot === 'function') {
-        const res = await window.electronAPI.saveScreenshot({ data: pngBuffer, title, copyToClipboard: true });
+        const res = await window.electronAPI.saveScreenshot({ data, title, copyToClipboard: true });
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
           get().showToast('Screenshot saved to Downloads & copied to clipboard!');
@@ -489,9 +508,8 @@ const useUIStore = create((set, get) => ({
           get().showToast(`Failed to save screenshot: ${res?.error || 'Unknown error'}`);
         }
       } else {
-        const dataUrl = img.toDataURL();
         const a = document.createElement('a');
-        a.href = dataUrl;
+        a.href = `data:image/png;base64,${data.toString('base64')}`;
         a.download = `Screenshot_${title}.png`;
         a.click();
         get().showToast('Screenshot downloaded');
@@ -505,23 +523,17 @@ const useUIStore = create((set, get) => ({
   captureFullPage: async () => {
     try {
       const wv = get().getActiveWebView();
-      if (!wv) {
-        get().showToast('No active page to capture');
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
+      const isOnNewTab = !activeTab || !activeTab.url || activeTab.url === '' || activeTab.url === 'about:blank';
+
+      if (isOnNewTab || !wv) {
+        get().showToast('Open a website to capture a full scrolling page');
         return;
       }
-      get().showToast('Capturing full webpage...');
 
-      let title = 'Webpage';
-      try {
-        if (typeof wv.getTitle === 'function') title = wv.getTitle() || title;
-      } catch (_) {}
-      if (title === 'Webpage' && window.__tabStore) {
-        try {
-          const tab = window.__tabStore.getState()?.getActiveTab?.();
-          if (tab?.title) title = tab.title;
-        } catch (_) {}
-      }
-
+      get().showToast('Capturing full webpage (scrolling)...');
+      let title = activeTab?.title || 'Webpage';
       const wcId = typeof wv.getWebContentsId === 'function' ? wv.getWebContentsId() : null;
       let data = null;
 
@@ -529,6 +541,8 @@ const useUIStore = create((set, get) => ({
         const res = await window.electronAPI.captureFullPage(wcId);
         if (res?.success && res.data) {
           data = res.data;
+        } else {
+          console.warn('[Screenshot] captureFullPage notice:', res?.error);
         }
       }
 
@@ -554,29 +568,35 @@ const useUIStore = create((set, get) => ({
 
   captureSelectedArea: async (rect) => {
     try {
-      const wv = get().getActiveWebView();
-      if (!wv) {
-        get().showToast('No active page to capture');
+      get().showToast('Capturing snip...');
+      let data = null;
+
+      if (window.electronAPI && typeof window.electronAPI.captureScreenRect === 'function') {
+        const res = await window.electronAPI.captureScreenRect(rect);
+        if (res?.success && res.data) {
+          data = res.data;
+        }
+      }
+
+      if (!data) {
+        const wv = get().getActiveWebView();
+        if (wv && typeof wv.capturePage === 'function') {
+          const img = await wv.capturePage(rect);
+          data = img.toPNG();
+        }
+      }
+
+      if (!data) {
+        get().showToast('Failed to capture area');
         return;
       }
-      get().showToast('Capturing snip...');
 
-      let title = 'Webpage';
-      try {
-        if (typeof wv.getTitle === 'function') title = wv.getTitle() || title;
-      } catch (_) {}
-      if (title === 'Webpage' && window.__tabStore) {
-        try {
-          const tab = window.__tabStore.getState()?.getActiveTab?.();
-          if (tab?.title) title = tab.title;
-        } catch (_) {}
-      }
-
-      const img = await wv.capturePage(rect);
-      const pngBuffer = img.toPNG();
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
+      const title = activeTab?.title || 'Snip';
 
       if (window.electronAPI && typeof window.electronAPI.saveScreenshot === 'function') {
-        const res = await window.electronAPI.saveScreenshot({ data: pngBuffer, title, copyToClipboard: true });
+        const res = await window.electronAPI.saveScreenshot({ data, title, copyToClipboard: true });
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
           get().showToast('Snip saved to Downloads & copied to clipboard!');
