@@ -5,3 +5,7 @@ electron/bin
 *.exe
 *.AppImage
 *.zip
+certs/
+*.pfx
+*.cer
+firebase-debug.log

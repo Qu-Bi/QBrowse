@@ -7,7 +7,8 @@
     "name": "QuBI",
     "email": "qu@qubirpi3b.tk"
   },
-  "private": true,
+  "private": false,
+  "license": "MIT",
   "version": "1.2.1",
   "type": "module",
   "main": "electron/main.cjs",

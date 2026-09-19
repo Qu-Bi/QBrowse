@@ -1,0 +1,53 @@
+name: Build Windows Releases (SignPath Signing)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build Windows Installer (Unsigned Artifact)
+      run: npm run build:win
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Windows Installer Artifact
+      id: upload-unsigned-artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: QBrowse-Windows-Installer
+        path: dist_electron/*.exe
+
+    # When your SignPath application is approved and you add secrets:
+    # 1. SIGNPATH_API_TOKEN
+    # 2. SIGNPATH_ORGANIZATION_ID
+    # Uncomment the step below to enable automatic SignPath Foundation signing:
+    #
+    # - name: Submit signing request to SignPath Foundation
+    #   if: env.SIGNPATH_API_TOKEN != ''
+    #   uses: signpath/github-action-submit-signing-request@v2
+    #   env:
+    #     SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+    #   with:
+    #     api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+    #     organization-id: '${{ secrets.SIGNPATH_ORGANIZATION_ID }}'
+    #     project-slug: 'qbrowse'
+    #     signing-policy-slug: 'release-signing'
+    #     github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+    #     wait-for-completion: true
+    #     output-artifact-directory: 'dist_electron/signed/'
