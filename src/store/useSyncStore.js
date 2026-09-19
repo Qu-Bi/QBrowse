@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
 import useVaultStore from './useVaultStore';
-import useTabStore from './useTabStore';
+import useTabStore, { isValidSyncTab, getCleanTabTitle } from './useTabStore';
 import useHistoryStore from './useHistoryStore';
 import { auth, db } from '../services/firebase';
 import { 
@@ -455,21 +455,25 @@ const useSyncStore = create((set, get) => ({
                 totalItems += vaultItems.length;
             }
 
-            // 3. Sync Tabs (Personal & Work Spaces)
+            // 3. Sync Tabs (Personal & Work Spaces) - only sync valid open tabs, never empty/placeholder new tabs
             if (syncCategories?.tabs !== false) {
+                const formatTab = (t) => ({
+                    id: t.id,
+                    title: getCleanTabTitle(t),
+                    url: t.url,
+                    lastActiveAt: t.lastActiveAt || Date.now()
+                });
+
+                const validPrivateTabs = (useTabStore.getState().privateTabs || [])
+                    .filter(isValidSyncTab)
+                    .map(formatTab);
+                const validWorkTabs = (useTabStore.getState().workTabs || [])
+                    .filter(isValidSyncTab)
+                    .map(formatTab);
+
                 const tabsPayload = {
-                    privateTabs: (useTabStore.getState().privateTabs || []).map(t => ({
-                        id: t.id,
-                        title: t.title,
-                        url: t.url,
-                        lastActiveAt: t.lastActiveAt
-                    })),
-                    workTabs: (useTabStore.getState().workTabs || []).map(t => ({
-                        id: t.id,
-                        title: t.title,
-                        url: t.url,
-                        lastActiveAt: t.lastActiveAt
-                    }))
+                    privateTabs: validPrivateTabs,
+                    workTabs: validWorkTabs
                 };
                 await get().syncDataToCloud('tabs', tabsPayload);
                 totalItems += (tabsPayload.privateTabs.length + tabsPayload.workTabs.length);
@@ -523,8 +527,12 @@ const useSyncStore = create((set, get) => ({
                 settings: useUIStore.getState().settings || {},
                 vault: useVaultStore.getState().passwords || [],
                 tabs: {
-                    privateTabs: useTabStore.getState().privateTabs || [],
-                    workTabs: useTabStore.getState().workTabs || []
+                    privateTabs: (useTabStore.getState().privateTabs || [])
+                        .filter(isValidSyncTab)
+                        .map(t => ({ ...t, title: getCleanTabTitle(t) })),
+                    workTabs: (useTabStore.getState().workTabs || [])
+                        .filter(isValidSyncTab)
+                        .map(t => ({ ...t, title: getCleanTabTitle(t) }))
                 },
                 history: (useHistoryStore.getState().history || []).slice(0, 500),
                 pinnedTabs: useTabStore.getState().pinnedTabs || []
@@ -640,12 +648,16 @@ const useSyncStore = create((set, get) => ({
 
             // 3. Restore Tabs
             if (decrypted.tabs) {
-                useTabStore.getState().setCloudTabs(decrypted.tabs);
-                if (Array.isArray(decrypted.tabs.privateTabs) && decrypted.tabs.privateTabs.length > 0) {
-                    useTabStore.getState().setPrivateTabs(decrypted.tabs.privateTabs);
+                const cleanRemoteTabs = {
+                    privateTabs: (decrypted.tabs.privateTabs || []).filter(isValidSyncTab),
+                    workTabs: (decrypted.tabs.workTabs || []).filter(isValidSyncTab)
+                };
+                useTabStore.getState().setCloudTabs(cleanRemoteTabs);
+                if (cleanRemoteTabs.privateTabs.length > 0) {
+                    useTabStore.getState().setPrivateTabs(cleanRemoteTabs.privateTabs);
                 }
-                if (Array.isArray(decrypted.tabs.workTabs) && decrypted.tabs.workTabs.length > 0) {
-                    useTabStore.getState().setWorkTabs(decrypted.tabs.workTabs);
+                if (cleanRemoteTabs.workTabs.length > 0) {
+                    useTabStore.getState().setWorkTabs(cleanRemoteTabs.workTabs);
                 }
             }
 
@@ -701,8 +713,12 @@ const useSyncStore = create((set, get) => ({
                 settings: useUIStore.getState().settings,
                 vault: useVaultStore.getState().passwords,
                 tabs: {
-                    privateTabs: useTabStore.getState().privateTabs,
-                    workTabs: useTabStore.getState().workTabs
+                    privateTabs: (useTabStore.getState().privateTabs || [])
+                        .filter(isValidSyncTab)
+                        .map(t => ({ ...t, title: getCleanTabTitle(t) })),
+                    workTabs: (useTabStore.getState().workTabs || [])
+                        .filter(isValidSyncTab)
+                        .map(t => ({ ...t, title: getCleanTabTitle(t) }))
                 },
                 history: useHistoryStore.getState().history.slice(0, 500),
                 pinnedTabs: useTabStore.getState().pinnedTabs
@@ -740,7 +756,11 @@ const useSyncStore = create((set, get) => ({
                 useVaultStore.getState().mergeRemoteVault(data.vault);
             }
             if (data.tabs) {
-                useTabStore.getState().setCloudTabs(data.tabs);
+                const cleanTabs = {
+                    privateTabs: (data.tabs.privateTabs || []).filter(isValidSyncTab),
+                    workTabs: (data.tabs.workTabs || []).filter(isValidSyncTab)
+                };
+                useTabStore.getState().setCloudTabs(cleanTabs);
             }
             if (Array.isArray(data.history)) {
                 useHistoryStore.getState().mergeRemoteHistory(data.history);
@@ -804,7 +824,11 @@ const useSyncStore = create((set, get) => ({
                     try {
                         const remoteTabs = await decryptData(data.tabs.encrypted, masterPassword);
                         if (remoteTabs && (remoteTabs.privateTabs || remoteTabs.workTabs)) {
-                            useTabStore.getState().setCloudTabs(remoteTabs);
+                            const cleanRemoteTabs = {
+                                privateTabs: (remoteTabs.privateTabs || []).filter(isValidSyncTab),
+                                workTabs: (remoteTabs.workTabs || []).filter(isValidSyncTab)
+                            };
+                            useTabStore.getState().setCloudTabs(cleanRemoteTabs);
                         }
                     } catch(e) {}
                 }

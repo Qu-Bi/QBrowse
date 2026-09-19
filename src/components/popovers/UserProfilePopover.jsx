@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
     User, ShieldCheck, RefreshCw, LogOut, Settings, Key, 
     Check, Sparkles, Camera, Edit3, Globe, Zap, Image as ImageIcon,
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useSyncStore from '../../store/useSyncStore';
-import useTabStore from '../../store/useTabStore';
+import useTabStore, { isValidSyncTab, getCleanTabTitle } from '../../store/useTabStore';
 import useVaultStore from '../../store/useVaultStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
@@ -197,7 +197,15 @@ export default function UserProfilePopover({ isClosing }) {
         reader.readAsText(file);
     };
 
-    const totalCloudTabs = (cloudTabs?.privateTabs?.length || 0) + (cloudTabs?.workTabs?.length || 0);
+    const validCloudPrivateTabs = useMemo(() => (cloudTabs?.privateTabs || []).filter(isValidSyncTab), [cloudTabs?.privateTabs]);
+    const validCloudWorkTabs = useMemo(() => (cloudTabs?.workTabs || []).filter(isValidSyncTab), [cloudTabs?.workTabs]);
+    const allValidCloudTabs = useMemo(() => [...validCloudPrivateTabs, ...validCloudWorkTabs], [validCloudPrivateTabs, validCloudWorkTabs]);
+    const totalCloudTabs = allValidCloudTabs.length;
+
+    const validPrivateTabsCount = useTabStore(state => (state.privateTabs || []).filter(isValidSyncTab).length);
+    const validWorkTabsCount = useTabStore(state => (state.workTabs || []).filter(isValidSyncTab).length);
+    const totalLocalActiveTabs = validPrivateTabsCount + validWorkTabsCount;
+
     const activeEmoji = AVATAR_PRESETS.find(p => p.id === avatarPreset)?.emoji || getAvatarEmoji(activeProfile?.avatar) || '🚀';
 
     // Format status label and color
@@ -588,7 +596,7 @@ export default function UserProfilePopover({ isClosing }) {
                         <button onClick={() => setShowPushBackupForm(false)} className="text-white/40 hover:text-white text-xs">Cancel</button>
                     </div>
                     <p className="text-[11px] text-white/60">
-                        Create a permanent cloud snapshot of your current tabs ({privateTabCount + workTabCount}), vault ({vaultCount}), settings, and history.
+                        Create a permanent cloud snapshot of your current tabs ({totalLocalActiveTabs}), vault ({vaultCount}), settings, and history.
                     </p>
                     <form onSubmit={handlePushBackup} className="space-y-2">
                         <input
@@ -720,34 +728,37 @@ export default function UserProfilePopover({ isClosing }) {
 
                             {totalCloudTabs === 0 ? (
                                 <div className="text-center py-4 text-xs text-white/40 bg-white/5 rounded-xl">
-                                    No cloud tabs synced yet. Click "Sync Now" to push your open tabs.
+                                    No open tabs synced from other devices.
                                 </div>
                             ) : (
                                 <div className="space-y-1.5 max-h-48 overflow-y-auto hide-scroll">
-                                    {[...(cloudTabs?.privateTabs || []), ...(cloudTabs?.workTabs || [])].map((tab, idx) => (
-                                        <div 
-                                            key={tab.id || idx}
-                                            onClick={() => openCloudTab(tab, 'personal')}
-                                            className="p-2 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-accent/30 rounded-xl transition cursor-pointer flex items-center justify-between group"
-                                        >
-                                            <div className="flex items-center gap-2 min-w-0 pr-2">
-                                                {tab.url ? (
-                                                    <img 
-                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${tab.url}`} 
-                                                        alt="" 
-                                                        className="w-3.5 h-3.5 rounded-sm flex-shrink-0"
-                                                        onError={e => e.target.style.display = 'none'} 
-                                                    />
-                                                ) : <Globe size={13} className="text-white/40" />}
-                                                <span className="text-xs text-white/90 truncate group-hover:text-accent transition">
-                                                    {tab.title || tab.url}
+                                    {allValidCloudTabs.map((tab, idx) => {
+                                        const cleanTitle = getCleanTabTitle(tab);
+                                        return (
+                                            <div 
+                                                key={tab.id || idx}
+                                                onClick={() => openCloudTab(tab, 'personal')}
+                                                className="p-2 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-accent/30 rounded-xl transition cursor-pointer flex items-center justify-between group"
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0 pr-2">
+                                                    {tab.url ? (
+                                                        <img 
+                                                            src={`https://www.google.com/s2/favicons?sz=32&domain=${tab.url}`} 
+                                                            alt="" 
+                                                            className="w-3.5 h-3.5 rounded-sm flex-shrink-0"
+                                                            onError={e => e.target.style.display = 'none'} 
+                                                        />
+                                                    ) : <Globe size={13} className="text-white/40" />}
+                                                    <span className="text-xs text-white/90 truncate group-hover:text-accent transition">
+                                                        {cleanTitle}
+                                                    </span>
+                                                </div>
+                                                <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition font-bold flex-shrink-0">
+                                                    Open →
                                                 </span>
                                             </div>
-                                            <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition font-bold flex-shrink-0">
-                                                Open →
-                                            </span>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -773,7 +784,7 @@ export default function UserProfilePopover({ isClosing }) {
                         {[
                             { key: 'vault', label: 'QVault & Passwords', count: `${vaultCount} items`, icon: Key },
                             { key: 'settings', label: 'Settings & Theme', count: 'Synced', icon: Palette },
-                            { key: 'tabs', label: 'Tabs & Workspaces', count: `${privateTabCount + workTabCount} tabs`, icon: Layers },
+                            { key: 'tabs', label: 'Tabs & Workspaces', count: `${totalLocalActiveTabs} active tabs`, icon: Layers },
                             { key: 'history', label: 'History & Bookmarks', count: `${historyCount} entries`, icon: History }
                         ].map((cat) => {
                             const Icon = cat.icon;

@@ -1,6 +1,41 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
 
+export const isValidSyncTab = (tab) => {
+  if (!tab || typeof tab !== 'object') return false;
+  const url = typeof tab.url === 'string' ? tab.url.trim() : '';
+  if (!url) return false;
+  if (url === 'about:blank' || url.startsWith('about:')) return false;
+  if (url.startsWith('qbrowse://newtab') || url === 'chrome://newtab' || url === 'edge://newtab') return false;
+  if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('qbrowse://') && !url.startsWith('file://')) {
+    return false;
+  }
+  const title = typeof tab.title === 'string' ? tab.title.trim().toLowerCase() : '';
+  if ((title === 'new tab' || title === 'new incognito tab') && (!url || url.startsWith('qbrowse://newtab') || url === 'about:blank')) {
+    return false;
+  }
+  return true;
+};
+
+export const getCleanTabTitle = (tab) => {
+  if (!tab) return '';
+  const rawTitle = typeof tab.title === 'string' ? tab.title.trim() : '';
+  const isPlaceholderTitle = !rawTitle || 
+    rawTitle.toLowerCase() === 'new tab' || 
+    rawTitle.toLowerCase() === 'new incognito tab' ||
+    rawTitle.toLowerCase() === 'untitled';
+  if (!isPlaceholderTitle) return rawTitle;
+  if (tab.url) {
+    try {
+      const parsed = new URL(tab.url);
+      return parsed.hostname.replace(/^www\./i, '') || tab.url;
+    } catch {
+      return tab.url;
+    }
+  }
+  return 'Web Page';
+};
+
 const useTabStore = create((set, get) => ({
   activeSpace: 'personal',
   setActiveSpace: (space) => set((state) => {
@@ -124,44 +159,58 @@ const useTabStore = create((set, get) => ({
   },
 
   cloudTabs: { privateTabs: [], workTabs: [] },
-  setCloudTabs: (tabs) => set({ cloudTabs: tabs || { privateTabs: [], workTabs: [] } }),
+  setCloudTabs: (tabs) => {
+      const cleanPrivateTabs = Array.isArray(tabs?.privateTabs) 
+          ? tabs.privateTabs.filter(isValidSyncTab) 
+          : [];
+      const cleanWorkTabs = Array.isArray(tabs?.workTabs) 
+          ? tabs.workTabs.filter(isValidSyncTab) 
+          : [];
+      set({ cloudTabs: { privateTabs: cleanPrivateTabs, workTabs: cleanWorkTabs } });
+  },
 
-  openCloudTab: (cloudTab, space = 'personal') => {
-      if (!cloudTab || !cloudTab.url) return;
+  openCloudTab: (cloudTab, space) => {
+      if (!isValidSyncTab(cloudTab)) {
+          useUIStore.getState().showToast('Cannot open empty tab');
+          return;
+      }
+      const targetSpace = space || get().activeSpace || 'personal';
       const id = `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      get().setActiveSpace(space);
+      get().setActiveSpace(targetSpace);
+      const cleanTitle = getCleanTabTitle(cloudTab);
       get().addTab({
           id,
-          title: cloudTab.title || cloudTab.url,
+          title: cleanTitle,
           url: cloudTab.url,
           active: true,
           folderId: null
       });
-      useUIStore.getState().showToast(`Opened: ${cloudTab.title || cloudTab.url}`);
+      useUIStore.getState().showToast(`Opened: ${cleanTitle}`);
   },
 
-  restoreAllCloudTabs: (space = 'personal') => {
+  restoreAllCloudTabs: (targetSpace) => {
       const { cloudTabs } = get();
-      const list = (space === 'work') ? (cloudTabs.workTabs || []) : (cloudTabs.privateTabs || []);
-      if (!list || list.length === 0) {
-          useUIStore.getState().showToast('No cloud tabs found in this space');
+      const rawPrivate = Array.isArray(cloudTabs?.privateTabs) ? cloudTabs.privateTabs.filter(isValidSyncTab) : [];
+      const rawWork = Array.isArray(cloudTabs?.workTabs) ? cloudTabs.workTabs.filter(isValidSyncTab) : [];
+      const allTabs = [...rawPrivate, ...rawWork];
+      if (allTabs.length === 0) {
+          useUIStore.getState().showToast('No cloud tabs found to restore');
           return;
       }
-      get().setActiveSpace(space);
+      const spaceToUse = targetSpace || get().activeSpace || 'personal';
+      get().setActiveSpace(spaceToUse);
       let count = 0;
-      list.forEach((tab, index) => {
-          if (tab.url && tab.url !== 'about:blank') {
-              count++;
-              get().addTab({
-                  id: `t-cloud-${Date.now()}-${index}`,
-                  title: tab.title || tab.url,
-                  url: tab.url,
-                  active: index === 0,
-                  folderId: null
-              });
-          }
+      allTabs.forEach((tab, index) => {
+          count++;
+          get().addTab({
+              id: `t-cloud-${Date.now()}-${index}`,
+              title: getCleanTabTitle(tab),
+              url: tab.url,
+              active: index === 0,
+              folderId: null
+          });
       });
-      useUIStore.getState().showToast(`Restored ${count} cloud tabs!`);
+      useUIStore.getState().showToast(`Restored ${count} tabs from other devices!`);
   },
 
   // Actions
