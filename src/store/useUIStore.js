@@ -377,12 +377,41 @@ const useUIStore = create((set, get) => ({
         return;
       }
 
-      const pdfData = await wv.printToPDF({
-        landscape: false,
-        displayHeaderFooter: false,
-        printBackground: true,
-        pageSize: 'A4'
-      });
+      // Temporarily remove dark mode inversion/filter so PDF prints as crisp, clean black text on white paper
+      let wasDark = false;
+      try {
+        if (typeof wv.executeJavaScript === 'function') {
+          wasDark = await wv.executeJavaScript(`
+            (function() {
+              const doc = document.documentElement;
+              const hasDark = doc.classList.contains('qbrowse-smart-dark-active');
+              if (hasDark) doc.classList.remove('qbrowse-smart-dark-active');
+              return hasDark;
+            })()
+          `);
+        }
+      } catch (_) {}
+
+      // Short yield to let DOM style recalc apply
+      await new Promise(r => setTimeout(r, 80));
+
+      let pdfData = null;
+      try {
+        pdfData = await wv.printToPDF({
+          landscape: false,
+          displayHeaderFooter: false,
+          printBackground: true,
+          pageSize: 'A4'
+        });
+      } finally {
+        if (wasDark) {
+          try {
+            if (typeof wv.executeJavaScript === 'function') {
+              await wv.executeJavaScript(`document.documentElement.classList.add('qbrowse-smart-dark-active')`);
+            }
+          } catch (_) {}
+        }
+      }
 
       if (!pdfData || pdfData.length === 0) {
         get().showToast('Failed to generate PDF');

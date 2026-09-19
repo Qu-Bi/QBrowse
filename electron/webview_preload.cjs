@@ -643,17 +643,34 @@ function runSmartDark() {
             styleEl = document.createElement('style');
             styleEl.id = 'qbrowse-smart-dark-style';
             styleEl.textContent = `
-                html.qbrowse-smart-dark-active {
-                    filter: invert(0.92) hue-rotate(180deg) !important;
-                    background-color: #121214 !important;
-                    color-scheme: dark !important;
+                @media screen {
+                    html.qbrowse-smart-dark-active {
+                        filter: invert(0.92) hue-rotate(180deg) !important;
+                        background-color: #121214 !important;
+                        color-scheme: dark !important;
+                    }
+                    html.qbrowse-smart-dark-active img,
+                    html.qbrowse-smart-dark-active picture,
+                    html.qbrowse-smart-dark-active video,
+                    html.qbrowse-smart-dark-active canvas,
+                    html.qbrowse-smart-dark-active svg {
+                        filter: invert(1) hue-rotate(180deg) !important;
+                    }
                 }
-                html.qbrowse-smart-dark-active img,
-                html.qbrowse-smart-dark-active picture,
-                html.qbrowse-smart-dark-active video,
-                html.qbrowse-smart-dark-active canvas,
-                html.qbrowse-smart-dark-active svg {
-                    filter: invert(1) hue-rotate(180deg) !important;
+                @media print {
+                    html.qbrowse-smart-dark-active {
+                        filter: none !important;
+                        background-color: #ffffff !important;
+                        color: #000000 !important;
+                        color-scheme: light !important;
+                    }
+                    html.qbrowse-smart-dark-active img,
+                    html.qbrowse-smart-dark-active picture,
+                    html.qbrowse-smart-dark-active video,
+                    html.qbrowse-smart-dark-active canvas,
+                    html.qbrowse-smart-dark-active svg {
+                        filter: none !important;
+                    }
                 }
             `;
             (document.head || document.documentElement).appendChild(styleEl);
