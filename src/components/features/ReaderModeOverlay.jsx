@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import useUIStore from '../../store/useUIStore';
+import useTabStore from '../../store/useTabStore';
 import { 
     X, ArrowLeft, Volume2, VolumeX, Play, Pause, SkipBack, SkipForward, 
     Type, BookOpen, Clock, Globe, ExternalLink, RotateCcw, ChevronDown, Check
@@ -151,6 +152,14 @@ export default function ReaderModeOverlay() {
             } else if (e.altKey && (e.key === 'r' || e.key === 'R')) {
                 e.preventDefault();
                 closeReaderMode();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeReaderMode();
+                const activeTab = useTabStore.getState().getActiveTab();
+                if (activeTab) {
+                    useTabStore.getState().handleCloseTab(activeTab.id);
+                }
             }
         };
 

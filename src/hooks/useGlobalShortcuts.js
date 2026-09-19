@@ -212,6 +212,9 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                     window.close();
                 }
             } else {
+                if (uiStore.isReaderOpen || uiStore.isReaderClosing) {
+                    uiStore.closeReaderMode();
+                }
                 const activeTab = tabStore.getActiveTab();
                 if (activeTab) {
                     tabStore.handleCloseTab(activeTab.id);

@@ -50,6 +50,11 @@ const useTabStore = create((set, get) => ({
     return space === 'personal' ? state.privateTabs : (space === 'work' ? state.workTabs : (space === 'tor' ? (state.torTabs || []) : state.ghostTabs));
   },
   setActiveSpace: (space) => set((state) => {
+      const ui = useUIStore.getState();
+      if (ui.isReaderOpen || ui.isReaderClosing) {
+          ui.closeReaderMode();
+          ui.setIsReaderAvailable(false);
+      }
       const updates = { activeSpace: space };
       if (state.activeSpace === 'ghost' && space !== 'ghost') {
           updates.ghostTabs = [{ id: 'g-' + Date.now(), title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
@@ -424,6 +429,13 @@ const useTabStore = create((set, get) => ({
     
     const tabToClose = list.find(t => t.id === id);
     if (!tabToClose || tabToClose.isClosing) return;
+
+    // If the closed tab is active (or reader mode is open), close Reader Mode cleanly
+    const uiStore = useUIStore.getState();
+    if ((tabToClose.active || list.length === 1) && (uiStore.isReaderOpen || uiStore.isReaderClosing)) {
+        uiStore.closeReaderMode();
+        uiStore.setIsReaderAvailable(false);
+    }
 
     // Track in recently closed tabs for Cmd+Shift+T restore
     if (tabToClose.url && tabToClose.url !== 'about:blank') {

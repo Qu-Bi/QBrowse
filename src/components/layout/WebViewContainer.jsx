@@ -562,6 +562,10 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             if (useUIStore.getState().isFindOpen) {
                 useUIStore.getState().setIsFindOpen(false);
             }
+            const ui = useUIStore.getState();
+            if (ui.isReaderOpen || ui.isReaderClosing) {
+                ui.closeReaderMode();
+            }
         }
     }, [isActive]);
 

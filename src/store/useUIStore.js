@@ -1063,12 +1063,16 @@ const useUIStore = create((set, get) => ({
   readerArticle: null,
   setIsReaderAvailable: (available) => set({ isReaderAvailable: !!available }),
   openReaderMode: (articleData) => set({ isReaderOpen: true, isReaderClosing: false, readerArticle: articleData, isReaderLoading: false }),
-  closeReaderMode: () => {
+  closeReaderMode: (instant = false) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try { window.speechSynthesis.cancel(); } catch (_) {}
     }
     const state = get();
-    if (!state.isReaderOpen || state.isReaderClosing) return;
+    if (!state.isReaderOpen && !state.isReaderClosing) return;
+    if (instant || state.isReaderClosing) {
+      set({ isReaderOpen: false, isReaderClosing: false, readerArticle: null });
+      return;
+    }
     set({ isReaderClosing: true });
     setTimeout(() => {
       set({ isReaderOpen: false, isReaderClosing: false, readerArticle: null });
