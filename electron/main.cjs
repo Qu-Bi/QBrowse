@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -455,7 +455,7 @@ function createWindow(options = {}) {
                         'cmd+w', 'cmd+r', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 
                         'cmd+n', 'cmd+p', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd+h', 
                         'cmd+l', 'cmd+y', 'cmd+\\', 'cmd+|', 'cmd+d', 'cmd+[', 'cmd+]',
-                        'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'f11', 'f12', 'f3'
+                        'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'cmd+s', 'f11', 'f12', 'f3'
                     ];
 
                     if (overrideKeys.includes(shortcut)) {
@@ -1828,6 +1828,117 @@ ipcMain.handle('save-pdf-file', async (event, { defaultName, data }) => {
         return { success: true, filePath };
     } catch (e) {
         console.error('Failed to save PDF file:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+// Full Page & Screenshot IPC Handlers
+ipcMain.handle('capture-full-page', async (event, { webContentsId } = {}) => {
+    try {
+        const wc = webContentsId ? webContents.fromId(webContentsId) : (mainWindow ? mainWindow.webContents : null);
+        if (!wc || wc.isDestroyed()) throw new Error('Target page not found');
+
+        let isAttached = false;
+        try {
+            if (!wc.debugger.isAttached()) {
+                wc.debugger.attach('1.3');
+                isAttached = true;
+            }
+        } catch (e) {
+            console.warn('[FullPageCapture] debugger attach notice:', e.message);
+        }
+
+        if (wc.debugger.isAttached()) {
+            try {
+                const metrics = await wc.debugger.sendCommand('Page.getLayoutMetrics');
+                const contentSize = metrics.contentSize || metrics.cssContentSize || { width: 1280, height: 800 };
+                const width = Math.ceil(contentSize.width) || 1280;
+                const height = Math.min(16000, Math.ceil(contentSize.height) || 800);
+
+                await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+                    width,
+                    height,
+                    deviceScaleFactor: 1,
+                    mobile: false
+                });
+
+                const result = await wc.debugger.sendCommand('Page.captureScreenshot', {
+                    format: 'png',
+                    captureBeyondViewport: true,
+                    fromSurface: true
+                });
+
+                await wc.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');
+
+                if (isAttached && wc.debugger.isAttached()) {
+                    try { wc.debugger.detach(); } catch (_) {}
+                }
+
+                const buffer = Buffer.from(result.data, 'base64');
+                return { success: true, data: buffer };
+            } catch (cdpErr) {
+                console.warn('[FullPageCapture] CDP capture error, falling back to capturePage:', cdpErr);
+                if (isAttached && wc.debugger.isAttached()) {
+                    try { wc.debugger.detach(); } catch (_) {}
+                }
+            }
+        }
+
+        const img = await wc.capturePage();
+        return { success: true, data: img.toPNG() };
+    } catch (e) {
+        console.error('[FullPageCapture] Failed:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('save-screenshot', async (event, { data, title, copyToClipboard = true } = {}) => {
+    try {
+        if (!data) throw new Error('No image data provided');
+
+        let buffer;
+        if (Buffer.isBuffer(data)) {
+            buffer = data;
+        } else if (data instanceof Uint8Array || (data && data.buffer)) {
+            buffer = Buffer.from(data.buffer || data, data.byteOffset || 0, data.byteLength || data.length);
+        } else if (typeof data === 'string') {
+            buffer = Buffer.from(data.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+        } else {
+            buffer = Buffer.from(data);
+        }
+
+        if (copyToClipboard) {
+            try {
+                const img = nativeImage.createFromBuffer(buffer);
+                clipboard.writeImage(img);
+            } catch (clipErr) {
+                console.warn('[SaveScreenshot] Clipboard write error:', clipErr);
+            }
+        }
+
+        const downloadsPath = app.getPath('downloads');
+        const cleanTitle = (title || 'Webpage').replace(/[/\\?%*:|"<>]/g, '_').trim().slice(0, 40) || 'Webpage';
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+        const fileName = `Screenshot_${cleanTitle}_${timestamp}.png`;
+        const filePath = path.join(downloadsPath, fileName);
+
+        await fs.writeFile(filePath, buffer);
+        return { success: true, filePath, fileName };
+    } catch (e) {
+        console.error('[SaveScreenshot] Error saving screenshot:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('show-item-in-folder', async (event, filePath) => {
+    try {
+        if (filePath) {
+            shell.showItemInFolder(filePath);
+            return { success: true };
+        }
+        return { success: false, error: 'No path specified' };
+    } catch (e) {
         return { success: false, error: e.message };
     }
 });

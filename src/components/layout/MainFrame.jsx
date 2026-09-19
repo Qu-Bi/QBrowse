@@ -16,6 +16,8 @@ import UserProfilePopover from '../popovers/UserProfilePopover';
 import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
 import FindInPageBar from '../common/FindInPageBar';
+import ScreenshotBar from '../common/ScreenshotBar';
+import SnippingOverlay from '../common/SnippingOverlay';
 
 const DownloadPopup = () => {
     const downloads = useUIStore(state => state.downloads);
@@ -419,6 +421,8 @@ export default function MainFrame() {
                 <div className={`relative w-full h-full overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.1)] transition-[background-color,border] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border border-white/20'} ${isForceDark || isIncognito ? 'bg-black/60 backdrop-blur-3xl' : 'bg-white/60 backdrop-blur-3xl'}`}>
                     <DownloadPopup />
                     <FindInPageBar />
+                    <ScreenshotBar />
+                    <SnippingOverlay />
                     {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
                         <QVaultPopover isClosing={isPopoverClosing} />
                     )}

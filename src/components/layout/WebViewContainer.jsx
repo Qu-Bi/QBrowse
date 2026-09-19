@@ -553,9 +553,16 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 return;
             }
             // Print Page (Ctrl+P)
-            if ((e.control || e.meta) && e.key.toLowerCase() === 'p') {
+            if ((e.control || e.meta) && !e.shift && e.key.toLowerCase() === 'p') {
                 try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
                 useUIStore.getState().printActivePage();
+                return;
+            }
+            // Screenshot & Snipping Bar (Ctrl+Shift+S)
+            if ((e.control || e.meta) && e.shift && e.key.toLowerCase() === 's') {
+                try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+                const ui = useUIStore.getState();
+                ui.setIsScreenshotBarOpen(!ui.isScreenshotBarOpen);
                 return;
             }
             // Find Next / Prev (F3 / Shift+F3)

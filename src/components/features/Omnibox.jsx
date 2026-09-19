@@ -4,7 +4,7 @@ import {
     VolumeX, Volume2, Cpu, Zap, Moon, Sun, PanelLeft, Layers, Puzzle,
     Trash2, XCircle, Sparkles, SplitSquareHorizontal,
     RotateCw, Plus, Settings, History, Download, Maximize, Key, Activity, HardDrive, Users,
-    Printer, FileDown
+    Printer, FileDown, Camera, Crop
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -45,7 +45,9 @@ const availableCommands = [
     { id: 'circuit', title: 'Open Tor Circuit & Security HUD', cmd: 'circuit', icon: Terminal, color: 'text-purple-400' },
     { id: 'find', title: 'Find in page (Ctrl+F)', cmd: 'find', icon: Search, color: 'text-amber-400' },
     { id: 'print', title: 'Print active page (Ctrl+P)', cmd: 'print', icon: Printer, color: 'text-indigo-400' },
-    { id: 'pdf', title: 'Save page as Clean PDF', cmd: 'pdf', icon: FileDown, color: 'text-rose-400' }
+    { id: 'pdf', title: 'Save page as Clean PDF', cmd: 'pdf', icon: FileDown, color: 'text-rose-400' },
+    { id: 'screenshot', title: 'Capture Webpage Screenshot (Ctrl+Shift+S)', cmd: 'screenshot', icon: Camera, color: 'text-pink-400' },
+    { id: 'snip', title: 'Interactive Snip Area (Ctrl+Shift+S)', cmd: 'snip', icon: Crop, color: 'text-rose-400' }
 ];
 
 const parseUrlInput = (input) => {
@@ -347,6 +349,18 @@ export default function Omnibox() {
             case 'pdf':
                 closeOmnibox();
                 uiStore.saveActivePageAsPDF();
+                break;
+
+            case 'screenshot':
+                closeOmnibox();
+                uiStore.setIsScreenshotBarOpen(true);
+                break;
+
+            case 'snip':
+                closeOmnibox();
+                setTimeout(() => {
+                    uiStore.setIsSnippingMode(true);
+                }, 50);
                 break;
 
             case 'mute':

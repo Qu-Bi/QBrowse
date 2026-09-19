@@ -444,6 +444,152 @@ const useUIStore = create((set, get) => ({
     }
   },
 
+  // Webpage Screenshot & Snipping Tool
+  isScreenshotBarOpen: false,
+  isSnippingMode: false,
+  lastScreenshotPath: null,
+  setIsScreenshotBarOpen: (val) => set({ isScreenshotBarOpen: !!val }),
+  setIsSnippingMode: (val) => set({ isSnippingMode: !!val }),
+  openLastScreenshotFolder: () => {
+    const { lastScreenshotPath } = get();
+    if (lastScreenshotPath && window.electronAPI && typeof window.electronAPI.showItemInFolder === 'function') {
+      window.electronAPI.showItemInFolder(lastScreenshotPath);
+    }
+  },
+
+  captureVisibleViewport: async () => {
+    try {
+      const wv = get().getActiveWebView();
+      if (!wv) {
+        get().showToast('No active page to capture');
+        return;
+      }
+      get().showToast('Capturing screenshot...');
+
+      let title = 'Webpage';
+      try {
+        if (typeof wv.getTitle === 'function') title = wv.getTitle() || title;
+      } catch (_) {}
+      if (title === 'Webpage' && window.__tabStore) {
+        try {
+          const tab = window.__tabStore.getState()?.getActiveTab?.();
+          if (tab?.title) title = tab.title;
+        } catch (_) {}
+      }
+
+      const img = await wv.capturePage();
+      const pngBuffer = img.toPNG();
+
+      if (window.electronAPI && typeof window.electronAPI.saveScreenshot === 'function') {
+        const res = await window.electronAPI.saveScreenshot({ data: pngBuffer, title, copyToClipboard: true });
+        if (res?.success) {
+          set({ lastScreenshotPath: res.filePath });
+          get().showToast('Screenshot saved to Downloads & copied to clipboard!');
+        } else {
+          get().showToast(`Failed to save screenshot: ${res?.error || 'Unknown error'}`);
+        }
+      } else {
+        const dataUrl = img.toDataURL();
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `Screenshot_${title}.png`;
+        a.click();
+        get().showToast('Screenshot downloaded');
+      }
+    } catch (e) {
+      console.error('[Screenshot] Visible capture error:', e);
+      get().showToast(`Screenshot failed: ${e.message}`);
+    }
+  },
+
+  captureFullPage: async () => {
+    try {
+      const wv = get().getActiveWebView();
+      if (!wv) {
+        get().showToast('No active page to capture');
+        return;
+      }
+      get().showToast('Capturing full webpage...');
+
+      let title = 'Webpage';
+      try {
+        if (typeof wv.getTitle === 'function') title = wv.getTitle() || title;
+      } catch (_) {}
+      if (title === 'Webpage' && window.__tabStore) {
+        try {
+          const tab = window.__tabStore.getState()?.getActiveTab?.();
+          if (tab?.title) title = tab.title;
+        } catch (_) {}
+      }
+
+      const wcId = typeof wv.getWebContentsId === 'function' ? wv.getWebContentsId() : null;
+      let data = null;
+
+      if (window.electronAPI && typeof window.electronAPI.captureFullPage === 'function' && wcId) {
+        const res = await window.electronAPI.captureFullPage(wcId);
+        if (res?.success && res.data) {
+          data = res.data;
+        }
+      }
+
+      if (!data) {
+        const img = await wv.capturePage();
+        data = img.toPNG();
+      }
+
+      if (window.electronAPI && typeof window.electronAPI.saveScreenshot === 'function') {
+        const res = await window.electronAPI.saveScreenshot({ data, title, copyToClipboard: true });
+        if (res?.success) {
+          set({ lastScreenshotPath: res.filePath });
+          get().showToast('Full page screenshot saved & copied to clipboard!');
+        } else {
+          get().showToast(`Failed to save screenshot: ${res?.error || 'Unknown error'}`);
+        }
+      }
+    } catch (e) {
+      console.error('[Screenshot] Full page error:', e);
+      get().showToast(`Full page screenshot failed: ${e.message}`);
+    }
+  },
+
+  captureSelectedArea: async (rect) => {
+    try {
+      const wv = get().getActiveWebView();
+      if (!wv) {
+        get().showToast('No active page to capture');
+        return;
+      }
+      get().showToast('Capturing snip...');
+
+      let title = 'Webpage';
+      try {
+        if (typeof wv.getTitle === 'function') title = wv.getTitle() || title;
+      } catch (_) {}
+      if (title === 'Webpage' && window.__tabStore) {
+        try {
+          const tab = window.__tabStore.getState()?.getActiveTab?.();
+          if (tab?.title) title = tab.title;
+        } catch (_) {}
+      }
+
+      const img = await wv.capturePage(rect);
+      const pngBuffer = img.toPNG();
+
+      if (window.electronAPI && typeof window.electronAPI.saveScreenshot === 'function') {
+        const res = await window.electronAPI.saveScreenshot({ data: pngBuffer, title, copyToClipboard: true });
+        if (res?.success) {
+          set({ lastScreenshotPath: res.filePath });
+          get().showToast('Snip saved to Downloads & copied to clipboard!');
+        } else {
+          get().showToast(`Failed to save snip: ${res?.error || 'Unknown error'}`);
+        }
+      }
+    } catch (e) {
+      console.error('[Screenshot] Snip error:', e);
+      get().showToast(`Snip failed: ${e.message}`);
+    }
+  },
+
   // Notifications
   toast: null,
   showToast: (message) => {

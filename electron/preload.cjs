@@ -178,6 +178,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // PDF Export
     savePdfFile: (opts) => ipcRenderer.invoke('save-pdf-file', opts),
 
+    // Screenshot & Snipping
+    captureFullPage: (webContentsId) => ipcRenderer.invoke('capture-full-page', { webContentsId }),
+    saveScreenshot: (opts) => ipcRenderer.invoke('save-screenshot', opts),
+    showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
 

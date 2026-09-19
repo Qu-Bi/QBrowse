@@ -34,13 +34,23 @@ export const handleEscapeDismissal = () => {
         return true;
     }
 
-    // 5. Find in Page Bar
+    // 5. Snipping & Screenshot Overlays
+    if (uiStore.isSnippingMode) {
+        uiStore.setIsSnippingMode(false);
+        return true;
+    }
+    if (uiStore.isScreenshotBarOpen) {
+        uiStore.setIsScreenshotBarOpen(false);
+        return true;
+    }
+
+    // 6. Find in Page Bar
     if (uiStore.isFindOpen) {
         uiStore.setIsFindOpen(false);
         return true;
     }
 
-    // 6. Omnibox
+    // 7. Omnibox
     if (uiStore.isOmniboxOpen) {
         uiStore.closeOmnibox();
         // Clean up empty newly-opened tab if it was created when opening omnibox
@@ -280,6 +290,13 @@ export const executeShortcut = (key, shift = false) => {
         // Find in Page (Cmd+F)
         case 'f':
             uiStore.setIsFindOpen(true);
+            break;
+
+        // Screenshot & Snipping Bar (Cmd+Shift+S)
+        case 's':
+            if (shift) {
+                uiStore.setIsScreenshotBarOpen(!uiStore.isScreenshotBarOpen);
+            }
             break;
 
 
