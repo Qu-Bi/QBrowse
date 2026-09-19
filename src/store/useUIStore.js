@@ -316,6 +316,92 @@ const useUIStore = create((set) => ({
     get().executeFind(findQuery, { forward, findNext: true });
   },
 
+  // Printing & PDF Export
+  printActivePage: () => {
+    try {
+      const wv = get().getActiveWebView();
+      if (wv && typeof wv.print === 'function') {
+        wv.print();
+      } else {
+        window.print();
+      }
+    } catch (e) {
+      console.warn('[Print] error triggering print:', e);
+      window.print();
+    }
+  },
+
+  saveActivePageAsPDF: async () => {
+    try {
+      const wv = get().getActiveWebView();
+      if (!wv) {
+        get().showToast('No active webpage to export');
+        return;
+      }
+
+      let title = 'Webpage';
+      try {
+        if (typeof wv.getTitle === 'function') {
+          title = wv.getTitle() || title;
+        }
+      } catch (_) {}
+
+      if (title === 'Webpage' && window.__tabStore) {
+        try {
+          const tab = window.__tabStore.getState()?.getActiveTab?.();
+          if (tab?.title) title = tab.title;
+        } catch (_) {}
+      }
+
+      const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim().slice(0, 80) || 'Webpage';
+      const defaultName = `${safeTitle}.pdf`;
+
+      get().showToast('Generating Clean PDF...');
+
+      if (typeof wv.printToPDF !== 'function') {
+        get().showToast('PDF export not supported on this view');
+        return;
+      }
+
+      const pdfData = await wv.printToPDF({
+        landscape: false,
+        displayHeaderFooter: false,
+        printBackground: true,
+        preferCSSPageSize: true,
+        pageSize: 'A4'
+      });
+
+      if (!pdfData || pdfData.length === 0) {
+        get().showToast('Failed to generate PDF');
+        return;
+      }
+
+      if (window.electronAPI && typeof window.electronAPI.savePdfFile === 'function') {
+        const res = await window.electronAPI.savePdfFile({
+          defaultName,
+          data: pdfData
+        });
+        if (res?.success) {
+          get().showToast('PDF exported successfully');
+        } else if (!res?.canceled) {
+          get().showToast(`PDF export failed: ${res?.error || 'Unknown error'}`);
+        }
+      } else {
+        const blob = new Blob([pdfData], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = defaultName;
+        a.click();
+        URL.revokeObjectURL(url);
+        get().showToast('PDF downloaded');
+      }
+    } catch (e) {
+      console.error('[PDF Export] error:', e);
+      get().showToast(`PDF export failed: ${e.message}`);
+    }
+  },
+
   // Notifications
   toast: null,
   showToast: (message) => {

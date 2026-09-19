@@ -1,4 +1,4 @@
-﻿# QBrowse Flagship Features & Bug Fixes Roadmap
+# QBrowse Flagship Features & Bug Fixes Roadmap
 
 This document tracks our point-by-point execution of flagship browser features and key UX improvements. Each item is addressed in sequence with a dedicated implementation plan and user review.
 
@@ -14,12 +14,12 @@ This document tracks our point-by-point execution of flagship browser features a
   - *Status*: ✅ COMPLETED
   - *Outcome*: Implemented floating glassmorphic Find in Page bar with real-time Chromium keyword highlighting, live match counter (`X of Y` / `0 of 0`), Next/Prev navigation (`Enter`/`Shift+Enter` and `F3`/`Shift+F3`), case-sensitive toggle (`Aa`), global `Esc` dismissal, right-click context menu item, and Omnibox `>find` command.
 
-- [ ] **Task 3: Page Printing & Clean PDF Export (`Ctrl+P`)**
-  - *Status*: 🟡 NEXT UP (Ready for design & interview)
-  - *Goal*: Native system print dialog (`webContents.print()`) and one-click "Save Clean PDF" (`webContents.printToPDF()`) with save file dialog.
+- [x] **Task 3: Page Printing & Clean PDF Export (`Ctrl+P`)**
+  - *Status*: ✅ COMPLETED
+  - *Outcome*: Added native Chromium/OS printing via `Ctrl+P` (both global shell and active webview `before-input-event`), right-click context menu item ("Print..."), and Omnibox `>print` command. Built one-click "Save as Clean PDF" using Electron `printToPDF()` with native OS save file dialog (`dialog.showSaveDialog`), context menu option, and Omnibox `>pdf` command.
 
 - [ ] **Task 4: Webpage Screenshot & Snipping Tool**
-  - *Status*: ⚪ PENDING
+  - *Status*: 🟡 NEXT UP (Ready for design & interview)
   - *Goal*: Omnibox command and ToolHub tool to capture visible viewport or full scrolling webpage with instant copy-to-clipboard and save-to-downloads.
 
 - [ ] **Task 5: Smart Search Bangs & Omnibox Keywords**

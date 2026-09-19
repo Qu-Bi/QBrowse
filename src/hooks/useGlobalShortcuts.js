@@ -280,6 +280,11 @@ export const executeShortcut = (key, shift = false) => {
             uiStore.setIsFindOpen(true);
             break;
 
+        // Print Page (Cmd+P)
+        case 'p':
+            uiStore.printActivePage();
+            break;
+
         // Find Next / Prev Match (F3 / Shift+F3)
         case 'f3':
             uiStore.findNextMatch(!shift);

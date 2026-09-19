@@ -1797,4 +1797,29 @@ ipcMain.handle('app-relaunch', () => {
     app.exit(0);
 });
 
+// PDF Export Dialog & File Saver
+ipcMain.handle('save-pdf-file', async (event, { defaultName, data }) => {
+    try {
+        const win = mainWindow || BrowserWindow.getFocusedWindow();
+        const { canceled, filePath } = await dialog.showSaveDialog(win, {
+            title: 'Save Page as PDF',
+            defaultPath: defaultName || 'webpage.pdf',
+            filters: [
+                { name: 'PDF Documents', extensions: ['pdf'] }
+            ]
+        });
+
+        if (canceled || !filePath) {
+            return { success: false, canceled: true };
+        }
+
+        const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        await fs.writeFile(filePath, buffer);
+        return { success: true, filePath };
+    } catch (e) {
+        console.error('Failed to save PDF file:', e);
+        return { success: false, error: e.message };
+    }
+});
+
 

@@ -552,6 +552,12 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 useUIStore.getState().setIsFindOpen(true);
                 return;
             }
+            // Print Page (Ctrl+P)
+            if ((e.control || e.meta) && e.key.toLowerCase() === 'p') {
+                try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
+                useUIStore.getState().printActivePage();
+                return;
+            }
             // Find Next / Prev (F3 / Shift+F3)
             if (e.key === 'F3') {
                 try { if (e.preventDefault) e.preventDefault(); } catch(err) {}

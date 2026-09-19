@@ -175,6 +175,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resetFlags: () => ipcRenderer.invoke('flags-reset'),
     relaunchApp: () => ipcRenderer.invoke('app-relaunch'),
 
+    // PDF Export
+    savePdfFile: (opts) => ipcRenderer.invoke('save-pdf-file', opts),
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
 

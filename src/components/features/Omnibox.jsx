@@ -3,7 +3,8 @@ import {
     Terminal, Search, Calculator, Globe, ArrowRight, 
     VolumeX, Volume2, Cpu, Zap, Moon, Sun, PanelLeft, Layers, Puzzle,
     Trash2, XCircle, Sparkles, SplitSquareHorizontal,
-    RotateCw, Plus, Settings, History, Download, Maximize, Key, Activity, HardDrive, Users
+    RotateCw, Plus, Settings, History, Download, Maximize, Key, Activity, HardDrive, Users,
+    Printer, FileDown
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -42,7 +43,9 @@ const availableCommands = [
     { id: 'tor', title: 'Toggle Tor Onion Routing Mode', cmd: 'tor', icon: Globe, color: 'text-purple-400' },
     { id: 'newnym', title: 'Request new Tor identity (SIGNAL NEWNYM)', cmd: 'newnym', icon: RotateCw, color: 'text-purple-400' },
     { id: 'circuit', title: 'Open Tor Circuit & Security HUD', cmd: 'circuit', icon: Terminal, color: 'text-purple-400' },
-    { id: 'find', title: 'Find in page (Ctrl+F)', cmd: 'find', icon: Search, color: 'text-amber-400' }
+    { id: 'find', title: 'Find in page (Ctrl+F)', cmd: 'find', icon: Search, color: 'text-amber-400' },
+    { id: 'print', title: 'Print active page (Ctrl+P)', cmd: 'print', icon: Printer, color: 'text-indigo-400' },
+    { id: 'pdf', title: 'Save page as Clean PDF', cmd: 'pdf', icon: FileDown, color: 'text-rose-400' }
 ];
 
 const parseUrlInput = (input) => {
@@ -334,6 +337,16 @@ export default function Omnibox() {
             case 'find':
                 uiStore.setIsFindOpen(true);
                 showToast('Find in page opened');
+                break;
+
+            case 'print':
+                closeOmnibox();
+                uiStore.printActivePage();
+                break;
+
+            case 'pdf':
+                closeOmnibox();
+                uiStore.saveActivePageAsPDF();
                 break;
 
             case 'mute':

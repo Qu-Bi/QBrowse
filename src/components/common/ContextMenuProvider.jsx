@@ -1,7 +1,8 @@
 import React from 'react';
 import { 
     ArrowLeft, ArrowRight, RefreshCw, Copy, MonitorPlay, Pin, Minus, 
-    PictureInPicture2, VolumeX, Volume2, Layers, X, Pencil, Trash, Moon, Search
+    PictureInPicture2, VolumeX, Volume2, Layers, X, Pencil, Trash, Moon, Search,
+    Printer, FileDown
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -57,6 +58,15 @@ export default function ContextMenuProvider({ children }) {
                             <Search size={14} className="text-white/50 group-hover:text-white transition" /> Find in page...
                         </div>
                         <span className="text-[10px] text-white/40 font-mono">Ctrl+F</span>
+                    </button>
+                    <button onClick={() => { useUIStore.getState().printActivePage(); closeContextMenu(); }} className="flex items-center justify-between px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
+                        <div className="flex items-center gap-3">
+                            <Printer size={14} className="text-white/50 group-hover:text-white transition" /> Print...
+                        </div>
+                        <span className="text-[10px] text-white/40 font-mono">Ctrl+P</span>
+                    </button>
+                    <button onClick={() => { useUIStore.getState().saveActivePageAsPDF(); closeContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
+                        <FileDown size={14} className="text-white/50 group-hover:text-white transition" /> Save as Clean PDF...
                     </button>
                     <button onClick={() => { showToast('URL copied to clipboard'); closeContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
                         <Copy size={14} className="text-white/50 group-hover:text-white transition" /> Copy URL
