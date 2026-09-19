@@ -780,3 +780,714 @@ window.addEventListener('popstate', runSmartDark);
 ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
     checkSmartDark(isForceDark, isExcluded);
 });
+
+// ==============================================================================
+// --- WEBPAGE HIGHLIGHTER & PERSISTENT STICKY NOTES ---
+// ==============================================================================
+(function() {
+    const QB_HIGHLIGHT_COLORS = {
+        accent: { id: 'accent', label: 'Accent', bg: 'rgba(212, 188, 148, 0.42)', border: '#d4bc94', text: '#d4bc94', dot: '#d4bc94' },
+        yellow: { id: 'yellow', label: 'Yellow', bg: 'rgba(253, 224, 71, 0.42)', border: '#fde047', text: '#eab308', dot: '#fde047' },
+        green:  { id: 'green',  label: 'Green',  bg: 'rgba(134, 239, 172, 0.42)', border: '#86efac', text: '#22c55e', dot: '#86efac' },
+        blue:   { id: 'blue',   label: 'Blue',   bg: 'rgba(147, 197, 253, 0.42)', border: '#93c5fd', text: '#3b82f6', dot: '#93c5fd' },
+        pink:   { id: 'pink',   label: 'Pink',   bg: 'rgba(244, 114, 182, 0.42)', border: '#f472b6', text: '#ec4899', dot: '#f472b6' }
+    };
+
+    let activePillEl = null;
+    let activeCardEl = null;
+    let currentAnnotations = [];
+    let lastRightClickSelection = null;
+
+    // Inject styles once DOM is ready
+    function injectHighlighterStyles() {
+        if (document.getElementById('qbrowse-highlighter-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'qbrowse-highlighter-styles';
+        style.textContent = `
+            .qbrowse-highlight {
+                transition: background-color 0.2s ease, box-shadow 0.2s ease;
+                box-decoration-break: clone;
+                -webkit-box-decoration-break: clone;
+            }
+            .qbrowse-highlight:hover {
+                filter: brightness(1.12);
+            }
+            .qbrowse-highlight-pulse {
+                animation: qbrowsePulseAnim 1.8s ease-in-out !important;
+            }
+            @keyframes qbrowsePulseAnim {
+                0% { outline: 4px solid var(--qb-pulse-color, #d4bc94); box-shadow: 0 0 25px var(--qb-pulse-color, #d4bc94); }
+                50% { outline: 6px solid var(--qb-pulse-color, #d4bc94); box-shadow: 0 0 35px var(--qb-pulse-color, #d4bc94); }
+                100% { outline: 0px solid transparent; box-shadow: none; }
+            }
+            .qbrowse-note-badge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                margin-left: 3px;
+                vertical-align: 1px;
+                cursor: pointer;
+                background: rgba(18, 18, 24, 0.85);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 5px;
+                padding: 1px 4px;
+                font-size: 11px;
+                line-height: 14px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+                transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+                user-select: none;
+            }
+            .qbrowse-note-badge:hover {
+                transform: scale(1.18);
+                background: rgba(0, 0, 0, 0.95);
+                border-color: #d4bc94;
+            }
+            #qbrowse-highlight-pill {
+                position: absolute;
+                z-index: 2147483646;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                padding: 5px 8px;
+                background: rgba(18, 18, 24, 0.92);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                border-radius: 9999px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.65), 0 0 1px rgba(255,255,255,0.4);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                color: #fff;
+                user-select: none;
+                animation: qbrowsePillPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+            @keyframes qbrowsePillPop {
+                0% { opacity: 0; transform: scale(0.92) translateY(6px); }
+                100% { opacity: 1; transform: scale(1) translateY(0); }
+            }
+            .qb-pill-color-dot {
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                cursor: pointer;
+                border: 1.5px solid rgba(255,255,255,0.3);
+                transition: transform 0.15s ease, border-color 0.15s ease;
+                flex-shrink: 0;
+            }
+            .qb-pill-color-dot:hover {
+                transform: scale(1.25);
+                border-color: #ffffff;
+            }
+            .qb-pill-btn {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                background: rgba(255,255,255,0.1);
+                border: 1px solid rgba(255,255,255,0.15);
+                color: rgba(255,255,255,0.9);
+                border-radius: 9999px;
+                padding: 3px 8px;
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.15s ease, color 0.15s ease;
+            }
+            .qb-pill-btn:hover {
+                background: rgba(255,255,255,0.22);
+                color: #fff;
+            }
+            #qbrowse-note-card {
+                position: absolute;
+                z-index: 2147483647;
+                width: 290px;
+                background: rgba(18, 18, 24, 0.94);
+                backdrop-filter: blur(24px);
+                -webkit-backdrop-filter: blur(24px);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                border-radius: 14px;
+                box-shadow: 0 16px 40px rgba(0,0,0,0.7), 0 0 1px rgba(255,255,255,0.3);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                color: #fff;
+                padding: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                animation: qbrowsePillPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+        `;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', injectHighlighterStyles);
+    } else {
+        injectHighlighterStyles();
+    }
+
+    function removePill() {
+        if (activePillEl) {
+            activePillEl.remove();
+            activePillEl = null;
+        }
+    }
+
+    function removeCard() {
+        if (activeCardEl) {
+            activeCardEl.remove();
+            activeCardEl = null;
+        }
+    }
+
+    function extractPrefixAndSuffix(range) {
+        let prefix = '';
+        let suffix = '';
+        try {
+            const startNode = range.startContainer;
+            if (startNode && startNode.nodeValue) {
+                prefix = startNode.nodeValue.substring(Math.max(0, range.startOffset - 32), range.startOffset);
+            }
+            const endNode = range.endContainer;
+            if (endNode && endNode.nodeValue) {
+                suffix = endNode.nodeValue.substring(range.endOffset, Math.min(endNode.nodeValue.length, range.endOffset + 32));
+            }
+        } catch (_) {}
+        return { prefix, suffix };
+    }
+
+    function wrapRangeWithHighlight(range, id, colorKey, noteText = '') {
+        const color = QB_HIGHLIGHT_COLORS[colorKey] || QB_HIGHLIGHT_COLORS.accent;
+        const marks = [];
+
+        try {
+            if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+                const textNode = range.startContainer;
+                const selectedText = textNode.textContent.substring(range.startOffset, range.endOffset);
+                
+                const mark = document.createElement('mark');
+                mark.className = 'qbrowse-highlight';
+                mark.setAttribute('data-qbrowse-id', id);
+                mark.setAttribute('data-color', colorKey);
+                mark.style.cssText = `background-color: ${color.bg} !important; border-bottom: 2px solid ${color.border} !important; color: inherit !important; border-radius: 3px; padding: 1px 1px; cursor: pointer; text-decoration: none;`;
+                mark.textContent = selectedText;
+
+                const afterText = textNode.splitText(range.startOffset);
+                afterText.deleteData(0, range.endOffset - range.startOffset);
+                afterText.parentNode.insertBefore(mark, afterText);
+                marks.push(mark);
+            } else {
+                const mark = document.createElement('mark');
+                mark.className = 'qbrowse-highlight';
+                mark.setAttribute('data-qbrowse-id', id);
+                mark.setAttribute('data-color', colorKey);
+                mark.style.cssText = `background-color: ${color.bg} !important; border-bottom: 2px solid ${color.border} !important; color: inherit !important; border-radius: 3px; padding: 1px 1px; cursor: pointer; text-decoration: none;`;
+                
+                const fragment = range.extractContents();
+                mark.appendChild(fragment);
+                range.insertNode(mark);
+                marks.push(mark);
+            }
+        } catch (e) {
+            console.warn('[QBrowse Annotations] wrapRangeWithHighlight error:', e);
+        }
+
+        if (marks.length > 0 && noteText) {
+            attachNoteBadge(marks[marks.length - 1], id);
+        }
+
+        return marks;
+    }
+
+    function attachNoteBadge(targetEl, id) {
+        let existing = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
+        if (existing) return existing;
+
+        const badge = document.createElement('span');
+        badge.className = 'qbrowse-note-badge';
+        badge.setAttribute('data-qbrowse-id', id);
+        badge.title = 'Click to view note';
+        badge.innerHTML = '📝';
+        badge.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openNoteCard(id, badge);
+        };
+
+        if (targetEl.nextSibling) {
+            targetEl.parentNode.insertBefore(badge, targetEl.nextSibling);
+        } else {
+            targetEl.parentNode.appendChild(badge);
+        }
+        return badge;
+    }
+
+    function findTextRangeInDocument(targetText, prefix = '', suffix = '') {
+        if (!targetText || !document.body) return null;
+        const cleanTarget = targetText.trim();
+        if (!cleanTarget) return null;
+
+        const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: (node) => {
+                    if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_SKIP;
+                    const tag = parent.tagName.toUpperCase();
+                    if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'MARK'].includes(tag)) {
+                        return NodeFilter.FILTER_SKIP;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            }
+        );
+
+        const textNodes = [];
+        let node;
+        let fullText = '';
+        while ((node = walker.nextNode())) {
+            const start = fullText.length;
+            const val = node.nodeValue;
+            fullText += val;
+            textNodes.push({ node, start, end: start + val.length });
+        }
+
+        let bestIndex = -1;
+        let bestScore = -1;
+        let searchIdx = -1;
+
+        while ((searchIdx = fullText.indexOf(cleanTarget, searchIdx + 1)) !== -1) {
+            let score = 0;
+            if (prefix) {
+                const actualPrefix = fullText.slice(Math.max(0, searchIdx - prefix.length), searchIdx);
+                if (actualPrefix.includes(prefix) || prefix.includes(actualPrefix)) score += 2;
+            }
+            if (suffix) {
+                const actualSuffix = fullText.slice(searchIdx + cleanTarget.length, searchIdx + cleanTarget.length + suffix.length);
+                if (actualSuffix.includes(suffix) || suffix.includes(actualSuffix)) score += 2;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestIndex = searchIdx;
+            }
+            if (!prefix && !suffix) {
+                bestIndex = searchIdx;
+                break;
+            }
+        }
+
+        if (bestIndex === -1) {
+            const lowerFull = fullText.toLowerCase();
+            const lowerTarget = cleanTarget.toLowerCase();
+            bestIndex = lowerFull.indexOf(lowerTarget);
+        }
+
+        if (bestIndex === -1) return null;
+
+        const matchEnd = bestIndex + cleanTarget.length;
+        let startContainer = null, startOffset = 0;
+        let endContainer = null, endOffset = 0;
+
+        for (const item of textNodes) {
+            if (!startContainer && item.start <= bestIndex && bestIndex <= item.end) {
+                startContainer = item.node;
+                startOffset = bestIndex - item.start;
+            }
+            if (item.start <= matchEnd && matchEnd <= item.end) {
+                endContainer = item.node;
+                endOffset = matchEnd - item.start;
+                break;
+            }
+        }
+
+        if (startContainer && endContainer) {
+            try {
+                const range = document.createRange();
+                range.setStart(startContainer, startOffset);
+                range.setEnd(endContainer, endOffset);
+                return range;
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    function createHighlightFromRange(range, colorKey = 'accent', initialNote = '') {
+        const text = range.toString().trim();
+        if (!text) return null;
+
+        const { prefix, suffix } = extractPrefixAndSuffix(range);
+        const id = `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+        const marks = wrapRangeWithHighlight(range, id, colorKey, initialNote);
+        if (marks.length === 0) return null;
+
+        const annotation = {
+            id,
+            url: window.location.href,
+            title: document.title || window.location.href,
+            text,
+            prefix,
+            suffix,
+            color: colorKey,
+            note: initialNote
+        };
+
+        currentAnnotations.push(annotation);
+        ipcRenderer.sendToHost('qbrowse-annotation-create', annotation);
+
+        if (window.getSelection) {
+            window.getSelection().removeAllRanges();
+        }
+
+        return { id, marks, annotation };
+    }
+
+    function openNoteCard(id, anchorEl) {
+        removeCard();
+        removePill();
+
+        const ann = currentAnnotations.find(a => a.id === id) || { id, note: '', color: 'accent' };
+        const rect = anchorEl.getBoundingClientRect();
+
+        const card = document.createElement('div');
+        card.id = 'qbrowse-note-card';
+
+        const top = window.scrollY + rect.bottom + 8;
+        const left = Math.max(12, Math.min(window.scrollX + rect.left, window.innerWidth - 310));
+
+        card.style.top = `${top}px`;
+        card.style.left = `${left}px`;
+
+        card.innerHTML = `
+            <div style="display: flex; items-center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; tracking: 0.05em; color: rgba(255,255,255,0.5);">Sticky Note</span>
+                    <div style="display: flex; align-items: center; gap: 4px; margin-left: 6px;">
+                        ${Object.keys(QB_HIGHLIGHT_COLORS).map(key => `
+                            <div class="qb-pill-color-dot" data-color="${key}" style="background-color: ${QB_HIGHLIGHT_COLORS[key].dot}; width: 12px; height: 12px; ${ann.color === key ? 'border-color: #fff; transform: scale(1.2);' : ''}"></div>
+                        `).join('')}
+                    </div>
+                </div>
+                <button id="qb-card-close" style="background: none; border: none; color: rgba(255,255,255,0.5); cursor: pointer; font-size: 14px; line-height: 1;">✕</button>
+            </div>
+            <textarea id="qb-card-textarea" placeholder="Type your note, thought, or takeaway..." style="width: 100%; height: 85px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #fff; font-size: 12px; font-family: inherit; padding: 8px; resize: none; outline: none; box-sizing: border-box;"></textarea>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+                <button id="qb-card-delete" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer;">Delete</button>
+                <button id="qb-card-save" style="background: var(--accent, #d4bc94); border: none; color: #000; border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: 700; cursor: pointer;">Save</button>
+            </div>
+        `;
+
+        document.body.appendChild(card);
+        activeCardEl = card;
+
+        const textarea = card.querySelector('#qb-card-textarea');
+        textarea.value = ann.note || '';
+        textarea.focus();
+
+        // Handle color dot clicks
+        card.querySelectorAll('.qb-pill-color-dot').forEach(dot => {
+            dot.onclick = (e) => {
+                e.stopPropagation();
+                const newColor = dot.getAttribute('data-color');
+                ann.color = newColor;
+                
+                // Update marks in DOM
+                const colorConfig = QB_HIGHLIGHT_COLORS[newColor] || QB_HIGHLIGHT_COLORS.accent;
+                document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`).forEach(m => {
+                    m.setAttribute('data-color', newColor);
+                    m.style.backgroundColor = colorConfig.bg;
+                    m.style.borderBottomColor = colorConfig.border;
+                });
+
+                ipcRenderer.sendToHost('qbrowse-annotation-update', { id, color: newColor });
+
+                // Highlight active dot
+                card.querySelectorAll('.qb-pill-color-dot').forEach(d => {
+                    d.style.borderColor = 'rgba(255,255,255,0.3)';
+                    d.style.transform = 'scale(1)';
+                });
+                dot.style.borderColor = '#ffffff';
+                dot.style.transform = 'scale(1.2)';
+            };
+        });
+
+        // Close button
+        card.querySelector('#qb-card-close').onclick = () => removeCard();
+
+        // Save button
+        card.querySelector('#qb-card-save').onclick = () => {
+            const noteVal = textarea.value.trim();
+            ann.note = noteVal;
+
+            const targetMarks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
+            if (targetMarks.length > 0) {
+                if (noteVal) {
+                    attachNoteBadge(targetMarks[targetMarks.length - 1], id);
+                } else {
+                    const existingBadge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
+                    if (existingBadge) existingBadge.remove();
+                }
+            }
+
+            ipcRenderer.sendToHost('qbrowse-annotation-update', { id, note: noteVal, color: ann.color || 'accent' });
+            removeCard();
+        };
+
+        // Delete button
+        card.querySelector('#qb-card-delete').onclick = () => {
+            document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`).forEach(m => {
+                const parent = m.parentNode;
+                while (m.firstChild) parent.insertBefore(m.firstChild, m);
+                m.remove();
+            });
+            const badge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
+            if (badge) badge.remove();
+
+            currentAnnotations = currentAnnotations.filter(a => a.id !== id);
+            ipcRenderer.sendToHost('qbrowse-annotation-delete', id);
+            removeCard();
+        };
+
+        // Click outside dismisses card
+        const handleOutsideClick = (e) => {
+            if (activeCardEl && !activeCardEl.contains(e.target) && !anchorEl.contains(e.target)) {
+                // Auto-save note on blur/outside click
+                const noteVal = textarea.value.trim();
+                if (noteVal !== (ann.note || '')) {
+                    ann.note = noteVal;
+                    ipcRenderer.sendToHost('qbrowse-annotation-update', { id, note: noteVal, color: ann.color || 'accent' });
+                    const targetMarks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
+                    if (targetMarks.length > 0) {
+                        if (noteVal) attachNoteBadge(targetMarks[targetMarks.length - 1], id);
+                    }
+                }
+                removeCard();
+                document.removeEventListener('mousedown', handleOutsideClick);
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', handleOutsideClick), 10);
+    }
+
+    function showPill(range, rect, text) {
+        removePill();
+
+        const pill = document.createElement('div');
+        pill.id = 'qbrowse-highlight-pill';
+
+        let top = window.scrollY + rect.top - 44;
+        if (rect.top < 52) {
+            top = window.scrollY + rect.bottom + 8;
+        }
+        const left = Math.max(12, Math.min(window.scrollX + rect.left + (rect.width / 2) - 110, window.innerWidth - 240));
+
+        pill.style.top = `${top}px`;
+        pill.style.left = `${left}px`;
+
+        pill.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 4px;">
+                ${Object.keys(QB_HIGHLIGHT_COLORS).map(key => `
+                    <div class="qb-pill-color-dot" data-color="${key}" title="Highlight with ${QB_HIGHLIGHT_COLORS[key].label}" style="background-color: ${QB_HIGHLIGHT_COLORS[key].dot};"></div>
+                `).join('')}
+            </div>
+            <div style="width: 1px; height: 14px; background: rgba(255,255,255,0.2); margin: 0 2px;"></div>
+            <button class="qb-pill-btn" id="qb-pill-add-note" title="Add Note">📝 Note</button>
+            <button class="qb-pill-btn" id="qb-pill-copy" title="Copy selection">📋</button>
+        `;
+
+        document.body.appendChild(pill);
+        activePillEl = pill;
+
+        // Color dot click
+        pill.querySelectorAll('.qb-pill-color-dot').forEach(dot => {
+            dot.onmousedown = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const color = dot.getAttribute('data-color');
+                createHighlightFromRange(range, color);
+                removePill();
+            };
+        });
+
+        // Add note button
+        pill.querySelector('#qb-pill-add-note').onmousedown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const res = createHighlightFromRange(range, 'accent');
+            removePill();
+            if (res && res.marks.length > 0) {
+                openNoteCard(res.id, res.marks[res.marks.length - 1]);
+            }
+        };
+
+        // Copy button
+        pill.querySelector('#qb-pill-copy').onmousedown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                navigator.clipboard.writeText(text);
+                const copyBtn = pill.querySelector('#qb-pill-copy');
+                if (copyBtn) copyBtn.textContent = '✓';
+                setTimeout(removePill, 600);
+            } catch (_) {
+                removePill();
+            }
+        };
+    }
+
+    function handleSelectionCheck() {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+            removePill();
+            return;
+        }
+
+        const text = sel.toString().trim();
+        if (text.length < 2) {
+            removePill();
+            return;
+        }
+
+        const anchor = sel.anchorNode;
+        const focus = sel.focusNode;
+        const anchorEl = anchor?.nodeType === 1 ? anchor : anchor?.parentElement;
+        const focusEl = focus?.nodeType === 1 ? focus : focus?.parentElement;
+        if (anchorEl?.closest('input, textarea, [contenteditable="true"]') ||
+            focusEl?.closest('input, textarea, [contenteditable="true"]')) {
+            removePill();
+            return;
+        }
+
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) {
+            removePill();
+            return;
+        }
+
+        // Store for right-click context menu bridge
+        lastRightClickSelection = {
+            range: range.cloneRange(),
+            text,
+            prefix: extractPrefixAndSuffix(range).prefix,
+            suffix: extractPrefixAndSuffix(range).suffix
+        };
+
+        showPill(range, rect, text);
+    }
+
+    window.addEventListener('mouseup', (e) => {
+        if (activePillEl && activePillEl.contains(e.target)) return;
+        if (activeCardEl && activeCardEl.contains(e.target)) return;
+        setTimeout(handleSelectionCheck, 20);
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (['Shift', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+            setTimeout(handleSelectionCheck, 20);
+        }
+    });
+
+    window.addEventListener('mousedown', (e) => {
+        if (activePillEl && !activePillEl.contains(e.target)) {
+            removePill();
+        }
+    });
+
+    // Right-click context menu tracking
+    window.addEventListener('contextmenu', (e) => {
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed && sel.toString().trim().length >= 1) {
+            const text = sel.toString().trim();
+            const range = sel.getRangeAt(0);
+            const { prefix, suffix } = extractPrefixAndSuffix(range);
+            lastRightClickSelection = {
+                range: range.cloneRange(),
+                text,
+                prefix,
+                suffix
+            };
+            ipcRenderer.sendToHost('qbrowse-selection-contextmenu', {
+                hasSelection: true,
+                text: text.slice(0, 120)
+            });
+        } else {
+            lastRightClickSelection = null;
+            ipcRenderer.sendToHost('qbrowse-selection-contextmenu', {
+                hasSelection: false
+            });
+        }
+    });
+
+    // Global click listener for existing highlights
+    document.addEventListener('click', (e) => {
+        const mark = e.target.closest('.qbrowse-highlight');
+        if (mark) {
+            const id = mark.getAttribute('data-qbrowse-id');
+            if (id) {
+                e.preventDefault();
+                e.stopPropagation();
+                openNoteCard(id, mark);
+            }
+        }
+    }, true);
+
+    // IPC: Apply annotations from host
+    ipcRenderer.on('qbrowse-apply-annotations', (event, annotations) => {
+        if (!Array.isArray(annotations)) return;
+        currentAnnotations = annotations;
+
+        annotations.forEach(ann => {
+            // If already rendered in DOM, update color & note badge
+            const existingMarks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${ann.id}"]`);
+            if (existingMarks.length > 0) {
+                const colorConfig = QB_HIGHLIGHT_COLORS[ann.color] || QB_HIGHLIGHT_COLORS.accent;
+                existingMarks.forEach(m => {
+                    m.style.backgroundColor = colorConfig.bg;
+                    m.style.borderBottomColor = colorConfig.border;
+                });
+                if (ann.note) {
+                    attachNoteBadge(existingMarks[existingMarks.length - 1], ann.id);
+                } else {
+                    const badge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${ann.id}"]`);
+                    if (badge) badge.remove();
+                }
+                return;
+            }
+
+            // Not yet rendered: locate range and render
+            const range = findTextRangeInDocument(ann.text, ann.prefix, ann.suffix);
+            if (range) {
+                wrapRangeWithHighlight(range, ann.id, ann.color || 'accent', ann.note || '');
+            }
+        });
+    });
+
+    // IPC: Scroll to annotation and pulse it
+    ipcRenderer.on('qbrowse-scroll-to-annotation', (event, id) => {
+        const el = document.querySelector(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('qbrowse-highlight-pulse');
+            setTimeout(() => el.classList.remove('qbrowse-highlight-pulse'), 1800);
+        }
+    });
+
+    // IPC: Context menu actions
+    ipcRenderer.on('qbrowse-context-highlight', (event, { color = 'accent' } = {}) => {
+        if (lastRightClickSelection && lastRightClickSelection.range) {
+            createHighlightFromRange(lastRightClickSelection.range, color);
+            lastRightClickSelection = null;
+        }
+    });
+
+    ipcRenderer.on('qbrowse-context-add-note', () => {
+        if (lastRightClickSelection && lastRightClickSelection.range) {
+            const res = createHighlightFromRange(lastRightClickSelection.range, 'accent');
+            lastRightClickSelection = null;
+            if (res && res.marks.length > 0) {
+                openNoteCard(res.id, res.marks[res.marks.length - 1]);
+            }
+        }
+    });
+})();

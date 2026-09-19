@@ -3,8 +3,10 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { 
     X, ArrowLeft, Volume2, VolumeX, Play, Pause, SkipBack, SkipForward, 
-    Type, BookOpen, Clock, Globe, ExternalLink, RotateCcw, ChevronDown, Check
+    Type, BookOpen, Clock, Globe, ExternalLink, RotateCcw, ChevronDown, Check, Copy
 } from 'lucide-react';
+import { applyAnnotationsToContainer, extractPrefixAndSuffix } from '../../utils/domHighlighter';
+import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 
 const THEMES = {
     dark: {
@@ -104,6 +106,111 @@ export default function ReaderModeOverlay() {
     const articleBodyRef = useRef(null);
     const activeUtteranceRef = useRef(null);
     const ttsBlocks = article?.ttsBlocks || [];
+
+    // In-Page Annotations State
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const addAnnotation = useAnnotationStore(state => state.addAnnotation);
+    const updateAnnotation = useAnnotationStore(state => state.updateAnnotation);
+    const removeAnnotation = useAnnotationStore(state => state.removeAnnotation);
+    const annotations = useAnnotationStore(state => state.annotations);
+
+    const [floatingPill, setFloatingPill] = useState(null);
+    const [activeNoteCard, setActiveNoteCard] = useState(null);
+    const [noteDraftText, setNoteDraftText] = useState('');
+
+    const handleOpenNoteCard = (id, anchorEl) => {
+        setFloatingPill(null);
+        const rect = anchorEl.getBoundingClientRect();
+        const ann = useAnnotationStore.getState().annotations.find(a => a.id === id) || { id, note: '', color: 'accent' };
+        setActiveNoteCard({
+            id,
+            x: Math.max(16, Math.min(rect.left, window.innerWidth - 320)),
+            y: rect.bottom + 8,
+            note: ann.note || '',
+            color: ann.color || 'accent'
+        });
+        setNoteDraftText(ann.note || '');
+    };
+
+    // Re-apply annotations whenever article, URL, or annotations change
+    useEffect(() => {
+        if (!isReaderOpen || !articleBodyRef.current || !article?.url) return;
+        const urlAnnotations = useAnnotationStore.getState().getAnnotationsForUrl(article.url, activeSpace);
+        applyAnnotationsToContainer(articleBodyRef.current, urlAnnotations, handleOpenNoteCard);
+    }, [isReaderOpen, article?.url, article?.contentHtml, annotations, activeSpace]);
+
+    // Listen for text selections & clicks inside articleBodyRef
+    useEffect(() => {
+        if (!isReaderOpen || !articleBodyRef.current) return;
+
+        const checkSelection = () => {
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+                setFloatingPill(null);
+                return;
+            }
+            const text = sel.toString().trim();
+            if (text.length < 2) {
+                setFloatingPill(null);
+                return;
+            }
+            const range = sel.getRangeAt(0);
+            if (!articleBodyRef.current.contains(range.commonAncestorContainer)) {
+                setFloatingPill(null);
+                return;
+            }
+            const rect = range.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) {
+                setFloatingPill(null);
+                return;
+            }
+
+            let top = rect.top - 46;
+            if (rect.top < 54) top = rect.bottom + 8;
+            const left = Math.max(16, Math.min(rect.left + (rect.width / 2) - 100, window.innerWidth - 240));
+
+            setFloatingPill({
+                x: left,
+                y: top,
+                range: range.cloneRange(),
+                text
+            });
+        };
+
+        const handleMouseUp = (e) => {
+            if (e.target.closest('#reader-highlight-pill') || e.target.closest('#reader-note-card')) return;
+            setTimeout(checkSelection, 20);
+        };
+
+        const handleKeyUp = (e) => {
+            if (['Shift', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                setTimeout(checkSelection, 20);
+            }
+        };
+
+        const el = articleBodyRef.current;
+        el.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('keyup', handleKeyUp);
+
+        const handleClick = (e) => {
+            const mark = e.target.closest('.qbrowse-highlight');
+            if (mark) {
+                const id = mark.getAttribute('data-qbrowse-id');
+                if (id) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleOpenNoteCard(id, mark);
+                }
+            }
+        };
+        el.addEventListener('click', handleClick);
+
+        return () => {
+            el.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('keyup', handleKeyUp);
+            el.removeEventListener('click', handleClick);
+        };
+    }, [isReaderOpen, activeSpace, article]);
 
     // Load available speech synthesis voices
     useEffect(() => {
@@ -679,6 +786,149 @@ export default function ReaderModeOverlay() {
                             title="Stop & Close Narration"
                         >
                             <X size={15} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Floating Highlight Pill in Reader Mode */}
+            {floatingPill && (
+                <div 
+                    id="reader-highlight-pill"
+                    className="fixed z-50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#121218]/95 backdrop-blur-2xl border border-white/20 shadow-2xl animate-pop-in"
+                    style={{ top: `${floatingPill.y}px`, left: `${floatingPill.x}px` }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="flex items-center gap-1.5">
+                        {Object.keys(HIGHLIGHT_COLORS).map(key => (
+                            <button
+                                key={key}
+                                onClick={() => {
+                                    const { prefix, suffix } = extractPrefixAndSuffix(floatingPill.range);
+                                    addAnnotation({
+                                        space: activeSpace,
+                                        url: article.url,
+                                        title: article.title,
+                                        text: floatingPill.text,
+                                        prefix,
+                                        suffix,
+                                        color: key,
+                                        note: ''
+                                    });
+                                    if (window.getSelection) window.getSelection().removeAllRanges();
+                                    setFloatingPill(null);
+                                }}
+                                title={`Highlight with ${HIGHLIGHT_COLORS[key].label}`}
+                                className="w-4 h-4 rounded-full border border-white/30 hover:scale-125 transition-transform cursor-pointer"
+                                style={{ backgroundColor: HIGHLIGHT_COLORS[key].border }}
+                            />
+                        ))}
+                    </div>
+                    <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+                    <button
+                        onClick={() => {
+                            const { prefix, suffix } = extractPrefixAndSuffix(floatingPill.range);
+                            const created = addAnnotation({
+                                space: activeSpace,
+                                url: article.url,
+                                title: article.title,
+                                text: floatingPill.text,
+                                prefix,
+                                suffix,
+                                color: 'accent',
+                                note: ''
+                            });
+                            if (window.getSelection) window.getSelection().removeAllRanges();
+                            setFloatingPill(null);
+                            setTimeout(() => {
+                                const mark = articleBodyRef.current?.querySelector(`.qbrowse-highlight[data-qbrowse-id="${created.id}"]`);
+                                if (mark) handleOpenNoteCard(created.id, mark);
+                            }, 50);
+                        }}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-xs font-semibold transition cursor-pointer"
+                    >
+                        📝 Note
+                    </button>
+                    <button
+                        onClick={() => {
+                            navigator.clipboard.writeText(floatingPill.text);
+                            setFloatingPill(null);
+                        }}
+                        className="p-1 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition cursor-pointer"
+                        title="Copy text"
+                    >
+                        <Copy size={12} />
+                    </button>
+                </div>
+            )}
+
+            {/* In-Page Glassmorphic Note Card in Reader Mode */}
+            {activeNoteCard && (
+                <div
+                    id="reader-note-card"
+                    className="fixed z-50 w-72 p-3 rounded-2xl bg-[#121218]/95 backdrop-blur-2xl border border-white/20 shadow-2xl flex flex-col gap-2.5 animate-pop-in text-white"
+                    style={{ top: `${activeNoteCard.y}px`, left: `${activeNoteCard.x}px` }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Sticky Note</span>
+                            <div className="flex items-center gap-1">
+                                {Object.keys(HIGHLIGHT_COLORS).map(key => (
+                                    <button
+                                        key={key}
+                                        onClick={() => {
+                                            updateAnnotation(activeNoteCard.id, { color: key });
+                                            setActiveNoteCard(prev => ({ ...prev, color: key }));
+                                        }}
+                                        className={`w-3 h-3 rounded-full border transition-transform cursor-pointer ${activeNoteCard.color === key ? 'border-white scale-125' : 'border-white/20'}`}
+                                        style={{ backgroundColor: HIGHLIGHT_COLORS[key].border }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setActiveNoteCard(null)}
+                            className="text-white/40 hover:text-white text-xs cursor-pointer"
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    <textarea
+                        value={noteDraftText}
+                        onChange={e => setNoteDraftText(e.target.value)}
+                        placeholder="Type your note or thought..."
+                        className="w-full h-20 bg-black/40 border border-white/10 rounded-xl p-2 text-xs text-white outline-none resize-none"
+                        autoFocus
+                    />
+
+                    <div className="flex items-center justify-between pt-0.5">
+                        <button
+                            onClick={() => {
+                                removeAnnotation(activeNoteCard.id);
+                                const marks = articleBodyRef.current?.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${activeNoteCard.id}"]`);
+                                marks?.forEach(m => {
+                                    const p = m.parentNode;
+                                    while (m.firstChild) p.insertBefore(m.firstChild, m);
+                                    m.remove();
+                                });
+                                const badge = articleBodyRef.current?.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${activeNoteCard.id}"]`);
+                                badge?.remove();
+                                setActiveNoteCard(null);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs font-semibold hover:bg-red-500/30 transition cursor-pointer"
+                        >
+                            Delete
+                        </button>
+                        <button
+                            onClick={() => {
+                                updateAnnotation(activeNoteCard.id, { note: noteDraftText.trim() });
+                                setActiveNoteCard(null);
+                            }}
+                            className="px-3 py-1 rounded-lg bg-accent text-black text-xs font-bold hover:opacity-90 transition cursor-pointer"
+                        >
+                            Save
                         </button>
                     </div>
                 </div>

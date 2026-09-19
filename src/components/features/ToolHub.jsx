@@ -3,13 +3,15 @@ import {
     Puzzle, X, PenTool, ClipboardList, MessageSquare, 
     Copy, Cpu, Download, Zap, Globe, Send, FolderOpen, ExternalLink,
     Trash2, RefreshCw, Paperclip, FileText, Image as ImageIcon, Play, Square, Sliders,
-    Mic, Volume2, Loader2, Search, Camera, Crop, Maximize2
+    Mic, Volume2, Loader2, Search, Camera, Crop, Maximize2,
+    Highlighter, StickyNote, ChevronDown, ChevronRight, FileDown, ArrowUpRight
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useUIStore from '../../store/useUIStore';
 import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useTabStore from '../../store/useTabStore';
+import { useAnnotationStore, normalizeAnnotationUrl, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { startRecording, stopRecordingAndTranscribe } from '../../utils/whisperSTT';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -61,6 +63,72 @@ export default function ToolHub() {
     const showHubToast = (msg) => {
         setHubToast(msg);
         setTimeout(() => setHubToast(null), 2500);
+    };
+
+    // Web Notes State
+    const [notesSubTab, setNotesSubTab] = useState('web'); // 'web' | 'scratchpad'
+    const [webNotesQuery, setWebNotesQuery] = useState('');
+    const [webNotesSpaceFilter, setWebNotesSpaceFilter] = useState('all'); // 'all' | 'current'
+    const [collapsedDomains, setCollapsedDomains] = useState({});
+    const [editingNoteId, setEditingNoteId] = useState(null);
+    const [editingNoteText, setEditingNoteText] = useState('');
+
+    const annotations = useAnnotationStore(state => state.annotations);
+    const removeAnnotation = useAnnotationStore(state => state.removeAnnotation);
+    const updateAnnotation = useAnnotationStore(state => state.updateAnnotation);
+    const exportToMarkdown = useAnnotationStore(state => state.exportToMarkdown);
+    const activeSpace = useTabStore(state => state.activeSpace);
+
+    const toggleDomainCollapse = (domain) => {
+        setCollapsedDomains(prev => ({ ...prev, [domain]: !prev[domain] }));
+    };
+
+    const handleJumpToAnnotation = (ann) => {
+        const tabStore = useTabStore.getState();
+        if (ann.space && tabStore.activeSpace !== ann.space) {
+            tabStore.setActiveSpace(ann.space);
+        }
+        const currentSpace = ann.space || tabStore.activeSpace;
+        const spaceTabs = currentSpace === 'personal' ? tabStore.privateTabs : (currentSpace === 'work' ? tabStore.workTabs : tabStore.ghostTabs);
+        const targetCleanUrl = normalizeAnnotationUrl(ann.url);
+        const existingTab = spaceTabs.find(t => normalizeAnnotationUrl(t.url) === targetCleanUrl);
+
+        if (existingTab) {
+            tabStore.setActiveTab(existingTab.id, currentSpace);
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('qbrowse-jump-to-annotation', {
+                    detail: { id: ann.id, tabId: existingTab.id, url: ann.url }
+                }));
+            }, 250);
+        } else {
+            tabStore.handleNewTab(ann.url);
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('qbrowse-jump-to-annotation', {
+                    detail: { id: ann.id, url: ann.url }
+                }));
+            }, 800);
+        }
+        setIsRightPanelOpen(false);
+        showHubToast('Navigating to highlight...');
+    };
+
+    const handleExportMarkdown = () => {
+        const md = exportToMarkdown(webNotesSpaceFilter === 'current' ? activeSpace : null);
+        try {
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `qbrowse-notes-${new Date().toISOString().slice(0, 10)}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showHubToast('Exported Markdown file!');
+        } catch (_) {
+            navigator.clipboard.writeText(md);
+            showHubToast('Copied notes to clipboard as Markdown!');
+        }
     };
 
     // Auto-scroll chat to bottom
@@ -380,14 +448,288 @@ export default function ToolHub() {
 
                 <div className="flex-1 overflow-hidden relative">
                     {/* NOTES TAB */}
-                    <div className={`absolute inset-0 p-5 transition-all duration-300 ${rightPanelTab === 'notes' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 -translate-x-4 pointer-events-none z-0'}`}>
-                        <textarea
-                            value={notesContent}
-                            onChange={e => setNotesContent(e.target.value)}
-                            placeholder="Jot down quick thoughts, markdown supported..."
-                            className="w-full h-full bg-transparent text-sm text-white/90 placeholder-white/30 resize-none outline-none hide-scroll leading-relaxed font-sans"
-                            spellCheck="false"
-                        />
+                    <div className={`absolute inset-0 p-4 pb-2 flex flex-col transition-all duration-300 ${rightPanelTab === 'notes' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 -translate-x-4 pointer-events-none z-0'}`}>
+                        {/* Segmented Subtab Header */}
+                        <div className="flex bg-black/40 border border-white/5 p-1 rounded-xl mb-3 flex-shrink-0">
+                            <button
+                                onClick={() => setNotesSubTab('web')}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                    notesSubTab === 'web'
+                                        ? 'bg-accent text-black shadow-md font-bold'
+                                        : 'text-white/50 hover:text-white hover:bg-white/5'
+                                }`}
+                            >
+                                <Globe size={13} />
+                                <span>Web Notes ({annotations.length})</span>
+                            </button>
+                            <button
+                                onClick={() => setNotesSubTab('scratchpad')}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                    notesSubTab === 'scratchpad'
+                                        ? 'bg-accent text-black shadow-md font-bold'
+                                        : 'text-white/50 hover:text-white hover:bg-white/5'
+                                }`}
+                            >
+                                <PenTool size={13} />
+                                <span>Scratchpad</span>
+                            </button>
+                        </div>
+
+                        {notesSubTab === 'scratchpad' ? (
+                            <div className="flex-1 flex flex-col min-h-0 bg-white/[0.02] border border-white/5 rounded-2xl p-3.5">
+                                <textarea
+                                    value={notesContent}
+                                    onChange={e => setNotesContent(e.target.value)}
+                                    placeholder="Jot down quick thoughts, notes, links... markdown supported."
+                                    className="w-full h-full bg-transparent text-sm text-white/90 placeholder-white/30 resize-none outline-none custom-scrollbar leading-relaxed font-sans"
+                                    spellCheck="false"
+                                />
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex flex-col min-h-0">
+                                {/* Search & Space Filter Bar */}
+                                <div className="flex flex-col gap-2 mb-3 flex-shrink-0">
+                                    <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-xl px-2.5 py-1.5 focus-within:border-accent/50 transition">
+                                        <Search size={13} className="text-white/40 flex-shrink-0" />
+                                        <input
+                                            type="text"
+                                            value={webNotesQuery}
+                                            onChange={e => setWebNotesQuery(e.target.value)}
+                                            placeholder="Search highlights, notes, domains..."
+                                            className="flex-1 bg-transparent text-xs text-white placeholder-white/30 outline-none"
+                                        />
+                                        {webNotesQuery && (
+                                            <button onClick={() => setWebNotesQuery('')} className="text-white/40 hover:text-white text-xs">✕</button>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1 bg-black/20 p-0.5 rounded-lg border border-white/5">
+                                            <button
+                                                onClick={() => setWebNotesSpaceFilter('all')}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${webNotesSpaceFilter === 'all' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white'}`}
+                                            >
+                                                All Spaces
+                                            </button>
+                                            <button
+                                                onClick={() => setWebNotesSpaceFilter('current')}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition flex items-center gap-1 ${webNotesSpaceFilter === 'current' ? 'bg-accent/20 text-accent font-bold' : 'text-white/40 hover:text-white'}`}
+                                            >
+                                                <span className="capitalize">{activeSpace}</span> Space
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            onClick={handleExportMarkdown}
+                                            disabled={annotations.length === 0}
+                                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white disabled:opacity-30 text-[11px] font-medium border border-white/5 transition cursor-pointer"
+                                            title="Export Notes as Markdown (.md)"
+                                        >
+                                            <FileDown size={12} />
+                                            <span>Export MD</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Domain-Grouped Highlights List */}
+                                <div className="flex-1 overflow-y-auto custom-scrollbar pr-0.5 flex flex-col gap-2.5">
+                                    {(() => {
+                                        const spaceFiltered = webNotesSpaceFilter === 'current' ? annotations.filter(a => a.space === activeSpace) : annotations;
+                                        const queryLower = webNotesQuery.toLowerCase().trim();
+                                        const filtered = queryLower
+                                            ? spaceFiltered.filter(a =>
+                                                (a.text && a.text.toLowerCase().includes(queryLower)) ||
+                                                (a.note && a.note.toLowerCase().includes(queryLower)) ||
+                                                (a.domain && a.domain.toLowerCase().includes(queryLower)) ||
+                                                (a.title && a.title.toLowerCase().includes(queryLower))
+                                              )
+                                            : spaceFiltered;
+
+                                        if (filtered.length === 0) {
+                                            return (
+                                                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-white/40">
+                                                    <Highlighter size={32} className="text-accent/30 mb-2.5" />
+                                                    <p className="text-xs font-semibold text-white/70 mb-1">No Web Notes Saved</p>
+                                                    <p className="text-[11px] leading-relaxed max-w-[260px]">
+                                                        Highlight text on any webpage or click "Note" in the floating pill to keep persistent notes across visits.
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
+
+                                        const domainMap = new Map();
+                                        filtered.forEach(ann => {
+                                            const d = ann.domain || 'Other';
+                                            if (!domainMap.has(d)) domainMap.set(d, []);
+                                            domainMap.get(d).push(ann);
+                                        });
+
+                                        const domainGroups = Array.from(domainMap.entries()).map(([domain, items]) => ({
+                                            domain,
+                                            count: items.length,
+                                            items: items.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
+                                        })).sort((a, b) => b.count - a.count);
+
+                                        return domainGroups.map(group => {
+                                            const isCollapsed = !!collapsedDomains[group.domain];
+                                            return (
+                                                <div key={group.domain} className="bg-white/[0.03] border border-white/5 rounded-xl overflow-hidden">
+                                                    {/* Group Header */}
+                                                    <button
+                                                        onClick={() => toggleDomainCollapse(group.domain)}
+                                                        className="w-full flex items-center justify-between p-2.5 px-3 bg-white/[0.02] hover:bg-white/[0.05] transition text-left cursor-pointer border-b border-white/5"
+                                                    >
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <Globe size={13} className="text-accent flex-shrink-0" />
+                                                            <span className="text-xs font-bold text-white/90 truncate">{group.domain}</span>
+                                                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-white/10 text-white/60">
+                                                                {group.count}
+                                                            </span>
+                                                        </div>
+                                                        <ChevronDown size={14} className={`text-white/40 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`} />
+                                                    </button>
+
+                                                    {/* Group Items */}
+                                                    {!isCollapsed && (
+                                                        <div className="p-2 flex flex-col gap-2">
+                                                            {group.items.map(ann => {
+                                                                const colorConfig = HIGHLIGHT_COLORS[ann.color] || HIGHLIGHT_COLORS.accent;
+                                                                const isEditing = editingNoteId === ann.id;
+
+                                                                return (
+                                                                    <div 
+                                                                        key={ann.id} 
+                                                                        className="p-2.5 rounded-lg bg-black/40 border border-white/5 hover:border-white/15 transition flex flex-col gap-2 group/card"
+                                                                    >
+                                                                        {/* Page Title & Space Badge */}
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <div 
+                                                                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
+                                                                                    style={{ backgroundColor: colorConfig.border }} 
+                                                                                    title={`Color: ${colorConfig.label}`}
+                                                                                />
+                                                                                <span className="text-[11px] font-medium text-white/70 truncate max-w-[200px]" title={ann.title || ann.url}>
+                                                                                    {ann.title || ann.domain}
+                                                                                </span>
+                                                                            </div>
+                                                                            <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-white/5 text-white/40">
+                                                                                {ann.space || 'personal'}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        {/* Text Quote Snippet */}
+                                                                        <div 
+                                                                            className="text-xs text-white/90 pl-2.5 border-l-2 leading-relaxed cursor-pointer hover:text-white transition"
+                                                                            style={{ borderColor: colorConfig.border }}
+                                                                            onClick={() => handleJumpToAnnotation(ann)}
+                                                                            title="Click to jump to this highlight on page"
+                                                                        >
+                                                                            "{ann.text}"
+                                                                        </div>
+
+                                                                        {/* Attached Sticky Note */}
+                                                                        {isEditing ? (
+                                                                            <div className="flex flex-col gap-1.5 mt-1">
+                                                                                <textarea
+                                                                                    value={editingNoteText}
+                                                                                    onChange={e => setEditingNoteText(e.target.value)}
+                                                                                    placeholder="Add a note or thought..."
+                                                                                    className="w-full h-16 bg-black/50 border border-white/20 rounded-lg p-2 text-xs text-white outline-none resize-none"
+                                                                                    autoFocus
+                                                                                />
+                                                                                <div className="flex items-center justify-end gap-1.5">
+                                                                                    <button
+                                                                                        onClick={() => setEditingNoteId(null)}
+                                                                                        className="px-2 py-0.5 rounded text-[10px] text-white/50 hover:text-white cursor-pointer"
+                                                                                    >
+                                                                                        Cancel
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            updateAnnotation(ann.id, { note: editingNoteText.trim() });
+                                                                                            setEditingNoteId(null);
+                                                                                            showHubToast('Note updated');
+                                                                                        }}
+                                                                                        className="px-2.5 py-0.5 rounded bg-accent text-black text-[10px] font-bold cursor-pointer hover:opacity-90"
+                                                                                    >
+                                                                                        Save
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : ann.note ? (
+                                                                            <div 
+                                                                                onClick={() => {
+                                                                                    setEditingNoteId(ann.id);
+                                                                                    setEditingNoteText(ann.note);
+                                                                                }}
+                                                                                className="flex items-start gap-1.5 p-2 rounded-lg bg-white/[0.04] border border-white/5 text-xs text-white/80 cursor-pointer hover:border-white/20 transition group/note"
+                                                                                title="Click to edit note"
+                                                                            >
+                                                                                <StickyNote size={12} className="text-accent flex-shrink-0 mt-0.5" />
+                                                                                <span className="flex-1 leading-snug">{ann.note}</span>
+                                                                            </div>
+                                                                        ) : null}
+
+                                                                        {/* Action Buttons Row */}
+                                                                        <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[10px] text-white/40">
+                                                                            <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                {!ann.note && !isEditing && (
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setEditingNoteId(ann.id);
+                                                                                            setEditingNoteText('');
+                                                                                        }}
+                                                                                        className="hover:text-accent flex items-center gap-0.5 px-1.5 py-0.5 rounded hover:bg-white/5 transition cursor-pointer"
+                                                                                        title="Add note"
+                                                                                    >
+                                                                                        <StickyNote size={11} />
+                                                                                        <span>Note</span>
+                                                                                    </button>
+                                                                                )}
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        navigator.clipboard.writeText(ann.text);
+                                                                                        showHubToast('Copied quote');
+                                                                                    }}
+                                                                                    className="hover:text-white p-1 rounded hover:bg-white/5 transition cursor-pointer"
+                                                                                    title="Copy quote"
+                                                                                >
+                                                                                    <Copy size={11} />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleJumpToAnnotation(ann)}
+                                                                                    className="hover:text-accent flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition cursor-pointer font-medium"
+                                                                                    title="Jump to page"
+                                                                                >
+                                                                                    <ArrowUpRight size={11} />
+                                                                                    <span>Jump</span>
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        removeAnnotation(ann.id);
+                                                                                        showHubToast('Highlight removed');
+                                                                                    }}
+                                                                                    className="hover:text-red-400 p-1 rounded hover:bg-red-500/10 transition cursor-pointer"
+                                                                                    title="Delete highlight"
+                                                                                >
+                                                                                    <Trash2 size={11} />
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        });
+                                    })()}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* CLIPBOARD TAB */}

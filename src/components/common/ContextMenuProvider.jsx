@@ -2,7 +2,7 @@ import React from 'react';
 import { 
     ArrowLeft, ArrowRight, RefreshCw, Copy, MonitorPlay, Pin, Minus, 
     PictureInPicture2, VolumeX, Volume2, Layers, X, Pencil, Trash, Moon, Search,
-    Printer, FileDown, BookOpen
+    Printer, FileDown, BookOpen, Highlighter, StickyNote
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -31,6 +31,27 @@ export default function ContextMenuProvider({ children }) {
 
     const handleRefresh = () => { showToast('Odświeżam...'); };
 
+    const handleContextHighlight = (color = 'accent') => {
+        const activeTabId = useTabStore.getState().activeTabId;
+        const wv = window.qbrowseWebviews?.[activeTabId];
+        if (wv && typeof wv.send === 'function') {
+            wv.send('qbrowse-context-highlight', { color });
+        }
+    };
+
+    const handleContextAddNote = () => {
+        const activeTabId = useTabStore.getState().activeTabId;
+        const wv = window.qbrowseWebviews?.[activeTabId];
+        if (wv && typeof wv.send === 'function') {
+            wv.send('qbrowse-context-add-note');
+        }
+    };
+
+    const hasSelection = contextMenu?.hasSelection || !!(contextMenu?.selectionText);
+    const selectionText = contextMenu?.selectionText || '';
+    const safeX = typeof window !== 'undefined' ? Math.min(contextMenu?.x || 0, window.innerWidth - 240) : (contextMenu?.x || 0);
+    const safeY = typeof window !== 'undefined' ? Math.min(contextMenu?.y || 0, window.innerHeight - 380) : (contextMenu?.y || 0);
+
     return (
         <>
             {children}
@@ -38,11 +59,92 @@ export default function ContextMenuProvider({ children }) {
             {/* GENERAL CONTEXT MENU */}
             {(contextMenu || isContextMenuClosing) && (
                 <div
-                    className={`fixed z-[30000] w-56 flex flex-col bg-black/60 backdrop-blur-3xl border border-white/10 rounded-xl shadow-[0_30px_60px_rgba(0,0,0,0.7)] p-1.5 text-white/90 ${isContextMenuClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
-                    style={{ top: contextMenu?.y, left: contextMenu?.x }}
+                    className={`fixed z-[30000] w-60 flex flex-col bg-black/70 backdrop-blur-3xl border border-white/10 rounded-xl shadow-[0_30px_60px_rgba(0,0,0,0.7)] p-1.5 text-white/90 ${isContextMenuClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                    style={{ top: safeY, left: safeX }}
                     onClick={(e) => e.stopPropagation()}
                     onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
+                    {/* SELECTION ACTIONS */}
+                    {hasSelection && (
+                        <>
+                            <div className="px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold text-white/50 border-b border-white/5 mb-1">
+                                <span className="truncate max-w-[150px]">"{selectionText}"</span>
+                                <span className="text-[10px] text-accent font-mono">Selected</span>
+                            </div>
+                            
+                            {/* Highlight Swatches */}
+                            <div className="flex items-center justify-between px-2.5 py-1.5 hover:bg-white/5 rounded-lg transition group">
+                                <div className="flex items-center gap-2 text-xs font-medium text-white/90">
+                                    <Highlighter size={13} className="text-accent" />
+                                    <span>Highlight</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    {[
+                                        { id: 'accent', bg: '#d4bc94', title: 'Accent' },
+                                        { id: 'yellow', bg: '#fde047', title: 'Yellow' },
+                                        { id: 'green',  bg: '#86efac', title: 'Green' },
+                                        { id: 'blue',   bg: '#93c5fd', title: 'Blue' },
+                                        { id: 'pink',   bg: '#f472b6', title: 'Pink' }
+                                    ].map(c => (
+                                        <button
+                                            key={c.id}
+                                            onClick={() => {
+                                                handleContextHighlight(c.id);
+                                                closeContextMenu();
+                                            }}
+                                            title={`Highlight with ${c.title}`}
+                                            className="w-3.5 h-3.5 rounded-full border border-white/30 hover:scale-125 transition-transform cursor-pointer"
+                                            style={{ backgroundColor: c.bg }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Add Note Button */}
+                            <button
+                                onClick={() => {
+                                    handleContextAddNote();
+                                    closeContextMenu();
+                                }}
+                                className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group"
+                            >
+                                <StickyNote size={14} className="text-accent group-hover:scale-110 transition-transform" />
+                                <span>Add Note...</span>
+                            </button>
+
+                            {/* Copy Selection */}
+                            <button
+                                onClick={() => {
+                                    if (selectionText) {
+                                        navigator.clipboard.writeText(selectionText);
+                                        showToast('Selected text copied');
+                                    }
+                                    closeContextMenu();
+                                }}
+                                className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group"
+                            >
+                                <Copy size={14} className="text-white/50 group-hover:text-white transition" />
+                                <span>Copy</span>
+                            </button>
+
+                            {/* Search Google with Selection */}
+                            <button
+                                onClick={() => {
+                                    if (selectionText) {
+                                        useTabStore.getState().handleNewTab(`https://www.google.com/search?q=${encodeURIComponent(selectionText)}`);
+                                    }
+                                    closeContextMenu();
+                                }}
+                                className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group"
+                            >
+                                <Search size={14} className="text-white/50 group-hover:text-white transition" />
+                                <span>Search with Google</span>
+                            </button>
+
+                            <div className="h-px w-full bg-white/10 my-1.5"></div>
+                        </>
+                    )}
+
                     <button onClick={() => { showToast('Back'); closeContextMenu(); }} className="flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
                         <ArrowLeft size={14} className="text-white/50 group-hover:text-white transition" /> Back
                     </button>

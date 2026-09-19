@@ -51,10 +51,23 @@ This document tracks our point-by-point execution of flagship browser features a
        - Interactive paragraph jump: Click any paragraph in the article to immediately begin narrating from that spot.
        - Instant zero-reload exit (Esc / Back button) leaving background webview alive and untouched.
 
-- [ ] **Task 7: Webpage Highlighter & Persistent Sticky Notes**
-  - *Status*: 🟡 NEXT UP (Ready for design & interview)
-  - *Goal*: Select text on any webpage -> Right-click Context Menu -> "Highlight" / "Add Note". Highlights persist across sessions and notes appear grouped by domain in ToolHub.
+- [x] **Task 7: Webpage Highlighter & Persistent Sticky Notes**
+  - *Status*: ✅ COMPLETED
+  - *Outcome*: Implemented webpage highlights and persistent sticky notes with multi-space isolation, reload resilience, and unified ToolHub workspace:
+    1. **Triggering**: Floating mini-toolbar (`#qbrowse-highlight-pill`) appearing automatically on non-empty text selection with 5 color swatches, Note button, and Copy button, plus right-click Context Menu ("Highlight" with 5 color swatches, "Add Note...", "Copy", "Search with Google").
+    2. **DOM Re-anchoring**: Robust text re-anchoring engine using `TreeWalker` with prefix/suffix context matching (32-character disambiguation), surviving page reloads, SPA navigations, and browser restarts.
+    3. **In-Page Sticky Notes**: Inline note pin badges (`📝`) next to highlighted text. Clicking or hovering opens an interactive glassmorphic popover card (`#qbrowse-note-card`) with live note editing, color picker, delete, and auto-save.
+    4. **Space Isolation**: Annotations are strictly partitioned per Space (`personal`, `work`, `ghost`) so personal and work research stay isolated on the same URL.
+    5. **ToolHub Integration**: Redesigned Notes panel with segmented toggle `[ Web Notes | Scratchpad ]`:
+       - Domain-grouped accordion with domain icons, note counters, and expandable highlight cards.
+       - Live search bar filtering by quote, note, domain, or title.
+       - Space filter toggle ("All Spaces" vs active space).
+       - One-click "Jump to Page" navigation that switches to or opens the target tab, smoothly scrolls to the highlight, and pulses it.
+       - One-click "Export to Markdown" (`.md` file generation).
+       - Retained freeform scratchpad notepad.
+    6. **Reader Mode Synchronization**: Highlights and sticky notes created on a webpage immediately reflect inside Reader Mode for that article, and annotations created in Reader Mode automatically propagate to the underlying webpage.
 
 ---
 
 *Last Updated*: 2026-09-19
+

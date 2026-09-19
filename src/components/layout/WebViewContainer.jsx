@@ -5,6 +5,7 @@ import useHistoryStore from '../../store/useHistoryStore';
 import useVaultStore from '../../store/useVaultStore';
 import useProfileStore from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
+import { useAnnotationStore, normalizeAnnotationUrl } from '../../store/useAnnotationStore';
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 import FlagsPage from '../pages/FlagsPage';
@@ -220,6 +221,14 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             } catch(e) {}
         };
 
+        const sendAnnotationsToWebview = () => {
+            if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
+            try {
+                const annotations = useAnnotationStore.getState().getAnnotationsForUrl(tab.url, space);
+                wv.send('qbrowse-apply-annotations', annotations);
+            } catch (_) {}
+        };
+
         const handleDomReady = () => {
             isDomReadyRef.current = true;
             try { wv.insertCSS(customScrollbarCSS).catch(() => {}); } catch(e){}
@@ -235,6 +244,8 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     wv.insertCSS(`.ad-container, .adsbygoogle, div[id^="google_ads_"], div[aria-label="Advertisement"], .ytd-ad-slot-renderer, .trc_rbox_outer, .OUTBRAIN, #taboola-below-article-thumbnails { display: none !important; height: 0 !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }`).catch(() => {});
                 }
             } catch(e) {}
+
+            sendAnnotationsToWebview();
 
             if (isActive && isSpaceActive) {
                 setTimeout(checkReaderAvailability, 150);
@@ -281,6 +292,8 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
 
                 // Check Reader Mode availability for active tab
                 checkReaderAvailability();
+
+                sendAnnotationsToWebview();
             }
         };
 
@@ -462,6 +475,41 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 if (data) {
                     useUIStore.getState().showToast(`No QVault passkey found for ${data.hostname}`, 'info');
                 }
+            } else if (e.channel === 'qbrowse-annotation-create') {
+                const annData = e.args && e.args[0];
+                if (annData) {
+                    useAnnotationStore.getState().addAnnotation({
+                        ...annData,
+                        space: space || 'personal',
+                        url: tab.url,
+                        title: tab.title
+                    });
+                }
+            } else if (e.channel === 'qbrowse-annotation-update') {
+                const updateData = e.args && e.args[0];
+                if (updateData && updateData.id) {
+                    useAnnotationStore.getState().updateAnnotation(updateData.id, updateData);
+                }
+            } else if (e.channel === 'qbrowse-annotation-delete') {
+                const deleteId = e.args && (e.args[0]?.id || e.args[0]);
+                if (deleteId) {
+                    useAnnotationStore.getState().removeAnnotation(deleteId);
+                }
+            } else if (e.channel === 'qbrowse-selection-contextmenu') {
+                const selData = e.args && e.args[0];
+                if (selData && wv) {
+                    try {
+                        const rect = wv.getBoundingClientRect();
+                        useUIStore.getState().setContextMenu({
+                            x: rect.left + (selData.clientX || 0),
+                            y: rect.top + (selData.clientY || 0),
+                            hasSelection: !!selData.hasSelection,
+                            selectionText: selData.text || '',
+                            tabId: tab.id,
+                            space
+                        });
+                    } catch (_) {}
+                }
             }
         };
 
@@ -590,6 +638,46 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
         }
     }, [isActive, isSpaceActive, tab.id, tab.url]);
+
+    // Live sync annotations when tab, space, or active state changes
+    useEffect(() => {
+        if (isActive && isSpaceActive && wvRef.current && isDomReadyRef.current) {
+            if (!tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
+            try {
+                const annotations = useAnnotationStore.getState().getAnnotationsForUrl(tab.url, space);
+                wvRef.current.send('qbrowse-apply-annotations', annotations);
+            } catch (_) {}
+        }
+    }, [tab.url, space, isActive, isSpaceActive]);
+
+    // Live sync annotations when store changes
+    useEffect(() => {
+        const unsub = useAnnotationStore.subscribe((state) => {
+            if (isActive && isSpaceActive && wvRef.current && isDomReadyRef.current && tab.url && tab.url !== 'about:blank') {
+                try {
+                    const annotations = state.getAnnotationsForUrl(tab.url, space);
+                    wvRef.current.send('qbrowse-apply-annotations', annotations);
+                } catch (_) {}
+            }
+        });
+        return unsub;
+    }, [tab.url, space, isActive, isSpaceActive]);
+
+    // Listen for Jump to Page / Scroll to Annotation requests
+    useEffect(() => {
+        const handleJump = (event) => {
+            const { id, tabId, url } = event.detail || {};
+            if (tabId === tab.id || (url && tab.url && normalizeAnnotationUrl(url) === normalizeAnnotationUrl(tab.url))) {
+                if (wvRef.current && isDomReadyRef.current) {
+                    try {
+                        wvRef.current.send('qbrowse-scroll-to-annotation', id);
+                    } catch (_) {}
+                }
+            }
+        };
+        window.addEventListener('qbrowse-jump-to-annotation', handleJump);
+        return () => window.removeEventListener('qbrowse-jump-to-annotation', handleJump);
+    }, [tab.id, tab.url]);
 
     useEffect(() => {
         const wv = wvRef.current;
