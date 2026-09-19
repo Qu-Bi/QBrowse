@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { Crop, Monitor, ScrollText, X, Camera } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 
@@ -26,9 +25,9 @@ export default function ScreenshotBar() {
 
     if (!isScreenshotBarOpen) return null;
 
-    return createPortal(
+    return (
         <div 
-            className="fixed top-3.5 right-6 z-[99999] flex items-center gap-1 bg-[#0e1015]/95 backdrop-blur-3xl border border-white/20 rounded-2xl p-1.5 px-2.5 shadow-[0_20px_60px_rgba(0,0,0,0.85)] animate-slide-down-fade select-none text-white transition-all duration-200"
+            className="absolute top-4 right-6 z-[60] flex items-center gap-1.5 bg-[#0e1015]/92 backdrop-blur-3xl border border-white/20 rounded-2xl p-1.5 px-3 shadow-[0_20px_60px_rgba(0,0,0,0.85)] animate-slide-down-fade select-none text-white transition-all duration-200"
             onClick={(e) => e.stopPropagation()}
         >
             <div className="flex items-center gap-1.5 px-2 text-white/50 text-xs font-semibold border-r border-white/10 mr-1">
@@ -81,7 +80,6 @@ export default function ScreenshotBar() {
             >
                 <X size={14} />
             </button>
-        </div>,
-        document.body
+        </div>
     );
 }

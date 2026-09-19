@@ -1841,7 +1841,7 @@ ipcMain.handle('save-pdf-file', async (event, { defaultName, data }) => {
 });
 
 // Full Page, Rect Snipping & Screenshot IPC Handlers
-ipcMain.handle('capture-screen-rect', async (event, rect) => {
+ipcMain.handle('capture-and-save', async (event, { rect, title = 'Screenshot' } = {}) => {
     try {
         if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Main window not available');
         let img;
@@ -1855,93 +1855,67 @@ ipcMain.handle('capture-screen-rect', async (event, rect) => {
         } else {
             img = await mainWindow.webContents.capturePage();
         }
-        return { success: true, data: img.toPNG() };
-    } catch (e) {
-        console.error('[CaptureScreenRect] Error:', e);
-        return { success: false, error: e.message };
-    }
-});
 
-ipcMain.handle('capture-full-page', async (event, target) => {
-    try {
-        const id = typeof target === 'number' ? target : (target && target.webContentsId);
-        if (!id) throw new Error('Valid target webContentsId is required for full page capture');
-        const wc = webContents.fromId(id);
-        if (!wc || wc.isDestroyed()) throw new Error('Target webview not found');
+        if (!img || img.isEmpty()) {
+            throw new Error('Captured image is empty');
+        }
 
-        let isAttached = false;
+        // Copy directly to system clipboard in main process
         try {
-            if (!wc.debugger.isAttached()) {
-                wc.debugger.attach('1.3');
-                isAttached = true;
-            }
-        } catch (e) {
-            console.warn('[FullPageCapture] debugger attach notice:', e.message);
+            clipboard.writeImage(img);
+        } catch (clipErr) {
+            console.warn('[CaptureAndSave] Clipboard write error:', clipErr);
         }
 
-        if (wc.debugger.isAttached()) {
-            try {
-                await wc.debugger.sendCommand('Page.enable');
-                const metrics = await wc.debugger.sendCommand('Page.getLayoutMetrics');
-                const contentSize = metrics.contentSize || metrics.cssContentSize || { width: 1280, height: 800 };
-                const width = Math.max(100, Math.ceil(contentSize.width) || 1280);
-                const height = Math.max(100, Math.ceil(contentSize.height) || 800);
+        // Save directly to Downloads folder
+        const downloadsPath = app.getPath('downloads');
+        const cleanTitle = (title || 'Webpage').replace(/[/\\?%*:|"<>]/g, '_').trim().slice(0, 40) || 'Webpage';
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+        const fileName = `Screenshot_${cleanTitle}_${timestamp}.png`;
+        const filePath = path.join(downloadsPath, fileName);
 
-                const result = await wc.debugger.sendCommand('Page.captureScreenshot', {
-                    format: 'png',
-                    captureBeyondViewport: true,
-                    clip: {
-                        x: 0,
-                        y: 0,
-                        width,
-                        height,
-                        scale: 1
-                    }
-                });
-
-                if (isAttached && wc.debugger.isAttached()) {
-                    try { wc.debugger.detach(); } catch (_) {}
-                }
-
-                const buffer = Buffer.from(result.data, 'base64');
-                return { success: true, data: buffer };
-            } catch (cdpErr) {
-                console.warn('[FullPageCapture] CDP capture error, falling back to capturePage:', cdpErr);
-                if (isAttached && wc.debugger.isAttached()) {
-                    try { wc.debugger.detach(); } catch (_) {}
-                }
-            }
-        }
-
-        const img = await wc.capturePage();
-        return { success: true, data: img.toPNG() };
+        await fs.writeFile(filePath, img.toPNG());
+        return { success: true, filePath, fileName };
     } catch (e) {
-        console.error('[FullPageCapture] Failed:', e);
+        console.error('[CaptureAndSave] Error:', e);
         return { success: false, error: e.message };
     }
 });
 
-ipcMain.handle('save-screenshot', async (event, { data, title, copyToClipboard = true } = {}) => {
+ipcMain.handle('capture-slice-dataurl', async (event, rect) => {
     try {
-        if (!data) throw new Error('No image data provided');
-
-        let buffer;
-        if (Buffer.isBuffer(data)) {
-            buffer = data;
-        } else if (data instanceof Uint8Array || (data && data.buffer)) {
-            buffer = Buffer.from(data.buffer || data, data.byteOffset || 0, data.byteLength || data.length);
-        } else if (typeof data === 'string') {
-            buffer = Buffer.from(data.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+        if (!mainWindow || mainWindow.isDestroyed()) return null;
+        let img;
+        if (rect && typeof rect.width === 'number' && typeof rect.height === 'number' && rect.width > 0 && rect.height > 0) {
+            img = await mainWindow.webContents.capturePage({
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height)
+            });
         } else {
-            buffer = Buffer.from(data);
+            img = await mainWindow.webContents.capturePage();
         }
+        return img && !img.isEmpty() ? img.toDataURL() : null;
+    } catch (e) {
+        console.warn('[CaptureSliceDataUrl] Error:', e);
+        return null;
+    }
+});
+
+ipcMain.handle('save-screenshot-dataurl', async (event, { dataUrl, title, copyToClipboard = true } = {}) => {
+    try {
+        if (!dataUrl) throw new Error('No dataUrl provided');
+        const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
 
         if (copyToClipboard) {
             try {
                 const img = nativeImage.createFromBuffer(buffer);
                 clipboard.writeImage(img);
             } catch (clipErr) {
-                console.warn('[SaveScreenshot] Clipboard write error:', clipErr);
+                console.warn('[SaveScreenshotDataUrl] Clipboard write error:', clipErr);
             }
         }
 
@@ -1955,7 +1929,7 @@ ipcMain.handle('save-screenshot', async (event, { data, title, copyToClipboard =
         await fs.writeFile(filePath, buffer);
         return { success: true, filePath, fileName };
     } catch (e) {
-        console.error('[SaveScreenshot] Error saving screenshot:', e);
+        console.error('[SaveScreenshotDataUrl] Error:', e);
         return { success: false, error: e.message };
     }
 });

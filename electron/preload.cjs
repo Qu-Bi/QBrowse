@@ -179,9 +179,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     savePdfFile: (opts) => ipcRenderer.invoke('save-pdf-file', opts),
 
     // Screenshot & Snipping
-    captureFullPage: (webContentsId) => ipcRenderer.invoke('capture-full-page', { webContentsId }),
-    captureScreenRect: (rect) => ipcRenderer.invoke('capture-screen-rect', rect),
-    saveScreenshot: (opts) => ipcRenderer.invoke('save-screenshot', opts),
+    captureAndSave: (opts) => ipcRenderer.invoke('capture-and-save', opts),
+    captureSliceDataUrl: (rect) => ipcRenderer.invoke('capture-slice-dataurl', rect),
+    saveScreenshotDataUrl: (opts) => ipcRenderer.invoke('save-screenshot-dataurl', opts),
 
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
