@@ -50,6 +50,12 @@ export const handleEscapeDismissal = () => {
         return true;
     }
 
+    // 7. Reader Mode Overlay
+    if (uiStore.isReaderOpen) {
+        uiStore.closeReaderMode();
+        return true;
+    }
+
     // 7. Omnibox
     if (uiStore.isOmniboxOpen) {
         uiStore.closeOmnibox();
@@ -125,7 +131,7 @@ export const handleEscapeDismissal = () => {
     return false;
 };
 
-export const executeShortcut = (key, shift = false) => {
+export const executeShortcut = (key, shift = false, alt = false) => {
     const uiStore = useUIStore.getState();
     const tabStore = useTabStore.getState();
     const cleanKey = (key || '').toLowerCase();
@@ -213,9 +219,11 @@ export const executeShortcut = (key, shift = false) => {
             }
             break;
 
-        // Reload (Cmd+R) & Hard Reload (Cmd+Shift+R)
+        // Reload (Cmd+R) & Hard Reload (Cmd+Shift+R) & Reader Mode (Cmd+Alt+R / Ctrl+Alt+R)
         case 'r':
-            if (shift) {
+            if (alt) {
+                uiStore.toggleReaderMode();
+            } else if (shift) {
                 if (window.electronAPI && window.electronAPI.clearAllData) {
                     window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
                 }
@@ -418,7 +426,7 @@ export default function useGlobalShortcuts() {
 
             if (cmdOrCtrl) {
                 e.preventDefault();
-                executeShortcut(e.key.toLowerCase(), e.shiftKey);
+                executeShortcut(e.key.toLowerCase(), e.shiftKey, e.altKey);
             }
         };
 
@@ -467,7 +475,7 @@ export default function useGlobalShortcuts() {
 
                 if (shortcut.startsWith('cmd+')) {
                     const key = shortcut.replace('cmd+', '');
-                    executeShortcut(key, shift);
+                    executeShortcut(key, shift, !!data.alt);
                     return;
                 }
 

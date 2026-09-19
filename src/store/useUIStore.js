@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { parseArticle } from '../utils/readerExtractor.js';
 
 let globalToastTimeout = null;
 let globalZoomTimeout = null;
@@ -28,7 +29,11 @@ const defaultSettings = {
     uiScale: 'comfortable',
     faviconGlow: true,
     doh: 'cloudflare',
-    customBangs: []
+    customBangs: [],
+    readerTheme: 'dark',
+    readerFont: 'serif',
+    readerFontSize: 18,
+    readerWidth: 'balanced'
 };
 
 const loadSettings = () => {
@@ -1049,6 +1054,64 @@ const useUIStore = create((set, get) => ({
       window.__switcherTimer = null;
     }
     set({ showSwitcher: false, showSwitcherUI: false });
+  },
+
+  // Reader Mode
+  isReaderOpen: false,
+  isReaderAvailable: false,
+  isReaderLoading: false,
+  readerArticle: null,
+  setIsReaderAvailable: (available) => set({ isReaderAvailable: !!available }),
+  openReaderMode: (articleData) => set({ isReaderOpen: true, readerArticle: articleData, isReaderLoading: false }),
+  closeReaderMode: () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (_) {}
+    }
+    set({ isReaderOpen: false });
+  },
+  toggleReaderMode: async () => {
+    const state = get();
+    if (state.isReaderOpen) {
+      state.closeReaderMode();
+      return;
+    }
+
+    const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+    if (!tabStore) return;
+
+    const activeSpace = tabStore.activeSpace;
+    const spaceTabs = activeSpace === 'personal'
+      ? tabStore.privateTabs
+      : (activeSpace === 'work' ? tabStore.workTabs : (activeSpace === 'ghost' ? tabStore.ghostTabs : tabStore.torTabs || []));
+    const activeTab = spaceTabs.find(t => t.active);
+    if (!activeTab || !activeTab.id) return;
+
+    const wv = window.qbrowseWebviews ? window.qbrowseWebviews[activeTab.id] : null;
+    if (!wv || typeof wv.executeJavaScript !== 'function') {
+      state.showToast('Reader Mode is not available for this tab');
+      return;
+    }
+
+    set({ isReaderLoading: true });
+    try {
+      const html = await wv.executeJavaScript('document.documentElement.outerHTML');
+      const url = activeTab.url || await wv.executeJavaScript('window.location.href');
+      const article = parseArticle(html, url);
+
+      if (article && article.contentHtml && article.contentHtml.length > 50) {
+        set({ isReaderOpen: true, readerArticle: article, isReaderAvailable: true, isReaderLoading: false });
+      } else {
+        set({ isReaderLoading: false });
+        state.showToast('Could not extract readable article content');
+      }
+    } catch (e) {
+      console.error('[ReaderMode] Failed to extract article:', e);
+      set({ isReaderLoading: false });
+      state.showToast('Failed to load Reader Mode');
+    }
+  },
+  setReaderSetting: (key, val) => {
+    get().setSettingValue(key, val);
   },
 }));
 

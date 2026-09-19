@@ -6,6 +6,7 @@ import useVaultStore from '../../store/useVaultStore';
 import useProfileStore from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
+import { checkIsArticle } from '../../utils/readerExtractor';
 import FlagsPage from '../pages/FlagsPage';
 
 // We extract WebViewItem so we can freeze its initial URL 
@@ -177,6 +178,10 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             });
             if (isActive && isSpaceActive) {
                 useUIStore.getState().setCurrentUrl(e.url);
+                useUIStore.getState().setIsReaderAvailable(false);
+                if (useUIStore.getState().isReaderOpen) {
+                    useUIStore.getState().closeReaderMode();
+                }
             }
             if (e.url !== 'about:blank' && space !== 'ghost') {
                 useHistoryStore.getState().addEntry(e.url, e.url); // Initial entry without title
@@ -246,6 +251,21 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                         const thumbnail = img.toDataURL();
                         setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
                     }).catch(()=>{});
+                } catch(e) {}
+
+                // Check Reader Mode availability for active tab
+                try {
+                    if (typeof wv.executeJavaScript === 'function') {
+                        wv.executeJavaScript('document.documentElement.outerHTML').then(html => {
+                            if (html && checkIsArticle(html, tab.url)) {
+                                useUIStore.getState().setIsReaderAvailable(true);
+                            } else {
+                                useUIStore.getState().setIsReaderAvailable(false);
+                            }
+                        }).catch(() => {
+                            useUIStore.getState().setIsReaderAvailable(false);
+                        });
+                    }
                 } catch(e) {}
             }
         };

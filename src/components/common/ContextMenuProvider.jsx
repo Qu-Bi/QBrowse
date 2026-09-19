@@ -2,7 +2,7 @@ import React from 'react';
 import { 
     ArrowLeft, ArrowRight, RefreshCw, Copy, MonitorPlay, Pin, Minus, 
     PictureInPicture2, VolumeX, Volume2, Layers, X, Pencil, Trash, Moon, Search,
-    Printer, FileDown
+    Printer, FileDown, BookOpen
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -53,6 +53,12 @@ export default function ContextMenuProvider({ children }) {
                         <RefreshCw size={14} className="text-white/50 group-hover:text-white transition" /> Reload
                     </button>
                     <div className="h-px w-full bg-white/10 my-1.5"></div>
+                    <button onClick={() => { useUIStore.getState().toggleReaderMode(); closeContextMenu(); }} className="flex items-center justify-between px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
+                        <div className="flex items-center gap-3">
+                            <BookOpen size={14} className="text-white/50 group-hover:text-white transition" /> Toggle Reader Mode
+                        </div>
+                        <span className="text-[10px] text-white/40 font-mono">Ctrl+Alt+R</span>
+                    </button>
                     <button onClick={() => { useUIStore.getState().setIsFindOpen(true); closeContextMenu(); }} className="flex items-center justify-between px-3 py-2 hover:bg-white/10 rounded-lg text-sm font-medium transition text-left w-full group">
                         <div className="flex items-center gap-3">
                             <Search size={14} className="text-white/50 group-hover:text-white transition" /> Find in page...

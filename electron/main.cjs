@@ -465,7 +465,7 @@ function createWindow(options = {}) {
                         setTimeout(() => {
                             if (!targetWin || targetWin.isDestroyed()) return;
                             try {
-                                targetWin.webContents.send('global-shortcut', { shortcut, shift: input.shift });
+                                targetWin.webContents.send('global-shortcut', { shortcut, shift: input.shift, alt: input.alt });
                             } catch(e) {}
                         }, 10);
                     }

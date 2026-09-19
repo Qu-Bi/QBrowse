@@ -54,7 +54,8 @@ const availableCommands = [
     { id: 'print', title: 'Print active page (Ctrl+P)', cmd: 'print', icon: Printer, color: 'text-indigo-400' },
     { id: 'pdf', title: 'Save page as Clean PDF', cmd: 'pdf', icon: FileDown, color: 'text-rose-400' },
     { id: 'screenshot', title: 'Capture Webpage Screenshot (Ctrl+Shift+S)', cmd: 'screenshot', icon: Camera, color: 'text-pink-400' },
-    { id: 'snip', title: 'Interactive Snip Area (Ctrl+Shift+S)', cmd: 'snip', icon: Crop, color: 'text-rose-400' }
+    { id: 'snip', title: 'Interactive Snip Area (Ctrl+Shift+S)', cmd: 'snip', icon: Crop, color: 'text-rose-400' },
+    { id: 'reader', title: 'Toggle Distraction-Free Reader Mode (Ctrl+Alt+R)', cmd: 'reader', icon: BookOpen, color: 'text-amber-400' }
 ];
 
 const parseUrlInput = (input, activeBang = null, customBangs = []) => {
@@ -393,6 +394,11 @@ export default function Omnibox() {
                 setTimeout(() => {
                     uiStore.setIsSnippingMode(true);
                 }, 50);
+                break;
+
+            case 'reader':
+                closeOmnibox();
+                uiStore.toggleReaderMode();
                 break;
 
             case 'mute':

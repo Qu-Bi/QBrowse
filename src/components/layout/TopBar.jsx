@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PanelLeft, Lock, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User } from 'lucide-react';
+import { PanelLeft, Lock, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User, BookOpen } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
@@ -73,6 +73,12 @@ export default function TopBar() {
     
     const setIsRightPanelOpen = useUIStore(state => state.setIsRightPanelOpen);
     const setRightPanelTab = useUIStore(state => state.setRightPanelTab);
+
+    // Reader Mode
+    const isReaderAvailable = useUIStore(state => state.isReaderAvailable);
+    const isReaderOpen = useUIStore(state => state.isReaderOpen);
+    const isReaderLoading = useUIStore(state => state.isReaderLoading);
+    const toggleReaderMode = useUIStore(state => state.toggleReaderMode);
 
     const activeSpace = useTabStore(state => state.activeSpace);
     const privateTabs = useTabStore(state => state.privateTabs);
@@ -268,7 +274,26 @@ export default function TopBar() {
                             </span>
 
                             {/* Right Action Icons */}
-                            <div className="flex items-center gap-1 z-10 flex-shrink-0">
+                            <div className="flex items-center gap-1.5 z-10 flex-shrink-0">
+                                {/* Reader Mode Toggle Button (pops up when available or open) */}
+                                {(isReaderAvailable || isReaderOpen) && (
+                                    <div
+                                        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer animate-pop-in hover:scale-105 active:scale-95 ${
+                                            isReaderOpen 
+                                                ? 'bg-accent text-black font-bold shadow-md' 
+                                                : (isForceDark || isIncognito ? 'bg-white/10 hover:bg-white/20 text-accent border border-accent/30' : 'bg-accent/15 hover:bg-accent/25 text-accent border border-accent/40')
+                                        }`}
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            toggleReaderMode(); 
+                                        }}
+                                        title="Toggle Reader Mode (Ctrl+Alt+R)"
+                                    >
+                                        <BookOpen size={12} className={isReaderLoading ? 'animate-pulse' : ''} />
+                                        <span className="hidden sm:inline">Reader</span>
+                                    </div>
+                                )}
+
                                 {zoomLevel !== 100 && (
                                     <div
                                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider transition-all cursor-pointer animate-pop-in hover:scale-105 active:scale-95 ${isForceDark || isIncognito ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-gray-200/50 text-gray-600 hover:bg-gray-300/50'}`}

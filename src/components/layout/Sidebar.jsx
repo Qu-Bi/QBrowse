@@ -5,6 +5,7 @@ import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
+import { checkIsArticle } from '../../utils/readerExtractor';
 
 export default function Sidebar() {
     // UI Store State
@@ -108,15 +109,31 @@ export default function Sidebar() {
             onDrop={(e) => handleDrop(e, tab, spaceType)}
             onContextMenu={(e) => handleTabContextMenuClick(e, tab, spaceType)}
             onClick={() => {
-                const { isSplitView, focusedPane, setSplitRightTabId } = useUIStore.getState();
+                const ui = useUIStore.getState();
+                if (ui.isReaderOpen) {
+                    ui.closeReaderMode();
+                }
+                const { isSplitView, focusedPane, setSplitRightTabId } = ui;
                 if (isSplitView && focusedPane === 'right') {
                     setSplitRightTabId(tab.id);
-                    useUIStore.getState().setCurrentUrl(tab.url || '');
+                    ui.setCurrentUrl(tab.url || '');
                 } else {
                     const list = spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs));
                     const setList = spaceType === 'personal' ? setPrivateTabs : (spaceType === 'work' ? setWorkTabs : (spaceType === 'ghost' ? setGhostTabs : setTorTabs));
                     setList(list.map(t => ({ ...t, active: t.id === tab.id })));
-                    useUIStore.getState().setCurrentUrl(tab.url || '');
+                    ui.setCurrentUrl(tab.url || '');
+                }
+
+                // Check Reader Mode availability for the selected tab
+                const wv = window.qbrowseWebviews ? window.qbrowseWebviews[tab.id] : null;
+                if (wv && typeof wv.executeJavaScript === 'function') {
+                    wv.executeJavaScript('document.documentElement.outerHTML').then(html => {
+                        useUIStore.getState().setIsReaderAvailable(!!(html && checkIsArticle(html, tab.url)));
+                    }).catch(() => {
+                        useUIStore.getState().setIsReaderAvailable(false);
+                    });
+                } else {
+                    useUIStore.getState().setIsReaderAvailable(false);
                 }
             }}
             onMouseEnter={(e) => {

@@ -18,6 +18,7 @@ import MediaPlayerPopover from '../common/MediaPlayerPopover';
 import FindInPageBar from '../common/FindInPageBar';
 import ScreenshotBar from '../common/ScreenshotBar';
 import SnippingOverlay from '../common/SnippingOverlay';
+import ReaderModeOverlay from '../features/ReaderModeOverlay';
 
 const DownloadPopup = () => {
     const downloads = useUIStore(state => state.downloads);
@@ -423,6 +424,7 @@ export default function MainFrame() {
                     <FindInPageBar />
                     <ScreenshotBar />
                     <SnippingOverlay />
+                    <ReaderModeOverlay />
                     {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
                         <QVaultPopover isClosing={isPopoverClosing} />
                     )}

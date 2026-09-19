@@ -35,12 +35,24 @@ This document tracks our point-by-point execution of flagship browser features a
     4. Backspace dismissal of active bang chips.
     5. Custom Bang Manager in Settings -> Search & Omnibox with filterable catalog, custom prefix, name, URL template (`{q}`), and color picker.
 
-- [ ] **Task 6: Distraction-Free Article Reader Mode**
-  - *Status*: 🟡 NEXT UP (Ready for design & interview)
-  - *Goal*: Omnibox book icon on articles/blogs, clean reader canvas with custom typography (Serif/Sans/Dyslexic), dark/sepia/light themes, and hands-free local TTS Audio Read Aloud.
+- [x] **Task 6: Distraction-Free Article Reader Mode**
+  - *Status*: ✅ COMPLETED
+  - *Outcome*: Added Arc/Safari-grade distraction-free reading experience:
+    1. **Mozilla Readability Engine**: Integrated `@mozilla/readability` to extract clean headlines, bylines, reading time estimates, hero images, and sanitized HTML without ads, trackers, or sidebars.
+    2. **Automatic Article Detection**: Detects article-friendly pages on page load and dynamically pops up an interactive `BookOpen` Reader badge in the address bar.
+    3. **Multiple Triggers**: Activated via Address Bar Book pill, `Ctrl+Alt+R` global shortcut, right-click context menu ("Toggle Reader Mode"), and Omnibox `>reader` command.
+    4. **Arc/Safari-Grade Customization Toolbar**:
+       - 4 Curated Themes: Dark (Obsidian), Sepia (Warm Paper), Light (Porcelain), and Midnight (Slate).
+       - 4 Font Families: Serif (Editorial), Sans (Modern), Mono (Technical), and Dyslexic (High legibility).
+       - Font Size `A-` / `A+` stepper and Column Width switcher (Compact, Balanced, Wide).
+    5. **Hands-Free Local TTS Read Aloud Audio Player**:
+       - Floating player bar with Play/Pause, Skip Prev/Next paragraph, Speed rates (0.75x to 2.0x), and System Voice selector.
+       - Live sentence/paragraph highlighting with smooth auto-scroll to keep current narration centered in view.
+       - Interactive paragraph jump: Click any paragraph in the article to immediately begin narrating from that spot.
+       - Instant zero-reload exit (Esc / Back button) leaving background webview alive and untouched.
 
 - [ ] **Task 7: Webpage Highlighter & Persistent Sticky Notes**
-  - *Status*: ⚪ PENDING
+  - *Status*: 🟡 NEXT UP (Ready for design & interview)
   - *Goal*: Select text on any webpage -> Right-click Context Menu -> "Highlight" / "Add Note". Highlights persist across sessions and notes appear grouped by domain in ToolHub.
 
 ---

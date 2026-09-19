@@ -210,3 +210,97 @@ body {
   pointer-events: none !important;
   transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
+
+/* Reader Mode Article Canvas Styles */
+.reader-content {
+  line-height: 1.8;
+}
+
+.reader-content p {
+  margin-bottom: 1.5em;
+  border-radius: 8px;
+  padding: 4px 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.reader-content p:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.reader-content h1, 
+.reader-content h2, 
+.reader-content h3, 
+.reader-content h4 {
+  font-weight: 700;
+  line-height: 1.35;
+  margin-top: 1.8em;
+  margin-bottom: 0.6em;
+}
+
+.reader-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 1rem;
+  margin: 2em auto;
+  display: block;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.reader-content blockquote {
+  border-left: 4px solid var(--accent, #d4bc94);
+  padding-left: 1.25em;
+  margin: 1.75em 0;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.reader-content pre, 
+.reader-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  border-radius: 6px;
+}
+
+.reader-content pre {
+  padding: 1rem;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 1.5em 0;
+}
+
+.reader-content ul, 
+.reader-content ol {
+  margin: 1.25em 0;
+  padding-left: 1.5em;
+}
+
+.reader-content li {
+  margin-bottom: 0.5em;
+}
+
+.reader-content a {
+  color: var(--accent, #d4bc94);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* TTS Active Block Highlight */
+.reader-block.reader-tts-active {
+  background-color: rgba(234, 179, 8, 0.22) !important;
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.45), 0 4px 15px rgba(234, 179, 8, 0.15) !important;
+  border-radius: 8px;
+}
+
+.reader-theme-sepia .reader-block.reader-tts-active {
+  background-color: rgba(180, 83, 9, 0.18) !important;
+  box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.45) !important;
+}
+
+.reader-theme-light .reader-block.reader-tts-active {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45) !important;
+}
+
