@@ -169,6 +169,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('open-new-tab-url', handler);
     },
 
+    // Experimental Flags & Relaunch
+    getFlags: () => ipcRenderer.invoke('flags-get'),
+    setFlag: (id, val) => ipcRenderer.invoke('flags-set', { id, val }),
+    resetFlags: () => ipcRenderer.invoke('flags-reset'),
+    relaunchApp: () => ipcRenderer.invoke('app-relaunch'),
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
 

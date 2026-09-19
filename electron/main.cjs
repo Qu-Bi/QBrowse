@@ -81,6 +81,40 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
 
+// Synchronously load user flags from qbrowse://flags before app is ready
+const fsSync = require('fs');
+let userFlags = {};
+try {
+    const flagsPath = path.join(app.getPath('userData'), 'flags.json');
+    if (fsSync.existsSync(flagsPath)) {
+        userFlags = JSON.parse(fsSync.readFileSync(flagsPath, 'utf8'));
+    }
+} catch (_) {}
+
+const isFlagOn = (id, defaultVal = false) => {
+    if (userFlags[id] === 'enabled') return true;
+    if (userFlags[id] === 'disabled') return false;
+    return defaultVal;
+};
+
+// Apply real Chromium flags dynamically based on user configuration
+if (isFlagOn('gpu-rasterization', true)) app.commandLine.appendSwitch('enable-gpu-rasterization');
+if (isFlagOn('smooth-scrolling', true)) app.commandLine.appendSwitch('enable-smooth-scrolling');
+if (isFlagOn('enable-quic', true)) app.commandLine.appendSwitch('enable-quic');
+if (isFlagOn('zero-copy-rasterizer', false)) app.commandLine.appendSwitch('enable-zero-copy');
+if (isFlagOn('enable-vulkan', false)) app.commandLine.appendSwitch('enable-features', 'Vulkan');
+if (isFlagOn('back-forward-cache', true)) app.commandLine.appendSwitch('enable-features', 'BackForwardCache');
+if (isFlagOn('enable-webgpu', false)) app.commandLine.appendSwitch('enable-unsafe-webgpu');
+if (isFlagOn('force-dark-contents', false)) app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark');
+if (isFlagOn('enable-encrypted-client-hello', true)) app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello');
+if (isFlagOn('enable-tls13-kyber', true)) app.commandLine.appendSwitch('enable-features', 'PostQuantumKyber');
+if (isFlagOn('strict-origin-isolation', true)) app.commandLine.appendSwitch('site-per-process');
+if (isFlagOn('canvas-oop-rasterization', false)) app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization');
+if (isFlagOn('parallel-download-engine', true)) app.commandLine.appendSwitch('enable-features', 'ParallelDownloading');
+if (isFlagOn('overlay-scrollbars', false)) app.commandLine.appendSwitch('enable-features', 'OverlayScrollbar');
+if (isFlagOn('disable-hyperlink-auditing', true)) app.commandLine.appendSwitch('no-pings');
+if (isFlagOn('enable-drdc', false)) app.commandLine.appendSwitch('enable-features', 'DynamicRefreshRateDetection');
+
 process.on('unhandledRejection', (reason) => {
     const isAborted = reason && (
         reason.errno === -3 || 
@@ -1728,4 +1762,39 @@ ipcMain.handle('get-initial-launch-url', () => {
     initialUrlToOpen = null;
     return url;
 });
+
+// Experimental Flags & Relaunch Handlers
+ipcMain.handle('flags-get', () => {
+    return userFlags;
+});
+
+ipcMain.handle('flags-set', (event, { id, val }) => {
+    try {
+        userFlags[id] = val;
+        const flagsPath = path.join(app.getPath('userData'), 'flags.json');
+        fsSync.writeFileSync(flagsPath, JSON.stringify(userFlags, null, 2), 'utf8');
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('flags-reset', () => {
+    try {
+        userFlags = {};
+        const flagsPath = path.join(app.getPath('userData'), 'flags.json');
+        if (fsSync.existsSync(flagsPath)) {
+            fsSync.unlinkSync(flagsPath);
+        }
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('app-relaunch', () => {
+    app.relaunch();
+    app.exit(0);
+});
+
 
