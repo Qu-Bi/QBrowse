@@ -26,12 +26,17 @@ This document tracks our point-by-point execution of flagship browser features a
     3. Full Scrolling Webpage capture via Chrome DevTools Protocol (`Page.captureScreenshot` with `captureBeyondViewport: true`).
     - Captured images are automatically copied to the system clipboard (`clipboard.writeImage`) and saved to the user's `Downloads` folder as high-res PNGs, with an interactive toast notification offering "Open Folder" action.
 
-- [ ] **Task 5: Smart Search Bangs & Omnibox Keywords**
-  - *Status*: 🟡 NEXT UP (Ready for design & interview)
-  - *Goal*: DuckDuckGo-style bangs (`!g`, `!gh`, `!yt`, `!w`, `!r`, `!so`, `!ddg`, or `@keyword`) with live Omnibox visual chips and search suggestions.
+- [x] **Task 5: Smart Search Bangs & Omnibox Keywords**
+  - *Status*: ✅ COMPLETED
+  - *Outcome*: Added DuckDuckGo-style bangs (`!g`, `!gh`, `!yt`, `!w`, `!r`, `!so`, `!ddg`, `!a`, `!x`, `!maps`, `!npm`, `!mdn`, `!chatgpt`, `!p`) and Arc/Chrome-style `@` keyword mentions (`@youtube`, `@github`, `@wikipedia`, etc.). Features:
+    1. Interactive colored engine badge pills inside the Omnibox input (`[YouTube ✕] <query>`).
+    2. Instant engine autocomplete suggestions when typing `!` or `@` with `Tab` / `Enter` lock-in.
+    3. Trailing and leading bang parsing (e.g. `!yt lofi` or `lofi !yt`).
+    4. Backspace dismissal of active bang chips.
+    5. Custom Bang Manager in Settings -> Search & Omnibox with filterable catalog, custom prefix, name, URL template (`{q}`), and color picker.
 
 - [ ] **Task 6: Distraction-Free Article Reader Mode**
-  - *Status*: ⚪ PENDING
+  - *Status*: 🟡 NEXT UP (Ready for design & interview)
   - *Goal*: Omnibox book icon on articles/blogs, clean reader canvas with custom typography (Serif/Sans/Dyslexic), dark/sepia/light themes, and hands-free local TTS Audio Read Aloud.
 
 - [ ] **Task 7: Webpage Highlighter & Persistent Sticky Notes**

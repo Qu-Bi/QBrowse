@@ -27,7 +27,8 @@ const defaultSettings = {
     downloadSound: true,
     uiScale: 'comfortable',
     faviconGlow: true,
-    doh: 'cloudflare'
+    doh: 'cloudflare',
+    customBangs: []
 };
 
 const loadSettings = () => {
@@ -44,13 +45,16 @@ const useUIStore = create((set, get) => ({
   isOmniboxClosing: false,
   searchQuery: '',
   historySearchQuery: '',
+  activeBang: null,
+  setActiveBang: (bang) => set({ activeBang: bang }),
+  clearActiveBang: () => set({ activeBang: null }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setHistorySearchQuery: (query) => set({ historySearchQuery: query }),
-  openOmnibox: (url = '') => set({ isOmniboxOpen: true, isOmniboxClosing: false, searchQuery: (!url || url === 'about:blank') ? '' : url }),
+  openOmnibox: (url = '') => set({ isOmniboxOpen: true, isOmniboxClosing: false, activeBang: null, searchQuery: (!url || url === 'about:blank') ? '' : url }),
   closeOmnibox: () => {
     set({ isOmniboxClosing: true });
     setTimeout(() => {
-      set({ isOmniboxOpen: false, isOmniboxClosing: false, searchQuery: '' });
+      set({ isOmniboxOpen: false, isOmniboxClosing: false, activeBang: null, searchQuery: '' });
     }, 200);
   },
 
@@ -900,6 +904,31 @@ const useUIStore = create((set, get) => ({
           }
           return { settings: newSettings };
       });
+  },
+  addCustomBang: (bang) => {
+      const customBangs = get().settings?.customBangs || [];
+      const cleanPrefix = (bang.prefix || '').replace(/^[!@]/, '').trim().toLowerCase();
+      if (!cleanPrefix || !bang.url) return;
+      const cleanBang = {
+          id: bang.id || `custom_${cleanPrefix}`,
+          name: bang.name || cleanPrefix,
+          prefix: cleanPrefix,
+          url: bang.url,
+          color: bang.color || '#d4bc94',
+          bg: bang.bg || 'bg-accent/20 text-accent border-accent/30',
+          category: 'Custom'
+      };
+      const exists = customBangs.some(b => b.prefix?.toLowerCase() === cleanPrefix);
+      const updated = exists
+          ? customBangs.map(b => b.prefix?.toLowerCase() === cleanPrefix ? { ...b, ...cleanBang } : b)
+          : [...customBangs, cleanBang];
+      get().setSettingValue('customBangs', updated);
+  },
+  removeCustomBang: (prefix) => {
+      const customBangs = get().settings?.customBangs || [];
+      const cleanPrefix = (prefix || '').replace(/^[!@]/, '').trim().toLowerCase();
+      const updated = customBangs.filter(b => b.prefix?.toLowerCase() !== cleanPrefix);
+      get().setSettingValue('customBangs', updated);
   },
 
   zoomLevel: 100,

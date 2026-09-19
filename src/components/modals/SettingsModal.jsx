@@ -4,7 +4,7 @@ import {
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, 
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
-    UploadCloud, Compass, ExternalLink
+    UploadCloud, Compass, ExternalLink, Plus
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
@@ -12,6 +12,7 @@ import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
 import AIEngineSettings from '../settings/AIEngineSettings';
+import { getAllBangs } from '../../utils/searchBangs';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
 const SettingCard = ({ icon: Icon, title, description, children }) => (
@@ -79,7 +80,9 @@ const SettingsModal = () => {
         accentColor, 
         setAccentColor,
         darkExclusions,
-        setDarkExclusions
+        setDarkExclusions,
+        addCustomBang,
+        removeCustomBang
     } = useUIStore();
 
     const { user, isSyncing, lastSyncTime, syncedItemsCount, syncNow, logout, autoSyncEnabled, toggleAutoSync } = useSyncStore();
@@ -88,6 +91,12 @@ const SettingsModal = () => {
 
     const [allPermissions, setAllPermissions] = useState({});
     const [searchFilter, setSearchFilter] = useState('');
+    const [bangFilter, setBangFilter] = useState('');
+    const [isAddingBang, setIsAddingBang] = useState(false);
+    const [newBangPrefix, setNewBangPrefix] = useState('');
+    const [newBangName, setNewBangName] = useState('');
+    const [newBangUrl, setNewBangUrl] = useState('');
+    const [newBangColor, setNewBangColor] = useState('#d4bc94');
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
     const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
     const [isCheckingDefault, setIsCheckingDefault] = useState(false);
@@ -594,12 +603,13 @@ const SettingsModal = () => {
 
                     {/* TAB 4: SEARCH & OMNIBOX */}
                     {settingsTab === 'search' && (
-                        <div className="animate-pop-in space-y-4">
+                        <div className="animate-pop-in space-y-5">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Search & Omnibox</h3>
-                                <p className="text-xs text-white/40">Configure default search engines, live suggestions, and URL formatting.</p>
+                                <p className="text-xs text-white/40">Configure default search engines, live suggestions, and smart search bangs.</p>
                             </div>
 
+                            {/* Default Search Engine */}
                             <div className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:border-accent-30 transition-all duration-300">
                                 <p className="font-semibold text-sm mb-3">Default Search Engine</p>
                                 <div className="grid grid-cols-5 gap-2">
@@ -625,6 +635,201 @@ const SettingsModal = () => {
                                             {se.name}
                                         </button>
                                     ))}
+                                </div>
+                            </div>
+
+                            {/* Smart Search Bangs & Shortcuts Section */}
+                            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-4">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm flex-shrink-0">
+                                            <Sparkles size={18} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold text-base text-white">Smart Search Bangs & Shortcuts</p>
+                                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-accent/20 text-accent font-bold">
+                                                    {getAllBangs(settings?.customBangs || []).length} Available
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-white/40 mt-0.5">
+                                                Type <span className="text-white/80 font-mono">!yt</span> or <span className="text-white/80 font-mono">@youtube</span> in the address bar to route queries directly to any search engine.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAddingBang(!isAddingBang)}
+                                        className="px-3.5 py-1.5 rounded-xl bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent text-xs font-bold transition flex items-center gap-1.5 flex-shrink-0 cursor-pointer active:scale-95"
+                                    >
+                                        <Plus size={14} />
+                                        <span>{isAddingBang ? 'Close' : 'Add Custom Bang'}</span>
+                                    </button>
+                                </div>
+
+                                {/* Add Custom Bang Form */}
+                                {isAddingBang && (
+                                    <div className="p-4 rounded-xl bg-black/40 border border-accent/30 flex flex-col gap-3 animate-pop-in">
+                                        <p className="text-xs font-bold text-accent uppercase tracking-wider">Create Custom Search Bang</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div>
+                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Shortcut Prefix</label>
+                                                <div className="relative flex items-center">
+                                                    <span className="absolute left-3 text-xs font-mono text-white/40">! / @</span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. keep or aw"
+                                                        value={newBangPrefix}
+                                                        onChange={(e) => setNewBangPrefix(e.target.value.replace(/^[!@]/, ''))}
+                                                        className="w-full pl-12 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Engine Name</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. Google Keep or ArchWiki"
+                                                    value={newBangName}
+                                                    onChange={(e) => setNewBangName(e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Color Accent</label>
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    {['#d4bc94', '#4285F4', '#FF0000', '#A855F7', '#10B981', '#F59E0B', '#38BDF8'].map(c => (
+                                                        <button
+                                                            key={c}
+                                                            type="button"
+                                                            onClick={() => setNewBangColor(c)}
+                                                            className={`w-5 h-5 rounded-full transition-transform cursor-pointer border ${newBangColor === c ? 'scale-125 border-white shadow-md' : 'border-transparent hover:scale-110'}`}
+                                                            style={{ backgroundColor: c }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-white/50 block mb-1 font-semibold">Search URL Template (Use {'{q}'} for search query)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. https://wiki.archlinux.org/index.php?search={q}"
+                                                value={newBangUrl}
+                                                onChange={(e) => setNewBangUrl(e.target.value)}
+                                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                            />
+                                        </div>
+                                        <div className="flex justify-end gap-2 mt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsAddingBang(false);
+                                                    setNewBangPrefix('');
+                                                    setNewBangName('');
+                                                    setNewBangUrl('');
+                                                }}
+                                                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold transition cursor-pointer"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const p = newBangPrefix.trim().toLowerCase();
+                                                    const n = newBangName.trim() || p;
+                                                    const u = newBangUrl.trim();
+                                                    if (!p || !u) {
+                                                        showToast('Please enter both shortcut prefix and search URL');
+                                                        return;
+                                                    }
+                                                    addCustomBang({ prefix: p, name: n, url: u, color: newBangColor });
+                                                    showToast(`Custom bang "!${p}" added!`);
+                                                    setIsAddingBang(false);
+                                                    setNewBangPrefix('');
+                                                    setNewBangName('');
+                                                    setNewBangUrl('');
+                                                }}
+                                                className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-black font-bold text-xs shadow-md transition cursor-pointer"
+                                            >
+                                                Save Bang
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Filter Search Bar */}
+                                <div className="relative">
+                                    <Search size={14} className="absolute left-3 top-2.5 text-white/40" />
+                                    <input
+                                        type="text"
+                                        placeholder="Filter bangs by name, shortcut (!yt, @github), or category..."
+                                        value={bangFilter}
+                                        onChange={(e) => setBangFilter(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2 bg-black/30 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-accent transition"
+                                    />
+                                </div>
+
+                                {/* Bangs Grid */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto hide-scroll pr-1">
+                                    {getAllBangs(settings?.customBangs || [])
+                                        .filter(b => {
+                                            if (!bangFilter) return true;
+                                            const f = bangFilter.toLowerCase().replace(/^[!@]/, '');
+                                            return b.name.toLowerCase().includes(f) ||
+                                                   b.prefix.toLowerCase().includes(f) ||
+                                                   b.bangs.some(trigger => trigger.toLowerCase().includes(f)) ||
+                                                   (b.category && b.category.toLowerCase().includes(f));
+                                        })
+                                        .map(bang => {
+                                            const BangIcon = bang.icon || Search;
+                                            const isCustom = !!bang.isCustom;
+                                            return (
+                                                <div 
+                                                    key={bang.id} 
+                                                    className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between gap-3 hover:border-white/10 transition group"
+                                                >
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div 
+                                                            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                                                            style={{ backgroundColor: `${bang.color}20`, color: bang.color }}
+                                                        >
+                                                            <BangIcon size={16} />
+                                                        </div>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-bold text-white text-xs truncate">{bang.name}</span>
+                                                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-white/70 font-mono font-semibold">
+                                                                    !{bang.prefix}
+                                                                </span>
+                                                                {isCustom && (
+                                                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-accent/20 text-accent font-bold">
+                                                                        Custom
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[10px] text-white/40 truncate font-mono mt-0.5">
+                                                                {bang.url}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {isCustom && (
+                                                        <button
+                                                            onClick={() => {
+                                                                removeCustomBang(bang.prefix);
+                                                                showToast(`Removed custom bang "!${bang.prefix}"`);
+                                                            }}
+                                                            className="p-1.5 rounded-lg hover:bg-red-500/20 text-white/30 hover:text-red-400 transition cursor-pointer flex-shrink-0"
+                                                            title="Delete custom bang"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                 </div>
                             </div>
 
