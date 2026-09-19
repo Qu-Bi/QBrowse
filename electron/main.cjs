@@ -1841,19 +1841,29 @@ ipcMain.handle('save-pdf-file', async (event, { defaultName, data }) => {
 });
 
 // Full Page, Rect Snipping & Screenshot IPC Handlers
-ipcMain.handle('capture-and-save', async (event, { rect, title = 'Screenshot' } = {}) => {
+ipcMain.handle('capture-and-save', async (event, { webContentsId, rect, title = 'Screenshot' } = {}) => {
     try {
-        if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Main window not available');
+        let targetWc = null;
+        if (webContentsId) {
+            try {
+                targetWc = webContents.fromId(webContentsId);
+            } catch (_) {}
+        }
+        if (!targetWc || targetWc.isDestroyed()) {
+            targetWc = mainWindow ? mainWindow.webContents : null;
+        }
+        if (!targetWc || targetWc.isDestroyed()) throw new Error('No target page available to capture');
+
         let img;
         if (rect && typeof rect.width === 'number' && typeof rect.height === 'number' && rect.width > 0 && rect.height > 0) {
-            img = await mainWindow.webContents.capturePage({
+            img = await targetWc.capturePage({
                 x: Math.round(rect.x),
                 y: Math.round(rect.y),
                 width: Math.round(rect.width),
                 height: Math.round(rect.height)
             });
         } else {
-            img = await mainWindow.webContents.capturePage();
+            img = await targetWc.capturePage();
         }
 
         if (!img || img.isEmpty()) {
@@ -1883,19 +1893,31 @@ ipcMain.handle('capture-and-save', async (event, { rect, title = 'Screenshot' } 
     }
 });
 
-ipcMain.handle('capture-slice-dataurl', async (event, rect) => {
+ipcMain.handle('capture-slice-dataurl', async (event, opts = {}) => {
     try {
-        if (!mainWindow || mainWindow.isDestroyed()) return null;
+        let webContentsId = opts?.webContentsId;
+        let rect = opts?.rect || (opts && typeof opts.width === 'number' && typeof opts.height === 'number' ? opts : null);
+        let targetWc = null;
+        if (webContentsId) {
+            try {
+                targetWc = webContents.fromId(webContentsId);
+            } catch (_) {}
+        }
+        if (!targetWc || targetWc.isDestroyed()) {
+            targetWc = mainWindow ? mainWindow.webContents : null;
+        }
+        if (!targetWc || targetWc.isDestroyed()) return null;
+
         let img;
         if (rect && typeof rect.width === 'number' && typeof rect.height === 'number' && rect.width > 0 && rect.height > 0) {
-            img = await mainWindow.webContents.capturePage({
+            img = await targetWc.capturePage({
                 x: Math.round(rect.x),
                 y: Math.round(rect.y),
                 width: Math.round(rect.width),
                 height: Math.round(rect.height)
             });
         } else {
-            img = await mainWindow.webContents.capturePage();
+            img = await targetWc.capturePage();
         }
         return img && !img.isEmpty() ? img.toDataURL() : null;
     } catch (e) {

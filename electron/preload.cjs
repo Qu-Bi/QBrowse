@@ -180,7 +180,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Screenshot & Snipping
     captureAndSave: (opts) => ipcRenderer.invoke('capture-and-save', opts),
-    captureSliceDataUrl: (rect) => ipcRenderer.invoke('capture-slice-dataurl', rect),
+    captureSliceDataUrl: (opts) => ipcRenderer.invoke('capture-slice-dataurl', opts),
     saveScreenshotDataUrl: (opts) => ipcRenderer.invoke('save-screenshot-dataurl', opts),
 
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)

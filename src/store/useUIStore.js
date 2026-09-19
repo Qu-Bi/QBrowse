@@ -468,27 +468,39 @@ const useUIStore = create((set, get) => ({
 
   captureVisibleViewport: async () => {
     try {
-      get().showToast('Capturing visible viewport...');
+      set({ toast: null }); // Ensure no toast overlays the capture
       const wv = get().getActiveWebView();
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
+      const isOnNewTab = !activeTab || !activeTab.url || activeTab.url === '' || activeTab.url === 'about:blank';
       const title = activeTab?.title || 'Webpage';
 
-      let rect = null;
-      if (wv) {
-        const r = wv.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) {
-          rect = {
-            x: Math.round(r.left),
-            y: Math.round(r.top),
-            width: Math.round(r.width),
-            height: Math.round(r.height)
-          };
+      let wcId = null;
+      if (!isOnNewTab && wv && typeof wv.getWebContentsId === 'function') {
+        try {
+          wcId = wv.getWebContentsId();
+        } catch (e) {
+          console.warn('[Screenshot] getWebContentsId error:', e);
         }
       }
 
       if (window.electronAPI && typeof window.electronAPI.captureAndSave === 'function') {
-        const res = await window.electronAPI.captureAndSave({ rect, title });
+        let res;
+        if (wcId) {
+          // Capture guest webpage directly: 100% clean, NO rounded corners, NO window overlays, NO toasts!
+          res = await window.electronAPI.captureAndSave({ webContentsId: wcId, title });
+        } else {
+          // New Tab / Zen Dashboard fallback
+          let rect = null;
+          if (wv) {
+            const r = wv.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+              rect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+            }
+          }
+          res = await window.electronAPI.captureAndSave({ rect, title });
+        }
+
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
           get().showToast('Screenshot saved to Downloads & copied to clipboard!');
@@ -504,6 +516,7 @@ const useUIStore = create((set, get) => ({
 
   captureFullPage: async () => {
     try {
+      set({ toast: null }); // Clear any toast immediately
       const wv = get().getActiveWebView();
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
@@ -514,7 +527,18 @@ const useUIStore = create((set, get) => ({
         return;
       }
 
-      get().showToast('Capturing full webpage (scrolling down)...');
+      let wcId = null;
+      if (typeof wv.getWebContentsId === 'function') {
+        try {
+          wcId = wv.getWebContentsId();
+        } catch (e) {
+          console.warn('[Screenshot] getWebContentsId error:', e);
+        }
+      }
+      if (!wcId) {
+        get().showToast('Unable to access page webcontents');
+        return;
+      }
 
       // 1. Get webpage scroll metrics and store original scroll position
       const metrics = await wv.executeJavaScript(`
@@ -526,7 +550,7 @@ const useUIStore = create((set, get) => ({
             html.clientHeight, html.scrollHeight, html.offsetHeight
           );
           return {
-            totalHeight: Math.min(totalHeight, 20000),
+            totalHeight: Math.min(totalHeight, 25000),
             viewportHeight: window.innerHeight,
             viewportWidth: window.innerWidth,
             origX: window.scrollX,
@@ -538,18 +562,10 @@ const useUIStore = create((set, get) => ({
       const { totalHeight, viewportHeight, viewportWidth, origX, origY } = metrics;
       const title = activeTab?.title || 'Webpage';
 
-      const wvRect = wv.getBoundingClientRect();
-      const cropRect = {
-        x: Math.round(wvRect.left),
-        y: Math.round(wvRect.top),
-        width: Math.round(wvRect.width),
-        height: Math.round(wvRect.height)
-      };
-
-      // If page is not taller than the viewport, do a single viewport capture!
+      // If page is not taller than the viewport, do a single clean guest capture!
       if (totalHeight <= viewportHeight + 20) {
         if (window.electronAPI && typeof window.electronAPI.captureAndSave === 'function') {
-          const res = await window.electronAPI.captureAndSave({ rect: cropRect, title });
+          const res = await window.electronAPI.captureAndSave({ webContentsId: wcId, title });
           if (res?.success) {
             set({ lastScreenshotPath: res.filePath });
             get().showToast('Full page screenshot saved & copied to clipboard!');
@@ -560,7 +576,7 @@ const useUIStore = create((set, get) => ({
 
       // 2. Set up offscreen Canvas for stitching
       const canvas = document.createElement('canvas');
-      canvas.width = cropRect.width;
+      canvas.width = viewportWidth;
       canvas.height = totalHeight;
       const ctx = canvas.getContext('2d');
 
@@ -568,12 +584,12 @@ const useUIStore = create((set, get) => ({
       while (currentY < totalHeight) {
         // Scroll the webview to currentY
         await wv.executeJavaScript(`window.scrollTo(0, ${currentY})`);
-        // Wait 120ms for Chromium to paint the newly scrolled content
-        await new Promise(r => setTimeout(r, 120));
+        // Wait 130ms for Chromium to paint the newly scrolled content
+        await new Promise(r => setTimeout(r, 130));
 
-        // Capture this slice from the webview area
+        // Capture guest slice directly via webContentsId: clean, NO overlays, NO toasts, NO window borders!
         if (window.electronAPI && typeof window.electronAPI.captureSliceDataUrl === 'function') {
-          const sliceDataUrl = await window.electronAPI.captureSliceDataUrl(cropRect);
+          const sliceDataUrl = await window.electronAPI.captureSliceDataUrl({ webContentsId: wcId });
           if (sliceDataUrl) {
             const sliceImg = await new Promise((resolve) => {
               const img = new Image();
@@ -592,10 +608,10 @@ const useUIStore = create((set, get) => ({
                 ctx.drawImage(
                   sliceImg,
                   0, srcY, sliceImg.width, srcH,
-                  0, currentY, cropRect.width, remainingHeight
+                  0, currentY, viewportWidth, remainingHeight
                 );
               } else {
-                ctx.drawImage(sliceImg, 0, currentY, cropRect.width, viewportHeight);
+                ctx.drawImage(sliceImg, 0, currentY, viewportWidth, viewportHeight);
               }
             }
           }
@@ -630,13 +646,44 @@ const useUIStore = create((set, get) => ({
 
   captureSelectedArea: async (rect) => {
     try {
-      get().showToast('Capturing snip...');
+      set({ toast: null });
+      const wv = get().getActiveWebView();
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
+      const isOnNewTab = !activeTab || !activeTab.url || activeTab.url === '' || activeTab.url === 'about:blank';
       const title = activeTab?.title || 'Snip';
+      let wcId = null;
+      if (!isOnNewTab && wv && typeof wv.getWebContentsId === 'function') {
+        try {
+          wcId = wv.getWebContentsId();
+        } catch (e) {
+          console.warn('[Screenshot] getWebContentsId error:', e);
+        }
+      }
 
       if (window.electronAPI && typeof window.electronAPI.captureAndSave === 'function') {
-        const res = await window.electronAPI.captureAndSave({ rect, title });
+        let res;
+        const r = wv?.getBoundingClientRect?.();
+        const isInsideWv = wv && wcId && r && (
+          rect.x >= r.left - 2 &&
+          rect.y >= r.top - 2 &&
+          (rect.x + rect.width) <= (r.right + 2) &&
+          (rect.y + rect.height) <= (r.bottom + 2)
+        );
+
+        if (isInsideWv) {
+          // Translate to guest webview local coordinates
+          const localRect = {
+            x: Math.max(0, Math.round(rect.x - r.left)),
+            y: Math.max(0, Math.round(rect.y - r.top)),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
+          };
+          res = await window.electronAPI.captureAndSave({ webContentsId: wcId, rect: localRect, title });
+        } else {
+          res = await window.electronAPI.captureAndSave({ rect, title });
+        }
+
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
           get().showToast('Snip saved to Downloads & copied to clipboard!');
