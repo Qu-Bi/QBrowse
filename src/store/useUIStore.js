@@ -201,6 +201,9 @@ const useUIStore = create((set, get) => ({
       set({ isFolderContextMenuClosing: true });
       setTimeout(() => set({ folderContextMenu: null, isFolderContextMenuClosing: false }), 200);
     }
+    if (state.activePinnedStack) {
+      set({ activePinnedStack: null });
+    }
   },
 
 
@@ -758,6 +761,9 @@ const useUIStore = create((set, get) => ({
       set({ activePopover: popover, isPopoverClosing: false });
     }
   },
+  activePinnedStack: null, // { pin, anchorRect }
+  setActivePinnedStack: (stack) => set({ activePinnedStack: stack }),
+  closePinnedStack: () => set({ activePinnedStack: null }),
   mediaState: {
       isPlaying: false,
       title: '',
@@ -1007,10 +1013,11 @@ const useUIStore = create((set, get) => ({
   showSwitcherUI: false,
   switcherIndex: 0,
   switcherTabs: [],
+  switcherStartTime: 0,
   setShowSwitcher: (val) => set({ showSwitcher: val, showSwitcherUI: val }),
   setSwitcherIndex: (idx) => set({ switcherIndex: idx }),
   setSwitcherTabs: (tabs) => set({ switcherTabs: tabs }),
-  openSwitcher: () => {
+  openSwitcher: (direction = 1) => {
     const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
     if (!tabStore) return;
     const list = tabStore.getActiveList ? tabStore.getActiveList() : [];
@@ -1021,6 +1028,8 @@ const useUIStore = create((set, get) => ({
     const otherTabs = list.filter(t => !t.active).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
     const mruTabs = activeTab ? [activeTab, ...otherTabs] : otherTabs;
 
+    const initialIndex = direction === -1 ? mruTabs.length - 1 : 1;
+    const startTime = Date.now();
     if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
     window.__switcherTimer = setTimeout(() => {
       set({ showSwitcherUI: true });
@@ -1029,14 +1038,15 @@ const useUIStore = create((set, get) => ({
     set({
       showSwitcher: true,
       showSwitcherUI: false,
+      switcherStartTime: startTime,
       switcherTabs: mruTabs,
-      switcherIndex: 1
+      switcherIndex: initialIndex
     });
   },
   cycleSwitcher: (direction = 1) => {
     const state = useUIStore.getState();
     if (!state.showSwitcher) {
-      useUIStore.getState().openSwitcher();
+      useUIStore.getState().openSwitcher(direction);
       return;
     }
     if (window.__switcherTimer) {
@@ -1054,16 +1064,24 @@ const useUIStore = create((set, get) => ({
       window.__switcherTimer = null;
     }
     const { showSwitcher, switcherTabs, switcherIndex } = useUIStore.getState();
+    console.log('[DEBUG] confirmSwitcher called. showSwitcher:', showSwitcher, 'switcherIndex:', switcherIndex);
     if (!showSwitcher) return;
 
     const targetTab = switcherTabs[switcherIndex];
-    set({ showSwitcher: false, showSwitcherUI: false });
+    console.log('[DEBUG] confirmSwitcher switching to targetTab:', targetTab?.id);
+    set({ showSwitcher: false, showSwitcherUI: false, switcherStartTime: 0 });
 
     if (targetTab) {
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       if (tabStore) {
         tabStore.handleSwitchToTab(targetTab.id, tabStore.activeSpace);
         useUIStore.getState().setCurrentUrl(targetTab.url || '');
+        setTimeout(() => {
+          const wv = document.getElementById(`webview-${targetTab.id}`);
+          if (wv && typeof wv.focus === 'function') {
+            try { wv.focus(); } catch (_) {}
+          }
+        }, 30);
       }
     }
   },
@@ -1072,7 +1090,7 @@ const useUIStore = create((set, get) => ({
       clearTimeout(window.__switcherTimer);
       window.__switcherTimer = null;
     }
-    set({ showSwitcher: false, showSwitcherUI: false });
+    set({ showSwitcher: false, showSwitcherUI: false, switcherStartTime: 0 });
   },
 
   // Reader Mode
@@ -1275,5 +1293,9 @@ const useUIStore = create((set, get) => ({
     }
   },
 }));
+
+if (typeof window !== 'undefined') {
+  window.__uiStore = useUIStore;
+}
 
 export default useUIStore;

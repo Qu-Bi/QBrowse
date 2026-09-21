@@ -61,7 +61,6 @@ import TopBar from './TopBar';
 import WebViewContainer from './WebViewContainer';
 import QVaultPopover from '../popovers/QVaultPopover';
 import SiteInfoPopover from '../popovers/SiteInfoPopover';
-import UserProfilePopover from '../popovers/UserProfilePopover';
 import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
 import FindInPageBar from '../common/FindInPageBar';
@@ -492,13 +491,10 @@ export default function MainFrame() {
                     {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
                         <QVaultPopover isClosing={isPopoverClosing} />
                     )}
-                    {((activePopover === 'user' || activePopover === 'userProfile') || (isPopoverClosing && (activePopover === 'user' || activePopover === 'userProfile'))) && (
-                        <UserProfilePopover isClosing={isPopoverClosing} />
-                    )}
                     {(activePopover === 'tor' || (isPopoverClosing && activePopover === 'tor')) && (
                         <TorCircuitPopover isClosing={isPopoverClosing} />
                     )}
-                    {(activePopover || isPopoverClosing) && (
+                    {((activePopover && activePopover !== 'user' && activePopover !== 'userProfile') || (isPopoverClosing && activePopover !== 'user' && activePopover !== 'userProfile')) && (
                         <div className={`absolute inset-0 z-[50] transition-colors duration-200 ${isPopoverClosing ? 'bg-transparent' : 'bg-black/60'}`} onClick={closePopover} />
                     )}
 

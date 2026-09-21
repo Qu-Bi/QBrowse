@@ -155,6 +155,10 @@ export default function Omnibox() {
 
     const [liveSuggestions, setLiveSuggestions] = useState([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [selectedOptionText, setSelectedOptionText] = useState(null);
+    const originalQueryRef = useRef('');
+    const lastMousePosRef = useRef({ x: 0, y: 0 });
+    const omniboxContainerRef = useRef(null);
 
     const isBangSuggestionMode = !activeBang && (searchQuery.startsWith('!') || searchQuery.startsWith('@')) && !searchQuery.includes(' ');
     const bangSuggestions = isBangSuggestionMode ? matchBangSuggestions(searchQuery, customBangs) : [];
@@ -165,6 +169,7 @@ export default function Omnibox() {
 
     useEffect(() => {
         setSelectedIndex(0);
+        setSelectedOptionText(null);
         if (isTor || !searchQuery || searchQuery.startsWith('>') || isBangSuggestionMode) {
             setLiveSuggestions([]);
             return;
@@ -197,22 +202,32 @@ export default function Omnibox() {
     }, [searchQuery, isBangSuggestionMode]);
 
     useEffect(() => {
-        const selectedBtn = document.querySelector('[data-selected="true"]');
+        if (!omniboxContainerRef.current) return;
+        const selectedBtn = omniboxContainerRef.current.querySelector('[data-selected="true"]');
         if (selectedBtn) {
             selectedBtn.scrollIntoView({ block: 'nearest' });
         }
     }, [selectedIndex]);
 
     useEffect(() => {
-        if (isOmniboxOpen && searchInputRef.current) {
-            setTimeout(() => {
-                searchInputRef.current?.focus();
-                searchInputRef.current?.select();
-            }, 50);
+        if (isOmniboxOpen) {
+            setSelectedOptionText(null);
+            originalQueryRef.current = searchQuery || '';
+            const webviews = document.querySelectorAll('webview');
+            webviews.forEach(wv => {
+                try { wv.blur(); } catch (err) {}
+            });
+            window.focus();
+            if (searchInputRef.current) {
+                searchInputRef.current.focus();
+                searchInputRef.current.select();
+                setTimeout(() => {
+                    searchInputRef.current?.focus();
+                    searchInputRef.current?.select();
+                }, 50);
+            }
         }
     }, [isOmniboxOpen]);
-
-    if (!isOmniboxOpen && !isOmniboxClosing) return null;
 
     const getSmartPredictions = (query) => {
         if (!query) return [];
@@ -262,7 +277,7 @@ export default function Omnibox() {
 
     const basePredictions = getSmartPredictions(searchQuery);
     const apiPredictions = liveSuggestions.map(s => ({
-        url: effectiveBang ? buildBangSearchUrl(effectiveBang, s) : `https://www.google.com/search?q=${encodeURIComponent(s)}`,
+        url: effectiveBang ? buildBangSearchUrl(effectiveBang, s) : parseUrlInput(s, null, customBangs),
         title: s,
         score: 50,
         isSearch: true,
@@ -604,6 +619,8 @@ export default function Omnibox() {
 
     const handleInputChange = (e) => {
         const val = e.target.value;
+        setSelectedOptionText(null);
+        originalQueryRef.current = val;
         // Check if user completed a bang trigger with a space, e.g. "!yt " or "@github "
         if (!activeBang && (val.startsWith('!') || val.startsWith('@')) && val.includes(' ')) {
             const spaceIdx = val.indexOf(' ');
@@ -613,25 +630,195 @@ export default function Omnibox() {
             if (matchedBang) {
                 setActiveBang(matchedBang);
                 setSearchQuery(remainder);
+                originalQueryRef.current = remainder;
                 return;
             }
         }
         setSearchQuery(val);
     };
 
+    const handleOptionMouseMove = (i, e) => {
+        if (Math.abs(e.clientX - lastMousePosRef.current.x) > 3 || Math.abs(e.clientY - lastMousePosRef.current.y) > 3) {
+            lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+            if (selectedIndex !== i) {
+                setSelectedIndex(i);
+            }
+        }
+    };
+
+    const navigateOptions = (direction) => {
+        const max = isCommandMode 
+            ? filteredCommands.length 
+            : (isBangSuggestionMode ? bangSuggestions.length : filteredPredictions.length);
+
+        if (max <= 0) return;
+
+        // Circular wrap-around navigation
+        const nextIndex = (selectedIndex + direction + max) % max;
+        setSelectedIndex(nextIndex);
+
+        // Determine preview text to show in Omnibox input
+        let previewText = null;
+        if (isCommandMode) {
+            const cmd = filteredCommands[nextIndex];
+            if (cmd) {
+                previewText = '> ' + cmd.cmd;
+            }
+        } else if (isBangSuggestionMode) {
+            const bang = bangSuggestions[nextIndex];
+            if (bang) {
+                previewText = bang.bangs?.[0] || `!${bang.prefix}`;
+            }
+        } else {
+            const pred = filteredPredictions[nextIndex];
+            if (pred) {
+                if (nextIndex === 0 && originalQueryRef.current && pred.isSearch) {
+                    previewText = originalQueryRef.current;
+                } else if (pred.isSearch) {
+                    const cleanText = pred.title.replace(/^Search [^:]+:\s*"?/, '').replace(/"?$/, '');
+                    previewText = cleanText || originalQueryRef.current;
+                } else if (pred.url && !pred.url.startsWith('https://www.google.com/search') && !pred.url.startsWith('https://duckduckgo.com') && !pred.url.startsWith('https://www.bing.com') && !pred.url.startsWith('https://search.brave.com') && !pred.url.startsWith('https://www.ecosia.org')) {
+                    previewText = pred.url;
+                } else {
+                    previewText = pred.title;
+                }
+            }
+        }
+
+        setSelectedOptionText(previewText);
+    };
+
+    const handleOmniboxKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (selectedOptionText !== null) {
+                setSelectedOptionText(null);
+                setSelectedIndex(0);
+                return;
+            }
+            if (activeBang) {
+                clearActiveBang();
+            } else {
+                handleCloseOmnibox(false);
+            }
+        } else if (e.key === 'Backspace' && searchQuery === '' && activeBang) {
+            e.preventDefault();
+            const trigger = activeBang.bangs?.[0] || `!${activeBang.prefix}`;
+            clearActiveBang();
+            setSelectedOptionText(null);
+            setSearchQuery(trigger);
+            originalQueryRef.current = trigger;
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            if (isBangSuggestionMode && bangSuggestions.length > 0) {
+                const target = bangSuggestions[selectedIndex] || bangSuggestions[0];
+                if (target) {
+                    setActiveBang(target);
+                    setSelectedOptionText(null);
+                    setSearchQuery('');
+                    originalQueryRef.current = '';
+                }
+            } else if (!isCommandMode && filteredPredictions.length > 0) {
+                const target = filteredPredictions[selectedIndex] || filteredPredictions[0];
+                if (target) {
+                    const text = target.isSearch 
+                        ? (target.title.replace(/^Search [^:]+:\s*"?/, '').replace(/"?$/, '') || target.title)
+                        : (target.url || target.title);
+                    originalQueryRef.current = text;
+                    setSelectedOptionText(null);
+                    setSearchQuery(text);
+                }
+            }
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            navigateOptions(1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            navigateOptions(-1);
+        } else if (e.key === 'ArrowRight' && searchInputRef.current) {
+            const input = searchInputRef.current;
+            const currentVal = input.value;
+            if (input.selectionStart === currentVal.length && !isCommandMode && !isBangSuggestionMode && filteredPredictions.length > 0) {
+                const target = filteredPredictions[selectedIndex];
+                if (target && target.title !== currentVal) {
+                    const text = target.isSearch 
+                        ? (target.title.replace(/^Search [^:]+:\s*"?/, '').replace(/"?$/, '') || target.title)
+                        : (target.url || target.title);
+                    if (text && text.toLowerCase().startsWith(currentVal.toLowerCase())) {
+                        e.preventDefault();
+                        originalQueryRef.current = text;
+                        setSelectedOptionText(null);
+                        setSearchQuery(text);
+                    }
+                }
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (isCommandMode && filteredCommands.length > 0) {
+                handleExecuteCommand(filteredCommands[selectedIndex]?.id || filteredCommands[0].id);
+            } else if (isBangSuggestionMode && bangSuggestions.length > 0 && !searchQuery.includes(' ')) {
+                const target = bangSuggestions[selectedIndex] || bangSuggestions[0];
+                if (target) {
+                    setActiveBang(target);
+                    setSelectedOptionText(null);
+                    setSearchQuery('');
+                }
+            } else if (!isCommandMode) {
+                if (filteredPredictions.length > 0) {
+                    handleSelectPrediction(filteredPredictions[selectedIndex] || filteredPredictions[0]);
+                } else if (searchQuery.trim().length > 0 || activeBang) {
+                    const val = selectedOptionText !== null ? selectedOptionText : (searchInputRef.current?.value || searchQuery);
+                    const url = parseUrlInput(val, activeBang, customBangs);
+                    const title = activeBang 
+                        ? `Search ${activeBang.name}: ${val}` 
+                        : `Search/Go: ${val}`;
+                    handleSelectPrediction({ url, title });
+                }
+            }
+        }
+    };
+
+    useEffect(() => {
+        if (!isOmniboxOpen) return;
+        const handleWindowKeyDown = (e) => {
+            if (e.target === searchInputRef.current) return;
+            if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(e.key)) {
+                handleOmniboxKeyDown(e);
+            }
+        };
+        window.addEventListener('keydown', handleWindowKeyDown);
+        return () => window.removeEventListener('keydown', handleWindowKeyDown);
+    }, [isOmniboxOpen, selectedIndex, filteredPredictions, filteredCommands, bangSuggestions, isCommandMode, isBangSuggestionMode, searchQuery, selectedOptionText, activeBang]);
+
+    if (!isOmniboxOpen && !isOmniboxClosing) return null;
+
     return (
         <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] bg-black/50 backdrop-blur-md transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
-            <div className={`w-full max-w-[720px] mx-4 flex flex-col ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => e.stopPropagation()}>
+            <div className={`w-full max-w-[720px] mx-4 flex flex-col relative ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => { e.stopPropagation(); searchInputRef.current?.focus(); }} onKeyDown={handleOmniboxKeyDown}>
 
-                <div className={`w-full bg-[#121214]/80 backdrop-blur-3xl border border-white/10 rounded-[1.5rem] p-4 md:p-5 flex items-center gap-3 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${isCommandMode ? 'shadow-[0_0_80px_rgba(234,179,8,0.15)] border-yellow-500/30 scale-[1.02]' : (isIncognito ? 'shadow-[0_0_80px_rgba(168,85,247,0.3)]' : 'shadow-[0_30px_80px_rgba(0,0,0,0.8)]')}`}>
+                <div 
+                    className={`w-full bg-[#121214]/85 backdrop-blur-3xl border border-white/10 rounded-[1.5rem] p-4 md:p-5 flex items-center gap-3 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${
+                        isCommandMode ? 'border-yellow-500/30' : ''
+                    }`}
+                    style={{
+                        boxShadow: isCommandMode 
+                            ? '0 0 50px -5px rgba(234, 179, 8, 0.25), 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)' 
+                            : isTor 
+                                ? '0 0 50px -5px rgba(168, 85, 247, 0.3), 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)'
+                                : activeBang 
+                                    ? `0 0 50px -5px ${activeBang.color}30, 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)`
+                                    : '0 0 50px -5px var(--accent-30, rgba(59, 130, 246, 0.28)), 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)'
+                    }}
+                >
                     {isCommandMode ? (
-                        <Terminal size={24} className="text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)] animate-pulse flex-shrink-0" />
+                        <Terminal size={24} className="text-yellow-400 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)] animate-pulse flex-shrink-0" />
                     ) : activeBang ? (
-                        <div className="w-6 h-6 flex items-center justify-center flex-shrink-0" style={{ color: activeBang.color }}>
+                        <div className="w-6 h-6 flex items-center justify-center flex-shrink-0" style={{ color: activeBang.color, filter: `drop-shadow(0 0 6px ${activeBang.color}70)` }}>
                             {activeBang.icon ? <activeBang.icon size={22} /> : <Search size={22} />}
                         </div>
                     ) : (
-                        <Search size={24} className="text-accent transition-transform duration-300 flex-shrink-0" />
+                        <Search size={24} className="text-accent transition-transform duration-300 flex-shrink-0" style={{ filter: 'drop-shadow(0 0 8px var(--accent-30, rgba(59, 130, 246, 0.4)))' }} />
                     )}
 
                     {/* Active Bang Badge Chip */}
@@ -640,7 +827,7 @@ export default function Omnibox() {
                             className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border shadow-sm select-none flex-shrink-0 animate-pop-in"
                             style={{ 
                                 backgroundColor: `${activeBang.color}20`, 
-                                borderColor: `${activeBang.color}50`,
+                                borderColor: `${activeBang.color}40`,
                                 color: activeBang.color 
                             }}
                         >
@@ -662,65 +849,12 @@ export default function Omnibox() {
 
                     <input
                         ref={searchInputRef}
+                        id="omnibox-search-input"
+                        data-testid="omnibox-input"
                         type="text"
-                        value={searchQuery}
+                        value={selectedOptionText !== null ? selectedOptionText : searchQuery}
                         onChange={handleInputChange}
-                        
-                        onKeyDown={(e) => {
-                            if (e.key === 'Escape') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (activeBang) {
-                                    clearActiveBang();
-                                } else {
-                                    handleCloseOmnibox(false);
-                                }
-                            } else if (e.key === 'Backspace' && searchQuery === '' && activeBang) {
-                                e.preventDefault();
-                                const trigger = activeBang.bangs?.[0] || `!${activeBang.prefix}`;
-                                clearActiveBang();
-                                setSearchQuery(trigger);
-                            } else if (e.key === 'Tab') {
-                                if (isBangSuggestionMode && bangSuggestions.length > 0) {
-                                    e.preventDefault();
-                                    const target = bangSuggestions[selectedIndex] || bangSuggestions[0];
-                                    if (target) {
-                                        setActiveBang(target);
-                                        setSearchQuery('');
-                                    }
-                                }
-                            } else if (e.key === 'ArrowDown') {
-                                e.preventDefault();
-                                const max = isCommandMode 
-                                    ? filteredCommands.length 
-                                    : (isBangSuggestionMode ? bangSuggestions.length : filteredPredictions.length);
-                                setSelectedIndex(s => Math.min(s + 1, Math.max(0, max - 1)));
-                            } else if (e.key === 'ArrowUp') {
-                                e.preventDefault();
-                                setSelectedIndex(s => Math.max(s - 1, 0));
-                            } else if (e.key === 'Enter') {
-                                e.preventDefault();
-                                if (isCommandMode && filteredCommands.length > 0) {
-                                    handleExecuteCommand(filteredCommands[selectedIndex]?.id || filteredCommands[0].id);
-                                } else if (isBangSuggestionMode && bangSuggestions.length > 0 && !searchQuery.includes(' ')) {
-                                    const target = bangSuggestions[selectedIndex] || bangSuggestions[0];
-                                    if (target) {
-                                        setActiveBang(target);
-                                        setSearchQuery('');
-                                    }
-                                } else if (!isCommandMode) {
-                                    if (filteredPredictions.length > 0) {
-                                        handleSelectPrediction(filteredPredictions[selectedIndex] || filteredPredictions[0]);
-                                    } else if (searchQuery.trim().length > 0 || activeBang) {
-                                        const url = parseUrlInput(searchQuery, activeBang, customBangs);
-                                        const title = activeBang 
-                                            ? `Search ${activeBang.name}: ${searchQuery}` 
-                                            : `Search/Go: ${searchQuery}`;
-                                        handleSelectPrediction({ url, title });
-                                    }
-                                }
-                            }
-                        }}
+                        onKeyDown={handleOmniboxKeyDown}
 
                         placeholder={
                             isCommandMode 
@@ -741,21 +875,59 @@ export default function Omnibox() {
 
                 <div className={`grid transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${(searchQuery.length > 0 || isBangSuggestionMode) ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
                     <div className="overflow-hidden">
-                        <div className={`w-full bg-[#121214]/80 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-2xl p-2 flex flex-col gap-1 transition-all duration-500 max-h-[50vh] overflow-y-auto hide-scroll ${isCommandMode ? 'border-yellow-500/20 shadow-[0_20px_50px_rgba(234,179,8,0.1)]' : ''}`}>
+                        <div 
+                            ref={omniboxContainerRef} 
+                            className={`w-full bg-[#121214]/85 backdrop-blur-3xl border border-white/10 rounded-2xl p-2 flex flex-col gap-1 transition-all duration-300 max-h-[50vh] overflow-y-auto hide-scroll ${
+                                isCommandMode ? 'border-yellow-500/20' : ''
+                            }`}
+                            style={{
+                                boxShadow: isCommandMode 
+                                    ? '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(234, 179, 8, 0.15), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)' 
+                                    : isTor 
+                                        ? '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(168, 85, 247, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)'
+                                        : activeBang 
+                                            ? `0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px ${activeBang.color}20, inset 0 1px 0 0 rgba(255, 255, 255, 0.08)`
+                                            : '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px var(--accent-15, rgba(59, 130, 246, 0.15)), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)'
+                            }}
+                        >
                             {isCommandMode ? (
                                 filteredCommands.length > 0 ? (
-                                    filteredCommands.map((cmd, i) => (
-                                        <button key={i} data-selected={i === selectedIndex} onClick={() => handleExecuteCommand(cmd.id)} style={{ animationFillMode: 'both', animationDelay: `${i * 0.05}s` }} className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-300 group text-left border animate-pop-in ${i === selectedIndex ? 'bg-yellow-500/10 border-yellow-500/30 scale-[1.01] shadow-lg shadow-yellow-500/5' : 'border-transparent hover:border-yellow-500/30 hover:bg-yellow-500/10 hover:scale-[1.01] hover:shadow-lg hover:shadow-yellow-500/5'}`}>
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-300 bg-white/5 group-hover:bg-yellow-500/20 ${i === selectedIndex ? 'bg-yellow-500/20 scale-110' : 'group-hover:scale-110'} ${cmd.color}`}>
-                                                <cmd.icon size={16} />
-                                            </div>
-                                            <div className="flex flex-col flex-1 overflow-hidden">
-                                                <span className={`font-mono font-bold truncate transition-colors ${i === selectedIndex ? 'text-yellow-400' : 'text-yellow-500 group-hover:text-yellow-400'}`}>{'> ' + cmd.cmd}</span>
-                                                <span className={`text-xs truncate transition-colors ${i === selectedIndex ? 'text-yellow-500/70' : 'text-white/40 group-hover:text-yellow-500/70'}`}>{cmd.title}</span>
-                                            </div>
-                                            <Zap size={16} className={`transition-all duration-300 ${i === selectedIndex ? 'text-yellow-400 scale-125 rotate-12' : 'text-white/20 group-hover:text-yellow-400 group-hover:scale-125 group-hover:rotate-12'}`} />
-                                        </button>
-                                    ))
+                                    filteredCommands.map((cmd, i) => {
+                                        const isSelected = i === selectedIndex;
+                                        return (
+                                            <button 
+                                                key={i} 
+                                                data-selected={isSelected} 
+                                                onClick={() => handleExecuteCommand(cmd.id)} 
+                                                onMouseMove={(e) => handleOptionMouseMove(i, e)}
+                                                style={{ 
+                                                    animationFillMode: 'both', 
+                                                    animationDelay: `${i * 0.03}s`
+                                                }} 
+                                                className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-150 group text-left border ${
+                                                    isSelected 
+                                                        ? 'bg-yellow-500/15 border-yellow-500/30 scale-[1.005]' 
+                                                        : 'border-transparent hover:border-white/5 hover:bg-white/5'
+                                                }`}
+                                            >
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${isSelected ? 'bg-yellow-500/25 scale-105' : 'bg-white/5 group-hover:scale-105'} ${cmd.color}`}>
+                                                    <cmd.icon size={16} />
+                                                </div>
+                                                <div className="flex flex-col flex-1 overflow-hidden">
+                                                    <span className={`font-mono font-medium truncate transition-colors ${isSelected ? 'text-yellow-300 font-semibold' : 'text-yellow-500 group-hover:text-yellow-400'}`}>{'> ' + cmd.cmd}</span>
+                                                    <span className={`text-xs truncate transition-colors ${isSelected ? 'text-yellow-200/80' : 'text-white/40 group-hover:text-yellow-500/70'}`}>{cmd.title}</span>
+                                                </div>
+                                                {isSelected ? (
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        <span className="border border-yellow-500/30 bg-yellow-500/15 text-yellow-300 text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm">↵ Enter</span>
+                                                        <Zap size={15} className="text-yellow-400 rotate-12" />
+                                                    </div>
+                                                ) : (
+                                                    <Zap size={15} className="text-white/20 opacity-0 group-hover:opacity-100 group-hover:text-yellow-400 transition-all duration-200" />
+                                                )}
+                                            </button>
+                                        );
+                                    })
                                 ) : (
                                     <div className="p-4 flex items-center gap-4 text-white/50 animate-pop-in"><Terminal size={18} className="animate-pulse text-red-400" /><span className="text-sm font-mono">Command not found: <strong className="text-red-400">"{commandQuery}"</strong></span></div>
                                 )
@@ -772,6 +944,7 @@ export default function Omnibox() {
                                         {bangSuggestions.map((bang, i) => {
                                             const BangIcon = bang.icon || Search;
                                             const isSelected = i === selectedIndex;
+                                            const bangColor = bang.color || '#a855f7';
                                             return (
                                                 <button 
                                                     key={bang.id} 
@@ -779,40 +952,46 @@ export default function Omnibox() {
                                                     onClick={() => {
                                                         setActiveBang(bang);
                                                         setSearchQuery('');
+                                                        setSelectedOptionText(null);
                                                         searchInputRef.current?.focus();
                                                     }}
-                                                    className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all duration-200 group text-left border ${
+                                                    onMouseMove={(e) => handleOptionMouseMove(i, e)}
+                                                    style={isSelected ? {
+                                                        backgroundColor: `${bangColor}15`,
+                                                        borderColor: `${bangColor}30`
+                                                    } : undefined}
+                                                    className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all duration-150 group text-left border ${
                                                         isSelected 
-                                                            ? 'bg-white/10 border-white/20 scale-[1.005] shadow-lg' 
-                                                            : 'border-transparent hover:border-white/10 hover:bg-white/5'
+                                                            ? 'scale-[1.005]' 
+                                                            : 'border-transparent hover:border-white/5 hover:bg-white/5'
                                                     }`}
                                                 >
                                                     <div className="flex items-center gap-3 min-w-0">
                                                         <div 
-                                                            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110"
-                                                            style={{ backgroundColor: `${bang.color}25`, color: bang.color }}
+                                                            className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform ${isSelected ? 'scale-105' : 'group-hover:scale-105'}`}
+                                                            style={{ backgroundColor: `${bangColor}25`, color: bangColor }}
                                                         >
                                                             <BangIcon size={16} />
                                                         </div>
                                                         <div className="flex flex-col min-w-0">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="font-bold text-white text-sm">{bang.name}</span>
+                                                                <span className={`font-semibold text-sm ${isSelected ? 'text-white' : 'text-white/90'}`}>{bang.name}</span>
                                                                 <div className="flex items-center gap-1">
                                                                     {bang.bangs.slice(0, 3).map((b, bi) => (
-                                                                        <span key={bi} className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/10 text-white/70 font-mono font-semibold">
+                                                                        <span key={bi} className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-semibold ${isSelected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70'}`}>
                                                                             {b}
                                                                         </span>
                                                                     ))}
                                                                 </div>
                                                                 <span className="text-[10px] text-white/30 font-medium">({bang.category || 'Engine'})</span>
                                                             </div>
-                                                            <span className="text-xs text-white/40 truncate font-mono mt-0.5">
+                                                            <span className={`text-xs truncate font-mono mt-0.5 ${isSelected ? 'text-white/70' : 'text-white/40'}`}>
                                                                 {bang.url}
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-1 text-[10px] font-mono text-white/40 opacity-0 group-hover:opacity-100 transition">
-                                                        <span className="border border-white/10 bg-white/5 px-2 py-0.5 rounded">Tab ⇥</span>
+                                                    <div className={`flex items-center gap-1.5 text-[10px] font-mono transition ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                                                        <span className="border border-white/20 bg-white/10 text-white/90 px-2 py-0.5 rounded font-medium shadow-sm">Tab ⇥ or ↵ Enter</span>
                                                     </div>
                                                 </button>
                                             );
@@ -828,29 +1007,49 @@ export default function Omnibox() {
                                 filteredPredictions.length > 0 ? (
                                     filteredPredictions.map((pred, i) => {
                                         const BangIcon = pred.bang?.icon;
+                                        const isSelected = i === selectedIndex;
                                         return (
-                                            <button key={i} data-selected={i === selectedIndex} onClick={() => handleSelectPrediction(pred)} className={`w-full flex items-center gap-4 p-3 rounded-xl transition-colors group text-left ${i === selectedIndex ? 'bg-white/10' : 'hover:bg-white/10'}`}>
+                                            <button 
+                                                key={i} 
+                                                data-selected={isSelected} 
+                                                onClick={() => handleSelectPrediction(pred)} 
+                                                onMouseMove={(e) => handleOptionMouseMove(i, e)}
+                                                className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-150 group text-left border ${
+                                                    isSelected 
+                                                        ? 'bg-white/10 border-white/15 scale-[1.005]' 
+                                                        : 'border-transparent hover:border-white/5 hover:bg-white/5'
+                                                }`}
+                                            >
                                                 <div 
-                                                    className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                                                    className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
                                                         pred.bang 
                                                             ? '' 
                                                             : (pred.isMath 
-                                                                ? 'bg-accent-20 text-accent group-hover:bg-accent-30' 
+                                                                ? (isSelected ? 'bg-accent/25 text-accent scale-105' : 'bg-accent-20 text-accent group-hover:bg-accent-30') 
                                                                 : (pred.isSearch 
-                                                                    ? 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20' 
-                                                                    : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent'))
-                                                    } ${i === selectedIndex && !pred.isMath && !pred.bang ? 'bg-white/10 text-accent' : ''}`}
+                                                                    ? (isSelected ? 'bg-purple-500/25 text-purple-200 scale-105' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20')
+                                                                    : (isSelected ? 'bg-white/20 text-accent scale-105' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent')))
+                                                    } ${isSelected ? 'scale-105' : 'group-hover:scale-105'}`}
                                                     style={pred.bang ? { backgroundColor: `${pred.bang.color}25`, color: pred.bang.color } : undefined}
                                                 >
                                                     {pred.bang ? (BangIcon ? <BangIcon size={16} /> : <Search size={16} />) : (pred.isMath ? <Calculator size={16} /> : (pred.isSearch ? <Search size={16} /> : <Globe size={16} />))}
                                                 </div>
                                                 <div className="flex flex-col flex-1 overflow-hidden">
-                                                    <span className={`font-semibold truncate ${pred.isMath ? 'text-accent text-lg' : 'transition-colors'} ${i === selectedIndex && !pred.isMath ? 'text-white' : 'text-white/90 group-hover:text-white'}`}>
+                                                    <span className={`font-medium truncate transition-colors ${pred.isMath ? 'text-accent text-lg font-bold' : (isSelected ? 'text-white font-semibold' : 'text-white/80 group-hover:text-white')}`}>
                                                         {pred.title}
                                                     </span>
-                                                    <span className="text-xs text-white/40 truncate font-mono">{pred.url}</span>
+                                                    <span className={`text-xs truncate font-mono transition-colors ${isSelected ? 'text-white/70' : 'text-white/40'}`}>
+                                                        {pred.url}
+                                                    </span>
                                                 </div>
-                                                <ArrowRight size={16} className={`transition-colors ${i === selectedIndex ? 'text-accent' : 'text-white/20 group-hover:text-accent'}`} />
+                                                {isSelected ? (
+                                                    <div className="flex items-center gap-2 flex-shrink-0 animate-fade-in">
+                                                        <span className="border border-white/15 bg-white/10 text-white/80 text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm">↵ Enter</span>
+                                                        <ArrowRight size={15} className="text-accent translate-x-0.5 transition-all" />
+                                                    </div>
+                                                ) : (
+                                                    <ArrowRight size={15} className="text-white/20 opacity-0 group-hover:opacity-100 group-hover:text-accent transition-all duration-200" />
+                                                )}
                                             </button>
                                         );
                                     })

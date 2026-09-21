@@ -27,6 +27,7 @@ import Overlays from './components/common/Overlays';
 import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
+import UserProfilePopover from './components/popovers/UserProfilePopover';
 
 
 export default function App() {
@@ -39,7 +40,11 @@ export default function App() {
     const toast = useUIStore(state => state.toast);
     const showToast = useUIStore(state => state.showToast);
     const closeContextMenus = useUIStore(state => state.closeContextMenus);
+    const activePopover = useUIStore(state => state.activePopover);
+    const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
+    const closePopover = useUIStore(state => state.closePopover);
     const activeSpace = useTabStore(state => state.activeSpace);
+
 
     const { onDragOver, onDragLeave, onDropRoot } = useDragAndDrop();
 
@@ -323,6 +328,17 @@ export default function App() {
                 <Overlays />
                 <TabSwitcherOverlay />
                 <DefaultBrowserBanner />
+
+                {/* USER PROFILE & CLOUD SYNC POPOVER */}
+                {((activePopover === 'user' || activePopover === 'userProfile') || (isPopoverClosing && (activePopover === 'user' || activePopover === 'userProfile'))) && (
+                    <>
+                        <div 
+                            className={`fixed inset-0 z-[69990] transition-colors duration-200 ${isPopoverClosing ? 'bg-transparent' : 'bg-black/40 backdrop-blur-[2px]'}`}
+                            onClick={closePopover} 
+                        />
+                        <UserProfilePopover isClosing={isPopoverClosing} />
+                    </>
+                )}
             </div>
         </ContextMenuProvider>
     );

@@ -375,7 +375,7 @@ export default function ToolHub() {
                 <div className={`w-1 h-12 rounded-full transition-all duration-300 ease-out group-hover:h-24 ${isRightPanelOpen ? 'bg-transparent' : 'bg-white/10 group-hover:bg-accent/60 group-hover:shadow-[0_0_15px_var(--accent-30)]'}`}></div>
             </div>
 
-            <div className={`fixed top-4 bottom-4 right-4 w-96 md:w-[460px] bg-[#0a0a0c]/95 border border-white/10 rounded-[2rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRightPanelOpen ? 'translate-x-0 opacity-100' : 'translate-x-[110%] opacity-0'}`} onClick={e => e.stopPropagation()}>
+            <div className={`fixed top-4 bottom-4 right-4 w-96 md:w-[460px] bg-[#0c0d14]/78 backdrop-blur-3xl border border-white/[0.08] rounded-2xl shadow-[0_25px_80px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.08)] flex flex-col overflow-hidden z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRightPanelOpen ? 'translate-x-0 opacity-100' : 'translate-x-[110%] opacity-0'}`} onClick={e => e.stopPropagation()}>
 
                 {hubToast && (
                     <div className="absolute -left-32 top-1/2 -translate-y-1/2 bg-accent text-black px-3 py-1.5 rounded-lg text-xs font-bold animate-pop-in shadow-lg">
@@ -383,66 +383,81 @@ export default function ToolHub() {
                     </div>
                 )}
 
-                <div className="p-5 pb-3 flex justify-between items-center border-b border-white/5">
-                    <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                        <Puzzle size={18} className="text-accent" /> Tool Hub
-                    </h2>
-                    <button onClick={() => setIsRightPanelOpen(false)} className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors cursor-pointer">
-                        <X size={14} strokeWidth={2.5} />
-                    </button>
-                </div>
+                <div className="p-3 px-4 flex justify-between items-center border-b border-white/[0.05] bg-white/[0.02] backdrop-blur-md">
+                    <div className="flex items-center gap-2">
+                        <Puzzle size={14} className="text-accent" />
+                        <h2 className="text-xs font-semibold tracking-tight text-white uppercase font-mono">
+                            Tool Hub
+                        </h2>
+                    </div>
 
-                <div className="px-5 pt-4 pb-2">
-                    <div className="flex bg-black/40 border border-white/5 p-1 rounded-xl relative">
-                        <div
-                            className="absolute top-1 bottom-1 bg-accent-20 border border-accent-30 rounded-lg transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-sm"
-                            style={{ width: 'calc(25% - 2px)', transform: `translateX(${rightPanelTab === 'notes' ? '0%' : rightPanelTab === 'clipboard' ? '100%' : rightPanelTab === 'ai' ? '200%' : '300%'})` }}
-                        ></div>
-                        <button onClick={() => setRightPanelTab('notes')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'notes' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><PenTool size={12} /> Notes</button>
-                        <button onClick={() => setRightPanelTab('clipboard')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'clipboard' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><ClipboardList size={12} /> Copied</button>
-                        <button onClick={() => setRightPanelTab('ai')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'ai' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><MessageSquare size={12} /> Qu-AI</button>
-                        <button onClick={() => setRightPanelTab('downloads')} className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${rightPanelTab === 'downloads' ? 'text-accent' : 'text-white/40 hover:text-white'}`}><Download size={12} /> DL</button>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => {
+                                setIsRightPanelOpen(false);
+                                setTimeout(() => useUIStore.getState().setIsSnippingMode(true), 150);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent border border-accent/25 transition text-[11px] font-mono flex items-center gap-1 cursor-pointer"
+                            title="Interactive Screen Snip (Crop Selection)"
+                        >
+                            <Crop size={11} />
+                            <span>Snip</span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                setIsRightPanelOpen(false);
+                                useUIStore.getState().captureVisibleViewport();
+                            }}
+                            className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/10 text-zinc-400 hover:text-white border border-white/8 transition cursor-pointer"
+                            title="Capture Visible Viewport"
+                        >
+                            <Camera size={12} />
+                        </button>
+                        <button
+                            onClick={() => {
+                                setIsRightPanelOpen(false);
+                                useUIStore.getState().captureFullPage();
+                            }}
+                            className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/10 text-zinc-400 hover:text-white border border-white/8 transition cursor-pointer"
+                            title="Capture Full Scrolling Page"
+                        >
+                            <Maximize2 size={12} />
+                        </button>
+                        <div className="w-px h-3.5 bg-white/10 mx-0.5" />
+                        <button 
+                            onClick={() => setIsRightPanelOpen(false)} 
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                        >
+                            <X size={13} />
+                        </button>
                     </div>
                 </div>
 
-                {/* QUICK CAPTURE TOOLBAR */}
-                <div className="px-5 pb-2">
-                    <div className="p-2 px-3 bg-white/[0.03] border border-white/5 rounded-2xl flex items-center justify-between gap-1.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/40 flex items-center gap-1.5">
-                            <Camera size={12} className="text-accent" /> Snip & Shot
-                        </span>
-                        <div className="flex items-center gap-1">
-                            <button
-                                onClick={() => {
-                                    setIsRightPanelOpen(false);
-                                    setTimeout(() => useUIStore.getState().setIsSnippingMode(true), 150);
-                                }}
-                                className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 hover:text-accent text-[10px] font-semibold text-white/80 transition flex items-center gap-1 cursor-pointer"
-                                title="Interactive Screen Snip (Crop Selection)"
-                            >
-                                <Crop size={11} /> Snip
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setIsRightPanelOpen(false);
-                                    useUIStore.getState().captureVisibleViewport();
-                                }}
-                                className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 hover:text-accent text-[10px] font-semibold text-white/80 transition flex items-center gap-1 cursor-pointer"
-                                title="Capture Visible Viewport"
-                            >
-                                <Camera size={11} /> Screen
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setIsRightPanelOpen(false);
-                                    useUIStore.getState().captureFullPage();
-                                }}
-                                className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 hover:text-accent text-[10px] font-semibold text-white/80 transition flex items-center gap-1 cursor-pointer"
-                                title="Capture Full Scrolling Page"
-                            >
-                                <Maximize2 size={11} /> Full Page
-                            </button>
-                        </div>
+                <div className="px-4 pt-3 pb-1">
+                    <div className="grid grid-cols-4 bg-white/[0.025] border border-white/[0.05] p-0.5 rounded-lg font-mono text-[11px]">
+                        {[
+                            { id: 'notes', label: 'Notes', icon: PenTool, iconColor: 'text-amber-400' },
+                            { id: 'clipboard', label: 'Clipboard', icon: ClipboardList, iconColor: 'text-cyan-400' },
+                            { id: 'ai', label: 'Local AI', icon: Cpu, iconColor: 'text-purple-400' },
+                            { id: 'downloads', label: 'Downloads', icon: Download, iconColor: 'text-emerald-400' }
+                        ].map(tab => {
+                            const Icon = tab.icon;
+                            const isActive = rightPanelTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setRightPanelTab(tab.id)}
+                                    className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-colors ${
+                                        isActive 
+                                            ? 'bg-white/10 text-white font-medium shadow-xs border border-white/10' 
+                                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
+                                    }`}
+                                >
+                                    <Icon size={12} className={tab.iconColor} />
+                                    <span>{tab.label}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -863,13 +878,13 @@ export default function ToolHub() {
                             }).map((msg, i) => (
                                 <div key={i} className={`flex items-start gap-2.5 w-full ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                                     {msg.role === 'ai' && (
-                                        <div className="w-6 h-6 rounded-full bg-accent text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-[0_0_10px_var(--accent-30)]">
-                                            <Zap size={12} />
+                                        <div className="w-6 h-6 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+                                            <Cpu size={12} />
                                         </div>
                                     )}
 
-                                    <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[85%] border ${
-                                        msg.role === 'user' ? 'bg-accent-20 border-accent-30 text-white rounded-tr-sm' : 'bg-white/5 border-white/10 text-white/90 rounded-tl-sm'
+                                    <div className={`p-3 rounded-xl text-xs leading-relaxed max-w-[85%] border ${
+                                        msg.role === 'user' ? 'bg-accent/15 border-accent/25 text-white rounded-tr-sm' : 'bg-white/[0.025] border-white/[0.05] text-zinc-200 rounded-tl-sm'
                                     }`}>
                                         {/* Attachments rendering */}
                                         {msg.attachments && msg.attachments.length > 0 && (
@@ -895,13 +910,13 @@ export default function ToolHub() {
 
                             {isGenerating && (
                                 <div className="flex items-start gap-2.5 w-full">
-                                    <div className="w-6 h-6 rounded-full bg-accent text-black flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <Zap size={12} className="animate-pulse" />
+                                    <div className="w-6 h-6 rounded-md bg-white/[0.06] border border-white/10 text-zinc-300 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <Cpu size={12} />
                                     </div>
-                                    <div className="bg-white/5 border border-white/10 text-white/90 p-3 rounded-2xl rounded-tl-sm text-xs flex items-center gap-1">
-                                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce"></div>
-                                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                                        <div className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+                                    <div className="bg-white/[0.03] border border-white/8 text-zinc-300 p-2.5 px-3 rounded-xl rounded-tl-sm text-xs flex items-center gap-1.5">
+                                        <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce"></div>
+                                        <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+                                        <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
                                     </div>
                                 </div>
                             )}

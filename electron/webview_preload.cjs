@@ -32,6 +32,7 @@ window.addEventListener('wheel', (e) => {
     }
 }, { passive: false });
 
+
 // Monitor DRM / Encrypted Media Extensions (EME) for unsupported hardware VMP requests
 try {
     if (typeof navigator !== 'undefined' && navigator.requestMediaKeySystemAccess) {

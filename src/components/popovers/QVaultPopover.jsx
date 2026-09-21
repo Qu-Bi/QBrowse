@@ -636,30 +636,30 @@ export default function QVaultPopover({ isClosing }) {
     return (
         <div 
             onClick={e => e.stopPropagation()} 
-            className={`absolute top-4 right-4 z-[70000] w-[420px] rounded-3xl bg-[#0c0d10]/75 backdrop-blur-3xl border border-white/15 shadow-[0_30px_80px_rgba(0,0,0,0.7)] text-white overflow-hidden p-5 transition-all duration-300 ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}
+            className={`absolute top-4 right-4 z-[70000] w-[420px] rounded-2xl bg-[#0e1015]/95 backdrop-blur-2xl border border-white/[0.06] shadow-[0_25px_60px_rgba(0,0,0,0.85)] text-zinc-200 overflow-hidden p-4 transition-all duration-200 ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}
         >
             {/* Header */}
-            <div className="flex items-center justify-between pb-3.5 border-b border-white/15 mb-4">
-                <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-2xl flex items-center justify-center border transition-colors ${isUnlocked ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-accent/20 text-accent border-accent/30'}`}>
-                        {isUnlocked ? <Unlock size={16} /> : <Lock size={16} />}
+            <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] mb-3.5">
+                <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${isUnlocked ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'}`}>
+                        {isUnlocked ? <Unlock size={14} /> : <Lock size={14} />}
                     </div>
                     <div>
-                        <h3 className="text-sm font-bold text-white tracking-wide">QVault</h3>
-                        <p className="text-[10px] text-white/50">{isUnlocked ? `${passwords.length} saved items` : 'AES-256 Encrypted Vault'}</p>
+                        <h3 className="text-xs font-semibold text-zinc-100 tracking-tight">QVault</h3>
+                        <p className="text-[10px] text-zinc-500 font-mono">{isUnlocked ? `${passwords.length} saved items` : 'AES-256 Encrypted Vault'}</p>
                     </div>
                 </div>
 
                 {isUnlocked && (
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => setViewMode(viewMode === 'settings' ? 'vault' : 'settings')} className={`p-2 rounded-xl border transition ${viewMode === 'settings' ? 'bg-accent/20 text-accent border-accent/30' : 'bg-white/5 border-white/10 text-white/60 hover:text-white hover:bg-white/10'}`} title="Vault Settings">
-                            <Settings size={15} />
+                    <div className="flex items-center gap-1.5">
+                        <button onClick={() => setViewMode(viewMode === 'settings' ? 'vault' : 'settings')} className={`p-1.5 rounded-lg border transition cursor-pointer ${viewMode === 'settings' ? 'bg-accent/15 text-accent border-accent/30' : 'bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08]'}`} title="Vault Settings">
+                            <Settings size={14} />
                         </button>
-                        <button onClick={() => handleOpenAddForm('login')} className="px-3.5 py-2 rounded-xl bg-accent text-white hover:brightness-110 text-xs font-bold flex items-center gap-1.5 transition shadow-md shadow-accent/20" title="Add to Vault">
-                            <Plus size={14} strokeWidth={3} /> Add
+                        <button onClick={() => handleOpenAddForm('login')} className="px-2.5 py-1.5 rounded-lg bg-accent/15 hover:bg-accent/25 border border-accent/30 text-accent text-xs font-medium flex items-center gap-1.5 transition cursor-pointer" title="Add to Vault">
+                            <Plus size={13} strokeWidth={2.5} /> Add
                         </button>
-                        <button onClick={lock} className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-white/10 text-xs transition" title="Lock Vault">
-                            <Lock size={15} />
+                        <button onClick={lock} className="p-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08] text-xs transition cursor-pointer" title="Lock Vault">
+                            <Lock size={14} />
                         </button>
                     </div>
                 )}
@@ -667,42 +667,42 @@ export default function QVaultPopover({ isClosing }) {
 
             {/* LOCKED VIEW */}
             {!isUnlocked ? (
-                <div className="flex flex-col gap-4 py-2">
+                <div className="flex flex-col gap-3.5 py-1">
                     {/* Unlock Mode Selector */}
                     {pinCode && (
-                        <div className="flex bg-black/40 p-1 rounded-2xl border border-white/10 gap-1">
-                            <button onClick={() => setUnlockMode('pin')} className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${unlockMode === 'pin' ? 'bg-accent text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
+                        <div className="flex bg-white/[0.025] p-0.5 rounded-lg border border-white/[0.06] gap-0.5">
+                            <button onClick={() => setUnlockMode('pin')} className={`flex-1 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${unlockMode === 'pin' ? 'bg-accent/15 text-accent border border-accent/25 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
                                 Quick PIN
                             </button>
-                            <button onClick={() => setUnlockMode('password')} className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${unlockMode === 'password' ? 'bg-accent text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
+                            <button onClick={() => setUnlockMode('password')} className={`flex-1 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${unlockMode === 'password' ? 'bg-accent/15 text-accent border border-accent/25 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
                                 Master Password
                             </button>
                         </div>
                     )}
 
-                    <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-4">
-                        <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center gap-3.5">
-                            <Shield size={26} className="text-accent shrink-0" />
-                            <div className="text-xs text-white/70 leading-relaxed">
-                                {unlockMode === 'pin' ? 'Enter your 4-digit PIN to unlock QVault.' : 'Enter your Master Password to decrypt passwords, cards, and addresses.'}
+                    <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-3.5">
+                        <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex items-center gap-3">
+                            <Shield size={18} className="text-accent shrink-0" />
+                            <div className="text-[11px] text-zinc-400 leading-relaxed">
+                                {unlockMode === 'pin' ? 'Enter your quick PIN to unlock QVault.' : 'Enter your Master Password to decrypt passwords, cards, and addresses.'}
                             </div>
                         </div>
 
                         {unlockMode === 'password' ? (
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[10px] font-bold uppercase tracking-wider text-white/40">Master Password</label>
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">Master Password</label>
                                 <input
                                     type="password"
                                     autoFocus
                                     value={masterPassInput}
                                     onChange={(e) => setMasterPassInput(e.target.value)}
                                     placeholder="Enter master password..."
-                                    className="w-full h-11 bg-black/40 border border-white/10 rounded-2xl px-4 text-sm font-mono text-white placeholder-white/30 outline-none focus:border-accent focus:bg-black/60 transition-all"
+                                    className="w-full h-9 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-3 text-xs font-mono text-zinc-100 placeholder-zinc-600 outline-none transition-all"
                                 />
                             </div>
                         ) : (
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[10px] font-bold uppercase tracking-wider text-white/40">PIN Code</label>
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">PIN Code</label>
                                 <input
                                     type="password"
                                     autoFocus
@@ -710,13 +710,13 @@ export default function QVaultPopover({ isClosing }) {
                                     value={pinInput}
                                     onChange={(e) => setPinInput(e.target.value)}
                                     placeholder="••••"
-                                    className="w-full h-11 bg-black/40 border border-white/10 rounded-2xl px-4 text-center text-xl font-mono tracking-[0.5em] text-white placeholder-white/30 outline-none focus:border-accent focus:bg-black/60 transition-all"
+                                    className="w-full h-10 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-4 text-center text-lg font-mono tracking-[0.5em] text-zinc-100 placeholder-zinc-600 outline-none transition-all"
                                 />
                             </div>
                         )}
 
                         {error && (
-                            <div className="text-xs text-red-400 font-semibold bg-red-500/10 border border-red-500/20 px-3.5 py-2 rounded-xl">
+                            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg font-mono">
                                 {error}
                             </div>
                         )}
@@ -724,26 +724,26 @@ export default function QVaultPopover({ isClosing }) {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full h-11 mt-1 rounded-2xl bg-accent text-white hover:brightness-110 font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-accent/25 active:scale-[0.98] disabled:opacity-50"
+                            className="w-full h-9 mt-1 rounded-lg bg-accent/20 hover:bg-accent/30 border border-accent/35 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.99] disabled:opacity-40 shadow-sm cursor-pointer"
                         >
-                            {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                            {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
                             Unlock Vault
                         </button>
                     </form>
                 </div>
             ) : viewMode === 'settings' ? (
                 /* SETTINGS VIEW */
-                <div className="flex flex-col gap-4 py-1 animate-slide-down-fade">
-                    <div className="flex justify-between items-center pb-2.5 border-b border-white/10">
-                        <button onClick={() => setViewMode('vault')} className="flex items-center gap-2 text-xs font-bold text-white/80 hover:text-white transition">
-                            <ArrowLeft size={15} /> Vault Settings
+                <div className="flex flex-col gap-3.5 py-1 animate-slide-down-fade">
+                    <div className="flex justify-between items-center pb-2 border-b border-white/[0.06]">
+                        <button onClick={() => setViewMode('vault')} className="flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition cursor-pointer">
+                            <ArrowLeft size={13} /> Vault Settings
                         </button>
                     </div>
 
                     {/* Quick PIN Settings */}
-                    <form onSubmit={handleSavePin} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-2.5">
-                        <span className="text-xs font-bold text-white">Quick PIN Unlock</span>
-                        <p className="text-[11px] text-white/50">Set a 4-6 digit PIN for fast vault access.</p>
+                    <form onSubmit={handleSavePin} className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col gap-2">
+                        <span className="text-xs font-medium text-zinc-200">Quick PIN Unlock</span>
+                        <p className="text-[11px] text-zinc-500">Set a 4-6 digit PIN for fast vault access.</p>
                         <div className="flex gap-2 mt-1">
                             <input
                                 type="password"
@@ -751,24 +751,24 @@ export default function QVaultPopover({ isClosing }) {
                                 placeholder="Set PIN (e.g. 1234)"
                                 value={newPinInput}
                                 onChange={e => setNewPinInput(e.target.value)}
-                                className="flex-1 h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-center text-sm font-mono tracking-widest text-white outline-none focus:border-accent"
+                                className="flex-1 h-8 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-3 text-center text-xs font-mono tracking-widest text-zinc-100 outline-none"
                             />
-                            <button type="submit" className="px-4 h-10 rounded-xl bg-accent text-white font-bold text-xs hover:brightness-110 transition shadow-sm">
+                            <button type="submit" className="px-3 h-8 rounded-lg bg-accent/15 hover:bg-accent/25 border border-accent/30 text-accent font-medium text-xs transition cursor-pointer">
                                 Save PIN
                             </button>
                         </div>
                     </form>
 
                     {/* Master Password Settings */}
-                    <form onSubmit={handleChangeMasterPassword} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-3">
-                        <span className="text-xs font-bold text-white">Change Master Password</span>
+                    <form onSubmit={handleChangeMasterPassword} className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col gap-2.5">
+                        <span className="text-xs font-medium text-zinc-200">Change Master Password</span>
                         <input
                             type="password"
                             required
                             placeholder="Current Master Password"
                             value={oldPassInput}
                             onChange={e => setOldPassInput(e.target.value)}
-                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
+                            className="h-8 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                         />
                         <input
                             type="password"
@@ -776,7 +776,7 @@ export default function QVaultPopover({ isClosing }) {
                             placeholder="New Master Password"
                             value={newMasterPass}
                             onChange={e => setNewMasterPass(e.target.value)}
-                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
+                            className="h-8 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                         />
                         <input
                             type="password"
@@ -784,43 +784,43 @@ export default function QVaultPopover({ isClosing }) {
                             placeholder="Confirm New Master Password"
                             value={confirmMasterPass}
                             onChange={e => setConfirmMasterPass(e.target.value)}
-                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
+                            className="h-8 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                         />
-                        <button type="submit" disabled={isChangingPass} className="w-full h-10 mt-1 rounded-xl bg-white/10 border border-white/10 hover:bg-white/20 text-white font-bold text-xs transition">
+                        <button type="submit" disabled={isChangingPass} className="w-full h-8 mt-1 rounded-lg bg-accent/15 border border-accent/30 hover:bg-accent/25 text-accent font-medium text-xs transition cursor-pointer">
                             {isChangingPass ? 'Updating...' : 'Update Master Password'}
                         </button>
                     </form>
                 </div>
             ) : viewMode === 'add' ? (
                 /* ADD / EDIT ITEM VIEW */
-                <form onSubmit={handleSaveNewItem} className="flex flex-col gap-3.5 py-1 animate-slide-down-fade">
-                    <div className="flex justify-between items-center pb-2.5 border-b border-white/10">
-                        <button type="button" onClick={() => setViewMode('vault')} className="flex items-center gap-2 text-xs font-bold text-white/80 hover:text-white transition">
-                            <ArrowLeft size={15} /> Back
+                <form onSubmit={handleSaveNewItem} className="flex flex-col gap-3 py-1 animate-slide-down-fade">
+                    <div className="flex justify-between items-center pb-2 border-b border-white/[0.06]">
+                        <button type="button" onClick={() => setViewMode('vault')} className="flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition cursor-pointer">
+                            <ArrowLeft size={13} /> Back
                         </button>
-                        <span className="text-xs font-bold text-white">{editingItemId ? 'Edit Item' : 'New Vault Item'}</span>
+                        <span className="text-xs font-medium text-zinc-300">{editingItemId ? 'Edit Item' : 'New Vault Item'}</span>
                     </div>
 
                     {/* Type Selector (4 Types) */}
-                    <div className="grid grid-cols-4 gap-1 p-1 bg-black/40 rounded-2xl border border-white/10">
-                        <button type="button" onClick={() => setNewItemType('login')} className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 ${newItemType === 'login' ? 'bg-accent text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <Globe size={12} /> Login
+                    <div className="grid grid-cols-4 gap-1 p-0.5 bg-white/[0.02] rounded-lg border border-white/[0.06]">
+                        <button type="button" onClick={() => setNewItemType('login')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'login' ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <Globe size={11} className={newItemType === 'login' ? 'text-sky-300' : 'text-sky-400'} /> Login
                         </button>
-                        <button type="button" onClick={() => setNewItemType('card')} className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 ${newItemType === 'card' ? 'bg-blue-600 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <CreditCard size={12} /> Card
+                        <button type="button" onClick={() => setNewItemType('card')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'card' ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <CreditCard size={11} className={newItemType === 'card' ? 'text-blue-300' : 'text-blue-400'} /> Card
                         </button>
-                        <button type="button" onClick={() => setNewItemType('address')} className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 ${newItemType === 'address' ? 'bg-amber-600 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <MapPin size={12} /> Address
+                        <button type="button" onClick={() => setNewItemType('address')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'address' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <MapPin size={11} className={newItemType === 'address' ? 'text-amber-300' : 'text-amber-400'} /> Address
                         </button>
-                        <button type="button" onClick={() => setNewItemType('passkey')} className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 ${newItemType === 'passkey' ? 'bg-purple-600 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <Fingerprint size={12} /> Passkey
+                        <button type="button" onClick={() => setNewItemType('passkey')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'passkey' ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <Fingerprint size={11} className={newItemType === 'passkey' ? 'text-purple-300' : 'text-purple-400'} /> Passkey
                         </button>
                     </div>
 
                     <div className="flex flex-col gap-2.5 max-h-80 overflow-y-auto hide-scroll pr-1">
                         {/* Title / Label */}
                         <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-bold text-white/40">
+                            <label className="text-[10px] font-mono text-zinc-500">
                                 {newItemType === 'card' ? 'Card Nickname' : newItemType === 'address' ? 'Address Nickname' : 'Title'}
                             </label>
                             <input
@@ -829,7 +829,7 @@ export default function QVaultPopover({ isClosing }) {
                                 placeholder={newItemType === 'card' ? 'e.g. Chase Sapphire' : newItemType === 'address' ? 'e.g. Home or Office' : 'e.g. GitHub'}
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
-                                className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
+                                className="h-8 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                             />
                         </div>
 
@@ -837,29 +837,29 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'login' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-white/40">Website URL</label>
+                                    <label className="text-[10px] font-mono text-zinc-500">Website URL</label>
                                     <input
                                         type="text"
                                         placeholder="https://example.com"
                                         value={url}
                                         onChange={e => setUrl(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-white/40">Username / Email</label>
+                                    <label className="text-[10px] font-mono text-zinc-500">Username / Email</label>
                                     <input
                                         type="text"
                                         placeholder="user@domain.com"
                                         value={username}
                                         onChange={e => setUsername(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-bold text-white/40">Password</label>
-                                        <button type="button" onClick={() => { generateCustomPassword(); setPassword(generatedResult); showToast('Generated password!'); }} className="text-[10px] text-accent font-semibold hover:underline">
+                                        <label className="text-[10px] font-mono text-zinc-500">Password</label>
+                                        <button type="button" onClick={() => { generateCustomPassword(); setPassword(generatedResult); showToast('Generated password!'); }} className="text-[10px] text-zinc-400 hover:text-zinc-200 font-mono transition">
                                             Generate Random
                                         </button>
                                     </div>
@@ -869,7 +869,7 @@ export default function QVaultPopover({ isClosing }) {
                                         placeholder="Password"
                                         value={password}
                                         onChange={e => setPassword(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs font-mono text-white placeholder-white/30 outline-none focus:border-accent"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs font-mono text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                             </>
@@ -879,19 +879,19 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'card' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-white/40">Cardholder Name</label>
+                                    <label className="text-[10px] font-mono text-zinc-500">Cardholder Name</label>
                                     <input
                                         type="text"
                                         placeholder="Name on card"
                                         value={cardholderName}
                                         onChange={e => setCardholderName(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-blue-400"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-bold text-white/40">Card Number</label>
-                                        <span className="text-[10px] text-blue-400 font-bold uppercase">{cardBrand}</span>
+                                        <label className="text-[10px] font-mono text-zinc-500">Card Number</label>
+                                        <span className="text-[10px] text-zinc-400 font-mono">{cardBrand}</span>
                                     </div>
                                     <input
                                         type="text"
@@ -904,41 +904,41 @@ export default function QVaultPopover({ isClosing }) {
                                             setCardNumber(formatted);
                                             setCardBrand(detectCardBrand(formatted));
                                         }}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs font-mono tracking-wider text-white placeholder-white/30 outline-none focus:border-blue-400"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs font-mono tracking-wider text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">Exp Month</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">Exp Month</label>
                                         <input
                                             type="text"
                                             maxLength={2}
-                                            placeholder="MM (e.g. 12)"
+                                            placeholder="MM"
                                             value={cardExpMonth}
                                             onChange={e => setCardExpMonth(e.target.value.replace(/\D/g, ''))}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3 text-xs text-center font-mono text-white placeholder-white/30 outline-none focus:border-blue-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-2 text-xs text-center font-mono text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">Exp Year</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">Exp Year</label>
                                         <input
                                             type="text"
                                             maxLength={4}
                                             placeholder="YYYY"
                                             value={cardExpYear}
                                             onChange={e => setCardExpYear(e.target.value.replace(/\D/g, ''))}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3 text-xs text-center font-mono text-white placeholder-white/30 outline-none focus:border-blue-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-2 text-xs text-center font-mono text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">CVV / CVC</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">CVV</label>
                                         <input
                                             type="password"
                                             maxLength={4}
                                             placeholder="•••"
                                             value={cardCvv}
                                             onChange={e => setCardCvv(e.target.value.replace(/\D/g, ''))}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3 text-xs text-center font-mono text-white placeholder-white/30 outline-none focus:border-blue-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-2 text-xs text-center font-mono text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                 </div>
@@ -949,90 +949,90 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'address' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-white/40">Full Name</label>
+                                    <label className="text-[10px] font-mono text-zinc-500">Full Name</label>
                                     <input
                                         type="text"
                                         placeholder="Full recipient name"
                                         value={fullName}
                                         onChange={e => setFullName(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-white/40">Street Address</label>
+                                    <label className="text-[10px] font-mono text-zinc-500">Street Address</label>
                                     <input
                                         type="text"
                                         required
                                         placeholder="Street name and number"
                                         value={streetAddress}
                                         onChange={e => setStreetAddress(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">Apt / Suite</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">Apt / Suite</label>
                                         <input
                                             type="text"
                                             placeholder="Apt 4B"
                                             value={unit}
                                             onChange={e => setUnit(e.target.value)}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">City</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">City</label>
                                         <input
                                             type="text"
                                             required
                                             placeholder="City"
                                             value={city}
                                             onChange={e => setCity(e.target.value)}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">State / Province</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">State / Province</label>
                                         <input
                                             type="text"
                                             placeholder="State or Region"
                                             value={stateProvince}
                                             onChange={e => setStateProvince(e.target.value)}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">ZIP / Postal Code</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">ZIP / Postal Code</label>
                                         <input
                                             type="text"
                                             placeholder="Postal code"
                                             value={postalCode}
                                             onChange={e => setPostalCode(e.target.value)}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">Phone Number</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">Phone Number</label>
                                         <input
                                             type="text"
                                             placeholder="+1 (555) 000-0000"
                                             value={phone}
                                             onChange={e => setPhone(e.target.value)}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-bold text-white/40">Email</label>
+                                        <label className="text-[10px] font-mono text-zinc-500">Email</label>
                                         <input
                                             type="email"
                                             placeholder="email@domain.com"
                                             value={email}
                                             onChange={e => setEmail(e.target.value)}
-                                            className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-400"
+                                            className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                         />
                                     </div>
                                 </div>
@@ -1043,100 +1043,100 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'passkey' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-white/40">Domain / RP ID</label>
+                                    <label className="text-[10px] font-mono text-zinc-500">Domain / RP ID</label>
                                     <input
                                         type="text"
                                         placeholder="github.com"
                                         value={passkeyRpId}
                                         onChange={e => setPasskeyRpId(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-purple-400"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-white/40">Username / Account</label>
+                                    <label className="text-[10px] font-mono text-zinc-500">Username / Account</label>
                                     <input
                                         type="text"
                                         placeholder="user@domain.com"
                                         value={username}
                                         onChange={e => setUsername(e.target.value)}
-                                        className="h-10 bg-black/40 border border-white/10 rounded-xl px-3.5 text-xs text-white placeholder-white/30 outline-none focus:border-purple-400"
+                                        className="h-8 bg-white/[0.03] border border-white/8 focus:border-white/20 rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                                     />
                                 </div>
                             </>
                         )}
                     </div>
 
-                    <div className="flex gap-2.5 mt-2 pt-2 border-t border-white/10">
-                        <button type="button" onClick={() => setViewMode('vault')} className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-xs font-bold transition">
+                    <div className="flex gap-2 mt-2 pt-2 border-t border-white/[0.06]">
+                        <button type="button" onClick={() => setViewMode('vault')} className="flex-1 h-8 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-zinc-400 hover:text-zinc-200 text-xs font-medium transition cursor-pointer">
                             Cancel
                         </button>
-                        <button type="submit" disabled={isSaving} className="flex-1 h-10 rounded-xl bg-accent text-white hover:brightness-110 font-bold text-xs transition shadow-md shadow-accent/20">
+                        <button type="submit" disabled={isSaving} className="flex-1 h-8 rounded-lg bg-accent/20 hover:bg-accent/30 border border-accent/35 text-white font-medium text-xs transition cursor-pointer">
                             {isSaving ? 'Saving...' : 'Save to Vault'}
                         </button>
                     </div>
                 </form>
             ) : (
                 /* UNLOCKED MAIN VAULT VIEW */
-                <div className="flex flex-col gap-3.5">
-                    {/* Category Filter Pills (6 Categories) */}
-                    <div className="flex items-center gap-1 p-1 bg-black/40 rounded-2xl border border-white/10 overflow-x-auto hide-scroll">
-                        <button onClick={() => setCategoryFilter('all')} className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all ${categoryFilter === 'all' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
+                <div className="flex flex-col gap-3">
+                    {/* Category Filter Pills */}
+                    <div className="flex items-center gap-0.5 p-0.5 bg-white/[0.02] rounded-lg border border-white/[0.06] overflow-x-auto hide-scroll">
+                        <button onClick={() => setCategoryFilter('all')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition cursor-pointer ${categoryFilter === 'all' ? 'bg-accent/15 text-accent border border-accent/30 shadow-xs font-semibold' : 'text-zinc-500 hover:text-zinc-300'}`}>
                             All ({parsedItems.length})
                         </button>
-                        <button onClick={() => setCategoryFilter('logins')} className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${categoryFilter === 'logins' ? 'bg-accent text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <Globe size={11} /> Logins ({parsedItems.filter(p => p.itemType === 'login').length})
+                        <button onClick={() => setCategoryFilter('logins')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${categoryFilter === 'logins' ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-xs font-semibold' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <Globe size={11} className={categoryFilter === 'logins' ? 'text-sky-300' : 'text-sky-400'} /> Logins ({parsedItems.filter(p => p.itemType === 'login').length})
                         </button>
-                        <button onClick={() => setCategoryFilter('cards')} className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${categoryFilter === 'cards' ? 'bg-blue-600 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <CreditCard size={11} /> Cards ({parsedItems.filter(p => p.itemType === 'card').length})
+                        <button onClick={() => setCategoryFilter('cards')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${categoryFilter === 'cards' ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-xs font-semibold' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <CreditCard size={11} className={categoryFilter === 'cards' ? 'text-blue-300' : 'text-blue-400'} /> Cards ({parsedItems.filter(p => p.itemType === 'card').length})
                         </button>
-                        <button onClick={() => setCategoryFilter('addresses')} className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${categoryFilter === 'addresses' ? 'bg-amber-600 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <MapPin size={11} /> Addresses ({parsedItems.filter(p => p.itemType === 'address').length})
+                        <button onClick={() => setCategoryFilter('addresses')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${categoryFilter === 'addresses' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-xs font-semibold' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <MapPin size={11} className={categoryFilter === 'addresses' ? 'text-amber-300' : 'text-amber-400'} /> Addresses ({parsedItems.filter(p => p.itemType === 'address').length})
                         </button>
-                        <button onClick={() => setCategoryFilter('passkeys')} className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${categoryFilter === 'passkeys' ? 'bg-purple-600 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <Fingerprint size={11} /> Passkeys ({parsedItems.filter(p => p.itemType === 'passkey').length})
+                        <button onClick={() => setCategoryFilter('passkeys')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${categoryFilter === 'passkeys' ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs font-semibold' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <Fingerprint size={11} className={categoryFilter === 'passkeys' ? 'text-purple-300' : 'text-purple-400'} /> Passkeys ({parsedItems.filter(p => p.itemType === 'passkey').length})
                         </button>
-                        <button onClick={() => setCategoryFilter('generator')} className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${categoryFilter === 'generator' ? 'bg-emerald-600 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}>
-                            <Sparkles size={11} /> Gen
+                        <button onClick={() => setCategoryFilter('generator')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${categoryFilter === 'generator' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-xs font-semibold' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <Sparkles size={11} className={categoryFilter === 'generator' ? 'text-emerald-300' : 'text-emerald-400'} /> Gen
                         </button>
                     </div>
 
                     {categoryFilter === 'generator' ? (
                         /* GENERATOR TAB */
-                        <div className="flex flex-col gap-3.5 py-1 animate-slide-down-fade">
-                            <div className="p-3.5 bg-black/40 border border-white/10 rounded-2xl flex flex-col gap-2 relative">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">Generated Password</span>
-                                <div className="flex items-center justify-between font-mono text-sm font-bold text-emerald-400 break-all select-all">
+                        <div className="flex flex-col gap-3 py-1 animate-slide-down-fade">
+                            <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col gap-1.5 relative">
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400">Generated Password</span>
+                                <div className="flex items-center justify-between font-mono text-sm text-zinc-100 break-all select-all tracking-wider">
                                     <span>{generatedResult}</span>
-                                    <button onClick={() => copyToClipboard(generatedResult, 'generated password', 'gen')} className="p-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 transition shrink-0 ml-2" title="Copy">
-                                        <Copy size={14} />
+                                    <button onClick={() => copyToClipboard(generatedResult, 'generated password', 'gen')} className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 transition shrink-0 ml-2 border border-emerald-500/20 cursor-pointer" title="Copy">
+                                        <Copy size={13} />
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="flex flex-col gap-3 p-3.5 bg-white/5 border border-white/10 rounded-2xl">
+                            <div className="flex flex-col gap-2.5 p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl">
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs font-bold text-white/80">Length: {genLength}</span>
+                                    <span className="text-xs font-mono text-zinc-300">Length: {genLength}</span>
                                     <input 
                                         type="range" 
                                         min={8} 
                                         max={32} 
                                         value={genLength} 
                                         onChange={e => setGenLength(Number(e.target.value))}
-                                        className="w-32 accent-accent cursor-pointer"
+                                        className="w-28 accent-accent cursor-pointer"
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-white/70 pt-2.5 border-t border-white/10">
-                                    <label className="flex items-center gap-2 cursor-pointer">
+                                <div className="grid grid-cols-2 gap-2 text-xs font-mono text-zinc-400 pt-2 border-t border-white/[0.05]">
+                                    <label className="flex items-center gap-2 cursor-pointer hover:text-zinc-200">
                                         <input type="checkbox" checked={useUpper} onChange={e => setUseUpper(e.target.checked)} className="rounded accent-accent" /> A-Z (Upper)
                                     </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
+                                    <label className="flex items-center gap-2 cursor-pointer hover:text-zinc-200">
                                         <input type="checkbox" checked={useLower} onChange={e => setUseLower(e.target.checked)} className="rounded accent-accent" /> a-z (Lower)
                                     </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
+                                    <label className="flex items-center gap-2 cursor-pointer hover:text-zinc-200">
                                         <input type="checkbox" checked={useNumbers} onChange={e => setUseNumbers(e.target.checked)} className="rounded accent-accent" /> 0-9 (Numbers)
                                     </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
+                                    <label className="flex items-center gap-2 cursor-pointer hover:text-zinc-200">
                                         <input type="checkbox" checked={useSymbols} onChange={e => setUseSymbols(e.target.checked)} className="rounded accent-accent" /> !@#$ (Symbols)
                                     </label>
                                 </div>
@@ -1144,27 +1144,27 @@ export default function QVaultPopover({ isClosing }) {
                         </div>
                     ) : (
                         /* VAULT ITEMS LIST VIEW */
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-2.5">
                             {/* Saved for this website section */}
                             {currentDomain && matchingSiteItems.length > 0 && (
-                                <div className="p-3 bg-accent/10 border border-accent/20 rounded-2xl flex flex-col gap-2 animate-slide-down-fade">
+                                <div className="p-2.5 bg-accent/[0.03] border border-accent/20 rounded-xl flex flex-col gap-2 animate-slide-down-fade">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-[11px] font-bold text-accent uppercase tracking-wider flex items-center gap-1.5">
-                                            <Globe size={13} /> Saved for {currentDomain}
+                                        <span className="text-[10px] font-mono text-accent uppercase tracking-wider flex items-center gap-1.5 font-semibold">
+                                            <Globe size={12} /> Saved for {currentDomain}
                                         </span>
-                                        <span className="text-[10px] bg-accent/20 px-2 py-0.5 rounded-full text-accent font-bold">
-                                            {matchingSiteItems.length} matching
+                                        <span className="text-[10px] bg-accent/10 border border-accent/20 px-1.5 py-0.5 rounded font-mono text-accent">
+                                            {matchingSiteItems.length} match
                                         </span>
                                     </div>
-                                    <div className="flex flex-col gap-1.5">
+                                    <div className="flex flex-col gap-1">
                                         {matchingSiteItems.map(item => (
-                                            <div key={item.id} className="flex items-center justify-between bg-black/40 p-2.5 rounded-xl border border-white/10">
-                                                <div className="flex flex-col truncate">
-                                                    <span className="text-xs font-bold text-white truncate">{item.title}</span>
-                                                    {item.username && <span className="text-[10px] text-white/50 truncate">{item.username}</span>}
+                                            <div key={item.id} className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/[0.04] hover:border-accent/30 transition">
+                                                <div className="flex flex-col truncate pr-2">
+                                                    <span className="text-xs font-medium text-zinc-200 truncate">{item.title}</span>
+                                                    {item.username && <span className="text-[10px] font-mono text-zinc-500 truncate">{item.username}</span>}
                                                 </div>
-                                                <button onClick={() => handleAutofillPage(item)} className="px-3 py-1.5 rounded-xl bg-accent text-white hover:brightness-110 font-bold text-xs flex items-center gap-1 shadow-sm transition">
-                                                    <Zap size={12} strokeWidth={3} /> Autofill
+                                                <button onClick={() => handleAutofillPage(item)} className="px-2.5 py-1 rounded-md bg-accent/15 hover:bg-accent/25 border border-accent/30 text-accent font-medium text-[11px] flex items-center gap-1 transition shrink-0 cursor-pointer">
+                                                    <Zap size={11} strokeWidth={2.5} /> Autofill
                                                 </button>
                                             </div>
                                         ))}
@@ -1174,21 +1174,21 @@ export default function QVaultPopover({ isClosing }) {
 
                             {/* Search bar */}
                             <div className="relative">
-                                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40" />
+                                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
                                 <input
                                     type="text"
-                                    placeholder="Search logins, cards, addresses..."
+                                    placeholder="Search credentials, cards, addresses..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full h-10 pl-10 pr-3.5 bg-black/40 border border-white/10 rounded-2xl text-xs text-white placeholder-white/30 outline-none focus:border-accent transition-colors"
+                                    className="w-full h-8 pl-8 pr-3 bg-white/[0.03] border border-white/[0.06] rounded-lg text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-accent/40 transition-colors font-mono"
                                 />
                             </div>
 
                             {/* Items List */}
-                            <div className="flex flex-col gap-2.5 max-h-72 overflow-y-auto hide-scroll pr-0.5">
+                            <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto hide-scroll pr-0.5">
                                 {filteredItems.length === 0 ? (
-                                    <div className="text-center text-white/40 text-xs italic py-8">
-                                        {searchQuery ? 'No matching vault items found.' : 'Vault category is empty. Click + Add to store credentials, cards, or addresses!'}
+                                    <div className="text-center text-zinc-500 text-xs py-8 font-mono">
+                                        {searchQuery ? 'No matching vault items.' : 'Category is empty. Click + Add to store credentials.'}
                                     </div>
                                 ) : (
                                     filteredItems.map((item) => {
@@ -1198,23 +1198,23 @@ export default function QVaultPopover({ isClosing }) {
                                         const isPasskey = item.itemType === 'passkey';
 
                                         return (
-                                            <div key={item.id} className="p-3.5 bg-white/5 border border-white/10 hover:border-white/20 rounded-2xl flex flex-col gap-2.5 transition-all group">
+                                            <div key={item.id} className="p-2.5 bg-white/[0.02] hover:bg-white/[0.035] border border-white/[0.05] hover:border-white/[0.09] rounded-xl flex flex-col gap-2 transition-all group">
                                                 <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-3 min-w-0">
-                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center border shrink-0 ${
-                                                            isPasskey ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' :
-                                                            isCard ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                                                            isAddress ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
-                                                            'bg-accent/20 text-accent border-accent/30'
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center border shrink-0 transition-colors ${
+                                                            isPasskey ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                                                            isCard ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                                                            isAddress ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                            'bg-sky-500/10 text-sky-400 border-sky-500/20'
                                                         }`}>
-                                                            {isPasskey ? <Fingerprint size={15} /> :
-                                                             isCard ? <CreditCard size={15} /> :
-                                                             isAddress ? <MapPin size={15} /> :
-                                                             <Globe size={15} />}
+                                                            {isPasskey ? <Fingerprint size={13} /> :
+                                                             isCard ? <CreditCard size={13} /> :
+                                                             isAddress ? <MapPin size={13} /> :
+                                                             <Globe size={13} />}
                                                         </div>
                                                         <div className="flex flex-col truncate">
-                                                            <span className="text-xs font-bold text-white truncate">{item.title}</span>
-                                                            <span className="text-[10px] text-white/40 truncate">
+                                                            <span className="text-xs font-medium text-zinc-200 truncate">{item.title}</span>
+                                                            <span className="text-[10px] text-zinc-500 truncate font-mono">
                                                                 {isCard ? (item.cardData?.cardholderName || item.username || 'Payment Card') :
                                                                  isAddress ? (item.addressData?.fullName || [item.addressData?.city, item.addressData?.country].filter(Boolean).join(', ') || 'Address') :
                                                                  (item.username || item.url || 'Login')}
@@ -1222,83 +1222,83 @@ export default function QVaultPopover({ isClosing }) {
                                                         </div>
                                                     </div>
 
-                                                    {/* Quick Actions */}
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        {/* Autofill button for all applicable types */}
-                                                        <button onClick={() => handleAutofillPage(item)} className="px-2 py-1.5 rounded-xl bg-accent text-white hover:brightness-110 font-bold text-[10px] flex items-center gap-1 transition shadow-sm" title="Autofill on active page">
-                                                            <Zap size={12} strokeWidth={3} /> Autofill
+                                                    {/* Quick Actions (Hover revealed for clean density) */}
+                                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
+                                                        {/* Autofill button */}
+                                                        <button onClick={() => handleAutofillPage(item)} className="px-2 py-1 rounded-md bg-accent/15 hover:bg-accent/25 border border-accent/30 text-accent font-medium text-[10px] flex items-center gap-1 transition cursor-pointer" title="Autofill on active page">
+                                                            <Zap size={11} strokeWidth={2.5} /> Autofill
                                                         </button>
 
-                                                        {/* Copy actions depending on type */}
+                                                        {/* Copy actions */}
                                                         {isCard && item.cardData?.cardNumber && (
-                                                            <button onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id)} className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition border border-white/10" title="Copy Card Number">
-                                                                {copiedId === `card number-${item.id}` ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                                                            <button onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id)} className="p-1 rounded-md bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition cursor-pointer" title="Copy Card Number">
+                                                                {copiedId === `card number-${item.id}` ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                                                             </button>
                                                         )}
                                                         {isAddress && item.addressData && (
-                                                            <button onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id)} className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition border border-white/10" title="Copy Full Address">
-                                                                {copiedId === `address-${item.id}` ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                                                            <button onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id)} className="p-1 rounded-md bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition cursor-pointer" title="Copy Address">
+                                                                {copiedId === `address-${item.id}` ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                                                             </button>
                                                         )}
                                                         {!isCard && !isAddress && !isPasskey && item.password && (
                                                             <>
-                                                                <button onClick={() => toggleReveal(item.id)} className="p-1.5 rounded-xl hover:bg-white/10 text-white/50 hover:text-white transition" title={isRevealed ? 'Hide Password' : 'Show Password'}>
-                                                                    {isRevealed ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                                <button onClick={() => toggleReveal(item.id)} className="p-1 rounded-md hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 transition cursor-pointer" title={isRevealed ? 'Hide Password' : 'Show Password'}>
+                                                                    {isRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
                                                                 </button>
-                                                                <button onClick={() => copyToClipboard(item.password, 'password', item.id)} className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition border border-white/10" title="Copy Password">
-                                                                    {copiedId === `password-${item.id}` ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                                                                <button onClick={() => copyToClipboard(item.password, 'password', item.id)} className="p-1 rounded-md bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition cursor-pointer" title="Copy Password">
+                                                                    {copiedId === `password-${item.id}` ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                                                                 </button>
                                                             </>
                                                         )}
 
-                                                        <button onClick={() => handleOpenEditForm(item)} className="p-1.5 rounded-xl hover:bg-white/10 text-white/50 hover:text-white transition" title="Edit Item">
-                                                            <Pencil size={13} />
+                                                        <button onClick={() => handleOpenEditForm(item)} className="p-1 rounded-md hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 transition cursor-pointer" title="Edit Item">
+                                                            <Pencil size={12} />
                                                         </button>
-                                                        <button onClick={() => handleDeleteItem(item.id, item.title)} className="p-1.5 rounded-xl hover:bg-red-500/20 text-white/50 hover:text-red-400 transition" title="Delete Item">
-                                                            <Trash2 size={13} />
+                                                        <button onClick={() => handleDeleteItem(item.id, item.title)} className="p-1 rounded-md hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition cursor-pointer" title="Delete Item">
+                                                            <Trash2 size={12} />
                                                         </button>
                                                     </div>
                                                 </div>
 
-                                                {/* Card Details View */}
+                                                {/* Details subrow */}
                                                 {isCard ? (
-                                                    <div className="flex items-center justify-between text-[11px] font-mono bg-blue-500/10 border border-blue-500/20 px-3 py-2 rounded-xl text-blue-300">
+                                                    <div className="flex items-center justify-between text-[10px] font-mono bg-white/[0.02] border border-white/[0.04] px-2.5 py-1 rounded-lg text-zinc-400">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="font-bold text-white">{item.cardData?.cardBrand || 'Card'}:</span>
+                                                            <span className="font-medium text-blue-300">{item.cardData?.cardBrand || 'Card'}:</span>
                                                             <span>•••• •••• •••• {item.cardData?.cardNumber?.slice(-4) || item.password?.slice(-4) || '••••'}</span>
                                                         </div>
-                                                        <div className="flex items-center gap-2 text-[10px] text-blue-300/80">
+                                                        <div className="flex items-center gap-2 text-zinc-500">
                                                             <span>{item.cardData?.expMonth || '••'}/{item.cardData?.expYear?.slice(-2) || '••'}</span>
                                                             {item.cardData?.cvv && (
-                                                                <button onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id)} className="px-1.5 py-0.5 bg-blue-500/20 rounded text-[9px] hover:text-white">
+                                                                <button onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id)} className="px-1.5 py-0.5 bg-white/[0.05] hover:bg-white/[0.1] rounded text-[9px] text-zinc-300 hover:text-white transition cursor-pointer">
                                                                     {copiedId === `CVV-${item.id}` ? 'Copied' : 'CVV'}
                                                                 </button>
                                                             )}
                                                         </div>
                                                     </div>
                                                 ) : isAddress ? (
-                                                    <div className="flex flex-col gap-0.5 text-[11px] bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-xl text-amber-200 leading-snug">
-                                                        <div className="font-medium text-white truncate">
+                                                    <div className="flex flex-col gap-0.5 text-[10px] font-mono bg-white/[0.02] border border-white/[0.04] px-2.5 py-1.5 rounded-lg text-zinc-400 leading-snug">
+                                                        <div className="font-medium text-amber-300 truncate">
                                                             {item.addressData?.streetAddress} {item.addressData?.unit ? `(${item.addressData.unit})` : ''}
                                                         </div>
-                                                        <div className="text-[10px] text-amber-300/70 truncate">
+                                                        <div className="text-zinc-500 truncate">
                                                             {[item.addressData?.city, item.addressData?.state, item.addressData?.postalCode, item.addressData?.country].filter(Boolean).join(', ')}
                                                         </div>
                                                     </div>
                                                 ) : isPasskey ? (
-                                                    <div className="flex items-center justify-between text-[10px] font-mono bg-purple-500/10 border border-purple-500/20 px-3 py-1.5 rounded-xl text-purple-300">
-                                                        <span>Passkey Domain: {item.passkeyData?.rpId || item.url || 'WebAuthn'}</span>
-                                                        <button onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id)} className="text-[9px] underline hover:text-white">
+                                                    <div className="flex items-center justify-between text-[10px] font-mono bg-white/[0.02] border border-white/[0.04] px-2.5 py-1 rounded-lg text-zinc-400">
+                                                        <span>Passkey: <span className="text-purple-300">{item.passkeyData?.rpId || item.url || 'WebAuthn'}</span></span>
+                                                        <button onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id)} className="text-[9px] text-purple-400 hover:underline transition cursor-pointer">
                                                             {copiedId === `passkey credential-${item.id}` ? 'Copied' : 'Copy Credential'}
                                                         </button>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-center justify-between text-[11px] font-mono bg-black/40 px-3 py-1.5 rounded-xl border border-white/5">
-                                                        <span className="text-white/80 truncate">
+                                                    <div className="flex items-center justify-between text-[10px] font-mono bg-black/30 px-2.5 py-1 rounded-lg border border-white/[0.04]">
+                                                        <span className="text-zinc-400 truncate">
                                                             {isRevealed ? item.password : '••••••••••••'}
                                                         </span>
                                                         {item.url && (
-                                                            <span className="text-[9px] text-white/30 truncate max-w-[120px]">
+                                                            <span className="text-[9px] text-zinc-500 truncate max-w-[120px]">
                                                                 {item.url.replace(/^https?:\/\//, '')}
                                                             </span>
                                                         )}
@@ -1316,3 +1316,4 @@ export default function QVaultPopover({ isClosing }) {
         </div>
     );
 }
+

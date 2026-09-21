@@ -16,16 +16,16 @@ import { getAllBangs } from '../../utils/searchBangs';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
 const SettingCard = ({ icon: Icon, title, description, children }) => (
-    <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl hover:border-accent-30 transition-all duration-300 group">
+    <div className="flex items-center justify-between p-3 px-3.5 bg-white/[0.025] hover:bg-white/[0.04] border border-white/[0.04] hover:border-white/[0.08] rounded-xl transition-all duration-200 group">
         <div className="flex items-center gap-3 min-w-0 pr-4">
             {Icon && (
-                <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm flex-shrink-0">
-                    <Icon size={16} />
+                <div className="w-8 h-8 rounded-lg bg-white/[0.03] text-accent/80 border border-white/[0.05] group-hover:border-accent/25 group-hover:text-accent flex items-center justify-center flex-shrink-0 transition-colors">
+                    <Icon size={15} />
                 </div>
             )}
             <div className="min-w-0">
-                <p className="font-semibold text-sm text-white group-hover:text-accent transition-colors truncate">{title}</p>
-                {description && <p className="text-xs text-white/40 mt-0.5 leading-relaxed">{description}</p>}
+                <p className="font-medium text-xs text-zinc-200 group-hover:text-white transition-colors truncate">{title}</p>
+                {description && <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">{description}</p>}
             </div>
         </div>
         <div className="flex-shrink-0">
@@ -43,17 +43,14 @@ const SettingToggle = ({ isChecked, onToggle }) => {
                 e.stopPropagation();
                 if (onToggle) onToggle();
             }} 
-            className={`w-11 h-6 rounded-full flex items-center p-1 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer hover:scale-105 active:scale-95 ${
+            className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-all duration-200 cursor-pointer ${
                 isChecked 
-                    ? 'bg-accent shadow-[0_0_15px_var(--accent-40)]' 
-                    : 'bg-white/20 hover:bg-white/30'
+                    ? 'bg-accent shadow-[0_0_10px_var(--accent-40)]' 
+                    : 'bg-white/15 hover:bg-white/20'
             }`}
         >
             <div 
-                className="w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                style={{
-                    transform: isChecked ? 'translateX(20px)' : 'translateX(0px)'
-                }}
+                className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isChecked ? 'translate-x-4' : 'translate-x-0'}`}
             />
         </button>
     );
@@ -202,15 +199,15 @@ const SettingsModal = () => {
     };
 
     const navTabs = [
-        { id: 'appearance', label: 'Appearance & UX', icon: Palette, category: 'Preferences' },
-        { id: 'privacy', label: 'Privacy & Security', icon: Shield, category: 'Preferences' },
-        { id: 'cookies', label: 'Cookies & Permissions', icon: Cookie, category: 'Preferences' },
-        { id: 'search', label: 'Search & Omnibox', icon: Search, category: 'Preferences' },
-        { id: 'downloads', label: 'Downloads & Media', icon: Download, category: 'Preferences' },
-        { id: 'ai', label: 'AI & llama.cpp Engine', icon: Sparkles, category: 'Advanced' },
-        { id: 'engine', label: 'Engine & Performance', icon: Cpu, category: 'Advanced' },
-        { id: 'adblock', label: 'Native AdBlocker', icon: ShieldAlert, category: 'Advanced' },
-        { id: 'about', label: 'About & System Info', icon: Info, category: 'System' }
+        { id: 'appearance', label: 'Appearance & UX', icon: Palette, color: 'text-purple-400', category: 'Preferences' },
+        { id: 'privacy', label: 'Privacy & Security', icon: Shield, color: 'text-emerald-400', category: 'Preferences' },
+        { id: 'cookies', label: 'Cookies & Permissions', icon: Cookie, color: 'text-amber-400', category: 'Preferences' },
+        { id: 'search', label: 'Search & Omnibox', icon: Search, color: 'text-sky-400', category: 'Preferences' },
+        { id: 'downloads', label: 'Downloads & Media', icon: Download, color: 'text-blue-400', category: 'Preferences' },
+        { id: 'ai', label: 'AI & llama.cpp Engine', icon: Sparkles, color: 'text-violet-400', category: 'Advanced' },
+        { id: 'engine', label: 'Engine & Performance', icon: Cpu, color: 'text-rose-400', category: 'Advanced' },
+        { id: 'adblock', label: 'Native AdBlocker', icon: ShieldAlert, color: 'text-emerald-400', category: 'Advanced' },
+        { id: 'about', label: 'About & System Info', icon: Info, color: 'text-cyan-400', category: 'System' }
     ];
 
     const filteredNavTabs = navTabs.filter(t => 
@@ -224,34 +221,34 @@ const SettingsModal = () => {
     return (
         <div className={`absolute inset-0 z-[200] flex bg-black/60 backdrop-blur-3xl text-white font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
             {/* LEFT NAVIGATION SIDEBAR */}
-            <div className="w-72 border-r border-white/10 flex flex-col bg-black/40" onClick={e => e.stopPropagation()}>
-                <div className="p-6 pb-3 flex flex-col gap-3">
+            <div className="w-64 border-r border-white/[0.06] flex flex-col bg-black/50" onClick={e => e.stopPropagation()}>
+                <div className="p-4 pb-2 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
-                            <Sparkles size={18} className="text-accent" /> Settings
+                        <h2 className="text-sm font-semibold tracking-tight text-white flex items-center gap-2">
+                            <Sliders size={14} className="text-accent" /> Settings
                         </h2>
-                        <span className="text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-white/10 text-white/60">v1.2.1</span>
+                        <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-white/[0.04] text-zinc-400 border border-white/[0.06]">v1.2.1</span>
                     </div>
 
                     {/* Live Search Input */}
                     <div className="relative">
-                        <Search size={13} className="absolute left-3 top-2.5 text-white/40" />
+                        <Search size={12} className="absolute left-2.5 top-2 text-zinc-500" />
                         <input
                             type="text"
                             value={searchFilter}
                             onChange={(e) => setSearchFilter(e.target.value)}
                             placeholder="Search settings..."
-                            className="w-full bg-white/5 border border-white/10 rounded-xl py-1.5 pl-8 pr-3 text-xs text-white placeholder-white/40 outline-none focus:border-accent transition-colors"
+                            className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg py-1 pl-7 pr-2.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-accent/40 transition-colors font-mono"
                         />
                         {searchFilter && (
-                            <button onClick={() => setSearchFilter('')} className="absolute right-2.5 top-2 text-white/40 hover:text-white">
-                                <X size={12} />
+                            <button onClick={() => setSearchFilter('')} className="absolute right-2 top-1.5 text-zinc-400 hover:text-white">
+                                <X size={11} />
                             </button>
                         )}
                     </div>
                 </div>
 
-                <div className="flex-1 p-3 flex flex-col gap-1 overflow-y-auto hide-scroll">
+                <div className="flex-1 p-2 flex flex-col gap-0.5 overflow-y-auto hide-scroll">
                     {filteredNavTabs.map((tab) => {
                         const Icon = tab.icon;
                         const isActive = settingsTab === tab.id;
@@ -259,33 +256,33 @@ const SettingsModal = () => {
                             <button 
                                 key={tab.id}
                                 onClick={() => setSettingsTab(tab.id)} 
-                                className={`flex items-center gap-3 p-3 rounded-xl transition cursor-pointer text-left ${
+                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition cursor-pointer text-left ${
                                     isActive 
-                                        ? 'bg-accent-20 text-accent border border-accent-30 font-semibold shadow-lg shadow-accent/10' 
-                                        : 'hover:bg-white/5 text-white/60 hover:text-white border border-transparent'
+                                        ? 'bg-accent/15 text-white border border-accent/30 font-medium shadow-sm' 
+                                        : 'hover:bg-white/[0.03] text-zinc-400 hover:text-zinc-200 border border-transparent'
                                 }`}
                             >
-                                <Icon size={16} className={isActive ? 'text-accent' : 'text-white/60'} /> 
-                                <span className="text-sm font-medium">{tab.label}</span>
+                                <Icon size={14} className={isActive ? 'text-accent' : tab.color || 'text-zinc-400'} /> 
+                                <span className="text-xs">{tab.label}</span>
                             </button>
                         );
                     })}
                 </div>
 
-                <div className="p-4 border-t border-white/10">
+                <div className="p-3 border-t border-white/[0.06]">
                     <button 
                         onClick={handleResetAllSettings}
-                        className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-red-500/10 hover:bg-red-500/15 text-red-400 border border-red-500/20 rounded-lg text-[11px] font-medium transition cursor-pointer"
                     >
-                        <RotateCcw size={13} /> Reset All Settings
+                        <RotateCcw size={12} /> Reset Defaults
                     </button>
                 </div>
             </div>
 
             {/* RIGHT CONTENT PANEL */}
             <div className="flex-1 p-10 relative overflow-y-auto w-[600px] md:w-[800px] max-w-full" onClick={e => e.stopPropagation()}>
-                <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition z-[999] cursor-pointer">
-                    <X size={16} className="pointer-events-none" />
+                <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-zinc-400 hover:text-white transition z-[999] cursor-pointer">
+                    <X size={15} className="pointer-events-none" />
                 </button>
 
                 <div className="w-full">
@@ -298,7 +295,7 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Magic Accent Color */}
-                            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl space-y-4">
+                            <div className="p-5 bg-white/[0.02] border border-white/[0.05] rounded-2xl space-y-4">
                                 <span className="text-xs font-bold uppercase text-accent tracking-wider block">Magic Accent Color</span>
                                 <div className="flex gap-3 items-center flex-wrap">
                                     {[
@@ -322,8 +319,8 @@ const SettingsModal = () => {
                                     ))}
                                     <div className="w-px h-6 bg-white/20 mx-1"></div>
 
-                                    <div className="relative flex items-center bg-black/40 border border-white/10 rounded-xl overflow-hidden focus-within:border-accent">
-                                        <div className="pl-3 pr-2 py-2 border-r border-white/10">
+                                    <div className="relative flex items-center bg-black/40 border border-white/[0.06] rounded-xl overflow-hidden focus-within:border-accent">
+                                        <div className="pl-3 pr-2 py-2 border-r border-white/[0.06]">
                                             <Palette size={14} className="text-white/40" />
                                         </div>
                                         <span className="pl-2 text-xs text-white/40 font-mono">#</span>
@@ -343,7 +340,7 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Force Dark Mode Card */}
-                            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
@@ -372,7 +369,7 @@ const SettingsModal = () => {
                                             setLocalDarkExclusions(cleaned.join('\n'));
                                         }}
                                         placeholder={"example.com\ngithub.com"}
-                                        className="w-full h-24 bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
+                                        className="w-full h-24 bg-black/40 border border-white/[0.06] rounded-xl p-2.5 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
                                     />
                                 </div>
                             </div>
@@ -390,7 +387,7 @@ const SettingsModal = () => {
                             </SettingCard>
 
                             <SettingCard icon={Monitor} title="UI Density & Scale" description="Adjust spacing and padding for navigation controls.">
-                                <div className="relative flex items-center p-1 bg-black/40 border border-white/10 rounded-xl overflow-hidden">
+                                <div className="relative flex items-center p-1 bg-black/40 border border-white/[0.06] rounded-xl overflow-hidden">
                                     <div 
                                         className="absolute top-1 bottom-1 w-[calc(50%-6px)] rounded-lg bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-md pointer-events-none"
                                         style={{
@@ -486,7 +483,7 @@ const SettingsModal = () => {
                             </SettingCard>
 
                             {/* DoH Provider Selector */}
-                            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:border-accent-30 transition-all duration-300">
+                            <div className="p-4 bg-white/[0.025] border border-white/[0.05] rounded-2xl hover:border-accent-30 transition-all duration-300">
                                 <div className="flex items-center gap-3 mb-3">
                                     <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
                                         <ShieldCheck size={16} />
@@ -514,7 +511,7 @@ const SettingsModal = () => {
                                             className={`py-2 px-4 rounded-xl text-xs font-semibold border transition cursor-pointer ${
                                                 (settings.doh || 'cloudflare') === d.id
                                                     ? 'bg-accent-20 border-accent-30 text-accent font-bold'
-                                                    : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+                                                    : 'bg-white/[0.03] border-white/[0.06] text-white/60 hover:text-white'
                                             }`}
                                         >
                                             {d.name}
@@ -554,26 +551,26 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Open Cookie Explorer Card */}
-                            <div className="p-5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shadow-lg">
-                                        <Cookie size={24} />
+                            <div className="p-3.5 px-4 bg-white/[0.025] border border-white/[0.05] rounded-xl flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] text-zinc-300 flex items-center justify-center flex-shrink-0">
+                                        <Cookie size={16} />
                                     </div>
-                                    <div>
-                                        <p className="font-bold text-base text-white">Interactive Cookie Explorer</p>
-                                        <p className="text-xs text-white/50 mt-0.5">Inspect, search, and delete individual site cookies and local storage.</p>
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-xs text-white">Interactive Cookie Explorer</p>
+                                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate">Inspect, search, and delete individual site cookies and local storage.</p>
                                     </div>
                                 </div>
                                 <button 
                                     onClick={() => openModal('cookies')}
-                                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-xl text-xs shadow-md transition cursor-pointer"
+                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95"
                                 >
-                                    Open Explorer...
+                                    Open Explorer
                                 </button>
                             </div>
 
                             {/* Custom Domain Permission Overrides */}
-                            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-3">
+                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl flex flex-col gap-3">
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="font-semibold text-sm">Site Permission Overrides</p>
@@ -636,7 +633,7 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Default Search Engine */}
-                            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:border-accent-30 transition-all duration-300">
+                            <div className="p-4 bg-white/[0.025] border border-white/[0.05] rounded-2xl hover:border-accent-30 transition-all duration-300">
                                 <p className="font-semibold text-sm mb-3">Default Search Engine</p>
                                 <div className="grid grid-cols-5 gap-2">
                                     {[
@@ -655,7 +652,7 @@ const SettingsModal = () => {
                                             className={`py-2 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer ${
                                                 (settings.searchEngine || 'google') === se.id
                                                     ? 'bg-accent-20 border-accent-30 text-accent font-bold'
-                                                    : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+                                                    : 'bg-white/[0.03] border-white/[0.06] text-white/60 hover:text-white'
                                             }`}
                                         >
                                             {se.name}
@@ -665,7 +662,7 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Smart Search Bangs & Shortcuts Section */}
-                            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-4">
+                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl flex flex-col gap-4">
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm flex-shrink-0">
@@ -709,7 +706,7 @@ const SettingsModal = () => {
                                                             placeholder="e.g. keep or aw"
                                                             value={newBangPrefix}
                                                             onChange={(e) => setNewBangPrefix(e.target.value.replace(/^[!@]/, ''))}
-                                                            className="w-full pl-12 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                            className="w-full pl-12 pr-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
                                                         />
                                                     </div>
                                                 </div>
@@ -720,7 +717,7 @@ const SettingsModal = () => {
                                                         placeholder="e.g. Google Keep or ArchWiki"
                                                         value={newBangName}
                                                         onChange={(e) => setNewBangName(e.target.value)}
-                                                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent"
+                                                        className="w-full px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white focus:outline-none focus:border-accent"
                                                     />
                                                 </div>
                                                 <div>
@@ -745,7 +742,7 @@ const SettingsModal = () => {
                                                     placeholder="e.g. https://wiki.archlinux.org/index.php?search={q}"
                                                     value={newBangUrl}
                                                     onChange={(e) => setNewBangUrl(e.target.value)}
-                                                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                    className="w-full px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
                                                 />
                                             </div>
                                             <div className="flex justify-end gap-2 mt-1">
@@ -929,82 +926,90 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Live Hardware Diagnostics Banner */}
-                            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-cyan-500/10 to-indigo-500/10 border border-cyan-500/20 shadow-lg relative overflow-hidden">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+                            <div className="p-3.5 px-4 rounded-xl bg-white/[0.025] border border-white/[0.05] shadow-sm relative overflow-hidden">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <Activity size={15} className="text-cyan-400 animate-pulse" />
-                                            <span className="text-xs uppercase tracking-wider font-bold text-cyan-300">Detected System Hardware</span>
+                                            <Activity size={13} className="text-zinc-400" />
+                                            <span className="text-[10px] uppercase tracking-wider font-mono text-zinc-400">Detected System Hardware</span>
                                         </div>
-                                        <h4 className="text-base font-bold text-white mt-1">
+                                        <h4 className="text-xs font-semibold text-white mt-1 font-mono">
                                             {hardwareProfile?.cpuModel || 'Detecting CPU...'}
                                         </h4>
-                                        <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-white/70">
-                                            <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 font-mono">
-                                                {hardwareProfile?.coreCount ? `${hardwareProfile.coreCount} CPU Cores` : 'Multi-Core'}
+                                        <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs">
+                                            <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] font-mono text-zinc-300 text-[11px]">
+                                                {hardwareProfile?.coreCount ? `${hardwareProfile.coreCount} Cores` : 'Multi-Core'}
                                             </span>
-                                            <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 font-mono">
+                                            <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] font-mono text-zinc-300 text-[11px]">
                                                 {hardwareProfile?.totalMemGB ? `${hardwareProfile.totalMemGB} GB RAM` : 'RAM'}
                                             </span>
                                             {hardwareProfile?.freeMemGB && (
-                                                <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 font-mono">
+                                                <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] font-mono text-zinc-300 text-[11px]">
                                                     {hardwareProfile.freeMemGB} GB Free
                                                 </span>
                                             )}
-                                            <span className="px-2 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-semibold flex items-center gap-1">
-                                                <Zap size={11} /> {hardwareProfile?.detectedTier?.toUpperCase() || 'BALANCED'} TIER
+                                            <span className="px-2 py-0.5 rounded bg-accent/15 border border-accent/30 text-accent font-mono text-[11px] flex items-center gap-1 font-bold">
+                                                <Zap size={10} className="text-accent" /> {hardwareProfile?.detectedTier?.toUpperCase() || 'BALANCED'}
                                             </span>
                                             {hardwareProfile?.isOnBattery && (
-                                                <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold flex items-center gap-1">
-                                                    <BatteryCharging size={11} /> On Battery
+                                                <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-[11px] flex items-center gap-1">
+                                                    <BatteryCharging size={10} /> Battery
                                                 </span>
                                             )}
                                         </div>
                                     </div>
                                     <button 
                                         onClick={() => openModal('resources')}
-                                        className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold border border-white/15 transition-all flex items-center gap-1.5 self-start sm:self-center cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                                        className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white rounded-lg text-xs font-medium border border-white/15 transition flex items-center gap-1.5 self-start sm:self-center cursor-pointer active:scale-95"
                                     >
-                                        <Activity size={13} className="text-cyan-400" />
+                                        <Activity size={12} className="text-zinc-300" />
                                         <span>Task Manager</span>
                                     </button>
                                 </div>
                             </div>
 
-                            {/* Performance Mode Selector (4 interactive cards) */}
+                            {/* Performance Mode Selector */}
                             <div>
-                                <label className="text-xs font-bold text-white/50 uppercase tracking-wider mb-2 block">
+                                <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2 block">
                                     Performance Scaling Mode
                                 </label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     {[
                                         {
                                             id: 'auto',
                                             title: 'Auto (Adaptive)',
                                             desc: `Dynamically scales based on hardware specs & battery power (${String(activePerformanceTier || 'balanced').toUpperCase()} active).`,
                                             icon: Cpu,
-                                            accent: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)]'
+                                            color: 'text-accent',
+                                            selectedClass: 'bg-accent/10 border-accent/35 text-white shadow-[0_0_15px_rgba(212,188,148,0.08)]',
+                                            dotClass: 'bg-accent shadow-[0_0_6px_var(--accent)]'
                                         },
                                         {
                                             id: 'eco',
                                             title: 'Eco / Low-End',
                                             desc: 'Aggressive 5-min tab sleep & clean flat dark styling (no GPU blur lag) for maximum battery & netbooks.',
                                             icon: Leaf,
-                                            accent: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                                            color: 'text-emerald-400',
+                                            selectedClass: 'bg-emerald-500/10 border-emerald-500/35 text-white shadow-[0_0_15px_rgba(16,185,129,0.08)]',
+                                            dotClass: 'bg-emerald-400 shadow-[0_0_6px_#34d399]'
                                         },
                                         {
                                             id: 'balanced',
                                             title: 'Balanced',
                                             desc: 'Standard 15-min tab sleep with full glassmorphism and optimal responsiveness for everyday multitasking.',
                                             icon: Gauge,
-                                            accent: 'border-blue-500/40 bg-blue-500/10 text-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.15)]'
+                                            color: 'text-sky-400',
+                                            selectedClass: 'bg-sky-500/10 border-sky-500/35 text-white shadow-[0_0_15px_rgba(14,165,233,0.08)]',
+                                            dotClass: 'bg-sky-400 shadow-[0_0_6px_#38bdf8]'
                                         },
                                         {
                                             id: 'ultra',
                                             title: 'Ultra Performance',
                                             desc: '30-min tab sleep, maximum frame rates and GPU pipeline throughput for high-end rigs.',
                                             icon: Zap,
-                                            accent: 'border-amber-500/40 bg-amber-500/10 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
+                                            color: 'text-purple-400',
+                                            selectedClass: 'bg-purple-500/10 border-purple-500/35 text-white shadow-[0_0_15px_rgba(168,85,247,0.08)]',
+                                            dotClass: 'bg-purple-400 shadow-[0_0_6px_#c084fc]'
                                         }
                                     ].map(mode => {
                                         const isSelected = performanceMode === mode.id;
@@ -1013,22 +1018,22 @@ const SettingsModal = () => {
                                             <div
                                                 key={mode.id}
                                                 onClick={() => setPerformanceMode(mode.id)}
-                                                className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between hover:border-white/30 ${
+                                                className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                                                     isSelected 
-                                                        ? `${mode.accent} border-2` 
-                                                        : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/8'
+                                                        ? mode.selectedClass
+                                                        : 'bg-white/[0.02] border-white/[0.05] text-zinc-400 hover:bg-white/[0.035] hover:text-zinc-200 hover:border-white/[0.08]'
                                                 }`}
                                             >
-                                                <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center justify-between mb-1.5">
                                                     <div className="flex items-center gap-2">
-                                                        <Icon size={16} />
-                                                        <span className="font-bold text-sm text-white">{mode.title}</span>
+                                                        <Icon size={14} className={isSelected ? mode.color : 'text-zinc-500'} />
+                                                        <span className="font-medium text-xs text-white">{mode.title}</span>
                                                     </div>
                                                     {isSelected && (
-                                                        <span className="w-2 h-2 rounded-full bg-current shadow-[0_0_6px_currentColor]"></span>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${mode.dotClass}`}></span>
                                                     )}
                                                 </div>
-                                                <p className="text-xs text-white/50 leading-relaxed">{mode.desc}</p>
+                                                <p className="text-[11px] text-zinc-400 leading-snug">{mode.desc}</p>
                                             </div>
                                         );
                                     })}
@@ -1044,7 +1049,7 @@ const SettingsModal = () => {
                                 <select 
                                     value={tabSleepTimeoutMinutes}
                                     onChange={(e) => setTabSleepTimeoutMinutes(Number(e.target.value))}
-                                    className="bg-black/40 border border-white/20 rounded-xl px-3 py-1.5 text-xs text-white font-medium outline-none focus:border-accent cursor-pointer"
+                                    className="bg-[#101217] border border-white/[0.06] rounded-xl px-3 py-1.5 text-xs text-white font-medium outline-none focus:border-accent/40 cursor-pointer"
                                 >
                                     <option value={5} className="bg-[#12141a] text-white">5 Minutes (Aggressive)</option>
                                     <option value={15} className="bg-[#12141a] text-white">15 Minutes (Balanced)</option>
@@ -1074,14 +1079,14 @@ const SettingsModal = () => {
                             </SettingCard>
 
                             {/* Experimental Flags Shortcut */}
-                            <div className="p-4 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-2xl flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
-                                        <Flag size={18} />
+                            <div className="p-3.5 px-4 bg-white/[0.025] border border-white/[0.05] rounded-xl flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] text-zinc-300 flex items-center justify-center flex-shrink-0">
+                                        <Flag size={15} />
                                     </div>
-                                    <div>
-                                        <p className="font-bold text-sm text-white">Experimental Flags & Features</p>
-                                        <p className="text-xs text-white/50 mt-0.5">Configure advanced Chromium & QBrowse experimental flags.</p>
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-xs text-white">Experimental Flags & Features</p>
+                                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate">Configure advanced Chromium & QBrowse experimental flags.</p>
                                     </div>
                                 </div>
                                 <button 
@@ -1092,7 +1097,7 @@ const SettingsModal = () => {
                                             useTabStore.getState().handleNavigateTab(activeTab.id, 'qbrowse://flags');
                                         }
                                     }}
-                                    className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-md"
+                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95"
                                 >
                                     Open Flags
                                 </button>
@@ -1116,7 +1121,7 @@ const SettingsModal = () => {
                                 <SettingToggle isChecked={!!settings.social} onToggle={() => toggleSetting('social')} />
                             </SettingCard>
 
-                            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-3">
+                            <div className="p-4 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
                                 <div className="flex items-center justify-between">
                                     <p className="font-semibold text-sm">Active Filter Rule Lists</p>
                                     <button 
@@ -1162,7 +1167,7 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Account & Firebase Sync Card */}
-                            <div className="p-6 bg-white/5 border border-white/10 rounded-3xl space-y-4">
+                            <div className="p-6 bg-white/[0.025] border border-white/[0.05] rounded-3xl space-y-4">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-12 rounded-2xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center font-bold text-lg">
@@ -1220,7 +1225,7 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Default Browser Management Card */}
-                            <div className="p-6 bg-white/5 border border-white/10 rounded-3xl space-y-4 hover:border-accent-30 transition-all duration-300">
+                            <div className="p-6 bg-white/[0.025] border border-white/[0.05] rounded-3xl space-y-4 hover:border-accent-30 transition-all duration-300">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border ${
@@ -1261,7 +1266,7 @@ const SettingsModal = () => {
                                         )}
                                         <button
                                             onClick={handleOpenDefaultAppsSettings}
-                                            className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/10 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+                                            className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/[0.06] rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
                                             title="Open OS Default Apps Settings"
                                         >
                                             <ExternalLink size={13} />
@@ -1270,7 +1275,7 @@ const SettingsModal = () => {
                                         <button
                                             onClick={refreshDefaultBrowserStatus}
                                             disabled={isCheckingDefault}
-                                            className="p-2 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 rounded-xl text-xs transition cursor-pointer"
+                                            className="p-2 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/[0.06] rounded-xl text-xs transition cursor-pointer"
                                             title="Refresh status"
                                         >
                                             <RefreshCw size={14} className={isCheckingDefault ? 'animate-spin text-accent' : ''} />
@@ -1291,19 +1296,19 @@ const SettingsModal = () => {
                             </div>
 
                             {/* App Banner */}
-                            <div className="p-6 bg-gradient-to-r from-accent/20 via-accent-10 to-transparent border border-accent-30 rounded-3xl flex items-center justify-between shadow-2xl">
-                                <div className="flex items-center gap-5">
-                                    <div className="w-16 h-16 rounded-2xl bg-accent text-black font-black text-2xl flex items-center justify-center shadow-lg shadow-accent/20">
+                            <div className="p-4 px-5 bg-white/[0.025] border border-white/[0.05] rounded-xl flex items-center justify-between">
+                                <div className="flex items-center gap-3.5">
+                                    <div className="w-10 h-10 rounded-xl bg-white/10 text-white font-bold text-base flex items-center justify-center border border-white/15">
                                         QB
                                     </div>
                                     <div>
-                                        <h4 className="text-xl font-bold text-white flex items-center gap-2">
-                                            QBrowse Browser
-                                            <span className="text-xs font-mono font-bold bg-accent/20 text-accent px-2.5 py-0.5 rounded-full border border-accent-30">
+                                        <h4 className="text-xs font-semibold text-white flex items-center gap-2">
+                                            QBrowse
+                                            <span className="text-[10px] font-mono font-medium bg-white/[0.06] text-zinc-300 px-2 py-0.5 rounded border border-white/[0.06]">
                                                 v1.2.1
                                             </span>
                                         </h4>
-                                        <p className="text-xs text-white/60 mt-1">Next-Generation Zen & Multitasking Web Environment</p>
+                                        <p className="text-[11px] text-zinc-400 mt-0.5">Privacy-first multi-space desktop browser</p>
                                     </div>
                                 </div>
 
@@ -1315,15 +1320,15 @@ const SettingsModal = () => {
                                             showToast('QBrowse is up to date! (v1.2.1)');
                                         }, 1200);
                                     }}
-                                    className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-2 border border-white/10"
+                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95"
                                 >
-                                    <RefreshCw size={14} className={isCheckingUpdates ? 'animate-spin' : ''} />
-                                    {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
+                                    <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
+                                    {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
                                 </button>
                             </div>
 
                             {/* Engine Specifications Table */}
-                            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-3">
+                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl flex flex-col gap-3">
                                 <p className="font-semibold text-sm text-white/80">System Specifications</p>
                                 <div className="grid grid-cols-2 gap-3 text-xs">
                                     <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">

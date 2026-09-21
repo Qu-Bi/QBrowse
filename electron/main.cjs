@@ -407,6 +407,10 @@ function createWindow(options = {}) {
         contents.setMaxListeners(0);
         
         const getTargetWindow = () => {
+            if (contents.hostWebContents) {
+                const hostWin = BrowserWindow.fromWebContents(contents.hostWebContents);
+                if (hostWin && !hostWin.isDestroyed()) return hostWin;
+            }
             return BrowserWindow.fromWebContents(contents) || BrowserWindow.getFocusedWindow() || mainWindow;
         };
 
@@ -523,10 +527,18 @@ function createWindow(options = {}) {
             const targetWin = getTargetWindow();
             if (!targetWin || targetWin.isDestroyed()) return;
 
+            // If event originates from mainWindow itself, mainWindow's React DOM listeners handle it.
+            // Skipping here prevents double-dispatching shortcuts (such as double Tab cycling).
+            if (targetWin && contents === targetWin.webContents) {
+                return;
+            }
+
             if (input.type === 'keyUp') {
-                if (input.key === 'Control' || input.key === 'Meta') {
+                const keyLower = String(input.key || '').toLowerCase();
+                const codeLower = String(input.code || '').toLowerCase();
+                if (keyLower === 'control' || keyLower === 'meta' || codeLower.startsWith('control') || codeLower.startsWith('meta')) {
                     try {
-                        targetWin.webContents.send('global-keyup', { key: input.key });
+                        targetWin.webContents.send('global-keyup', { key: input.key, code: input.code, control: input.control, meta: input.meta });
                     } catch(e) {}
                 }
                 return;
@@ -574,7 +586,9 @@ function createWindow(options = {}) {
                     }
 
                     if (shortcut === 'cmd+tab') {
-                        event.preventDefault();
+                        if (input.isAutoRepeat) {
+                            return;
+                        }
                         try {
                             targetWin.webContents.send('global-shortcut', { shortcut: 'cmd+tab', shift: input.shift });
                         } catch(e) {}
@@ -609,6 +623,13 @@ app.on('browser-window-created', (event, win) => {
         try {
             win.setMenuBarVisibility(false);
             win.setIcon(path.join(__dirname, '../icon.png'));
+            win.on('blur', () => {
+                if (!win.isDestroyed()) {
+                    try {
+                        win.webContents.send('global-keyup', { key: 'Control', code: 'ControlLeft' });
+                    } catch(e) {}
+                }
+            });
         } catch(e) {}
     }
 });

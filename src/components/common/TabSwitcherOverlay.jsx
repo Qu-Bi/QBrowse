@@ -33,9 +33,19 @@ export default function TabSwitcherOverlay() {
             }
         };
 
+        const handleKeyUp = (e) => {
+            const keyLower = (e.key || '').toLowerCase();
+            const codeLower = (e.code || '').toLowerCase();
+            if (keyLower === 'control' || keyLower === 'meta' || codeLower.startsWith('control') || codeLower.startsWith('meta')) {
+                confirmSwitcher();
+            }
+        };
+
         window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
         };
     }, [showSwitcher, showSwitcherUI, cycleSwitcher, confirmSwitcher, cancelSwitcher]);
 

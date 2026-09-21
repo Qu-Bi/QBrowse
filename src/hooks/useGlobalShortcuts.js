@@ -22,6 +22,12 @@ export const handleEscapeDismissal = () => {
         return true;
     }
 
+    // 2b. Active Pinned Stack Picker
+    if (uiStore.activePinnedStack) {
+        uiStore.closePinnedStack();
+        return true;
+    }
+
     // 3. Active Popover (Vault, SiteInfo, DarkMode, Adblock, Media, Downloads, UserProfile)
     if (uiStore.activePopover) {
         uiStore.closePopover();
@@ -130,6 +136,8 @@ export const handleEscapeDismissal = () => {
 
     return false;
 };
+
+let lastTabShortcutTime = 0;
 
 export const executeShortcut = (key, shift = false, alt = false) => {
     const uiStore = useUIStore.getState();
@@ -321,13 +329,19 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             break;
 
         // Tab Switcher (Cmd+Tab)
-        case 'tab':
+        case 'tab': {
+            const now = Date.now();
+            if (now - lastTabShortcutTime < 140) {
+                break;
+            }
+            lastTabShortcutTime = now;
             if (!uiStore.showSwitcher) {
-                uiStore.openSwitcher();
+                uiStore.openSwitcher(shift ? -1 : 1);
             } else {
                 uiStore.cycleSwitcher(shift ? -1 : 1);
             }
             break;
+        }
 
         // History Navigation (Cmd+[ and Cmd+], Alt+Left and Alt+Right)
         case '[':
@@ -418,15 +432,17 @@ export default function useGlobalShortcuts() {
                 return;
             }
 
-            // Do not trigger global shortcuts if the user is typing in an input or textarea
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-                // Allow Tab closing (Cmd+W / Ctrl+W) even when inside input/search fields
-                if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
-                    e.preventDefault();
-                    executeShortcut('w', e.shiftKey, e.altKey);
+            // Do not trigger global shortcuts if the user is typing in an input or textarea,
+            // EXCEPT for global navigation shortcuts (Tab switching, new tab/window, close tab, etc.)
+            const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+            if (isInput) {
+                const k = (e.key || '').toLowerCase();
+                const isNavShortcut = (e.ctrlKey || e.metaKey) && (
+                    k === 'tab' || k === 't' || k === 'w' || k === 'n' || k === '1' || k === '2' || k === '3' || k === 'h' || k === 'l'
+                );
+                if (!isNavShortcut && !(e.shiftKey && e.key === 'Escape')) {
                     return;
                 }
-                return;
             }
 
             const cmdOrCtrl = e.metaKey || e.ctrlKey;
@@ -438,13 +454,21 @@ export default function useGlobalShortcuts() {
             }
 
             if (cmdOrCtrl) {
+                if (e.key.toLowerCase() === 'tab' && e.repeat) {
+                    e.preventDefault();
+                    return;
+                }
                 e.preventDefault();
                 executeShortcut(e.key.toLowerCase(), e.shiftKey, e.altKey);
             }
         };
 
         const handleKeyUp = (e) => {
-            if (e.key === 'Control' || e.key === 'Meta') {
+            const keyLower = (e.key || '').toLowerCase();
+            const codeLower = (e.code || '').toLowerCase();
+            const isCtrlOrMeta = keyLower === 'control' || keyLower === 'meta' || 
+                                 codeLower.startsWith('control') || codeLower.startsWith('meta');
+            if (isCtrlOrMeta) {
                 const uiStore = useUIStore.getState();
                 if (uiStore.showSwitcher) {
                     uiStore.confirmSwitcher();
@@ -461,13 +485,22 @@ export default function useGlobalShortcuts() {
             }
         };
 
+        const handleBlur = () => {
+            const ui = useUIStore.getState();
+            if (ui.showSwitcher) {
+                ui.confirmSwitcher();
+            }
+        };
+
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
         window.addEventListener('wheel', handleWheel, { passive: false });
+        window.addEventListener('blur', handleBlur);
 
         // Listen for shortcuts captured natively by Electron (e.g. when webview has focus)
         if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
             window.electronAPI.onGlobalShortcut((data) => {
+                console.log('[DEBUG] Received global-shortcut:', data);
                 const shortcut = typeof data === 'string' ? data : data.shortcut;
                 const shift = typeof data === 'string' ? false : data.shift;
                 
@@ -488,6 +521,7 @@ export default function useGlobalShortcuts() {
 
                 if (shortcut.startsWith('cmd+')) {
                     const key = shortcut.replace('cmd+', '');
+                    console.log('[DEBUG] Executing shortcut:', key);
                     executeShortcut(key, shift, !!data.alt);
                     return;
                 }
@@ -500,7 +534,11 @@ export default function useGlobalShortcuts() {
 
         if (window.electronAPI && window.electronAPI.onGlobalKeyUp) {
             window.electronAPI.onGlobalKeyUp((data) => {
-                if (data.key === 'Control' || data.key === 'Meta') {
+                const keyLower = (data?.key || '').toLowerCase();
+                const codeLower = (data?.code || '').toLowerCase();
+                const isCtrlOrMeta = keyLower === 'control' || keyLower === 'meta' || 
+                                     codeLower.startsWith('control') || codeLower.startsWith('meta');
+                if (isCtrlOrMeta) {
                     const ui = useUIStore.getState();
                     if (ui.showSwitcher) {
                         ui.confirmSwitcher();
@@ -513,6 +551,7 @@ export default function useGlobalShortcuts() {
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
             window.removeEventListener('wheel', handleWheel);
+            window.removeEventListener('blur', handleBlur);
             if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
         };
     }, []);

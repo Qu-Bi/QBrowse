@@ -60,6 +60,7 @@ export default function TopBar() {
     const toggleSplitView = useUIStore(state => state.toggleSplitView);
     const isAdblockActive = useUIStore(state => state.isAdblockActive);
     const adblockStats = useUIStore(state => state.adblockStats);
+    const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
     
     const setIsSidebarHidden = useUIStore(state => state.setIsSidebarHidden);
     const showToast = useUIStore(state => state.showToast);
@@ -319,7 +320,7 @@ export default function TopBar() {
                     </div>
 
                     {/* RIGHT BLOCK: Extensions & Toggles */}
-                    <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-1 flex items-center justify-end min-w-max z-20">
+                    <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center justify-end min-w-max z-20 transition-opacity duration-300 ${isRightPanelOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                         <div className={`flex items-center gap-1 flex-shrink-0 min-w-max h-9 rounded-full shadow-sm border px-2 ${isForceDark || isIncognito ? 'bg-black/20 border-white/5 shadow-inner' : 'bg-white/40 border-white/20'}`}>
                             <button onClick={() => toggleSplitView()} className={`p-1.5 rounded-full transition group border-r pr-3 mr-1 ${isForceDark || isIncognito ? (isSplitView ? 'border-accent/30 text-accent bg-accent/10' : 'border-white/10 text-white/60 hover:text-white') : (isSplitView ? 'border-gray-200/50 text-accent bg-accent/10' : 'border-gray-200/50 text-gray-500 hover:bg-black/5')} `} title="Split View (Ctrl+\ or Ctrl+Shift+D)">
                                 <SplitSquareHorizontal size={14} className="group-hover:scale-110 transition-transform" />

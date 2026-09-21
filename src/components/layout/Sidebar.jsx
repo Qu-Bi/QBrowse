@@ -6,6 +6,7 @@ import useSyncStore from '../../store/useSyncStore';
 import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
+import PinnedStackPopup, { isTabForPin } from './PinnedStackPopup';
 
 export default function Sidebar() {
     // UI Store State
@@ -21,6 +22,9 @@ export default function Sidebar() {
     const faviconGlow = useUIStore(state => state.settings?.faviconGlow);
     const togglePopover = useUIStore(state => state.togglePopover);
     const activePopover = useUIStore(state => state.activePopover);
+    const activePinnedStack = useUIStore(state => state.activePinnedStack);
+    const setActivePinnedStack = useUIStore(state => state.setActivePinnedStack);
+    const closePinnedStack = useUIStore(state => state.closePinnedStack);
 
     const activeProfileId = useProfileStore(state => state.activeProfileId);
     const profiles = useProfileStore(state => state.profiles);
@@ -86,17 +90,62 @@ export default function Sidebar() {
         setTabContextMenu({ x, y, tab, spaceType });
     };
 
-    const handlePinnedTabClick = (pin) => {
+    const handlePinnedTabClick = (e, pin) => {
         const tabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
         const setTabs = activeSpace === 'personal' ? setPrivateTabs : (activeSpace === 'work' ? setWorkTabs : (activeSpace === 'ghost' ? setGhostTabs : setTorTabs));
         
-        const existingTab = tabs.find(t => t.pinnedId === pin.id || (t.url && typeof t.url === 'string' && t.url.includes(pin.domain)));
-        
-        if (existingTab) {
-            setTabs(prev => prev.map(t => ({ ...t, active: t.id === existingTab.id })));
-            useUIStore.getState().setCurrentUrl(existingTab.url || '');
+        const pinTabs = tabs.filter(t => isTabForPin(t, pin));
+        const activeTabInStack = pinTabs.find(t => t.active);
+
+        if (activeTabInStack) {
+            // User is ALREADY viewing one of the tabs in this service stack!
+            // Toggle the Stack Popup Picker:
+            if (activePinnedStack?.pin?.id === pin.id) {
+                closePinnedStack();
+            } else {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setActivePinnedStack({ pin, rect });
+            }
+        } else if (pinTabs.length > 0) {
+            // User is not viewing this stack. Switch to the first tab in this stack!
+            const targetTab = pinTabs[0];
+            setTabs(tabs.map(t => ({ 
+                ...t, 
+                active: t.id === targetTab.id,
+                suspended: t.id === targetTab.id ? false : t.suspended,
+                lastActiveAt: t.id === targetTab.id ? Date.now() : t.lastActiveAt
+            })));
+            useUIStore.getState().setCurrentUrl(targetTab.url || '');
+            closePinnedStack();
+            setTimeout(() => {
+                const wv = window.qbrowseWebviews ? window.qbrowseWebviews[targetTab.id] : null;
+                if (wv && typeof wv.focus === 'function') {
+                    try { wv.focus(); } catch (_) {}
+                }
+            }, 30);
         } else {
-            useTabStore.getState().addTab({ id: `t-${Date.now()}`, pinnedId: pin.id, title: pin.title, url: pin.domain, active: true, folderId: null });
+            // No tabs open for this service yet: create a new tab for this pinned service
+            const targetUrl = pin.domain.startsWith('http') ? pin.domain : `https://${pin.domain}`;
+            useTabStore.getState().addTab({
+                id: `t-${Date.now()}`,
+                pinnedId: pin.id,
+                title: pin.title,
+                url: targetUrl,
+                active: true,
+                folderId: null
+            });
+            closePinnedStack();
+        }
+    };
+
+    const handlePinnedContextMenu = (e, pin) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (activePinnedStack?.pin?.id === pin.id) {
+            closePinnedStack();
+        } else {
+            setActivePinnedStack({ pin, rect });
         }
     };
 
@@ -120,7 +169,12 @@ export default function Sidebar() {
                 } else {
                     const list = spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs));
                     const setList = spaceType === 'personal' ? setPrivateTabs : (spaceType === 'work' ? setWorkTabs : (spaceType === 'ghost' ? setGhostTabs : setTorTabs));
-                    setList(list.map(t => ({ ...t, active: t.id === tab.id })));
+                    setList(list.map(t => ({ 
+                        ...t, 
+                        active: t.id === tab.id,
+                        suspended: t.id === tab.id ? false : t.suspended,
+                        lastActiveAt: t.id === tab.id ? Date.now() : t.lastActiveAt
+                    })));
                     ui.setCurrentUrl(tab.url || '');
                 }
 
@@ -223,6 +277,7 @@ export default function Sidebar() {
     const isSyncing = useSyncStore(state => state.isSyncing);
 
     return (
+        <>
         <aside className={`flex-shrink-0 flex flex-col backdrop-blur-2xl rounded-[2rem] shadow-2xl overflow-hidden relative z-50 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isForceDark || isIncognito ? 'bg-black/50 border border-white/10 text-white/90 sidebar-dark' : 'bg-white/60 border border-black/10 text-black/90 sidebar-light'} ${isFullscreen || isSidebarHidden ? 'w-0 opacity-0 border-none m-0' : 'w-16 md:w-64 opacity-100'}`}>
 
             <div className="drag-region flex gap-2 p-5 border-b border-[color:var(--sidebar-border)] items-center justify-between">
@@ -266,13 +321,80 @@ export default function Sidebar() {
             <div className="px-4 py-4 hidden md:grid grid-cols-4 gap-2 border-b border-[color:var(--sidebar-border)] relative z-10">
                 {pinnedTabs.map((pin) => {
                     const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs);
-                    const isActive = tabs.find(t => t.active)?.pinnedId === pin.id || tabs.find(t => t.active && t.url && typeof t.url === 'string' && t.url.includes(pin.domain));
+                    const pinTabs = tabs.filter(t => isTabForPin(t, pin));
+                    const hasActiveTab = pinTabs.some(t => t.active);
+                    const isAudible = pinTabs.some(t => t.isAudioPlaying || t.isAudible);
+                    const isPopupOpen = activePinnedStack?.pin?.id === pin.id;
+
                     return (
-                    <div key={pin.id} className="relative group flex justify-center animate-pin-in" onContextMenu={(e) => handleTabContextMenuClick(e, pin, 'pinned')}>
-                        <button onClick={() => handlePinnedTabClick(pin)} className={`w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all shadow-sm overflow-hidden ${isActive ? 'bg-[color:var(--sidebar-bg-active)] border-white/30 scale-105' : 'bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border-[color:var(--sidebar-border)] group-hover:scale-105'}`} title={pin.title}>
-                            <img src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} alt={pin.title} className="w-6 h-6 rounded-md drop-shadow-md" onError={(e) => { e.target.style.display = 'none'; }} />
+                    <div key={pin.id} className="relative group flex justify-center animate-pin-in">
+                        <button 
+                            onClick={(e) => handlePinnedTabClick(e, pin)} 
+                            onContextMenu={(e) => handlePinnedContextMenu(e, pin)}
+                            className={`relative w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all shadow-sm overflow-hidden ${
+                                hasActiveTab 
+                                    ? 'bg-[color:var(--sidebar-bg-active)] border-accent/60 shadow-[0_0_12px_var(--accent)] scale-105' 
+                                    : isPopupOpen
+                                    ? 'bg-[color:var(--sidebar-bg-active)] border-white/40 scale-105'
+                                    : 'bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border-[color:var(--sidebar-border)] group-hover:scale-105'
+                            }`} 
+                            title={`${pin.title}${pinTabs.length > 0 ? ` (${pinTabs.length} open tab${pinTabs.length > 1 ? 's' : ''})` : ''} • Right-click for tab list`}
+                        >
+                            <img 
+                                src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} 
+                                alt={pin.title} 
+                                className={`w-5 h-5 rounded-md drop-shadow-md transition-transform duration-200 ${pinTabs.length > 0 ? '-translate-y-1' : ''}`} 
+                                onError={(e) => { e.target.style.display = 'none'; }} 
+                            />
+
+                            {/* Speaker badge if any tab in this service stack is playing audio */}
+                            {isAudible && (
+                                <div className="absolute top-0.5 left-0.5 p-0.5 rounded-full bg-black/70 backdrop-blur-sm text-emerald-400 animate-pulse shadow">
+                                    <Volume2 size={8} />
+                                </div>
+                            )}
+
+                            {/* macOS Dock-Style Indicator Dots */}
+                            {pinTabs.length > 0 && (
+                                <div className="absolute bottom-1 left-0 right-0 flex items-center justify-center gap-0.5 pointer-events-none px-1">
+                                    {pinTabs.length <= 4 ? (
+                                        pinTabs.map((t, idx) => (
+                                            <span 
+                                                key={t.id || idx} 
+                                                className={`rounded-full transition-all duration-300 ${
+                                                    t.active 
+                                                        ? 'w-1.5 h-1.5 bg-accent shadow-[0_0_6px_var(--accent)]' 
+                                                        : 'w-1 h-1 bg-white/40'
+                                                }`} 
+                                            />
+                                        ))
+                                    ) : (
+                                        <>
+                                            {pinTabs.slice(0, 3).map((t, idx) => (
+                                                <span 
+                                                    key={t.id || idx} 
+                                                    className={`rounded-full transition-all duration-300 ${
+                                                        t.active 
+                                                            ? 'w-1.5 h-1.5 bg-accent shadow-[0_0_6px_var(--accent)]' 
+                                                            : 'w-1 h-1 bg-white/40'
+                                                    }`} 
+                                                />
+                                            ))}
+                                            <span className="text-[7px] leading-none font-bold text-accent font-mono">
+                                                +{pinTabs.length - 3}
+                                            </span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleUnpinTab(pin); }} className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-[#2a251e] border-accent-30 text-accent rounded-full p-0.5 hover:scale-110 bg-accent hover:text-black transition-all shadow-md z-10" title="Unpin"><Minus size={10} /></button>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleUnpinTab(pin); }} 
+                            className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-[#2a251e] border-accent-30 text-accent rounded-full p-0.5 hover:scale-110 bg-accent hover:text-black transition-all shadow-md z-10" 
+                            title="Unpin"
+                        >
+                            <Minus size={10} />
+                        </button>
                     </div>
                 )})}
                 <div className="relative group flex justify-center animate-pin-in">
@@ -300,7 +422,7 @@ export default function Sidebar() {
                             </button>
                         </div>
                         {(() => {
-                            const filtered = privateTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
+                            const filtered = privateTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
                                     <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
@@ -329,7 +451,7 @@ export default function Sidebar() {
                             </button>
                         </div>
                         {(() => {
-                            const filtered = workTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
+                            const filtered = workTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
                                     <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
@@ -369,7 +491,7 @@ export default function Sidebar() {
                             </div>
                         </div>
                         {(() => {
-                            const filtered = ghostTabs.filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
+                            const filtered = ghostTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
                                     <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
@@ -410,7 +532,7 @@ export default function Sidebar() {
                             </div>
                         </div>
                         {(() => {
-                            const filtered = (torTabs || []).filter(t => !t.pinnedId && !pinnedTabs.some(p => t.url && typeof t.url === 'string' && t.url.includes(p.domain)));
+                            const filtered = (torTabs || []).filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
                                     <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition w-full shadow-sm animate-pop-in">
@@ -513,5 +635,7 @@ export default function Sidebar() {
                 </button>
             </div>
         </aside>
+        <PinnedStackPopup />
+        </>
     );
 }
