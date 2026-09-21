@@ -323,17 +323,29 @@ const useTabStore = create((set, get) => ({
     });
   },
 
-  suspendTab: (tabId) => {
-      const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs } = get();
+  suspendTab: (tabId, silent = false) => {
+      const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs, pinnedTabs } = get();
       const updateList = (list, setList) => {
           if (list.some(t => t.id === tabId)) {
               const tab = list.find(t => t.id === tabId);
               if (tab.active) {
-                  useUIStore.getState().showToast('Cannot suspend active tab');
-              } else {
-                  setList(list.map(t => t.id === tabId ? { ...t, suspended: true } : t));
-                  useUIStore.getState().showToast('Tab suspended to save memory');
+                  if (!silent) useUIStore.getState().showToast('Cannot suspend active tab');
+                  return true;
               }
+              if (tab.isAudible || tab.hasAudio) {
+                  if (!silent) useUIStore.getState().showToast('Cannot suspend tab playing audio');
+                  return true;
+              }
+              if (tab.isPinned || (pinnedTabs && pinnedTabs.some(p => p.domain && tab.url && tab.url.includes(p.domain)))) {
+                  if (!silent) useUIStore.getState().showToast('Cannot suspend pinned tab');
+                  return true;
+              }
+              if (tab.isDownloading) {
+                  if (!silent) useUIStore.getState().showToast('Cannot suspend tab with active download');
+                  return true;
+              }
+              setList(list.map(t => t.id === tabId ? { ...t, suspended: true, suspendedAt: Date.now() } : t));
+              if (!silent) useUIStore.getState().showToast('Tab suspended to save memory');
               return true;
           }
           return false;
@@ -345,12 +357,12 @@ const useTabStore = create((set, get) => ({
       if (updateList(torTabs, setTorTabs)) return;
   },
 
-  wakeTab: (tabId) => {
+  wakeTab: (tabId, silent = false) => {
       const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs } = get();
       const updateList = (list, setList) => {
           if (list.some(t => t.id === tabId)) {
-              setList(list.map(t => t.id === tabId ? { ...t, suspended: false } : t));
-              useUIStore.getState().showToast('Tab restored from sleep');
+              setList(list.map(t => t.id === tabId ? { ...t, suspended: false, lastActiveAt: Date.now() } : t));
+              if (!silent) useUIStore.getState().showToast('Tab restored from sleep');
               return true;
           }
           return false;

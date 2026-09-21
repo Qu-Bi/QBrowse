@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PanelLeft, Lock, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User, BookOpen } from 'lucide-react';
+import { PanelLeft, Lock, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User, BookOpen, Leaf, Gauge, Zap, Cpu } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
@@ -79,6 +79,11 @@ export default function TopBar() {
     const isReaderOpen = useUIStore(state => state.isReaderOpen);
     const isReaderLoading = useUIStore(state => state.isReaderLoading);
     const toggleReaderMode = useUIStore(state => state.toggleReaderMode);
+
+    // Performance System
+    const performanceMode = useUIStore(state => state.performanceMode) || 'auto';
+    const activePerformanceTier = useUIStore(state => state.activePerformanceTier) || 'balanced';
+    const cyclePerformanceMode = useUIStore(state => state.cyclePerformanceMode);
 
     const activeSpace = useTabStore(state => state.activeSpace);
     const privateTabs = useTabStore(state => state.privateTabs);
@@ -354,6 +359,50 @@ export default function TopBar() {
 
                             <button onClick={() => togglePopover('vault')} className={`p-1.5 rounded-full transition group ${activePopover === 'vault' ? 'bg-blue-500/20 text-blue-400' : (isForceDark || isIncognito ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-800 hover:bg-black/10')}`} title="QVault Passwords">
                                 <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                            </button>
+
+                            {/* Performance Mode Sleek Minimalist Toggle */}
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    cyclePerformanceMode();
+                                }}
+                                className={`p-1.5 rounded-full transition group relative flex items-center justify-center cursor-pointer ${
+                                    performanceMode === 'eco' 
+                                        ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 shadow-[0_0_8px_rgba(52,211,153,0.2)]' 
+                                        : (performanceMode === 'ultra' 
+                                            ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.25)]' 
+                                            : (performanceMode === 'balanced'
+                                                ? 'bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 shadow-[0_0_8px_rgba(34,211,238,0.2)]'
+                                                : (isForceDark || isIncognito ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-800 hover:bg-black/10')))
+                                }`}
+                                title={`Performance: ${
+                                    performanceMode === 'auto' 
+                                        ? `Adaptive Auto (${String(activePerformanceTier).toUpperCase()})` 
+                                        : String(performanceMode).toUpperCase()
+                                } • Click to cycle modes`}
+                            >
+                                {performanceMode === 'eco' && (
+                                    <Leaf size={14} className="group-hover:scale-110 transition-transform text-emerald-400" />
+                                )}
+                                {performanceMode === 'balanced' && (
+                                    <Gauge size={14} className="group-hover:scale-110 transition-transform text-cyan-400" />
+                                )}
+                                {performanceMode === 'ultra' && (
+                                    <Zap size={14} className="group-hover:scale-110 transition-transform text-amber-400" />
+                                )}
+                                {performanceMode === 'auto' && (
+                                    <div className="relative flex items-center justify-center">
+                                        <Cpu size={14} className="group-hover:scale-110 transition-transform" />
+                                        <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${
+                                            activePerformanceTier === 'eco' 
+                                                ? 'bg-emerald-400 shadow-[0_0_4px_#34d399]' 
+                                                : (activePerformanceTier === 'ultra' 
+                                                    ? 'bg-amber-400 shadow-[0_0_4px_#fbbf24]' 
+                                                    : 'bg-cyan-400 shadow-[0_0_4px_#22d3ee]')
+                                        }`} />
+                                    </div>
+                                )}
                             </button>
                         </div>
                     </div>

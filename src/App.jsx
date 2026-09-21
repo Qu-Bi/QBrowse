@@ -167,6 +167,9 @@ export default function App() {
                     useUIStore.getState().setPasskeyPrompt(promptData);
                 });
             }
+
+            // Initialize Hardware-Aware Performance Scaling Profile
+            useUIStore.getState().initPerformanceProfile();
         }
     }, []);
 
@@ -182,25 +185,48 @@ export default function App() {
         };
     }, [showToast]);
 
+    // Hardware-Aware Adaptive Tab Suspender & Memory Saver
     useEffect(() => {
-        const SUSPEND_TIMEOUT = 10 * 60 * 1000; // 10 minutes
         const interval = setInterval(() => {
-            const store = useTabStore.getState();
-            const allTabs = [...store.privateTabs, ...store.workTabs, ...store.ghostTabs];
+            const uiStore = useUIStore.getState();
+            if (uiStore.settings?.memory === false) return;
+
+            const sleepTimeoutMinutes = uiStore.tabSleepTimeoutMinutes || 15;
+            if (sleepTimeoutMinutes <= 0) return; // 0 = Never sleep
+
+            const suspendTimeoutMs = sleepTimeoutMinutes * 60 * 1000;
+            const tabStore = useTabStore.getState();
+            const allTabs = [
+                ...tabStore.privateTabs, 
+                ...tabStore.workTabs, 
+                ...tabStore.ghostTabs, 
+                ...(tabStore.torTabs || [])
+            ];
             const now = Date.now();
 
             let suspendedCount = 0;
             allTabs.forEach(tab => {
-                if (!tab.active && !tab.suspended && !tab.isAudible && tab.url !== '' && (now - tab.lastActiveAt > SUSPEND_TIMEOUT)) {
-                    store.suspendTab(tab.id);
+                const isImmune = (
+                    tab.active || 
+                    tab.suspended || 
+                    tab.isAudible || 
+                    tab.hasAudio || 
+                    tab.isPinned || 
+                    tab.isDownloading || 
+                    !tab.url || 
+                    tab.url === 'about:blank'
+                );
+
+                if (!isImmune && (now - (tab.lastActiveAt || now) > suspendTimeoutMs)) {
+                    tabStore.suspendTab(tab.id, true);
                     suspendedCount++;
                 }
             });
 
             if (suspendedCount > 0) {
-                console.log(`Suspended ${suspendedCount} inactive tabs to free memory.`);
+                console.log(`[MemorySaver] Suspended ${suspendedCount} inactive tabs to free RAM (timeout: ${sleepTimeoutMinutes}m).`);
             }
-        }, 60000); // Check every minute
+        }, 30000);
 
         return () => clearInterval(interval);
     }, []);

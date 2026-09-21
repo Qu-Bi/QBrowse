@@ -1142,6 +1142,138 @@ const useUIStore = create((set, get) => ({
   setReaderSetting: (key, val) => {
     get().setSettingValue(key, val);
   },
+
+  // Hardware-Aware Performance Scaling System
+  hardwareProfile: null,
+  performanceMode: 'auto', // 'auto' | 'eco' | 'balanced' | 'ultra'
+  activePerformanceTier: 'balanced',
+  tabSleepTimeoutMinutes: 15,
+  reduceVisualsOnEco: true,
+
+  initPerformanceProfile: async () => {
+    if (typeof window === 'undefined' || !window.electronAPI?.getHardwareProfile) return;
+    try {
+      const applyDom = (tier, reduce) => {
+        if (typeof document === 'undefined') return;
+        if (tier === 'eco' && reduce !== false) {
+          document.documentElement.classList.add('eco-mode');
+        } else {
+          document.documentElement.classList.remove('eco-mode');
+        }
+      };
+
+      const profile = await window.electronAPI.getHardwareProfile();
+      if (profile) {
+        set({
+          hardwareProfile: profile,
+          performanceMode: profile.mode || 'auto',
+          activePerformanceTier: profile.activeTier || 'balanced',
+          tabSleepTimeoutMinutes: profile.tabSleepTimeoutMinutes || 15,
+          reduceVisualsOnEco: profile.reduceVisuals !== false
+        });
+        applyDom(profile.activeTier, profile.reduceVisuals !== false);
+      }
+
+      if (window.electronAPI.onPerformanceProfileChanged) {
+        window.electronAPI.onPerformanceProfileChanged((updatedProfile) => {
+          if (updatedProfile) {
+            set({
+              hardwareProfile: updatedProfile,
+              performanceMode: updatedProfile.mode || 'auto',
+              activePerformanceTier: updatedProfile.activeTier || 'balanced',
+              tabSleepTimeoutMinutes: updatedProfile.tabSleepTimeoutMinutes || 15,
+              reduceVisualsOnEco: updatedProfile.reduceVisuals !== false
+            });
+            applyDom(updatedProfile.activeTier, updatedProfile.reduceVisuals !== false);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[PerformanceProfile] Init error:', e);
+    }
+  },
+
+  setPerformanceMode: async (mode) => {
+    const validModes = ['auto', 'eco', 'balanced', 'ultra'];
+    if (!validModes.includes(mode)) return;
+    try {
+      let updatedProfile = null;
+      if (window.electronAPI?.setPerformanceSettings) {
+        updatedProfile = await window.electronAPI.setPerformanceSettings({ mode });
+      }
+      const activeTier = updatedProfile?.activeTier || (mode === 'auto' ? (get().hardwareProfile?.detectedTier || 'balanced') : mode);
+      const sleepTimeout = updatedProfile?.tabSleepTimeoutMinutes || (activeTier === 'eco' ? 5 : (activeTier === 'ultra' ? 30 : 15));
+      const reduceVisuals = get().reduceVisualsOnEco;
+
+      set({
+        performanceMode: mode,
+        activePerformanceTier: activeTier,
+        tabSleepTimeoutMinutes: sleepTimeout,
+        hardwareProfile: updatedProfile || get().hardwareProfile
+      });
+
+      if (typeof document !== 'undefined') {
+        if (activeTier === 'eco' && reduceVisuals !== false) {
+          document.documentElement.classList.add('eco-mode');
+        } else {
+          document.documentElement.classList.remove('eco-mode');
+        }
+      }
+      return activeTier;
+    } catch (e) {
+      console.warn('[PerformanceProfile] Mode change error:', e);
+    }
+  },
+
+  cyclePerformanceMode: async () => {
+    const modes = ['auto', 'eco', 'balanced', 'ultra'];
+    const currentMode = get().performanceMode || 'auto';
+    const nextIdx = (modes.indexOf(currentMode) + 1) % modes.length;
+    const nextMode = modes[nextIdx];
+
+    const activeTier = await get().setPerformanceMode(nextMode);
+
+    const labels = {
+      auto: `Auto (Adapting: ${String(activeTier || 'balanced').toUpperCase()})`,
+      eco: 'Eco Saver (Max Battery & RAM Savings)',
+      balanced: 'Balanced (Optimal Glass & Responsiveness)',
+      ultra: 'Ultra (Maximum Frame Rates & RAM)'
+    };
+    get().showToast(`Performance: ${labels[nextMode] || nextMode}`);
+  },
+
+  setTabSleepTimeoutMinutes: async (minutes) => {
+    try {
+      if (window.electronAPI?.setPerformanceSettings) {
+        const updated = await window.electronAPI.setPerformanceSettings({ tabSleepTimeoutMinutes: minutes });
+        set({ tabSleepTimeoutMinutes: minutes, hardwareProfile: updated || get().hardwareProfile });
+      } else {
+        set({ tabSleepTimeoutMinutes: minutes });
+      }
+    } catch (e) {
+      console.warn('[PerformanceProfile] Sleep timeout error:', e);
+    }
+  },
+
+  setReduceVisualsOnEco: async (enabled) => {
+    try {
+      if (window.electronAPI?.setPerformanceSettings) {
+        const updated = await window.electronAPI.setPerformanceSettings({ reduceVisualsOnEco: enabled });
+        set({ reduceVisualsOnEco: enabled, hardwareProfile: updated || get().hardwareProfile });
+      } else {
+        set({ reduceVisualsOnEco: enabled });
+      }
+      if (typeof document !== 'undefined') {
+        if (get().activePerformanceTier === 'eco' && enabled !== false) {
+          document.documentElement.classList.add('eco-mode');
+        } else {
+          document.documentElement.classList.remove('eco-mode');
+        }
+      }
+    } catch (e) {
+      console.warn('[PerformanceProfile] Visual setting error:', e);
+    }
+  },
 }));
 
 export default useUIStore;

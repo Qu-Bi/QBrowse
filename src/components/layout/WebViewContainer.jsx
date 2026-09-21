@@ -9,6 +9,7 @@ import { useAnnotationStore, normalizeAnnotationUrl } from '../../store/useAnnot
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 import FlagsPage from '../pages/FlagsPage';
+import DrmHandOffBanner from '../features/DrmHandOffBanner';
 
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
@@ -19,6 +20,21 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
     const torSecurityLevel = useTorStore(state => state.securityLevel);
     const torStatus = useTorStore(state => state.status);
     const torBootstrapProgress = useTorStore(state => state.bootstrapProgress);
+
+    const [isDrmDismissed, setIsDrmDismissed] = useState(false);
+    const [genericDrmError, setGenericDrmError] = useState(null);
+    const prevHostRef = useRef('');
+
+    useEffect(() => {
+        try {
+            const currentHost = tab.url ? new URL(tab.url).hostname : '';
+            if (currentHost !== prevHostRef.current) {
+                prevHostRef.current = currentHost;
+                setIsDrmDismissed(false);
+                setGenericDrmError(null);
+            }
+        } catch (_) {}
+    }, [tab.url]);
 
     const [initialUrl] = useState(() => {
         let u = tab.url;
@@ -448,6 +464,9 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 } else if (action === 'forward' && wv.canGoForward && wv.canGoForward()) {
                     wv.goForward();
                 }
+            } else if (e.channel === 'qbrowse-drm-unsupported') {
+                const errorData = e.args && e.args[0];
+                setGenericDrmError(errorData || { keySystem: 'widevine' });
             } else if (e.channel === 'webview-zoom-wheel') {
                 const delta = e.args && e.args[0];
                 if (typeof delta === 'number') {
@@ -996,6 +1015,14 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 pointerEvents: shouldShow ? 'auto' : 'none'
             }}
         >
+            {shouldShow && !tab.isClosing && (
+                <DrmHandOffBanner
+                    url={tab.url}
+                    genericDrmError={genericDrmError}
+                    isDismissed={isDrmDismissed}
+                    onDismiss={() => setIsDrmDismissed(true)}
+                />
+            )}
             {space === 'tor' && torStatus !== 'connected' && shouldShow && tab.url && tab.url !== 'about:blank' && (
                 <div className="absolute inset-0 z-30 bg-[#0a0a0c] flex flex-col items-center justify-center text-white select-none">
                     <div className={`w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(168,85,247,0.2)] ${torStatus === 'starting' || torStatus === 'downloading' ? 'animate-pulse' : ''}`}>

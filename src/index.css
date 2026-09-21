@@ -61,12 +61,12 @@ body {
 }
 
 @keyframes slideUpFade {
-  0% { opacity: 0; transform: translateY(20px) translateX(-50%); }
-  100% { opacity: 1; transform: translateY(0) translateX(-50%); }
+  0% { opacity: 0; transform: translateY(10px) translateX(-50%) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) translateX(-50%) scale(1); }
 }
 
 .animate-toast {
-  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUpFade 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes popInSpring {
@@ -335,4 +335,49 @@ body {
   background-color: rgba(59, 130, 246, 0.18) !important;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45) !important;
 }
+
+/* =========================================================
+   Eco / Low-End Hardware Acceleration & Optimization Mode
+   Eliminates GPU composition bottlenecks and frame drops on
+   integrated graphics (Intel UHD / Iris / AMD Radeon Vega)
+   ========================================================= */
+html.eco-mode {
+  --eco-bg: #0c0e14;
+}
+
+html.eco-mode,
+html.eco-mode body {
+  background-color: #0c0e14 !important;
+}
+
+html.eco-mode [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgba(14, 16, 22, 0.96) !important;
+}
+
+html.eco-mode .backdrop-blur-3xl,
+html.eco-mode .backdrop-blur-2xl,
+html.eco-mode .backdrop-blur-xl,
+html.eco-mode .backdrop-blur-lg,
+html.eco-mode .backdrop-blur-md,
+html.eco-mode .backdrop-blur-sm,
+html.eco-mode .backdrop-blur {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgba(14, 16, 22, 0.96) !important;
+}
+
+/* Flatten heavy Gaussian drop shadows into crisp minimal borders for iGPU rendering */
+html.eco-mode .shadow-2xl,
+html.eco-mode .shadow-xl {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Shorten transition durations to avoid frame drops on low-frequency CPUs */
+html.eco-mode * {
+  animation-duration: 0.15s !important;
+  transition-duration: 0.12s !important;
+}
+
 

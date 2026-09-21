@@ -13,9 +13,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openDevTools: () => ipcRenderer.send('open-devtools'),
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
 
-    // Clipboard
+    // Clipboard & External
     readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
     writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    openAppProtocol: (protocolUrl, fallbackUrl) => ipcRenderer.invoke('open-app-protocol', { protocolUrl, fallbackUrl }),
+    openWithDialog: (url) => ipcRenderer.invoke('open-with-dialog', url),
 
     // Vault
     unlockVault: (password) => ipcRenderer.invoke('vault-unlock', password),
@@ -182,6 +185,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     captureAndSave: (opts) => ipcRenderer.invoke('capture-and-save', opts),
     captureSliceDataUrl: (opts) => ipcRenderer.invoke('capture-slice-dataurl', opts),
     saveScreenshotDataUrl: (opts) => ipcRenderer.invoke('save-screenshot-dataurl', opts),
+
+    // Performance & Hardware Profiling
+    getHardwareProfile: () => ipcRenderer.invoke('system-get-hardware-profile'),
+    getPerformanceSettings: () => ipcRenderer.invoke('system-get-performance-settings'),
+    setPerformanceSettings: (settings) => ipcRenderer.invoke('system-set-performance-settings', settings),
+    onPerformanceProfileChanged: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('performance-profile-changed', handler);
+        return () => ipcRenderer.removeListener('performance-profile-changed', handler);
+    },
 
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });

@@ -4,8 +4,57 @@ import {
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
-    ZoomIn, RotateCcw
+    ZoomIn, RotateCcw, AlertCircle, Info, Sliders
 } from 'lucide-react';
+
+function getToastIcon(message) {
+    if (!message) return <Info size={13} className="text-white/70 flex-shrink-0" />;
+    const str = String(message).toLowerCase();
+    
+    // Alert / Error / Warning
+    if (
+        str.includes('error') || 
+        str.includes('fail') || 
+        str.includes('cannot') || 
+        str.includes('not supported') ||
+        str.includes('disabled') ||
+        str.includes('disconnect') ||
+        str.includes('limit')
+    ) {
+        return <AlertCircle size={13} className="text-white/80 flex-shrink-0" />;
+    }
+    
+    // Performance / Mode / Settings / Toggles
+    if (
+        str.includes('performance') || 
+        str.includes('split view') || 
+        str.includes('mode:') || 
+        str.includes('tier') ||
+        str.includes('flags') ||
+        str.includes('reader')
+    ) {
+        return <Sliders size={13} className="text-white/80 flex-shrink-0" />;
+    }
+    
+    // Success / Copied / Saved / Connected / Restored / Enabled
+    if (
+        str.includes('saved') || 
+        str.includes('copied') || 
+        str.includes('success') || 
+        str.includes('connected') || 
+        str.includes('restored') || 
+        str.includes('enabled') || 
+        str.includes('pinned') || 
+        str.includes('unpinned') ||
+        str.includes('freed') ||
+        str.includes('cleared')
+    ) {
+        return <Check size={13} className="text-white/90 flex-shrink-0" />;
+    }
+    
+    // Default Info
+    return <Info size={13} className="text-white/70 flex-shrink-0" />;
+}
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import TopBar from './TopBar';
@@ -710,11 +759,15 @@ export default function MainFrame() {
                 </div>
             </div>
 
-            {/* TOAST POPUP (Centered in MainFrame) */}
+            {/* TOAST POPUP (Minimalist Linear / Raycast Floating Bottom-Center Capsule) */}
             {toast && (
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[99999] px-6 py-3 rounded-full bg-[#121214]/90 backdrop-blur-xl border border-accent/50 text-white text-sm font-semibold shadow-[0_10px_40px_var(--accent-30)] animate-toast flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-                    {toast}
+                <div 
+                    role="status" 
+                    aria-live="polite"
+                    className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 rounded-full bg-[#0c0d12]/95 backdrop-blur-2xl border border-white/12 text-white/90 text-xs font-medium shadow-[0_12px_36px_rgba(0,0,0,0.65)] animate-toast flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide"
+                >
+                    {getToastIcon(toast)}
+                    <span className="truncate leading-none">{toast}</span>
                 </div>
             )}
         </main>

@@ -32,6 +32,24 @@ window.addEventListener('wheel', (e) => {
     }
 }, { passive: false });
 
+// Monitor DRM / Encrypted Media Extensions (EME) for unsupported hardware VMP requests
+try {
+    if (typeof navigator !== 'undefined' && navigator.requestMediaKeySystemAccess) {
+        const origRequestMediaKeySystemAccess = navigator.requestMediaKeySystemAccess.bind(navigator);
+        navigator.requestMediaKeySystemAccess = function(keySystem, supportedConfigurations) {
+            return origRequestMediaKeySystemAccess(keySystem, supportedConfigurations).catch(err => {
+                try {
+                    ipcRenderer.sendToHost('qbrowse-drm-unsupported', {
+                        keySystem: keySystem || 'unknown',
+                        errorMessage: err ? (err.message || String(err)) : 'MediaKeySystemAccess rejected'
+                    });
+                } catch (_) {}
+                throw err;
+            });
+        };
+    }
+} catch (_) {}
+
 let qbrowseTtPolicy = null;
 function setSafeHTML(element, html) {
     if (typeof window !== 'undefined' && window.trustedTypes && typeof window.trustedTypes.createPolicy === 'function') {

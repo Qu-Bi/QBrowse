@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const os = require('os');
+const performanceEngine = require('./performanceEngine.cjs');
 
 // Disable Blink automation features so navigator.webdriver is false and automation flags are suppressed
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
@@ -20,6 +21,65 @@ ipcMain.handle('write-clipboard-text', (event, text) => {
         clipboard.writeText(text || '');
         return true;
     } catch {
+        return false;
+    }
+});
+
+ipcMain.handle('open-external', async (event, url) => {
+    try {
+        if (!url || typeof url !== 'string') return false;
+        await shell.openExternal(url);
+        return true;
+    } catch (e) {
+        console.warn('[Main] Failed to open external URL:', e.message);
+        return false;
+    }
+});
+
+ipcMain.handle('open-app-protocol', async (event, { protocolUrl, fallbackUrl } = {}) => {
+    try {
+        if (protocolUrl && typeof protocolUrl === 'string') {
+            await shell.openExternal(protocolUrl);
+            return true;
+        }
+    } catch (e) {
+        console.warn('[Main] App protocol launch failed, falling back to external browser:', e.message);
+    }
+    try {
+        if (fallbackUrl && typeof fallbackUrl === 'string') {
+            await shell.openExternal(fallbackUrl);
+            return true;
+        }
+    } catch (e) {
+        console.warn('[Main] Failed to open fallback URL:', e.message);
+    }
+    return false;
+});
+
+ipcMain.handle('open-with-dialog', async (event, url) => {
+    if (!url || typeof url !== 'string') return false;
+    try {
+        if (process.platform === 'win32') {
+            const tempUrlFile = path.join(os.tmpdir(), `qbrowse_open_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.url`);
+            await fs.writeFile(tempUrlFile, `[InternetShortcut]\r\nURL=${url}\r\n`, 'utf8');
+            const openWithPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'OpenWith.exe');
+            const child = spawn(openWithPath, [tempUrlFile], { detached: true, stdio: 'ignore' });
+            child.unref();
+
+            // Clean up temporary shortcut file after a brief delay
+            setTimeout(() => {
+                fs.unlink(tempUrlFile).catch(() => {});
+            }, 60000);
+
+            return true;
+        }
+    } catch (e) {
+        console.warn('[Main] Failed to invoke OpenWith.exe, falling back:', e.message);
+    }
+    try {
+        await shell.openExternal(url);
+        return true;
+    } catch (_) {
         return false;
     }
 });
@@ -74,12 +134,13 @@ app.on('open-url', (event, url) => {
     }
 });
 
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
+// Hardware Acceleration & Performance Optimizations
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('canvas-oop-rasterization');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('enable-picture-in-picture');
-app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs');
+app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs,ParallelDownloading,CanvasOopRasterization');
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
@@ -572,8 +633,6 @@ app.userAgentFallback = cleanChromeUA;
 app.setName('QBrowse');
 app.setAppUserModelId('com.qbrowse.app');
 
-const { components } = require('electron');
-
 const configuredSessions = new WeakSet();
 
 function setupHeadersHandler(sess) {
@@ -735,6 +794,30 @@ function setupWebviewSession(sess) {
 }
 
 app.whenReady().then(async () => {
+  try {
+      performanceEngine.initSettings(app.getPath('userData'));
+      if (powerMonitor) {
+          powerMonitor.on('on-battery', async () => {
+              let gpuInfo = null;
+              try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
+              const profile = performanceEngine.detectHardwareProfile(gpuInfo, true);
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('performance-profile-changed', profile);
+              }
+          });
+          powerMonitor.on('on-ac', async () => {
+              let gpuInfo = null;
+              try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
+              const profile = performanceEngine.detectHardwareProfile(gpuInfo, false);
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('performance-profile-changed', profile);
+              }
+          });
+      }
+  } catch (e) {
+      console.warn('[PerformanceEngine] Power monitor setup warning:', e.message);
+  }
+
   try {
       if (components && typeof components.whenReady === 'function') {
           await components.whenReady();
@@ -1880,6 +1963,46 @@ ipcMain.handle('tor-download-binary', async () => {
 
 ipcMain.handle('tor-set-security', async (event, level) => {
     return torEngine.setSecurityLevel(level);
+});
+
+// Performance & Hardware Profile Handlers
+ipcMain.handle('system-get-hardware-profile', async () => {
+    try {
+        let gpuInfo = null;
+        try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
+        const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
+        return performanceEngine.detectHardwareProfile(gpuInfo, isOnBattery);
+    } catch (e) {
+        return {
+            coreCount: os.cpus().length,
+            cpuModel: os.cpus()[0]?.model || 'Standard CPU',
+            totalMemGB: 8,
+            freeMemGB: 4,
+            detectedTier: 'balanced',
+            activeTier: 'balanced',
+            isOnBattery: false,
+            mode: 'auto',
+            tabSleepTimeoutMinutes: 15,
+            reduceVisuals: false,
+            gpuRenderer: 'Basic'
+        };
+    }
+});
+
+ipcMain.handle('system-get-performance-settings', async () => {
+    return performanceEngine.getSettings();
+});
+
+ipcMain.handle('system-set-performance-settings', async (event, settings) => {
+    const updated = performanceEngine.saveSettings(settings);
+    let gpuInfo = null;
+    try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
+    const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
+    const profile = performanceEngine.detectHardwareProfile(gpuInfo, isOnBattery);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('performance-profile-changed', profile);
+    }
+    return profile;
 });
 
 // Default Browser Handlers

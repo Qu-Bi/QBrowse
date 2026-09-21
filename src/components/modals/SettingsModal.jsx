@@ -4,7 +4,7 @@ import {
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, 
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
-    UploadCloud, Compass, ExternalLink, Plus
+    UploadCloud, Compass, ExternalLink, Plus, Leaf, Gauge, BatteryCharging, Activity
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
@@ -82,7 +82,15 @@ const SettingsModal = () => {
         darkExclusions,
         setDarkExclusions,
         addCustomBang,
-        removeCustomBang
+        removeCustomBang,
+        hardwareProfile,
+        performanceMode,
+        activePerformanceTier,
+        tabSleepTimeoutMinutes,
+        reduceVisualsOnEco,
+        setPerformanceMode,
+        setTabSleepTimeoutMinutes,
+        setReduceVisualsOnEco
     } = useUIStore();
 
     const { user, isSyncing, lastSyncTime, syncedItemsCount, syncNow, logout, autoSyncEnabled, toggleAutoSync } = useSyncStore();
@@ -910,30 +918,163 @@ const SettingsModal = () => {
 
                     {/* TAB 6: ENGINE & PERFORMANCE */}
                     {settingsTab === 'engine' && (
-                        <div className="animate-pop-in space-y-4">
+                        <div className="animate-pop-in space-y-5">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Engine & Performance</h3>
-                                <p className="text-xs text-white/40">Tune GPU acceleration, tab memory suspending, and battery mode.</p>
+                                <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
+                                    <Cpu className="text-accent" size={24} /> Engine & Performance
+                                </h3>
+                                <p className="text-xs text-white/40">
+                                    Adaptive hardware tiering, Chromium background throttling, memory saving, and GPU rasterization.
+                                </p>
                             </div>
+
+                            {/* Live Hardware Diagnostics Banner */}
+                            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-cyan-500/10 to-indigo-500/10 border border-cyan-500/20 shadow-lg relative overflow-hidden">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <Activity size={15} className="text-cyan-400 animate-pulse" />
+                                            <span className="text-xs uppercase tracking-wider font-bold text-cyan-300">Detected System Hardware</span>
+                                        </div>
+                                        <h4 className="text-base font-bold text-white mt-1">
+                                            {hardwareProfile?.cpuModel || 'Detecting CPU...'}
+                                        </h4>
+                                        <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-white/70">
+                                            <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 font-mono">
+                                                {hardwareProfile?.coreCount ? `${hardwareProfile.coreCount} CPU Cores` : 'Multi-Core'}
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 font-mono">
+                                                {hardwareProfile?.totalMemGB ? `${hardwareProfile.totalMemGB} GB RAM` : 'RAM'}
+                                            </span>
+                                            {hardwareProfile?.freeMemGB && (
+                                                <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/10 font-mono">
+                                                    {hardwareProfile.freeMemGB} GB Free
+                                                </span>
+                                            )}
+                                            <span className="px-2 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-semibold flex items-center gap-1">
+                                                <Zap size={11} /> {hardwareProfile?.detectedTier?.toUpperCase() || 'BALANCED'} TIER
+                                            </span>
+                                            {hardwareProfile?.isOnBattery && (
+                                                <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold flex items-center gap-1">
+                                                    <BatteryCharging size={11} /> On Battery
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => openModal('resources')}
+                                        className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold border border-white/15 transition-all flex items-center gap-1.5 self-start sm:self-center cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                                    >
+                                        <Activity size={13} className="text-cyan-400" />
+                                        <span>Task Manager</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Performance Mode Selector (4 interactive cards) */}
+                            <div>
+                                <label className="text-xs font-bold text-white/50 uppercase tracking-wider mb-2 block">
+                                    Performance Scaling Mode
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {[
+                                        {
+                                            id: 'auto',
+                                            title: 'Auto (Adaptive)',
+                                            desc: `Dynamically scales based on hardware specs & battery power (${String(activePerformanceTier || 'balanced').toUpperCase()} active).`,
+                                            icon: Cpu,
+                                            accent: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)]'
+                                        },
+                                        {
+                                            id: 'eco',
+                                            title: 'Eco / Low-End',
+                                            desc: 'Aggressive 5-min tab sleep & clean flat dark styling (no GPU blur lag) for maximum battery & netbooks.',
+                                            icon: Leaf,
+                                            accent: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                                        },
+                                        {
+                                            id: 'balanced',
+                                            title: 'Balanced',
+                                            desc: 'Standard 15-min tab sleep with full glassmorphism and optimal responsiveness for everyday multitasking.',
+                                            icon: Gauge,
+                                            accent: 'border-blue-500/40 bg-blue-500/10 text-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.15)]'
+                                        },
+                                        {
+                                            id: 'ultra',
+                                            title: 'Ultra Performance',
+                                            desc: '30-min tab sleep, maximum frame rates and GPU pipeline throughput for high-end rigs.',
+                                            icon: Zap,
+                                            accent: 'border-amber-500/40 bg-amber-500/10 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
+                                        }
+                                    ].map(mode => {
+                                        const isSelected = performanceMode === mode.id;
+                                        const Icon = mode.icon;
+                                        return (
+                                            <div
+                                                key={mode.id}
+                                                onClick={() => setPerformanceMode(mode.id)}
+                                                className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between hover:border-white/30 ${
+                                                    isSelected 
+                                                        ? `${mode.accent} border-2` 
+                                                        : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/8'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <Icon size={16} />
+                                                        <span className="font-bold text-sm text-white">{mode.title}</span>
+                                                    </div>
+                                                    {isSelected && (
+                                                        <span className="w-2 h-2 rounded-full bg-current shadow-[0_0_6px_currentColor]"></span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-white/50 leading-relaxed">{mode.desc}</p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Tab Memory Saver Inactivity Timeout */}
+                            <SettingCard 
+                                icon={Zap} 
+                                title="Memory Saver Inactivity Timeout" 
+                                description="Automatically hibernate inactive tabs to zero RAM consumption. Audio, pinned tabs, and downloads are always immune."
+                            >
+                                <select 
+                                    value={tabSleepTimeoutMinutes}
+                                    onChange={(e) => setTabSleepTimeoutMinutes(Number(e.target.value))}
+                                    className="bg-black/40 border border-white/20 rounded-xl px-3 py-1.5 text-xs text-white font-medium outline-none focus:border-accent cursor-pointer"
+                                >
+                                    <option value={5} className="bg-[#12141a] text-white">5 Minutes (Aggressive)</option>
+                                    <option value={15} className="bg-[#12141a] text-white">15 Minutes (Balanced)</option>
+                                    <option value={30} className="bg-[#12141a] text-white">30 Minutes (Relaxed)</option>
+                                    <option value={0} className="bg-[#12141a] text-white">Never Hibernate</option>
+                                </select>
+                            </SettingCard>
+
+                            {/* Reduce Visual Blurs on Eco Mode */}
+                            <SettingCard 
+                                icon={Sliders} 
+                                title="Optimize Visuals in Eco Mode" 
+                                description="Replace heavy GPU composite blur filters with solid dark translucent panels to ensure 60fps on integrated graphics."
+                            >
+                                <SettingToggle 
+                                    isChecked={reduceVisualsOnEco} 
+                                    onToggle={() => setReduceVisualsOnEco(!reduceVisualsOnEco)} 
+                                />
+                            </SettingCard>
 
                             <SettingCard icon={Cpu} title="Hardware Acceleration (GPU)" description="Use GPU graphics hardware to render web pages and animations.">
                                 <SettingToggle isChecked={!!settings.hardware} onToggle={() => toggleSetting('hardware')} />
-                            </SettingCard>
-
-                            <SettingCard icon={Zap} title="Memory Saver Engine" description="Suspend background tabs after inactivity to free up RAM.">
-                                <SettingToggle isChecked={!!settings.memory} onToggle={() => toggleSetting('memory')} />
                             </SettingCard>
 
                             <SettingCard icon={Sliders} title="Smooth Momentum Scroll" description="Enable physical momentum scrolling on long web pages.">
                                 <SettingToggle isChecked={!!settings.smooth} onToggle={() => toggleSetting('smooth')} />
                             </SettingCard>
 
-                            <SettingCard icon={Laptop} title="Battery Saver Mode" description="Limit JS framerate and animations when device battery is below 20%.">
-                                <SettingToggle isChecked={!!settings.battery} onToggle={() => toggleSetting('battery')} />
-                            </SettingCard>
-
                             {/* Experimental Flags Shortcut */}
-                            <div className="p-5 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-2xl flex items-center justify-between mt-4">
+                            <div className="p-4 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-2xl flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
                                         <Flag size={18} />
