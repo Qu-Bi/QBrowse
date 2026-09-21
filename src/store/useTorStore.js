@@ -111,19 +111,28 @@ const useTorStore = create((set, get) => ({
 
     newCircuit: async () => {
         if (!window.electronAPI?.torNewCircuit) return;
+        if (get().isRequestingCircuit) return;
+
         set({ isRequestingCircuit: true });
-        useUIStore.getState().showToast('Requesting new Tor identity (SIGNAL NEWNYM)...');
+        useUIStore.getState().showToast('Requesting new Tor identity...');
 
         try {
             const res = await window.electronAPI.torNewCircuit();
             if (res?.success) {
-                useUIStore.getState().showToast('New Tor Circuit established!');
-                setTimeout(() => {
-                    get().checkExitIp();
-                    get().fetchCircuit();
-                }, 1200);
+                if (res.exitIp && res.exitIp !== 'Unknown') {
+                    set({ 
+                        verifiedExitIp: res.exitIp, 
+                        isTorVerified: !!res.isTor 
+                    });
+                }
+                if (Array.isArray(res.circuitNodes) && res.circuitNodes.length > 0) {
+                    set({ circuitNodes: res.circuitNodes });
+                }
+                useUIStore.getState().showToast(`New Tor identity active: ${res.exitIp || 'Circuit refreshed'}`);
+            } else if (res?.rateLimited) {
+                useUIStore.getState().showToast('Tor rate limit: wait 10s between new identities');
             } else {
-                useUIStore.getState().showToast(`Newnym rejected: ${res?.message || 'Unknown'}`);
+                useUIStore.getState().showToast(`New identity: ${res?.message || 'Error requesting circuit'}`);
             }
         } catch (err) {
             useUIStore.getState().showToast(`Circuit error: ${err.message}`);

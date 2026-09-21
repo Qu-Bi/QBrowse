@@ -197,12 +197,12 @@ const PasskeyVerificationModal = () => {
                         </div>
 
                         {/* Center Core Badge */}
-                        <div className={`relative w-15 h-15 rounded-2xl flex items-center justify-center transition-all duration-500 overflow-hidden ${
+                        <div className={`relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 overflow-hidden ${
                             authStatus === 'success'
                                 ? 'bg-emerald-500/20 border-2 border-emerald-400 text-emerald-400 shadow-[0_0_40px_rgba(52,211,153,0.5)] scale-110 animate-success-pulse'
                                 : authStatus === 'scanning'
                                     ? 'bg-accent/15 border-2 border-accent text-accent shadow-[0_0_30px_rgba(212,188,148,0.3)]'
-                                    : 'bg-accent-10 text-accent border border-accent-30 shadow-lg shadow-accent/10'
+                                    : 'bg-accent/15 text-accent border border-accent/30 shadow-lg shadow-accent/10'
                         }`}>
                             {/* Scanning Laser Bar */}
                             {authStatus === 'scanning' && (
@@ -211,11 +211,11 @@ const PasskeyVerificationModal = () => {
 
                             {/* Dynamic Icon */}
                             {authStatus === 'success' ? (
-                                <Check size={32} className="animate-checkmark-bloom stroke-[3]" />
+                                <Check size={30} className="animate-checkmark-bloom stroke-[3]" />
                             ) : authStatus === 'scanning' ? (
-                                <Fingerprint size={32} className="animate-pulse" />
+                                <Fingerprint size={30} className="animate-pulse" />
                             ) : (
-                                <KeyRound size={26} />
+                                <KeyRound size={28} />
                             )}
                         </div>
                     </div>
@@ -240,7 +240,7 @@ const PasskeyVerificationModal = () => {
 
                 {/* Website & Account Card */}
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 mb-5 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-accent-10 text-accent border border-accent-20 flex items-center justify-center shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-accent/15 text-accent border border-accent/30 flex items-center justify-center shrink-0">
                         <Globe size={18} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -248,7 +248,7 @@ const PasskeyVerificationModal = () => {
                             <span className="text-sm font-semibold text-white truncate">
                                 {passkeyPrompt.rpId || passkeyPrompt.hostname}
                             </span>
-                            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-accent-10 text-accent border border-accent-20">
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
                                 Passkey
                             </span>
                         </div>

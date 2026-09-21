@@ -1,29 +1,15 @@
 const { ipcRenderer, contextBridge, webFrame } = require('electron');
+ 
+// Safely wrap sendToHost so preload functions gracefully whether running inside a <webview> or a popup BrowserWindow
+const origSendToHost = typeof ipcRenderer.sendToHost === 'function' ? ipcRenderer.sendToHost.bind(ipcRenderer) : null;
+ipcRenderer.sendToHost = function(channel, ...args) {
+    try {
+        if (origSendToHost) origSendToHost(channel, ...args);
+    } catch (_) {}
+};
 
 // Webdriver is natively suppressed by disable-blink-features=AutomationControlled in main.cjs
 
-// --- FIREFOX SPOOFING (MAIN WORLD INJECTION) ---
-const injectFirefoxSpoof = () => {
-    try {
-        const code = `
-            (function() {
-                // Firefox does not have navigator.userAgentData, and its vendor is an empty string.
-                // Google BotGuard actively checks these to detect Chromium browsers spoofing as Firefox.
-                if (navigator.userAgentData !== undefined) {
-                    try { Object.defineProperty(navigator, 'userAgentData', { get: () => undefined }); } catch(e) {}
-                }
-                if (navigator.vendor !== '') {
-                    try { Object.defineProperty(navigator, 'vendor', { get: () => '' }); } catch(e) {}
-                }
-            })();
-        `;
-        if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
-            webFrame.executeJavaScript(code).catch(() => {});
-        }
-    } catch(err) {}
-};
-injectFirefoxSpoof();
-if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', injectFirefoxSpoof);
 // Listen to Mouse 4 (Back) and Mouse 5 (Forward) inside webview frame
 window.addEventListener('mouseup', (e) => {
     if (e.button === 3) {
@@ -45,6 +31,141 @@ window.addEventListener('wheel', (e) => {
         ipcRenderer.sendToHost('webview-zoom-wheel', delta);
     }
 }, { passive: false });
+
+let qbrowseTtPolicy = null;
+function setSafeHTML(element, html) {
+    if (typeof window !== 'undefined' && window.trustedTypes && typeof window.trustedTypes.createPolicy === 'function') {
+        if (!qbrowseTtPolicy) {
+            try {
+                qbrowseTtPolicy = window.trustedTypes.createPolicy('qbrowse-safe-html', {
+                    createHTML: (s) => s
+                });
+            } catch (_) {
+                try {
+                    qbrowseTtPolicy = window.trustedTypes.createPolicy('qbrowse-safe-html-' + Math.random().toString(36).substring(2, 8), {
+                        createHTML: (s) => s
+                    });
+                } catch (e) {
+                    console.warn('[QBrowse] Failed to create TrustedTypes policy:', e);
+                }
+            }
+        }
+        if (qbrowseTtPolicy) {
+            try {
+                element.innerHTML = qbrowseTtPolicy.createHTML(html);
+                return true;
+            } catch (e) {
+                console.warn('[QBrowse] TrustedTypes createHTML failed:', e);
+            }
+        }
+    }
+    try {
+        element.innerHTML = html;
+        return true;
+    } catch (e) {
+        console.warn('[QBrowse] direct innerHTML failed:', e);
+        return false;
+    }
+}
+
+// --- FAST ARTICLE / READER MODE DETECTION OBSERVER ---
+function checkReaderStatus() {
+    try {
+        if (!document || !document.body) return;
+        
+        // Exclude root homepages
+        const path = window.location.pathname;
+        if (path === '/' || path === '') {
+            ipcRenderer.sendToHost('qbrowse-reader-available', false);
+            return;
+        }
+
+        const unlikelyCandidates = /-ad-|ai2html|banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|footer|gdpr|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote/i;
+        const okMaybeItsACandidate = /and|article|body|column|content|main|shadow/i;
+
+        const isNodeVisible = (node) => {
+            return (
+                (!node.style || node.style.display !== 'none') &&
+                !node.hasAttribute('hidden') &&
+                (!node.hasAttribute('aria-hidden') || node.getAttribute('aria-hidden') !== 'true')
+            );
+        };
+
+        const nodes = Array.from(document.querySelectorAll('p, pre, article, [itemprop="articleBody"]'));
+        let score = 0;
+        const minContentLength = 120;
+        const minScore = 20;
+
+        for (const node of nodes) {
+            if (!isNodeVisible(node)) continue;
+
+            const matchString = (node.className || '') + ' ' + (node.id || '');
+            if (unlikelyCandidates.test(matchString) && !okMaybeItsACandidate.test(matchString)) {
+                continue;
+            }
+
+            if (node.closest('nav, footer, header, .nav, .footer, .sidebar, #comments, .comments, [role="navigation"], [role="banner"], [role="contentinfo"]')) {
+                continue;
+            }
+
+            if (node.matches('li p, [role="listitem"] p')) {
+                continue;
+            }
+
+            const links = node.querySelectorAll('a');
+            let linkLength = 0;
+            links.forEach(a => { linkLength += (a.textContent || '').trim().length; });
+            const totalText = (node.textContent || '').trim();
+            if (totalText.length < minContentLength) {
+                continue;
+            }
+            if (linkLength / totalText.length > 0.5) {
+                continue;
+            }
+
+            score += Math.sqrt(totalText.length - minContentLength);
+            if (score > minScore) {
+                ipcRenderer.sendToHost('qbrowse-reader-available', true);
+                return;
+            }
+        }
+
+        ipcRenderer.sendToHost('qbrowse-reader-available', false);
+    } catch (_) {}
+}
+
+if (typeof window !== 'undefined' && window === window.top) {
+    window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(checkReaderStatus, 150);
+        setTimeout(checkReaderStatus, 600);
+        setTimeout(checkReaderStatus, 1500);
+    });
+    window.addEventListener('load', () => {
+        setTimeout(checkReaderStatus, 100);
+        setTimeout(checkReaderStatus, 1000);
+    });
+
+    try {
+        const origPushState = history.pushState;
+        history.pushState = function() {
+            const ret = origPushState.apply(this, arguments);
+            setTimeout(checkReaderStatus, 250);
+            setTimeout(checkReaderStatus, 1200);
+            return ret;
+        };
+        const origReplaceState = history.replaceState;
+        history.replaceState = function() {
+            const ret = origReplaceState.apply(this, arguments);
+            setTimeout(checkReaderStatus, 250);
+            setTimeout(checkReaderStatus, 1200);
+            return ret;
+        };
+        window.addEventListener('popstate', () => {
+            setTimeout(checkReaderStatus, 250);
+            setTimeout(checkReaderStatus, 1200);
+        });
+    } catch (_) {}
+}
 
 // --- QVAULT PASSKEY INTEGRATION (MAIN WORLD INJECTION) ---
 try {
@@ -656,6 +777,12 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active svg {
                         filter: invert(1) hue-rotate(180deg) !important;
                     }
+                    html.qbrowse-smart-dark-active #qbrowse-highlight-pill,
+                    html.qbrowse-smart-dark-active #qbrowse-note-card,
+                    html.qbrowse-smart-dark-active .qbrowse-note-badge,
+                    html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
+                        filter: invert(1) hue-rotate(180deg) !important;
+                    }
                 }
                 @media print {
                     html.qbrowse-smart-dark-active {
@@ -669,6 +796,12 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active video,
                     html.qbrowse-smart-dark-active canvas,
                     html.qbrowse-smart-dark-active svg {
+                        filter: none !important;
+                    }
+                    html.qbrowse-smart-dark-active #qbrowse-highlight-pill,
+                    html.qbrowse-smart-dark-active #qbrowse-note-card,
+                    html.qbrowse-smart-dark-active .qbrowse-note-badge,
+                    html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
                         filter: none !important;
                     }
                 }
@@ -913,6 +1046,12 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
                 gap: 10px;
                 animation: qbrowsePillPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             }
+            html.qbrowse-smart-dark-active #qbrowse-highlight-pill,
+            html.qbrowse-smart-dark-active #qbrowse-note-card,
+            html.qbrowse-smart-dark-active .qbrowse-note-badge,
+            html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
+                filter: invert(1) hue-rotate(180deg) !important;
+            }
         `;
         (document.head || document.documentElement).appendChild(style);
     }
@@ -1004,7 +1143,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         badge.className = 'qbrowse-note-badge';
         badge.setAttribute('data-qbrowse-id', id);
         badge.title = 'Click to view note';
-        badge.innerHTML = '📝';
+        badge.textContent = '📝';
         badge.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1159,7 +1298,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         card.style.top = `${top}px`;
         card.style.left = `${left}px`;
 
-        card.innerHTML = `
+        setSafeHTML(card, `
             <div style="display: flex; items-center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; tracking: 0.05em; color: rgba(255,255,255,0.5);">Sticky Note</span>
@@ -1176,7 +1315,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
                 <button id="qb-card-delete" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer;">Delete</button>
                 <button id="qb-card-save" style="background: var(--accent, #d4bc94); border: none; color: #000; border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: 700; cursor: pointer;">Save</button>
             </div>
-        `;
+        `);
 
         document.body.appendChild(card);
         activeCardEl = card;
@@ -1284,7 +1423,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         pill.style.top = `${top}px`;
         pill.style.left = `${left}px`;
 
-        pill.innerHTML = `
+        setSafeHTML(pill, `
             <div style="display: flex; align-items: center; gap: 4px;">
                 ${Object.keys(QB_HIGHLIGHT_COLORS).map(key => `
                     <div class="qb-pill-color-dot" data-color="${key}" title="Highlight with ${QB_HIGHLIGHT_COLORS[key].label}" style="background-color: ${QB_HIGHLIGHT_COLORS[key].dot};"></div>
@@ -1293,7 +1432,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
             <div style="width: 1px; height: 14px; background: rgba(255,255,255,0.2); margin: 0 2px;"></div>
             <button class="qb-pill-btn" id="qb-pill-add-note" title="Add Note">📝 Note</button>
             <button class="qb-pill-btn" id="qb-pill-copy" title="Copy selection">📋</button>
-        `;
+        `);
 
         document.body.appendChild(pill);
         activePillEl = pill;

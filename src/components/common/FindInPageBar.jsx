@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 
@@ -32,6 +32,16 @@ export default function FindInPageBar() {
     if (!isFindOpen) return null;
 
     const handleKeyDown = (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsFindOpen(false);
+            const activeTab = useTabStore.getState().getActiveTab();
+            if (activeTab) {
+                useTabStore.getState().handleCloseTab(activeTab.id);
+            }
+            return;
+        }
         if (e.key === 'Enter') {
             e.preventDefault();
             findNextMatch(!e.shiftKey);

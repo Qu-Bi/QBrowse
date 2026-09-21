@@ -250,9 +250,20 @@ const useUIStore = create((set, get) => ({
   getActiveWebView: () => {
     try {
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
-      const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
-      if (activeTab?.id) {
-        const wv = document.getElementById(`webview-${activeTab.id}`);
+      const uiStore = get();
+      let activeTabId = null;
+      if (uiStore.isSplitView && uiStore.focusedPane === 'right' && uiStore.splitRightTabId) {
+        activeTabId = uiStore.splitRightTabId;
+      } else if (tabStore?.getActiveTab) {
+        const activeTab = tabStore.getActiveTab();
+        activeTabId = activeTab?.id;
+      }
+
+      if (activeTabId) {
+        if (typeof window !== 'undefined' && window.qbrowseWebviews && window.qbrowseWebviews[activeTabId]) {
+          return window.qbrowseWebviews[activeTabId];
+        }
+        const wv = document.getElementById(`webview-${activeTabId}`);
         if (wv) return wv;
       }
       const webviews = Array.from(document.querySelectorAll('webview'));
@@ -260,7 +271,7 @@ const useUIStore = create((set, get) => ({
         const parent = w.parentElement;
         if (!parent) return false;
         const style = window.getComputedStyle(parent);
-        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && parseInt(style.zIndex, 10) > 0;
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
       });
       if (visibleWv) return visibleWv;
       return webviews[0] || null;
@@ -270,34 +281,38 @@ const useUIStore = create((set, get) => ({
   },
   setIsFindOpen: (val) => {
     const currentState = get();
-    if (!val && currentState.isFindOpen) {
-      try {
-        const wv = currentState.getActiveWebView();
-        if (wv && typeof wv.stopFindInPage === 'function') {
-          wv.stopFindInPage('clearSelection');
-        }
-      } catch (e) {}
-      set({ isFindOpen: false, findResults: { activeMatchOrdinal: 0, matches: 0 } });
-      try {
-        const wv = currentState.getActiveWebView();
-        if (wv && typeof wv.focus === 'function') {
-          wv.focus();
-        }
-      } catch (e) {}
+    if (!val) {
+      if (currentState.isFindOpen) {
+        try {
+          const wv = currentState.getActiveWebView();
+          if (wv && typeof wv.stopFindInPage === 'function') {
+            wv.stopFindInPage('clearSelection');
+          }
+        } catch (e) {}
+        // Discard find overlay and match counters, but KEEP findQuery remembered!
+        set({ isFindOpen: false, findResults: { activeMatchOrdinal: 0, matches: 0 } });
+        try {
+          const wv = currentState.getActiveWebView();
+          if (wv && typeof wv.focus === 'function') {
+            wv.focus();
+          }
+        } catch (e) {}
+      }
       return;
     }
 
-    set({ isFindOpen: !!val, ...(val ? { isScreenshotBarOpen: false } : {}) });
-    if (val) {
-      const q = currentState.findQuery;
-      if (q) {
-        get().executeFind(q, { forward: true, findNext: false });
-      }
+    set({ isFindOpen: true, ...(val ? { isScreenshotBarOpen: false } : {}) });
+    const q = currentState.findQuery;
+    if (q && q.trim()) {
+      setTimeout(() => {
+        get().executeFind(q, { forward: true });
+      }, 50);
     }
   },
   setFindQuery: (query) => {
     set({ findQuery: query });
-    if (!query) {
+    const trimmed = (query || '').trim();
+    if (!trimmed) {
       try {
         const wv = get().getActiveWebView();
         if (wv && typeof wv.stopFindInPage === 'function') {
@@ -307,23 +322,28 @@ const useUIStore = create((set, get) => ({
       set({ findResults: { activeMatchOrdinal: 0, matches: 0 } });
       return;
     }
-    get().executeFind(query, { forward: true, findNext: false });
+    // Automatically update search with each symbol inputted
+    get().executeFind(query, { forward: true });
   },
   setFindMatchCase: (matchCase) => {
     set({ findMatchCase: matchCase });
     const q = get().findQuery;
-    if (q) {
-      get().executeFind(q, { forward: true, findNext: false, matchCase });
+    if (q && q.trim()) {
+      get().executeFind(q, { forward: true, matchCase });
     }
   },
   setFindResults: (results) => set({ findResults: results }),
-  executeFind: (query, { forward = true, findNext = false, matchCase } = {}) => {
-    if (!query) return;
+  executeFind: (query, { forward = true, findNext, matchCase } = {}) => {
+    if (!query || !query.trim()) return;
     const caseSensitive = typeof matchCase === 'boolean' ? matchCase : get().findMatchCase;
+    const options = { forward, matchCase: caseSensitive };
+    if (typeof findNext === 'boolean') {
+      options.findNext = findNext;
+    }
     try {
       const wv = get().getActiveWebView();
       if (wv && typeof wv.findInPage === 'function') {
-        wv.findInPage(query, { forward, findNext, matchCase: caseSensitive });
+        wv.findInPage(query, options);
       }
     } catch (e) {
       console.warn('[FindInPage] execute error:', e);
@@ -335,7 +355,7 @@ const useUIStore = create((set, get) => ({
       get().setIsFindOpen(true);
       return;
     }
-    if (!findQuery) return;
+    if (!findQuery || !findQuery.trim()) return;
     get().executeFind(findQuery, { forward, findNext: true });
   },
 

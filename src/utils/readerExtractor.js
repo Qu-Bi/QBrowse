@@ -8,34 +8,67 @@ export const CHECK_ARTICLE_DOM_SCRIPT = `
 (() => {
     try {
         if (!document || !document.body) return false;
-        const articleSelectors = 'article, [role="article"], .article-body, .post-content, .entry-content, .story-body, .article__content, #mw-content-text, main article, [itemprop="articleBody"], .post-body, .content-article';
-        const articleTag = document.querySelector(articleSelectors);
-        if (articleTag && (articleTag.innerText || articleTag.textContent || '').trim().length > 200) {
-            return true;
+        
+        // 1. Exclude root homepages
+        const path = window.location.pathname;
+        if (path === '/' || path === '') {
+            return false;
         }
 
-        const paragraphs = Array.from(document.querySelectorAll('p')).filter(p => !p.closest('footer, nav, .comments, #comments, .sidebar, aside'));
-        let validPCount = 0;
-        let totalPText = 0;
-        for (const p of paragraphs) {
-            const t = (p.innerText || p.textContent || '').trim();
-            if (t.length > 40) {
-                validPCount++;
-                totalPText += t.length;
+        const unlikelyCandidates = /-ad-|ai2html|banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|footer|gdpr|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote/i;
+        const okMaybeItsACandidate = /and|article|body|column|content|main|shadow/i;
+
+        const isNodeVisible = (node) => {
+            return (
+                (!node.style || node.style.display !== 'none') &&
+                !node.hasAttribute('hidden') &&
+                (!node.hasAttribute('aria-hidden') || node.getAttribute('aria-hidden') !== 'true')
+            );
+        };
+
+        const nodes = Array.from(document.querySelectorAll('p, pre, article, [itemprop="articleBody"]'));
+        
+        let score = 0;
+        const minContentLength = 120;
+        const minScore = 20;
+
+        for (const node of nodes) {
+            if (!isNodeVisible(node)) continue;
+
+            const matchString = (node.className || '') + ' ' + (node.id || '');
+            if (unlikelyCandidates.test(matchString) && !okMaybeItsACandidate.test(matchString)) {
+                continue;
+            }
+
+            // Exclude paragraphs inside navigation, footer, header, sidebars, comments
+            if (node.closest('nav, footer, header, .nav, .footer, .sidebar, #comments, .comments, [role="navigation"], [role="banner"], [role="contentinfo"]')) {
+                continue;
+            }
+
+            if (node.matches('li p, [role="listitem"] p')) {
+                continue;
+            }
+
+            // High link density check: if most text in this paragraph is links, it's navigation or teaser list
+            const links = node.querySelectorAll('a');
+            let linkLength = 0;
+            links.forEach(a => { linkLength += (a.textContent || '').trim().length; });
+            const totalText = (node.textContent || '').trim();
+            if (totalText.length < minContentLength) {
+                continue;
+            }
+            if (linkLength / totalText.length > 0.5) {
+                continue;
+            }
+
+            score += Math.sqrt(totalText.length - minContentLength);
+            if (score > minScore) {
+                return true;
             }
         }
 
-        if (validPCount >= 2 && totalPText > 200) {
-            return true;
-        }
-
-        const h1 = document.querySelector('h1, h2');
-        if (h1 && validPCount >= 1 && totalPText > 120) {
-            return true;
-        }
-
         return false;
-    } catch (e) {
+    } catch (_) {
         return false;
     }
 })()
@@ -48,7 +81,14 @@ export const CHECK_ARTICLE_DOM_SCRIPT = `
  * @returns {boolean}
  */
 export function checkIsArticle(html, url = '') {
-    if (!html || typeof html !== 'string' || html.length < 250) return false;
+    if (!html || typeof html !== 'string' || html.length < 350) return false;
+
+    if (url) {
+        try {
+            const parsedUrl = new URL(url);
+            if (parsedUrl.pathname === '/' || parsedUrl.pathname === '') return false;
+        } catch (_) {}
+    }
 
     try {
         const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -58,36 +98,8 @@ export function checkIsArticle(html, url = '') {
             doc.head?.appendChild(base);
         }
 
-        // 1. Standard Mozilla Readerable check with relaxed thresholds
-        if (isProbablyReaderable(doc, { minContentLength: 80, minScore: 5 })) {
-            return true;
-        }
-
-        // 2. Comprehensive article / main content selectors (including Wikipedia, news, blogs)
-        const articleSelectors = 'article, [role="article"], .article-body, .post-content, .entry-content, .story-body, .article__content, #mw-content-text, main article, [itemprop="articleBody"], .post-body, .content-article';
-        const articleTag = doc.querySelector(articleSelectors);
-        if (articleTag && (articleTag.textContent || '').trim().length > 200) {
-            return true;
-        }
-
-        // 3. Fallback heuristic: check paragraph volume (ignoring headers/footers/nav)
-        const paragraphs = Array.from(doc.querySelectorAll('p')).filter(p => !p.closest('footer, nav, .comments, #comments, .sidebar, aside'));
-        let validPCount = 0;
-        let totalPText = 0;
-        for (const p of paragraphs) {
-            const t = (p.textContent || '').trim();
-            if (t.length > 40) {
-                validPCount++;
-                totalPText += t.length;
-            }
-        }
-
-        if (validPCount >= 2 && totalPText > 200) {
-            return true;
-        }
-
-        const h1 = doc.querySelector('h1, h2');
-        if (h1 && validPCount >= 1 && totalPText > 120) {
+        // Standard Mozilla Readerable check
+        if (isProbablyReaderable(doc, { minContentLength: 120, minScore: 20 })) {
             return true;
         }
 

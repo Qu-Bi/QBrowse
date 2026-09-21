@@ -275,8 +275,8 @@ export default function TopBar() {
 
                             {/* Right Action Icons */}
                             <div className="flex items-center gap-1.5 z-10 flex-shrink-0">
-                                {/* Reader Mode Toggle Button (pops up when available or open) */}
-                                {(isReaderAvailable || isReaderOpen) && (
+                                {/* Reader Mode Toggle Button (pops up when available or open on a valid web page) */}
+                                {Boolean(rawUrl && !rawUrl.startsWith('qbrowse://') && (isReaderAvailable || isReaderOpen)) && (
                                     <div
                                         className={`px-2 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer animate-pop-in hover:scale-105 active:scale-95 ${
                                             isReaderOpen 

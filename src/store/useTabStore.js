@@ -51,9 +51,12 @@ const useTabStore = create((set, get) => ({
   },
   setActiveSpace: (space) => set((state) => {
       const ui = useUIStore.getState();
+      ui.setIsReaderAvailable(false);
+      if (ui.isFindOpen) {
+          ui.setIsFindOpen(false);
+      }
       if (ui.isReaderOpen || ui.isReaderClosing) {
-          ui.closeReaderMode();
-          ui.setIsReaderAvailable(false);
+          ui.closeReaderMode(true);
       }
       const updates = { activeSpace: space };
       if (state.activeSpace === 'ghost' && space !== 'ghost') {
@@ -286,8 +289,13 @@ const useTabStore = create((set, get) => ({
       suspended: false
     };
     setList(prev => [...prev.map(t => ({ ...t, active: false })), newTab]);
-    useUIStore.getState().setCurrentUrl(safeUrl);
-    useUIStore.getState().showToast(isTor ? 'New Tor tab created' : (isGhost ? 'New incognito tab created' : 'New tab created'));
+    const ui = useUIStore.getState();
+    ui.setCurrentUrl(safeUrl);
+    ui.setIsReaderAvailable(false);
+    if (ui.isReaderOpen || ui.isReaderClosing) {
+        ui.closeReaderMode(true);
+    }
+    ui.showToast(isTor ? 'New Tor tab created' : (isGhost ? 'New incognito tab created' : 'New tab created'));
     return newTab;
   },
 
@@ -430,11 +438,16 @@ const useTabStore = create((set, get) => ({
     const tabToClose = list.find(t => t.id === id);
     if (!tabToClose || tabToClose.isClosing) return;
 
-    // If the closed tab is active (or reader mode is open), close Reader Mode cleanly
+    // If the closed tab is active (or last tab remaining), discard find in page and reader mode
     const uiStore = useUIStore.getState();
-    if ((tabToClose.active || list.length === 1) && (uiStore.isReaderOpen || uiStore.isReaderClosing)) {
-        uiStore.closeReaderMode();
+    if (tabToClose.active || list.length === 1) {
+        if (uiStore.isFindOpen) {
+            uiStore.setIsFindOpen(false);
+        }
         uiStore.setIsReaderAvailable(false);
+        if (uiStore.isReaderOpen || uiStore.isReaderClosing) {
+            uiStore.closeReaderMode(true);
+        }
     }
 
     // Track in recently closed tabs for Cmd+Shift+T restore
@@ -458,7 +471,15 @@ const useTabStore = create((set, get) => ({
     if (list.length === 1) {
         // Last tab: trigger smooth transition and reset cleanly to Zen Dashboard
         setList([{ ...tabToClose, isClosing: true, thumbnail: null }]);
-        useUIStore.getState().setCurrentUrl('');
+        const ui = useUIStore.getState();
+        ui.setCurrentUrl('');
+        if (ui.isFindOpen) {
+            ui.setIsFindOpen(false);
+        }
+        ui.setIsReaderAvailable(false);
+        if (ui.isReaderOpen || ui.isReaderClosing) {
+            ui.closeReaderMode(true);
+        }
         setTimeout(() => {
             const current = get().getActiveList();
             if (current.length > 0) {
@@ -471,6 +492,7 @@ const useTabStore = create((set, get) => ({
                     lastActiveAt: Date.now()
                 }]);
             }
+            useUIStore.getState().setIsReaderAvailable(false);
             if (get().activeSpace === 'ghost' && window.electronAPI && window.electronAPI.clearGhostSession) {
                 window.electronAPI.clearGhostSession().catch(() => {});
             }
@@ -508,7 +530,9 @@ const useTabStore = create((set, get) => ({
     }));
 
     if (nextUrl !== undefined && nextActiveId) {
-        useUIStore.getState().setCurrentUrl(nextUrl);
+        const ui = useUIStore.getState();
+        ui.setCurrentUrl(nextUrl);
+        ui.setIsReaderAvailable(false);
     }
 
     setTimeout(() => {
@@ -522,7 +546,9 @@ const useTabStore = create((set, get) => ({
             newList.forEach((t, i) => {
                 t.active = i === targetIdx;
             });
-            useUIStore.getState().setCurrentUrl(newList[targetIdx].url || '');
+            const ui = useUIStore.getState();
+            ui.setCurrentUrl(newList[targetIdx].url || '');
+            ui.setIsReaderAvailable(false);
         }
         
         setList(newList);
@@ -536,6 +562,19 @@ const useTabStore = create((set, get) => ({
     const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : (spaceType === 'ghost' ? get().ghostTabs : get().torTabs));
     const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : (spaceType === 'ghost' ? get().setGhostTabs : get().setTorTabs));
     
+    const target = list.find(t => t.id === tabId);
+    if (target) {
+        const ui = useUIStore.getState();
+        ui.setCurrentUrl(target.url || '');
+        ui.setIsReaderAvailable(false);
+        if (ui.isFindOpen) {
+            ui.setIsFindOpen(false);
+        }
+        if (ui.isReaderOpen || ui.isReaderClosing) {
+            ui.closeReaderMode(true);
+        }
+    }
+
     setList(list.map(t => ({
         ...t,
         active: t.id === tabId,

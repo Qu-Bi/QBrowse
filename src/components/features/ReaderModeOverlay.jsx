@@ -262,7 +262,8 @@ export default function ReaderModeOverlay() {
             } else if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
                 e.preventDefault();
                 e.stopPropagation();
-                closeReaderMode();
+                closeReaderMode(true);
+                useUIStore.getState().setIsReaderAvailable(false);
                 const activeTab = useTabStore.getState().getActiveTab();
                 if (activeTab) {
                     useTabStore.getState().handleCloseTab(activeTab.id);

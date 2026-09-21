@@ -212,9 +212,13 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                     window.close();
                 }
             } else {
-                if (uiStore.isReaderOpen || uiStore.isReaderClosing) {
-                    uiStore.closeReaderMode();
+                if (uiStore.isFindOpen) {
+                    uiStore.setIsFindOpen(false);
                 }
+                if (uiStore.isReaderOpen || uiStore.isReaderClosing) {
+                    uiStore.closeReaderMode(true);
+                }
+                uiStore.setIsReaderAvailable(false);
                 const activeTab = tabStore.getActiveTab();
                 if (activeTab) {
                     tabStore.handleCloseTab(activeTab.id);
@@ -416,6 +420,12 @@ export default function useGlobalShortcuts() {
 
             // Do not trigger global shortcuts if the user is typing in an input or textarea
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                // Allow Tab closing (Cmd+W / Ctrl+W) even when inside input/search fields
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
+                    e.preventDefault();
+                    executeShortcut('w', e.shiftKey, e.altKey);
+                    return;
+                }
                 return;
             }
 

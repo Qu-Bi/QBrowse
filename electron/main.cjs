@@ -4,6 +4,9 @@ const crypto = require('crypto');
 const fs = require('fs/promises');
 const os = require('os');
 
+// Disable Blink automation features so navigator.webdriver is false and automation flags are suppressed
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+
 ipcMain.handle('read-clipboard-text', () => {
     try {
         return clipboard.readText();
@@ -283,6 +286,16 @@ function createWindow(options = {}) {
                   return callback({ cancel: false });
               }
 
+              // Google Auth & BotGuard attestation bypass: never block Google login and attestation telemetry
+              if (
+                  u.includes('accounts.google.com') ||
+                  u.includes('accounts.youtube.com') ||
+                  u.includes('play.google.com/log') ||
+                  u.includes('ssl.gstatic.com/accounts')
+              ) {
+                  return callback({ cancel: false });
+              }
+
               // Social Tracking Check
               const isSocialBlocked = settingsStore.social !== false;
               if (isSocialBlocked) {
@@ -336,13 +349,61 @@ function createWindow(options = {}) {
             return BrowserWindow.fromWebContents(contents) || BrowserWindow.getFocusedWindow() || mainWindow;
         };
 
-        // CRITICAL: Prevent new OS windows when webview scripts or target="_blank" links open URLs!
+        // Handle window.open: Distinguish OAuth popups (Firebase, Google, etc.) from normal link navigations
         contents.setWindowOpenHandler(({ url, frameName, disposition, features }) => {
-            console.log('[Electron Main] setWindowOpenHandler intercepted:', url, disposition);
+            console.log('[Electron Main] setWindowOpenHandler intercepted:', { url, disposition, features, frameName });
+
+            // Detect OAuth / authentication popups or explicit dialog windows
+            const isPopupWithDims = Boolean(features && (features.includes('width=') || features.includes('height=')));
+            const isAuthUrl = Boolean(url && (
+                url.includes('firebaseapp.com') ||
+                url.includes('accounts.google.com') ||
+                url.includes('facebook.com') ||
+                url.includes('appleid.apple.com') ||
+                url.includes('github.com/login/oauth') ||
+                url.includes('twitter.com/i/oauth2') ||
+                url.includes('x.com/i/oauth2') ||
+                url.includes('/oauth') ||
+                url.includes('/auth/handler') ||
+                url.includes('/auth') ||
+                url.includes('/login') ||
+                url.includes('/signin')
+            ));
+            const isAuthFrameName = Boolean(frameName && (
+                frameName.includes('firebase') ||
+                frameName.includes('auth') ||
+                frameName.includes('oauth') ||
+                frameName.includes('login') ||
+                frameName.includes('signin')
+            ));
+
+            if (isPopupWithDims || isAuthUrl || isAuthFrameName) {
+                console.log('[Electron Main] Allowing OAuth popup window for:', url);
+                return {
+                    action: 'allow',
+                    overrideBrowserWindowOptions: {
+                        icon: path.join(__dirname, '../icon.png'),
+                        width: 680,
+                        height: 820,
+                        minWidth: 540,
+                        minHeight: 680,
+                        autoHideMenuBar: true,
+                        backgroundColor: '#121214',
+                        webPreferences: {
+                            preload: path.join(__dirname, 'webview_preload.cjs'),
+                            session: contents.session, // CRITICAL: share session with the caller webview for cookies & auth state
+                            contextIsolation: true,
+                            nodeIntegration: false,
+                            additionalArguments: ['--is-oauth-popup']
+                        }
+                    }
+                };
+            }
+
+            // Normal browsing links (e.g. target="_blank") -> Route to a new tab in QBrowse
             if (url && url !== 'about:blank') {
-                const targetWin = getTargetWindow();
-                if (targetWin && !targetWin.isDestroyed()) {
-                    targetWin.webContents.send('open-new-tab-url', { url, disposition });
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('open-new-tab-url', { url, disposition });
                 }
             }
             return { action: 'deny' };
@@ -384,6 +445,18 @@ function createWindow(options = {}) {
 
         // CRITICAL: Disable background throttling so YouTube media plays perfectly in the background
         contents.setBackgroundThrottling(false);
+
+        // Apply Google vs Chrome User-Agent for webviews and popup windows
+        if (contents.getType() === 'webview' || (contents.getType() === 'window' && contents !== mainWindow?.webContents)) {
+            contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+                if (!isMainFrame) return;
+                if (isGoogleDomain(url)) {
+                    contents.setUserAgent(genuineElectronUA);
+                } else {
+                    contents.setUserAgent(cleanChromeUA);
+                }
+            });
+        }
 
         contents.on('before-input-event', (event, input) => {
             const targetWin = getTargetWindow();
@@ -470,9 +543,31 @@ function createWindow(options = {}) {
         });
     });
 
-// Spoof Firefox to bypass Google's strict Chromium-based embedded browser restrictions (rrk=46 / BotGuard)
-const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0';
-app.userAgentFallback = firefoxUA;
+app.on('browser-window-created', (event, win) => {
+    if (!browserWindows.has(win)) {
+        try {
+            win.setMenuBarVisibility(false);
+            win.setIcon(path.join(__dirname, '../icon.png'));
+        } catch(e) {}
+    }
+});
+
+function isGoogleDomain(url) {
+    if (!url) return false;
+    const u = String(url).toLowerCase();
+    return u.includes('google.com') || 
+           u.includes('youtube.com') || 
+           u.includes('gstatic.com') || 
+           u.includes('googleapis.com') || 
+           u.includes('googleusercontent.com') ||
+           u.includes('firebaseapp.com');
+}
+
+// Clean Google Chrome desktop User-Agent matching underlying Chromium version
+const cleanChromeUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+// Authentic Electron Chromium User-Agent for Google Authentication (activates WebLiteSignIn)
+const genuineElectronUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Electron/${process.versions.electron} Safari/537.36`;
+app.userAgentFallback = cleanChromeUA;
 
 app.setName('QBrowse');
 app.setAppUserModelId('com.qbrowse.app');
@@ -483,23 +578,21 @@ const configuredSessions = new WeakSet();
 
 function setupHeadersHandler(sess) {
     if (!sess || !sess.webRequest) return;
+
     sess.webRequest.onBeforeSendHeaders((details, callback) => {
         delete details.requestHeaders['X-Electron-Version'];
-        
-        // CRITICAL: When spoofing Firefox, we MUST NOT send Chromium's Client Hints headers.
-        // Google BotGuard actively flags Firefox User-Agents that send sec-ch-ua headers!
-        delete details.requestHeaders['sec-ch-ua'];
-        delete details.requestHeaders['Sec-CH-UA'];
-        delete details.requestHeaders['sec-ch-ua-mobile'];
-        delete details.requestHeaders['Sec-CH-UA-Mobile'];
-        delete details.requestHeaders['sec-ch-ua-platform'];
-        delete details.requestHeaders['Sec-CH-UA-Platform'];
+
+        if (isGoogleDomain(details.url)) {
+            // Google routes to official WebLiteSignIn flow when receiving honest Electron/Chromium identity
+            details.requestHeaders['User-Agent'] = genuineElectronUA;
+        } else {
+            // Provide clean Chrome desktop identity for standard web browsing
+            details.requestHeaders['User-Agent'] = cleanChromeUA;
+        }
 
         if (settingsStore.dnt !== false) {
             details.requestHeaders['DNT'] = '1';
         }
-        
-        details.requestHeaders['User-Agent'] = firefoxUA;
 
         callback({ cancel: false, requestHeaders: details.requestHeaders });
     });
@@ -580,16 +673,16 @@ function setupWebviewSession(sess) {
     if (!sess || configuredSessions.has(sess)) return;
     configuredSessions.add(sess);
 
-    try {
-        if (typeof sess.registerPreloadScript === 'function') {
-            sess.registerPreloadScript({ filePath: path.join(__dirname, 'webview_preload.cjs') });
-        } else if (typeof sess.setPreloads === 'function') {
-            sess.setPreloads([path.join(__dirname, 'webview_preload.cjs')]);
-        }
-    } catch(e) {
+    const preloadScriptPath = path.join(__dirname, 'webview_preload.cjs');
+    if (typeof sess.registerPreloadScript === 'function') {
         try {
-            sess.setPreloads([path.join(__dirname, 'webview_preload.cjs')]);
-        } catch (_) {}
+            sess.registerPreloadScript({ type: 'frame', filePath: preloadScriptPath });
+        } catch (err) {
+            console.warn('[Session] registerPreloadScript failed, falling back to setPreloads:', err);
+            try { sess.setPreloads([preloadScriptPath]); } catch (_) {}
+        }
+    } else if (typeof sess.setPreloads === 'function') {
+        sess.setPreloads([preloadScriptPath]);
     }
 
     setupHeadersHandler(sess);
@@ -611,6 +704,9 @@ function setupWebviewSession(sess) {
     });
 
     sess.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+        if (['hid', 'usb', 'serial'].includes(permission)) {
+            return true;
+        }
         try {
             if (requestingOrigin) {
                 const domain = new URL(requestingOrigin).hostname.replace(/^www\./, '').toLowerCase();
@@ -623,6 +719,10 @@ function setupWebviewSession(sess) {
         } catch(e) {}
         return true;
     });
+
+    if (typeof sess.setDevicePermissionHandler === 'function') {
+        sess.setDevicePermissionHandler(() => true);
+    }
 
     if (sess.setWebAuthenticationHandler) {
         sess.setWebAuthenticationHandler((details, callback) => {
@@ -645,19 +745,29 @@ app.whenReady().then(async () => {
   }
 
   // Fix YouTube and Google login stuck/rejected state by wiping service workers and caches on boot
-  session.defaultSession.clearStorageData({
-      origin: 'https://www.youtube.com',
-      storages: ['serviceworkers', 'cachestorage']
-  }).catch(() => {});
-  session.defaultSession.clearStorageData({
-      origin: 'https://accounts.google.com',
-      storages: ['serviceworkers', 'cachestorage']
-  }).catch(() => {});
+  const sessionsToClean = [
+      session.defaultSession,
+      session.fromPartition('persist:profile_default')
+  ];
+  for (const s of sessionsToClean) {
+      s.clearStorageData({
+          origin: 'https://www.youtube.com',
+          storages: ['serviceworkers', 'cachestorage']
+      }).catch(() => {});
+      s.clearStorageData({
+          origin: 'https://accounts.google.com',
+          storages: ['serviceworkers', 'cachestorage']
+      }).catch(() => {});
+  }
 
   ensurePermissionsFile();
 
   // Configure default session (Personal and Work spaces)
   setupWebviewSession(session.defaultSession);
+
+  // Proactively configure active profile partition (Personal and Work webviews)
+  const defaultProfileSession = session.fromPartition('persist:profile_default');
+  setupWebviewSession(defaultProfileSession);
 
   // Proactively configure in-memory ghost partition (Incognito space)
   const ghostSession = session.fromPartition('ghost');
@@ -845,10 +955,24 @@ ipcMain.handle('vault-verify-passkey-usage', async (event, details) => {
             }
         }, 60000); // 60s timeout matching WebAuthn standard
 
-        pendingPasskeyVerifications.set(requestId, { resolve, timer });
+        pendingPasskeyVerifications.set(requestId, { 
+            resolve, 
+            timer,
+            callerSender: event.sender
+        });
 
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('prompt-passkey-verification', {
+        const appWin = (mainWindow && !mainWindow.isDestroyed()) 
+            ? mainWindow 
+            : Array.from(browserWindows).find(w => w && !w.isDestroyed());
+        if (appWin && !appWin.isDestroyed()) {
+            try {
+                if (appWin.isMinimized()) appWin.restore();
+                appWin.show();
+                appWin.focus();
+                appWin.moveTop();
+            } catch (_) {}
+
+            appWin.webContents.send('prompt-passkey-verification', {
                 requestId,
                 rpId: details.rpId,
                 username: details.username,
@@ -869,9 +993,29 @@ ipcMain.handle('respond-passkey-verification', async (event, { requestId, verifi
         clearTimeout(pending.timer);
         pendingPasskeyVerifications.delete(requestId);
         pending.resolve({ verified: !!verified });
+
+        // If caller was an OAuth popup window, refocus it so login can complete seamlessly
+        if (pending.callerSender && !pending.callerSender.isDestroyed()) {
+            try {
+                const callerWin = BrowserWindow.fromWebContents(pending.callerSender);
+                if (callerWin && !callerWin.isDestroyed()) {
+                    callerWin.focus();
+                }
+            } catch (_) {}
+        }
+
         return true;
     }
     return false;
+});
+
+ipcMain.handle('vault-is-popup-window', async (event) => {
+    try {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        return Boolean(win && (!mainWindow || win !== mainWindow));
+    } catch {
+        return false;
+    }
 });
 
 ipcMain.handle('verify-windows-hello', async (event, message) => {
@@ -890,6 +1034,14 @@ ipcMain.handle('vault-check-password', async (event, password) => {
         masterKey = key;
         return true;
     } catch (e) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                const isValidPin = await mainWindow.webContents.executeJavaScript(
+                    `Boolean(localStorage.getItem('qbrowse_vault_pin') && localStorage.getItem('qbrowse_vault_pin') === ${JSON.stringify(password)})`
+                );
+                if (isValidPin) return true;
+            } catch (_) {}
+        }
         return false;
     }
 });
@@ -1668,21 +1820,45 @@ ipcMain.handle('tor-stop', async () => {
 });
 
 ipcMain.handle('tor-new-circuit', async () => {
-    const res = await torEngine.requestNewTorCircuit();
     try {
         const torSession = session.fromPartition('tor');
+        const res = await torEngine.requestNewTorCircuit();
+        
+        // Terminate existing keep-alive TCP sockets so Chromium establishes a new SOCKS connection
+        if (torSession.closeAllConnections) {
+            await torSession.closeAllConnections();
+        }
         await torSession.clearStorageData({ storages: ['cookies', 'cachestorage'] });
-    } catch (_) {}
-    return res;
+
+        // If SIGNAL NEWNYM succeeded, give Tor ~1.2s to negotiate the fresh circuit, then query exit IP
+        let newIpData = null;
+        if (res.success && !res.rateLimited) {
+            try {
+                await new Promise(r => setTimeout(r, 1200));
+                newIpData = await torEngine.checkTorExitIp();
+            } catch (err) {
+                console.warn('[Main] IP re-check after new identity failed:', err.message);
+            }
+        }
+
+        let nodes = [];
+        try {
+            nodes = await torEngine.getCircuitStatus();
+        } catch (_) {}
+
+        return {
+            ...res,
+            exitIp: newIpData?.ip || null,
+            isTor: newIpData?.isTor,
+            circuitNodes: nodes
+        };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
 });
 
 ipcMain.handle('tor-check-ip', async () => {
-    const torSession = session.fromPartition('tor');
-    const fetchFn = async (url) => {
-        const { net } = require('electron');
-        return net.fetch(url, { session: torSession });
-    };
-    return torEngine.checkTorExitIp(fetchFn);
+    return torEngine.checkTorExitIp();
 });
 
 ipcMain.handle('tor-get-circuit', async () => {

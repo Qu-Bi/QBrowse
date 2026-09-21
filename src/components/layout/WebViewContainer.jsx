@@ -178,6 +178,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 if (useUIStore.getState().isReaderOpen) {
                     useUIStore.getState().closeReaderMode();
                 }
+                scheduleReaderChecks();
             }
             if (e.url !== 'about:blank' && space !== 'ghost') {
                 useHistoryStore.getState().addEntry(e.url, e.url); // Initial entry without title
@@ -188,7 +189,12 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             const rawTitle = e.title ? e.title.trim() : '';
             const newTitle = (rawTitle && rawTitle !== 'about:blank') ? rawTitle : defaultFallbackTitle;
             setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, title: newTitle } : t));
-            const currentUrl = wvRef.current?.getURL();
+            let currentUrl = '';
+            try {
+                if (wvRef.current && isDomReadyRef.current && typeof wvRef.current.getURL === 'function') {
+                    currentUrl = wvRef.current.getURL();
+                }
+            } catch (_) {}
             if (currentUrl && currentUrl !== 'about:blank' && space !== 'ghost') {
                 useHistoryStore.getState().updateLatestTitle(currentUrl, newTitle);
             }
@@ -196,13 +202,21 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         
         const checkReaderAvailability = () => {
             if (!isActive || !isSpaceActive || !wv || !isDomReadyRef.current || wv.hasCrashed || tab.isClosing) return;
-            if (!tab.url || tab.url === '' || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) {
+            let currentUrl = tab.url || '';
+            try {
+                if (isDomReadyRef.current && typeof wv.getURL === 'function') {
+                    const u = wv.getURL();
+                    if (u) currentUrl = u;
+                }
+            } catch (_) {}
+
+            if (!currentUrl || currentUrl === '' || currentUrl === 'about:blank' || currentUrl.startsWith('qbrowse://')) {
                 useUIStore.getState().setIsReaderAvailable(false);
                 return;
             }
 
             try {
-                if (typeof wv.executeJavaScript === 'function') {
+                if (isDomReadyRef.current && typeof wv.executeJavaScript === 'function') {
                     wv.executeJavaScript(CHECK_ARTICLE_DOM_SCRIPT).then(isArticle => {
                         if (isActive && isSpaceActive) {
                             useUIStore.getState().setIsReaderAvailable(!!isArticle);
@@ -214,6 +228,17 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     });
                 }
             } catch(e) {}
+        };
+
+        const scheduleReaderChecks = () => {
+            if (!isActive || !isSpaceActive) return;
+            [150, 600, 1500, 3000].forEach(delay => {
+                setTimeout(() => {
+                    if (isActive && isSpaceActive) {
+                        checkReaderAvailability();
+                    }
+                }, delay);
+            });
         };
 
         const sendAnnotationsToWebview = () => {
@@ -243,7 +268,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             sendAnnotationsToWebview();
 
             if (isActive && isSpaceActive) {
-                setTimeout(checkReaderAvailability, 150);
+                scheduleReaderChecks();
             }
         };
         
@@ -406,12 +431,17 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             console.log(`[WebView ${tab.id}] did-navigate-in-page:`, e.url);
             handleNavigateSafe(e);
             if (isActive && isSpaceActive) {
-                setTimeout(checkReaderAvailability, 250);
+                scheduleReaderChecks();
             }
         };
 
         const handleIpcMessage = (e) => {
-            if (e.channel === 'webview-mouse-nav') {
+            if (e.channel === 'qbrowse-reader-available') {
+                const isArticle = Boolean(e.args && e.args[0]);
+                if (isActive && isSpaceActive) {
+                    useUIStore.getState().setIsReaderAvailable(isArticle);
+                }
+            } else if (e.channel === 'webview-mouse-nav') {
                 const action = e.args && e.args[0];
                 if (action === 'back' && wv.canGoBack && wv.canGoBack()) {
                     wv.goBack();
@@ -545,10 +575,11 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         };
 
         const handleFoundInPage = (event) => {
-            if (isActive && isSpaceActive && event.result) {
+            const res = event.result || event;
+            if (isActive && isSpaceActive && res) {
                 useUIStore.getState().setFindResults({
-                    activeMatchOrdinal: event.result.activeMatchOrdinal || 0,
-                    matches: event.result.matches || 0
+                    activeMatchOrdinal: res.activeMatchOrdinal || 0,
+                    matches: res.matches || 0
                 });
             }
         };
@@ -607,19 +638,49 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
             const ui = useUIStore.getState();
             if (ui.isReaderOpen || ui.isReaderClosing) {
-                ui.closeReaderMode();
+                ui.closeReaderMode(true);
             }
         }
+        return () => {
+            if (isActive) {
+                useUIStore.getState().setIsReaderAvailable(false);
+                if (useUIStore.getState().isFindOpen) {
+                    useUIStore.getState().setIsFindOpen(false);
+                }
+            }
+        };
     }, [isActive]);
+
+    useEffect(() => {
+        if (tab.isClosing && isActive && useUIStore.getState().isFindOpen) {
+            useUIStore.getState().setIsFindOpen(false);
+        }
+    }, [tab.isClosing, isActive]);
 
     // Re-check Reader Mode availability when this tab becomes the active tab
     useEffect(() => {
-        if (isActive && isSpaceActive && !tab.isClosing && isDomReadyRef.current) {
-            if (!tab.url || tab.url === '' || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) {
+        if (!isActive || !isSpaceActive) return;
+
+        // If tab is closing, empty, or an internal page, immediately clear reader availability
+        if (tab.isClosing || !tab.url || tab.url === '' || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) {
+            useUIStore.getState().setIsReaderAvailable(false);
+            return;
+        }
+
+        if (isDomReadyRef.current) {
+            const wv = wvRef.current;
+            let currentUrl = tab.url || '';
+            try {
+                if (wv && typeof wv.getURL === 'function') {
+                    const u = wv.getURL();
+                    if (u) currentUrl = u;
+                }
+            } catch (_) {}
+
+            if (!currentUrl || currentUrl === '' || currentUrl === 'about:blank' || currentUrl.startsWith('qbrowse://')) {
                 useUIStore.getState().setIsReaderAvailable(false);
                 return;
             }
-            const wv = wvRef.current;
             try {
                 if (wv && typeof wv.executeJavaScript === 'function') {
                     wv.executeJavaScript(CHECK_ARTICLE_DOM_SCRIPT).then(isArticle => {
@@ -633,8 +694,11 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     });
                 }
             } catch (_) {}
+        } else {
+            // DOM not ready yet on an active tab, clear reader availability until detected
+            useUIStore.getState().setIsReaderAvailable(false);
         }
-    }, [isActive, isSpaceActive, tab.id, tab.url]);
+    }, [isActive, isSpaceActive, tab.id, tab.url, tab.isClosing]);
 
     // Live sync annotations when tab, space, or active state changes
     useEffect(() => {
