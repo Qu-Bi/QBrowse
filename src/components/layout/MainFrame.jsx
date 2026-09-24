@@ -60,6 +60,7 @@ import useTabStore from '../../store/useTabStore';
 import TopBar from './TopBar';
 import WebViewContainer from './WebViewContainer';
 import QVaultPopover from '../popovers/QVaultPopover';
+import SavePasswordBanner from '../popovers/SavePasswordBanner';
 import SiteInfoPopover from '../popovers/SiteInfoPopover';
 import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
@@ -238,7 +239,7 @@ export default function MainFrame() {
 
         return (
             <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden animate-pop-in z-10 w-full h-full">
-                <div className="relative z-10 flex flex-col items-center transition-transform duration-500 w-full mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
+                <div className="relative z-10 flex flex-col items-center transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] origin-center will-change-transform w-full mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
                     <div className="flex flex-col items-center mb-10 md:mb-14 px-4 w-full text-center">
                         {isTor ? (
                             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-semibold mb-4 shadow-[0_0_15px_rgba(168,85,247,0.2)] animate-pulse">
@@ -484,6 +485,7 @@ export default function MainFrame() {
             <div ref={mainContainerRef} className={`flex-1 min-w-0 relative overflow-hidden transition-colors duration-700 ease-in-out flex ${isForceDark || isIncognito ? 'text-white' : 'text-black'} ${isFullscreen ? '' : 'pb-0 pt-2'}`}>
                 <div className={`relative w-full h-full overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.1)] transition-[background-color,border] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border border-white/20'} ${isForceDark || isIncognito ? 'bg-black/60 backdrop-blur-3xl' : 'bg-white/60 backdrop-blur-3xl'}`}>
                     <DownloadPopup />
+                    <SavePasswordBanner />
                     <FindInPageBar />
                     <ScreenshotBar />
                     <SnippingOverlay />
@@ -512,7 +514,7 @@ export default function MainFrame() {
 
                             {/* PERSONAL */}
                             <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative">
-                                {isPrywatneEmpty && <div key="dash">{renderZenDashboard()}</div>}
+                                {isPrywatneEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
                                 <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPrywatneEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPrywatneEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="personal" />
@@ -521,7 +523,7 @@ export default function MainFrame() {
 
                             {/* WORK */}
                             <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito || isTor ? 'text-white' : 'text-black'}`}>
-                                {isPracaEmpty && <div key="dash">{renderZenDashboard()}</div>}
+                                {isPracaEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
                                 <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPracaEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPracaEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="work" />
@@ -530,7 +532,7 @@ export default function MainFrame() {
 
                             {/* GHOST */}
                             <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito || isTor ? 'text-white' : 'text-black'}`}>
-                                {isGhostEmpty && <div key="dash">{renderZenDashboard()}</div>}
+                                {isGhostEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
                                 <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isGhostEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isGhostEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="ghost" />
@@ -539,7 +541,7 @@ export default function MainFrame() {
 
                             {/* TOR ONION */}
                             <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative text-white">
-                                {isTorEmpty && <div key="dash">{renderZenDashboard()}</div>}
+                                {isTorEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
                                 <div key="bg" className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_1px,transparent_1px)] pointer-events-none z-0 opacity-30 invert" style={{ backgroundSize: '24px 24px', opacity: isTorEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isTorEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="tor" />
@@ -763,7 +765,7 @@ export default function MainFrame() {
                     className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 rounded-full bg-[#0c0d12]/95 backdrop-blur-2xl border border-white/12 text-white/90 text-xs font-medium shadow-[0_12px_36px_rgba(0,0,0,0.65)] animate-toast flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide"
                 >
                     {getToastIcon(toast)}
-                    <span className="truncate leading-none">{toast}</span>
+                    <span className="truncate leading-none">{typeof toast === 'object' && toast !== null ? (toast.message || toast.text || '') : toast}</span>
                 </div>
             )}
         </main>

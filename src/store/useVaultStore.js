@@ -10,6 +10,26 @@ const triggerVaultSync = () => {
     }).catch(() => {});
 };
 
+export function extractDomain(input) {
+    if (!input) return '';
+    try {
+        const u = input.includes('://') ? new URL(input) : new URL(`https://${input}`);
+        return u.hostname.replace(/^www\./i, '').toLowerCase();
+    } catch (_) {
+        return String(input).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+    }
+}
+
+export function matchDomains(d1, d2) {
+    if (!d1 || !d2) return false;
+    const clean1 = extractDomain(d1);
+    const clean2 = extractDomain(d2);
+    if (!clean1 || !clean2) return false;
+    if (clean1 === clean2) return true;
+    if (clean1.endsWith('.' + clean2) || clean2.endsWith('.' + clean1)) return true;
+    return false;
+}
+
 const useVaultStore = create((set, get) => ({
     isUnlocked: false,
     masterPassword: '',
@@ -253,6 +273,95 @@ const useVaultStore = create((set, get) => ({
             set({ error: err.message, isLoading: false });
             throw err;
         }
+    },
+
+    // --- SMART CREDENTIAL PROMPTS & AUTOFILL ---
+    pendingSavePrompt: null,
+    neverSaveDomains: (() => {
+        try {
+            return JSON.parse(localStorage.getItem('qbrowse_vault_never_save') || '[]');
+        } catch (_) {
+            return [];
+        }
+    })(),
+    allowVaultInGhostTor: localStorage.getItem('qbrowse_vault_ghost_tor') !== 'false',
+
+    setPendingSavePrompt: (prompt) => set({ pendingSavePrompt: prompt }),
+    dismissSavePrompt: () => set({ pendingSavePrompt: null }),
+
+    addNeverSaveDomain: (domain) => {
+        const clean = extractDomain(domain);
+        if (!clean) return;
+        const current = get().neverSaveDomains || [];
+        if (!current.includes(clean)) {
+            const next = [...current, clean];
+            localStorage.setItem('qbrowse_vault_never_save', JSON.stringify(next));
+            set(state => ({
+                neverSaveDomains: next,
+                pendingSavePrompt: (state.pendingSavePrompt && extractDomain(state.pendingSavePrompt.domain) === clean) ? null : state.pendingSavePrompt
+            }));
+        }
+    },
+
+    removeNeverSaveDomain: (domain) => {
+        const clean = extractDomain(domain);
+        const current = get().neverSaveDomains || [];
+        const next = current.filter(d => d !== clean && d !== domain);
+        localStorage.setItem('qbrowse_vault_never_save', JSON.stringify(next));
+        set({ neverSaveDomains: next });
+    },
+
+    setAllowVaultInGhostTor: (allow) => {
+        localStorage.setItem('qbrowse_vault_ghost_tor', String(allow));
+        set({ allowVaultInGhostTor: !!allow });
+    },
+
+    getMatchingCredentials: (urlOrHost) => {
+        const { isUnlocked, passwords } = get();
+        if (!isUnlocked || !Array.isArray(passwords) || passwords.length === 0) return [];
+        const targetDomain = extractDomain(urlOrHost);
+        if (!targetDomain) return [];
+
+        return passwords
+            .filter(p => {
+                const isLogin = !p.itemType || p.itemType === 'login';
+                if (!isLogin) return false;
+                if (!p.username || !p.password) return false;
+
+                const itemDomain = extractDomain(p.url || p.title);
+                if (matchDomains(targetDomain, itemDomain)) return true;
+                if (p.title && targetDomain.includes(p.title.toLowerCase())) return true;
+                return false;
+            })
+            .map(p => ({
+                id: p.id,
+                title: p.title,
+                username: p.username,
+                password: p.password
+            }));
+    },
+
+    saveOrUpdateCredential: async ({ domain, url, username, password, isUpdate, existingId }) => {
+        if (isUpdate && existingId) {
+            await get().updateItem({
+                id: existingId,
+                type: 'login',
+                title: domain,
+                username,
+                password,
+                url: url || `https://${domain}`
+            });
+        } else {
+            await get().addNewItem({
+                type: 'login',
+                title: domain,
+                username,
+                password,
+                url: url || `https://${domain}`
+            });
+        }
+        set({ pendingSavePrompt: null });
+        return true;
     }
 }));
 

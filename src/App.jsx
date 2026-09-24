@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import useUIStore from './store/useUIStore';
 import useTabStore from './store/useTabStore';
 import useAIStore from './store/useAIStore';
@@ -29,6 +29,7 @@ import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
 import UserProfilePopover from './components/popovers/UserProfilePopover';
 
+const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
 export default function App() {
     const isForceDark = useUIStore(state => state.isForceDark);
@@ -44,6 +45,24 @@ export default function App() {
     const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
     const closePopover = useUIStore(state => state.closePopover);
     const activeSpace = useTabStore(state => state.activeSpace);
+    const customWallpaper = useUIStore(state => state.settings?.customWallpaper);
+    const wallpaperDimming = useUIStore(state => state.settings?.wallpaperDimming ?? 20);
+    const loadStoredWallpaper = useUIStore(state => state.loadStoredWallpaper);
+
+    const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
+    const [currentWallpaper, setCurrentWallpaper] = useState(activeWallpaper);
+    const [prevWallpaper, setPrevWallpaper] = useState(null);
+
+    useEffect(() => {
+        if (activeWallpaper !== currentWallpaper) {
+            setPrevWallpaper(currentWallpaper);
+            setCurrentWallpaper(activeWallpaper);
+            const timer = setTimeout(() => {
+                setPrevWallpaper(null);
+            }, 750);
+            return () => clearTimeout(timer);
+        }
+    }, [activeWallpaper, currentWallpaper]);
 
 
     const { onDragOver, onDragLeave, onDropRoot } = useDragAndDrop();
@@ -53,6 +72,7 @@ export default function App() {
 
     // Check for window launch query parameters (e.g., ?space=ghost or ?profileId=...)
     useEffect(() => {
+        loadStoredWallpaper();
         try {
             const params = new URLSearchParams(window.location.search);
             const profileParam = params.get('profileId');
@@ -300,13 +320,33 @@ export default function App() {
         <ContextMenuProvider>
             <div
                 className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 transition-all duration-300 bg-[#08080a] ${isForceDark || activeSpace === 'ghost' ? 'text-white' : 'text-black'} ${isFullscreen ? 'p-0 gap-0' : uiScale === 'compact' ? `p-1.5 ${isSidebarHidden ? 'gap-0' : 'gap-2'}` : `p-3 md:p-4 ${isSidebarHidden ? 'gap-0' : 'gap-4 md:gap-6'}`}`}
-                style={{ backgroundImage: `url('https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop')`, backgroundSize: 'cover', backgroundPosition: 'center' }}
                 onClick={() => closeContextMenus()}
                 onContextMenu={handleContextMenu}
                 onDragOver={(e) => onDragOver(e, 'root')}
                 onDragLeave={onDragLeave}
                 onDrop={(e) => onDropRoot(e, activeSpace)}
             >
+                {/* Ultra-Smooth Crossfading Wallpaper Layers */}
+                <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+                    {/* Previous Wallpaper Layer (smoothly sitting underneath during crossfade) */}
+                    {prevWallpaper && (
+                        <div 
+                            className="absolute inset-0 bg-cover bg-center"
+                            style={{ backgroundImage: `url('${prevWallpaper}')` }}
+                        />
+                    )}
+                    {/* Active Wallpaper Layer (fades in smoothly with subtle Apple Sonoma scale settlement) */}
+                    <div 
+                        key={currentWallpaper}
+                        className="absolute inset-0 bg-cover bg-center animate-wallpaper-fade will-change-transform"
+                        style={{ backgroundImage: `url('${currentWallpaper}')` }}
+                    />
+                    {/* Dimming overlay layer to ensure UI readability */}
+                    <div 
+                        className="absolute inset-0 pointer-events-none transition-colors duration-150 ease-out z-0" 
+                        style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} 
+                    />
+                </div>
                 <Sidebar />
                 <div className="flex-1 flex flex-col h-full relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
                     <MainFrame />

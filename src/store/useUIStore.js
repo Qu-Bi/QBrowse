@@ -33,7 +33,11 @@ const defaultSettings = {
     readerTheme: 'dark',
     readerFont: 'serif',
     readerFontSize: 18,
-    readerWidth: 'balanced'
+    readerWidth: 'balanced',
+    customWallpaper: null,
+    customWallpaperSource: 'default',
+    customWallpaperOriginalUrl: null,
+    wallpaperDimming: 30
 };
 
 const loadSettings = () => {
@@ -732,7 +736,8 @@ const useUIStore = create((set, get) => ({
   // Notifications
   toast: null,
   showToast: (message) => {
-    set({ toast: message });
+    const toastText = typeof message === 'object' && message !== null ? (message.message || message.text || '') : (message ? String(message) : '');
+    set({ toast: toastText });
     if (globalToastTimeout) clearTimeout(globalToastTimeout);
     globalToastTimeout = setTimeout(() => set({ toast: null }), 2500);
   },
@@ -960,6 +965,76 @@ const useUIStore = create((set, get) => ({
       const cleanPrefix = (prefix || '').replace(/^[!@]/, '').trim().toLowerCase();
       const updated = customBangs.filter(b => b.prefix?.toLowerCase() !== cleanPrefix);
       get().setSettingValue('customBangs', updated);
+  },
+
+  // Custom Wallpaper & Background
+  setCustomWallpaper: (url, source = 'url', originalUrl = null) => {
+      set((state) => {
+          const newSettings = {
+              ...state.settings,
+              customWallpaper: url,
+              customWallpaperSource: source,
+              customWallpaperOriginalUrl: originalUrl || (source === 'url' ? url : null)
+          };
+          try {
+              localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+          } catch(e) {}
+          return { settings: newSettings };
+      });
+  },
+  setWallpaperDimming: (dimming) => {
+      const raw = Math.max(0, Math.min(80, Number(dimming) || 0));
+      const val = Math.round(raw / 5) * 5;
+      get().setSettingValue('wallpaperDimming', val);
+  },
+  resetCustomWallpaper: async () => {
+      if (window.electronAPI && window.electronAPI.resetWallpaper) {
+          await window.electronAPI.resetWallpaper().catch(() => {});
+      }
+      set((state) => {
+          const newSettings = {
+              ...state.settings,
+              customWallpaper: null,
+              customWallpaperSource: 'default',
+              customWallpaperOriginalUrl: null
+          };
+          try {
+              localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+          } catch(e) {}
+          return { settings: newSettings };
+      });
+  },
+  loadStoredWallpaper: async () => {
+      if (window.electronAPI && window.electronAPI.getActiveWallpaper) {
+          try {
+              const res = await window.electronAPI.getActiveWallpaper();
+              if (res && res.exists && res.url) {
+                  const current = get().settings?.customWallpaper;
+                  if (current !== res.url) {
+                      set((state) => ({
+                          settings: {
+                              ...state.settings,
+                              customWallpaper: res.url
+                          }
+                      }));
+                  }
+              } else if (res && !res.exists) {
+                  const current = get().settings?.customWallpaper;
+                  if (current && current.startsWith('qbrowse-media://')) {
+                      set((state) => ({
+                          settings: {
+                              ...state.settings,
+                              customWallpaper: null,
+                              customWallpaperSource: null,
+                              customWallpaperOriginalUrl: null
+                          }
+                      }));
+                  }
+              }
+          } catch (e) {
+              console.warn('[UIStore] Error checking stored wallpaper:', e);
+          }
+      }
   },
 
   zoomLevel: 100,

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import useTabStore from '../../store/useTabStore';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
-import useVaultStore from '../../store/useVaultStore';
+import useVaultStore, { extractDomain } from '../../store/useVaultStore';
 import useProfileStore from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
 import { useAnnotationStore, normalizeAnnotationUrl } from '../../store/useAnnotationStore';
@@ -20,6 +20,9 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
     const torSecurityLevel = useTorStore(state => state.securityLevel);
     const torStatus = useTorStore(state => state.status);
     const torBootstrapProgress = useTorStore(state => state.bootstrapProgress);
+    const isVaultUnlocked = useVaultStore(state => state.isUnlocked);
+    const vaultPasswords = useVaultStore(state => state.passwords);
+    const allowVaultInGhostTor = useVaultStore(state => state.allowVaultInGhostTor);
 
     const [isDrmDismissed, setIsDrmDismissed] = useState(false);
     const [genericDrmError, setGenericDrmError] = useState(null);
@@ -67,6 +70,26 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             } catch(e) {}
         }
     }, [showSwitcher, isActive, isSpaceActive, setSpaceTabs, tab.id, tab.isClosing, tab.url]);
+
+    // Push matching credentials to webview when vault unlocks or URL/space changes
+    useEffect(() => {
+        const wv = wvRef.current;
+        if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
+        const vaultState = useVaultStore.getState();
+        const isGhostOrTor = space === 'ghost' || space === 'tor';
+        if (isGhostOrTor && !vaultState.allowVaultInGhostTor) {
+            try { wv.send('qvault-matching-credentials', []); } catch(_) {}
+            return;
+        }
+        if (!vaultState.isUnlocked) {
+            try { wv.send('qvault-matching-credentials', []); } catch(_) {}
+            return;
+        }
+        const matches = vaultState.getMatchingCredentials(tab.url);
+        try {
+            wv.send('qvault-matching-credentials', matches);
+        } catch (_) {}
+    }, [isVaultUnlocked, vaultPasswords, allowVaultInGhostTor, tab.url, space]);
 
     // CSS for custom scrollbars
     const customScrollbarCSS = `
@@ -265,6 +288,24 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             } catch (_) {}
         };
 
+        const sendVaultMatchesToWebview = () => {
+            if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
+            try {
+                const vaultState = useVaultStore.getState();
+                const isGhostOrTor = space === 'ghost' || space === 'tor';
+                if (isGhostOrTor && !vaultState.allowVaultInGhostTor) {
+                    wv.send('qvault-matching-credentials', []);
+                    return;
+                }
+                if (!vaultState.isUnlocked) {
+                    wv.send('qvault-matching-credentials', []);
+                    return;
+                }
+                const matches = vaultState.getMatchingCredentials(tab.url);
+                wv.send('qvault-matching-credentials', matches);
+            } catch (_) {}
+        };
+
         const handleDomReady = () => {
             isDomReadyRef.current = true;
             try { wv.insertCSS(customScrollbarCSS).catch(() => {}); } catch(e){}
@@ -282,6 +323,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             } catch(e) {}
 
             sendAnnotationsToWebview();
+            sendVaultMatchesToWebview();
 
             if (isActive && isSpaceActive) {
                 scheduleReaderChecks();
@@ -442,6 +484,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
             handleNavigate({ ...e, url: displayUrl });
             updateNavState();
+            sendVaultMatchesToWebview();
         };
         const handleNavigateInPage = (e) => {
             console.log(`[WebView ${tab.id}] did-navigate-in-page:`, e.url);
@@ -553,6 +596,54 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                             space
                         });
                     } catch (_) {}
+                }
+            } else if (e.channel === 'qvault-credentials-submitted') {
+                const data = e.args && e.args[0];
+                if (data && data.password) {
+                    const vaultState = useVaultStore.getState();
+                    const domain = extractDomain(data.domain || tab.url);
+
+                    // 1. Never prompt to save in Ghost / Tor spaces for user privacy
+                    const isGhostOrTor = space === 'ghost' || space === 'tor';
+                    if (isGhostOrTor) {
+                        console.log('[QVault] Suppressing save password prompt in private space:', space);
+                        return;
+                    }
+
+                    // 2. Check never-save domains list
+                    if ((vaultState.neverSaveDomains || []).some(d => d === domain)) {
+                        console.log('[QVault] Domain excluded from password saving:', domain);
+                        return;
+                    }
+
+                    // 3. Check if exact credential or updated password exists
+                    let isUpdate = false;
+                    let existingId = null;
+                    if (vaultState.isUnlocked && Array.isArray(vaultState.passwords)) {
+                        const existing = vaultState.passwords.find(p => {
+                            const pDomain = extractDomain(p.url || p.title);
+                            return pDomain === domain && (p.username || '').toLowerCase() === (data.username || '').toLowerCase();
+                        });
+                        if (existing) {
+                            if (existing.password === data.password) {
+                                console.log('[QVault] Exact credential already saved in vault, ignoring prompt.');
+                                return;
+                            }
+                            isUpdate = true;
+                            existingId = existing.id;
+                        }
+                    }
+
+                    // 4. Trigger floating Save/Update password banner
+                    vaultState.setPendingSavePrompt({
+                        tabId: tab.id,
+                        domain: domain || data.domain,
+                        url: data.url || tab.url,
+                        username: data.username || '',
+                        password: data.password || '',
+                        isUpdate,
+                        existingId
+                    });
                 }
             }
         };

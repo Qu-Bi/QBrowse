@@ -23,14 +23,51 @@ window.addEventListener('mouseup', (e) => {
     }
 }, true);
 
-// Listen to Ctrl + Wheel inside webview for pinch-to-zoom / smooth zoom gestures
-window.addEventListener('wheel', (e) => {
-    if (e.ctrlKey) {
+// Listen to Ctrl/Cmd + Wheel inside webview for responsive zoom (10% increments)
+let zoomWheelAccumulator = 0;
+let zoomWheelResetTimer = null;
+let lastWebviewZoomTime = 0;
+
+function handleCtrlWheelZoom(e) {
+    if (e.ctrlKey || e.metaKey) {
+        if (e.__qbrowseZoomHandled) return;
+        e.__qbrowseZoomHandled = true;
+
         e.preventDefault();
-        const delta = e.deltaY < 0 ? 5 : -5;
-        ipcRenderer.sendToHost('webview-zoom-wheel', delta);
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+            e.stopImmediatePropagation();
+        }
+
+        clearTimeout(zoomWheelResetTimer);
+        zoomWheelResetTimer = setTimeout(() => {
+            zoomWheelAccumulator = 0;
+        }, 180);
+
+        // Normalize delta across input modes (lines, pages, pixels)
+        let normalizedDelta = e.deltaY;
+        if (e.deltaMode === 1) {
+            normalizedDelta *= 33;
+        } else if (e.deltaMode === 2) {
+            normalizedDelta *= 100;
+        }
+
+        zoomWheelAccumulator += normalizedDelta;
+        const threshold = 30; // Responsive threshold for mouse wheel notches and pinch gestures
+        if (Math.abs(zoomWheelAccumulator) >= threshold) {
+            const now = performance.now();
+            if (now - lastWebviewZoomTime >= 40) {
+                const delta = zoomWheelAccumulator < 0 ? 10 : -10;
+                zoomWheelAccumulator = 0;
+                lastWebviewZoomTime = now;
+                ipcRenderer.sendToHost('webview-zoom-wheel', delta);
+            }
+        }
     }
-}, { passive: false });
+}
+
+window.addEventListener('wheel', handleCtrlWheelZoom, { passive: false, capture: true });
+document.addEventListener('wheel', handleCtrlWheelZoom, { passive: false, capture: true });
 
 
 // Monitor DRM / Encrypted Media Extensions (EME) for unsupported hardware VMP requests
@@ -543,33 +580,6 @@ const injectMainWorldPasskeyOverride = () => {
 
 injectMainWorldPasskeyOverride();
 if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', injectMainWorldPasskeyOverride);
-
-// QVault On-Demand Autofill (Safe & Non-intrusive: Never auto-injects into DOM)
-function fillCredentials(match) {
-    if (!match) return;
-    const userInputs = document.querySelectorAll('input[type="text"], input[type="email"], input[name*="user"], input[name*="login"]');
-    const passInputs = document.querySelectorAll('input[type="password"], input[name*="pass"]');
-
-    if (userInputs.length > 0 && match.username) {
-        userInputs[0].value = match.username;
-        userInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-        userInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    if (passInputs.length > 0 && match.password) {
-        passInputs[0].value = match.password;
-        passInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-        passInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-    }
-}
-
-ipcRenderer.on('qvault-fill-credentials', (event, match) => {
-    try {
-        fillCredentials(match);
-    } catch (e) {
-        console.warn('[QVault] fillCredentials error:', e);
-    }
-});
 
 // --- LIVE MEDIA SESSION & PLAYBACK MONITOR ---
 let lastMediaStateKey = '';
@@ -1648,4 +1658,429 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
             }
         }
     });
+})();
+
+// ============================================================================
+// --- QVAULT INLINE AUTOFILL & CREDENTIAL SUBMISSION ENGINE ---
+// ============================================================================
+(function initQVaultEngine() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    let qvaultMatches = [];
+    const activeBadgeMap = new Map(); // input element -> badge DOM element
+    let activeDropdownEl = null;
+    let lastSubmissionTime = 0;
+
+    function setNativeInputValue(el, val) {
+        if (!el) return;
+        try {
+            const proto = Object.getPrototypeOf(el);
+            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+            if (descriptor && descriptor.set) {
+                descriptor.set.call(el, val);
+            } else {
+                el.value = val;
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (_) {
+            el.value = val;
+        }
+    }
+
+    function flashAutofillHighlight(el) {
+        if (!el) return;
+        const prevTransition = el.style.transition;
+        const prevShadow = el.style.boxShadow;
+        el.style.transition = 'box-shadow 0.25s ease';
+        el.style.boxShadow = '0 0 0 2px rgba(212, 188, 148, 0.7), 0 0 12px rgba(212, 188, 148, 0.4)';
+        setTimeout(() => {
+            el.style.boxShadow = prevShadow;
+            setTimeout(() => { el.style.transition = prevTransition; }, 300);
+        }, 800);
+    }
+
+    function findAssociatedFields(targetField) {
+        let passwordField = null;
+        let usernameField = null;
+
+        const form = targetField.form || targetField.closest('form');
+        if (form) {
+            passwordField = form.querySelector('input[type="password"]');
+            
+            // Look for username/email candidates in form
+            const candidates = Array.from(form.querySelectorAll('input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])'));
+            usernameField = candidates.find(c => {
+                const auto = (c.getAttribute('autocomplete') || '').toLowerCase();
+                const name = (c.name || '').toLowerCase();
+                const id = (c.id || '').toLowerCase();
+                const type = (c.type || '').toLowerCase();
+                return auto.includes('username') || auto.includes('email') ||
+                       type === 'email' ||
+                       name.includes('user') || name.includes('login') || name.includes('email') ||
+                       id.includes('user') || id.includes('login') || id.includes('email');
+            }) || candidates[0] || null;
+        } else {
+            // No wrapping form: search DOM context
+            if (targetField.type === 'password') {
+                passwordField = targetField;
+                const allInputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="submit"])'));
+                const passIdx = allInputs.indexOf(targetField);
+                for (let i = passIdx - 1; i >= 0; i--) {
+                    const inp = allInputs[i];
+                    if (inp.type !== 'password' && inp.type !== 'checkbox' && inp.type !== 'radio') {
+                        usernameField = inp;
+                        break;
+                    }
+                }
+            } else {
+                usernameField = targetField;
+                passwordField = document.querySelector('input[type="password"]');
+            }
+        }
+
+        return { passwordField, usernameField };
+    }
+
+    function fillAccountCredentials(cred, sourceInput) {
+        if (!cred) return;
+        const { passwordField, usernameField } = findAssociatedFields(sourceInput);
+
+        if (usernameField && cred.username) {
+            setNativeInputValue(usernameField, cred.username);
+            flashAutofillHighlight(usernameField);
+        }
+        if (passwordField && cred.password) {
+            setNativeInputValue(passwordField, cred.password);
+            flashAutofillHighlight(passwordField);
+        }
+        closeAutofillDropdown();
+    }
+
+    function closeAutofillDropdown() {
+        if (activeDropdownEl) {
+            activeDropdownEl.remove();
+            activeDropdownEl = null;
+        }
+    }
+
+    function showAutofillDropdown(btnEl, targetInput, matches) {
+        closeAutofillDropdown();
+        if (!matches || matches.length === 0) return;
+
+        const rect = targetInput.getBoundingClientRect();
+        const dropdown = document.createElement('div');
+        dropdown.className = 'qvault-autofill-dropdown';
+        dropdown.style.position = 'fixed';
+        dropdown.style.zIndex = '2147483647';
+        dropdown.style.top = `${Math.min(window.innerHeight - 200, rect.bottom + 6)}px`;
+        
+        const dropdownWidth = 240;
+        const idealLeft = rect.right - dropdownWidth;
+        dropdown.style.left = `${Math.max(12, Math.min(idealLeft, window.innerWidth - dropdownWidth - 12))}px`;
+        dropdown.style.width = `${dropdownWidth}px`;
+        dropdown.style.background = 'rgba(20, 20, 24, 0.96)';
+        dropdown.style.backdropFilter = 'blur(20px)';
+        dropdown.style.webkitBackdropFilter = 'blur(20px)';
+        dropdown.style.border = '1px solid rgba(212, 188, 148, 0.25)';
+        dropdown.style.borderRadius = '12px';
+        dropdown.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.05)';
+        dropdown.style.padding = '6px';
+        dropdown.style.color = '#ffffff';
+        dropdown.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        dropdown.style.fontSize = '12px';
+        dropdown.style.userSelect = 'none';
+
+        // Header
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.gap = '6px';
+        header.style.padding = '6px 8px 6px';
+        header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
+        header.style.marginBottom = '4px';
+        header.style.color = '#d4bc94';
+        header.style.fontWeight = '600';
+        header.style.fontSize = '11px';
+        header.style.letterSpacing = '0.02em';
+        header.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="7.5" cy="15.5" r="5.5"></circle>
+                <path d="m21 2-9.6 9.6"></path>
+                <path d="m15.5 7.5 3 3L22 7l-3-3"></path>
+            </svg>
+            <span>QVault Suggestions (${matches.length})</span>
+        `;
+        dropdown.appendChild(header);
+
+        // Account Items
+        matches.forEach(item => {
+            const row = document.createElement('div');
+            row.style.padding = '8px 10px';
+            row.style.borderRadius = '8px';
+            row.style.cursor = 'pointer';
+            row.style.transition = 'background-color 0.15s ease';
+            row.style.display = 'flex';
+            row.style.flexDirection = 'column';
+            row.style.gap = '2px';
+
+            const userText = item.username || item.title || 'Saved Account';
+            row.innerHTML = `
+                <div style="font-weight: 500; color: rgba(255, 255, 255, 0.95); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(userText)}</div>
+                <div style="font-size: 10px; font-family: monospace; color: rgba(212, 188, 148, 0.7); letter-spacing: 0.1em;">••••••••</div>
+            `;
+
+            row.onmouseenter = () => { row.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'; };
+            row.onmouseleave = () => { row.style.backgroundColor = 'transparent'; };
+            row.onmousedown = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fillAccountCredentials(item, targetInput);
+            };
+
+            dropdown.appendChild(row);
+        });
+
+        document.body.appendChild(dropdown);
+        activeDropdownEl = dropdown;
+
+        const onOutsideClick = (e) => {
+            if (activeDropdownEl && !activeDropdownEl.contains(e.target) && !btnEl.contains(e.target)) {
+                closeAutofillDropdown();
+                document.removeEventListener('mousedown', onOutsideClick);
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', onOutsideClick), 10);
+    }
+
+    function escapeHtml(str) {
+        return String(str || '').replace(/[&<>'"]/g, tag => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[tag] || tag));
+    }
+
+    function createKeyBadge(inputEl) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.tabIndex = -1;
+        btn.className = 'qvault-inline-key-btn';
+        btn.title = 'Autofill with QVault';
+        btn.style.position = 'fixed';
+        btn.style.zIndex = '2147483640';
+        btn.style.width = '22px';
+        btn.style.height = '22px';
+        btn.style.borderRadius = '6px';
+        btn.style.border = '1px solid rgba(212, 188, 148, 0.4)';
+        btn.style.background = 'rgba(18, 18, 22, 0.85)';
+        btn.style.color = '#d4bc94';
+        btn.style.display = 'flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.style.cursor = 'pointer';
+        btn.style.padding = '0';
+        btn.style.margin = '0';
+        btn.style.outline = 'none';
+        btn.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.35)';
+        btn.style.transition = 'transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease';
+
+        btn.innerHTML = `
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                <circle cx="7.5" cy="15.5" r="5.5"></circle>
+                <path d="m21 2-9.6 9.6"></path>
+                <path d="m15.5 7.5 3 3L22 7l-3-3"></path>
+            </svg>
+        `;
+
+        btn.onmouseenter = () => {
+            btn.style.transform = 'scale(1.1)';
+            btn.style.background = 'rgba(212, 188, 148, 0.2)';
+            btn.style.borderColor = '#d4bc94';
+        };
+        btn.onmouseleave = () => {
+            btn.style.transform = 'scale(1)';
+            btn.style.background = 'rgba(18, 18, 22, 0.85)';
+            btn.style.borderColor = 'rgba(212, 188, 148, 0.4)';
+        };
+        btn.onmousedown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (qvaultMatches.length === 1) {
+                fillAccountCredentials(qvaultMatches[0], inputEl);
+            } else if (qvaultMatches.length > 1) {
+                if (activeDropdownEl) {
+                    closeAutofillDropdown();
+                } else {
+                    showAutofillDropdown(btn, inputEl, qvaultMatches);
+                }
+            }
+        };
+
+        document.body.appendChild(btn);
+        return btn;
+    }
+
+    function updateBadgePositions() {
+        if (qvaultMatches.length === 0) {
+            cleanUpBadges();
+            return;
+        }
+
+        // Discover candidate fields
+        const passwordInputs = Array.from(document.querySelectorAll('input[type="password"]'));
+        const relevantInputs = new Set(passwordInputs);
+
+        // Also add associated username inputs
+        passwordInputs.forEach(pass => {
+            const { usernameField } = findAssociatedFields(pass);
+            if (usernameField) relevantInputs.add(usernameField);
+        });
+
+        // Remove badges for elements no longer in document
+        for (const [inputEl, badge] of activeBadgeMap.entries()) {
+            if (!document.body.contains(inputEl) || !relevantInputs.has(inputEl)) {
+                badge.remove();
+                activeBadgeMap.delete(inputEl);
+            }
+        }
+
+        // Add or reposition badges
+        relevantInputs.forEach(input => {
+            const rect = input.getBoundingClientRect();
+            const isVisible = rect.width > 20 && rect.height > 15 &&
+                              rect.bottom > 0 && rect.top < window.innerHeight &&
+                              rect.right > 0 && rect.left < window.innerWidth &&
+                              window.getComputedStyle(input).visibility !== 'hidden' &&
+                              window.getComputedStyle(input).display !== 'none';
+
+            let badge = activeBadgeMap.get(input);
+            if (!isVisible) {
+                if (badge) badge.style.display = 'none';
+                return;
+            }
+
+            if (!badge) {
+                badge = createKeyBadge(input);
+                activeBadgeMap.set(input, badge);
+            }
+
+            badge.style.display = 'flex';
+            const top = rect.top + (rect.height - 22) / 2;
+            const left = rect.right - 22 - 6;
+            badge.style.top = `${top}px`;
+            badge.style.left = `${left}px`;
+        });
+    }
+
+    function cleanUpBadges() {
+        for (const badge of activeBadgeMap.values()) {
+            badge.remove();
+        }
+        activeBadgeMap.clear();
+        closeAutofillDropdown();
+    }
+
+    // --- CREDENTIAL SUBMISSION DETECTION ---
+    function captureAndSubmitCredentials(formOrInput) {
+        const now = Date.now();
+        if (now - lastSubmissionTime < 1500) return;
+
+        let passwordField = null;
+        let usernameField = null;
+
+        if (formOrInput) {
+            const fields = findAssociatedFields(formOrInput);
+            passwordField = fields.passwordField;
+            usernameField = fields.usernameField;
+        }
+
+        if (!passwordField) {
+            const allPass = Array.from(document.querySelectorAll('input[type="password"]'));
+            passwordField = allPass.find(p => (p.value || '').trim().length > 0) || allPass[0];
+            if (passwordField) {
+                usernameField = findAssociatedFields(passwordField).usernameField;
+            }
+        }
+
+        const password = (passwordField?.value || '').trim();
+        if (!password) return; // Must have entered a password to prompt save
+
+        const username = (usernameField?.value || '').trim();
+        lastSubmissionTime = now;
+
+        const payload = {
+            url: window.location.href,
+            domain: window.location.hostname,
+            username,
+            password
+        };
+
+        console.log('[QVault webview_preload] Captured credential submission:', payload.domain, payload.username ? `(${payload.username})` : '(no username)');
+        ipcRenderer.sendToHost('qvault-credentials-submitted', payload);
+    }
+
+    // 1. Form submit listener
+    document.addEventListener('submit', (e) => {
+        captureAndSubmitCredentials(e.target);
+    }, true);
+
+    // 2. Enter keydown on password fields
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const target = e.target;
+            if (target && target.tagName === 'INPUT' && target.type === 'password') {
+                setTimeout(() => captureAndSubmitCredentials(target), 50);
+            }
+        }
+    }, true);
+
+    // 3. Submit button clicks
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('button, input[type="submit"], [role="button"], a');
+        if (!btn) return;
+
+        const type = (btn.getAttribute('type') || '').toLowerCase();
+        const text = (btn.innerText || btn.value || '').toLowerCase();
+        const isSubmitType = type === 'submit';
+        const isLoginText = text.includes('log in') || text.includes('login') ||
+                            text.includes('sign in') || text.includes('signin') ||
+                            text.includes('submit') || text.includes('continue') || text.includes('next');
+
+        if (isSubmitType || isLoginText) {
+            setTimeout(() => captureAndSubmitCredentials(btn), 50);
+        }
+    }, true);
+
+    // Listen for matching credentials from host
+    ipcRenderer.on('qvault-matching-credentials', (event, matches) => {
+        qvaultMatches = Array.isArray(matches) ? matches : [];
+        updateBadgePositions();
+    });
+
+    // Window scroll and resize listeners for badge repositioning
+    window.addEventListener('scroll', updateBadgePositions, { passive: true, capture: true });
+    window.addEventListener('resize', updateBadgePositions, { passive: true });
+
+    // Mutation observer to detect newly rendered login inputs
+    const observer = new MutationObserver(() => {
+        if (qvaultMatches.length > 0) {
+            updateBadgePositions();
+        }
+    });
+
+    if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+        document.addEventListener('DOMContentLoaded', () => {
+            observer.observe(document.body, { childList: true, subtree: true });
+            if (qvaultMatches.length > 0) updateBadgePositions();
+        });
+    }
 })();

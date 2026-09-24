@@ -1,12 +1,18 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const os = require('os');
+const { pathToFileURL } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
 
 // Disable Blink automation features so navigator.webdriver is false and automation flags are suppressed
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+
+// Register custom privileged scheme for streaming local media and wallpapers safely
+protocol.registerSchemesAsPrivileged([
+    { scheme: 'qbrowse-media', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+]);
 
 ipcMain.handle('read-clipboard-text', () => {
     try {
@@ -815,6 +821,38 @@ function setupWebviewSession(sess) {
 }
 
 app.whenReady().then(async () => {
+  // Register local media streaming protocol for wallpapers and assets
+  try {
+      protocol.handle('qbrowse-media', async (request) => {
+          try {
+              const raw = request.url.replace(/^qbrowse-media:\/\/(?:app\/|local\/)?/, '');
+              const decoded = decodeURIComponent(raw);
+              const fileName = path.basename(decoded);
+              if (!fileName) {
+                  return new Response('Not Found', { status: 404 });
+              }
+              const backgroundsDir = path.join(app.getPath('userData'), 'backgrounds');
+              const fullPath = path.join(backgroundsDir, fileName);
+              if (!fullPath.startsWith(backgroundsDir)) {
+                  return new Response('Forbidden', { status: 403 });
+              }
+              try {
+                  const stat = await fs.stat(fullPath);
+                  if (!stat.isFile()) {
+                      return new Response('Not Found', { status: 404 });
+                  }
+              } catch {
+                  return new Response('Not Found', { status: 404 });
+              }
+              return net.fetch(pathToFileURL(fullPath).toString());
+          } catch (err) {
+              return new Response('Not Found', { status: 404 });
+          }
+      });
+  } catch (e) {
+      console.warn('[Protocol] Failed to register qbrowse-media handler:', e.message);
+  }
+
   try {
       performanceEngine.initSettings(app.getPath('userData'));
       if (powerMonitor) {
@@ -2087,7 +2125,152 @@ ipcMain.handle('get-initial-launch-url', () => {
     return url;
 });
 
+// Custom Wallpaper & Background Handlers
+ipcMain.handle('wallpaper-import-file', async () => {
+    try {
+        const result = await dialog.showOpenDialog(mainWindow, {
+            title: 'Choose Custom Wallpaper',
+            properties: ['openFile'],
+            filters: [
+                { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }
+            ]
+        });
+
+        if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+            return { success: false, cancelled: true };
+        }
+
+        const sourceFile = result.filePaths[0];
+        const ext = path.extname(sourceFile).toLowerCase() || '.png';
+        const backgroundsDir = path.join(app.getPath('userData'), 'backgrounds');
+        await fs.mkdir(backgroundsDir, { recursive: true });
+
+        // Clean up previous wallpapers
+        try {
+            const existingFiles = await fs.readdir(backgroundsDir);
+            for (const file of existingFiles) {
+                if (file.startsWith('wallpaper_')) {
+                    await fs.unlink(path.join(backgroundsDir, file)).catch(() => {});
+                }
+            }
+        } catch (_) {}
+
+        const filename = `wallpaper_${Date.now()}${ext}`;
+        const destPath = path.join(backgroundsDir, filename);
+        await fs.copyFile(sourceFile, destPath);
+
+        return {
+            success: true,
+            url: `qbrowse-media://app/${filename}`,
+            protocolUrl: `qbrowse-media://app/${filename}`,
+            filename,
+            isLocal: true
+        };
+    } catch (err) {
+        console.error('[Main] Failed to import wallpaper from file:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('wallpaper-import-url', async (event, imageUrl) => {
+    try {
+        if (!imageUrl || typeof imageUrl !== 'string') {
+            return { success: false, error: 'Invalid image URL' };
+        }
+
+        const parsedUrl = new URL(imageUrl);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return { success: false, error: 'URL must start with http:// or https://' };
+        }
+
+        const response = await net.fetch(imageUrl);
+        if (!response.ok) {
+            return { success: false, error: `Failed to download image (HTTP ${response.status})` };
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (buffer.length === 0) {
+            return { success: false, error: 'Downloaded file is empty' };
+        }
+
+        let ext = path.extname(parsedUrl.pathname).toLowerCase();
+        if (!ext || !['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('png')) ext = '.png';
+            else if (contentType.includes('webp')) ext = '.webp';
+            else if (contentType.includes('gif')) ext = '.gif';
+            else ext = '.jpg';
+        }
+
+        const backgroundsDir = path.join(app.getPath('userData'), 'backgrounds');
+        await fs.mkdir(backgroundsDir, { recursive: true });
+
+        // Clean up previous wallpapers
+        try {
+            const existingFiles = await fs.readdir(backgroundsDir);
+            for (const file of existingFiles) {
+                if (file.startsWith('wallpaper_')) {
+                    await fs.unlink(path.join(backgroundsDir, file)).catch(() => {});
+                }
+            }
+        } catch (_) {}
+
+        const filename = `wallpaper_${Date.now()}${ext}`;
+        const destPath = path.join(backgroundsDir, filename);
+        await fs.writeFile(destPath, buffer);
+
+        return {
+            success: true,
+            url: `qbrowse-media://app/${filename}`,
+            protocolUrl: `qbrowse-media://app/${filename}`,
+            originalUrl: imageUrl,
+            filename,
+            isLocal: false
+        };
+    } catch (err) {
+        console.error('[Main] Failed to import wallpaper from URL:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('wallpaper-get-active', async () => {
+    try {
+        const backgroundsDir = path.join(app.getPath('userData'), 'backgrounds');
+        const files = await fs.readdir(backgroundsDir);
+        const wallpaperFiles = files.filter(f => f.startsWith('wallpaper_'));
+        if (wallpaperFiles.length === 0) {
+            return { exists: false };
+        }
+        wallpaperFiles.sort().reverse();
+        const latestFile = wallpaperFiles[0];
+        return {
+            exists: true,
+            url: `qbrowse-media://app/${latestFile}`,
+            protocolUrl: `qbrowse-media://app/${latestFile}`,
+            filename: latestFile
+        };
+    } catch {
+        return { exists: false };
+    }
+});
+
+ipcMain.handle('wallpaper-reset', async () => {
+    try {
+        const backgroundsDir = path.join(app.getPath('userData'), 'backgrounds');
+        const files = await fs.readdir(backgroundsDir);
+        for (const file of files) {
+            if (file.startsWith('wallpaper_')) {
+                await fs.unlink(path.join(backgroundsDir, file)).catch(() => {});
+            }
+        }
+        return { success: true };
+    } catch {
+        return { success: true };
+    }
+});
+
 // Experimental Flags & Relaunch Handlers
+
 ipcMain.handle('flags-get', () => {
     return userFlags;
 });

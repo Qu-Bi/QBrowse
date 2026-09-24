@@ -476,12 +476,47 @@ export default function useGlobalShortcuts() {
             }
         };
 
+        let globalWheelAccumulator = 0;
+        let globalWheelResetTimer = null;
+        let lastZoomTime = 0;
+
         const handleWheel = (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                const delta = e.deltaY < 0 ? 5 : -5;
-                const ui = useUIStore.getState();
-                ui.setZoomLevel(ui.zoomLevel + delta);
+            if (!e.ctrlKey && !e.metaKey) return;
+            if (e.__qbrowseZoomHandled) return;
+            e.__qbrowseZoomHandled = true;
+
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
+
+            clearTimeout(globalWheelResetTimer);
+            globalWheelResetTimer = setTimeout(() => {
+                globalWheelAccumulator = 0;
+            }, 180);
+
+            // Normalize delta across input modes:
+            // deltaMode 1 (DOM_DELTA_LINE): Standard Windows mouse wheel notch is 1-3 lines (~33px/line)
+            // deltaMode 2 (DOM_DELTA_PAGE): Page scroll
+            let normalizedDelta = e.deltaY;
+            if (e.deltaMode === 1) {
+                normalizedDelta *= 33;
+            } else if (e.deltaMode === 2) {
+                normalizedDelta *= 100;
+            }
+
+            globalWheelAccumulator += normalizedDelta;
+            const threshold = 30;
+            if (Math.abs(globalWheelAccumulator) >= threshold) {
+                const now = performance.now();
+                if (now - lastZoomTime >= 40) {
+                    const delta = globalWheelAccumulator < 0 ? 10 : -10;
+                    globalWheelAccumulator = 0;
+                    lastZoomTime = now;
+                    const ui = useUIStore.getState();
+                    ui.setZoomLevel(ui.zoomLevel + delta);
+                }
             }
         };
 
@@ -494,7 +529,8 @@ export default function useGlobalShortcuts() {
 
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
-        window.addEventListener('wheel', handleWheel, { passive: false });
+        window.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+        document.addEventListener('wheel', handleWheel, { passive: false, capture: true });
         window.addEventListener('blur', handleBlur);
 
         // Listen for shortcuts captured natively by Electron (e.g. when webview has focus)
@@ -550,7 +586,8 @@ export default function useGlobalShortcuts() {
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
-            window.removeEventListener('wheel', handleWheel);
+            window.removeEventListener('wheel', handleWheel, { capture: true });
+            document.removeEventListener('wheel', handleWheel, { capture: true });
             window.removeEventListener('blur', handleBlur);
             if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
         };

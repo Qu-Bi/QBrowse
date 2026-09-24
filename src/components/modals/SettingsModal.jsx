@@ -4,13 +4,17 @@ import {
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, 
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
-    UploadCloud, Compass, ExternalLink, Plus, Leaf, Gauge, BatteryCharging, Activity
+    UploadCloud, Compass, ExternalLink, Plus, Leaf, Gauge, BatteryCharging, Activity,
+    Image as ImageIcon, Upload, Link as LinkIcon
 } from 'lucide-react';
+
+const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
+import useVaultStore from '../../store/useVaultStore';
 import AIEngineSettings from '../settings/AIEngineSettings';
 import { getAllBangs } from '../../utils/searchBangs';
 
@@ -87,12 +91,20 @@ const SettingsModal = () => {
         reduceVisualsOnEco,
         setPerformanceMode,
         setTabSleepTimeoutMinutes,
-        setReduceVisualsOnEco
+        setReduceVisualsOnEco,
+        setCustomWallpaper,
+        setWallpaperDimming,
+        resetCustomWallpaper
     } = useUIStore();
 
     const { user, isSyncing, lastSyncTime, syncedItemsCount, syncNow, logout, autoSyncEnabled, toggleAutoSync } = useSyncStore();
     const isTorEnabled = useTorStore(state => state.isTorEnabled);
     const toggleTorEnabled = useTorStore(state => state.toggleTorEnabled);
+
+    const allowVaultInGhostTor = useVaultStore(state => state.allowVaultInGhostTor);
+    const setAllowVaultInGhostTor = useVaultStore(state => state.setAllowVaultInGhostTor);
+    const neverSaveDomains = useVaultStore(state => state.neverSaveDomains) || [];
+    const removeNeverSaveDomain = useVaultStore(state => state.removeNeverSaveDomain);
 
     const [allPermissions, setAllPermissions] = useState({});
     const [searchFilter, setSearchFilter] = useState('');
@@ -108,6 +120,75 @@ const SettingsModal = () => {
     const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
         return localStorage.getItem('qbrowse_dismiss_default_browser') !== 'true';
     });
+
+    const customWallpaper = settings?.customWallpaper;
+    const customWallpaperSource = settings?.customWallpaperSource;
+    const customWallpaperOriginalUrl = settings?.customWallpaperOriginalUrl;
+    const wallpaperDimming = settings?.wallpaperDimming ?? 20;
+
+    const [wallpaperUrlInput, setWallpaperUrlInput] = useState('');
+    const [isImportingUrl, setIsImportingUrl] = useState(false);
+    const [isImportingFile, setIsImportingFile] = useState(false);
+
+    const handleImportWallpaperFile = async () => {
+        if (!window.electronAPI?.importWallpaperFile) {
+            showToast('File import is only available in the desktop app');
+            return;
+        }
+        setIsImportingFile(true);
+        try {
+            const res = await window.electronAPI.importWallpaperFile();
+            if (res?.success) {
+                setCustomWallpaper(res.protocolUrl, 'file');
+                showToast('Custom wallpaper applied!');
+            } else if (res?.error && res.error !== 'Cancelled') {
+                showToast(res.error);
+            }
+        } catch (err) {
+            showToast(err.message || 'Failed to import wallpaper');
+        } finally {
+            setIsImportingFile(false);
+        }
+    };
+
+    const handleImportWallpaperUrl = async (e) => {
+        if (e) e.preventDefault();
+        const url = wallpaperUrlInput.trim();
+        if (!url) return;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            showToast('Please enter a valid HTTP or HTTPS image URL');
+            return;
+        }
+        setIsImportingUrl(true);
+        try {
+            if (window.electronAPI?.importWallpaperUrl) {
+                const res = await window.electronAPI.importWallpaperUrl(url);
+                if (res?.success) {
+                    setCustomWallpaper(res.protocolUrl, 'url', url);
+                    setWallpaperUrlInput('');
+                    showToast('Web wallpaper cached and applied!');
+                } else {
+                    showToast(res?.error || 'Failed to download wallpaper');
+                }
+            } else {
+                setCustomWallpaper(url, 'url', url);
+                setWallpaperUrlInput('');
+                showToast('Wallpaper applied!');
+            }
+        } catch (err) {
+            showToast(err.message || 'Failed to import wallpaper');
+        } finally {
+            setIsImportingUrl(false);
+        }
+    };
+
+    const handleResetWallpaper = async () => {
+        if (window.electronAPI?.resetWallpaper) {
+            await window.electronAPI.resetWallpaper();
+        }
+        resetCustomWallpaper();
+        showToast('Wallpaper reset to default stock');
+    };
 
     const [localDarkExclusions, setLocalDarkExclusions] = useState(() => (darkExclusions || []).join('\n'));
 
@@ -339,6 +420,164 @@ const SettingsModal = () => {
                                 <p className="text-xs text-white/40">Selecting a color rewrites all glass highlights, shadows, and active states instantly.</p>
                             </div>
 
+                            {/* Window Background & Wallpaper */}
+                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
+                                            <ImageIcon size={16} />
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-sm">Window Background & Wallpaper</p>
+                                            <p className="text-xs text-white/40 mt-0.5">Customize the root window backdrop with a local image, web image URL, or animated GIF.</p>
+                                        </div>
+                                    </div>
+                                    {customWallpaper && (
+                                        <button
+                                            type="button"
+                                            onClick={handleResetWallpaper}
+                                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer hover:border-white/20"
+                                            title="Reset to default wallpaper"
+                                        >
+                                            <RotateCcw size={12} />
+                                            <span>Reset to Default</span>
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Preview and Source Info */}
+                                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 rounded-xl bg-black/30 border border-white/[0.04]">
+                                    <div className="w-36 h-20 rounded-lg overflow-hidden relative border border-white/10 shadow-md flex-shrink-0 bg-black/60">
+                                        <img 
+                                            src={customWallpaper || DEFAULT_STOCK_WALLPAPER} 
+                                            alt="Wallpaper preview" 
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                e.target.src = DEFAULT_STOCK_WALLPAPER;
+                                            }}
+                                        />
+                                        <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} />
+                                        <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center pointer-events-none">
+                                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white/80 border border-white/10">
+                                                Preview
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 min-w-0 space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-medium text-zinc-300">Active Source:</span>
+                                            <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
+                                                !customWallpaper 
+                                                    ? 'bg-white/5 border-white/10 text-white/60' 
+                                                    : customWallpaperSource === 'file' 
+                                                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' 
+                                                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                            }`}>
+                                                {!customWallpaper ? 'Default Stock' : customWallpaperSource === 'file' ? 'Local File' : 'Web URL'}
+                                            </span>
+                                            {customWallpaperSource === 'file' && (
+                                                <span className="text-[10px] text-zinc-500 italic">(Local only, skipped during cloud sync)</span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-zinc-400 leading-relaxed truncate">
+                                            {!customWallpaper 
+                                                ? 'Default dynamic landscape wallpaper is active. Import your own photo or art to personalize your workspace.'
+                                                : customWallpaperSource === 'file'
+                                                    ? 'Using an imported local image file stored safely in your application data directory.'
+                                                    : `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Import Controls */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                    {/* Local File Import */}
+                                    <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                                                <Upload size={13} className="text-accent" />
+                                                <span>Choose from Hard Drive</span>
+                                            </p>
+                                            <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                                                Pick a JPG, PNG, WebP, or GIF from your PC. Automatically saved into app storage.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleImportWallpaperFile}
+                                            disabled={isImportingFile}
+                                            className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/15 text-white border border-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                        >
+                                            {isImportingFile ? (
+                                                <RefreshCw size={13} className="animate-spin text-accent" />
+                                            ) : (
+                                                <Upload size={13} />
+                                            )}
+                                            <span>{isImportingFile ? 'Importing...' : 'Browse Image File...'}</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Web URL Import */}
+                                    <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                                                <LinkIcon size={13} className="text-accent" />
+                                                <span>Import from Web URL</span>
+                                            </p>
+                                            <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                                                Paste any public image or GIF URL. Cached locally and synced across your devices.
+                                            </p>
+                                        </div>
+                                        <form onSubmit={handleImportWallpaperUrl} className="flex gap-2">
+                                            <input
+                                                type="url"
+                                                value={wallpaperUrlInput}
+                                                onChange={(e) => setWallpaperUrlInput(e.target.value)}
+                                                placeholder="https://images.unsplash.com/..."
+                                                className="flex-1 min-w-0 bg-black/40 border border-white/[0.08] focus:border-accent rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/25 outline-none transition-colors"
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={isImportingUrl || !wallpaperUrlInput.trim()}
+                                                className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-accent text-black hover:bg-accent/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                                            >
+                                                {isImportingUrl ? (
+                                                    <RefreshCw size={12} className="animate-spin" />
+                                                ) : (
+                                                    <span>Apply</span>
+                                                )}
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                {/* Dimming & Contrast Slider */}
+                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                                        <div className="w-8 h-8 rounded-lg bg-white/[0.03] text-accent/80 border border-white/[0.05] flex items-center justify-center flex-shrink-0">
+                                            <Sliders size={15} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="font-medium text-xs text-zinc-200">Backdrop Contrast Dimming</p>
+                                            <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">Adjust dark overlay to ensure text and tab readability over bright wallpapers.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={80}
+                                            step={5}
+                                            value={wallpaperDimming}
+                                            onChange={(e) => setWallpaperDimming(Number(e.target.value))}
+                                            className="w-32 sm:w-44 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent"
+                                        />
+                                        <span className="text-xs font-mono font-semibold text-accent w-8 text-right select-none">{wallpaperDimming}%</span>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Force Dark Mode Card */}
                             <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
                                 <div className="flex items-center justify-between">
@@ -518,6 +757,58 @@ const SettingsModal = () => {
                                         </button>
                                     ))}
                                 </div>
+                            </div>
+
+                            {/* QVault in Ghost & Tor Spaces */}
+                            <SettingCard 
+                                icon={Key} 
+                                title="QVault in Ghost & Tor Spaces" 
+                                description="Allow inline autofill of saved passwords while in private spaces. Password save prompts are always suppressed for privacy."
+                            >
+                                <SettingToggle 
+                                    isChecked={allowVaultInGhostTor} 
+                                    onToggle={() => {
+                                        const next = !allowVaultInGhostTor;
+                                        setAllowVaultInGhostTor(next);
+                                        showToast(next ? 'QVault autofill enabled in private spaces' : 'QVault autofill disabled in private spaces');
+                                    }} 
+                                />
+                            </SettingCard>
+
+                            {/* Excluded Sites (Never Save Passwords) */}
+                            <div className="p-4 bg-white/[0.025] border border-white/[0.05] rounded-2xl hover:border-accent-30 transition-all duration-300">
+                                <div className="flex items-center gap-3 mb-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shrink-0 shadow-sm">
+                                        <Lock size={15} />
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-sm">Never Saved Sites</p>
+                                        <p className="text-xs text-white/40 mt-0.5">Websites where you dismissed credential saving with "Never for this site".</p>
+                                    </div>
+                                </div>
+                                {neverSaveDomains.length === 0 ? (
+                                    <div className="text-center text-xs text-white/30 italic py-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                                        No sites excluded. QVault will offer to save logins across all websites.
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {neverSaveDomains.map(d => (
+                                            <div key={d} className="flex items-center gap-2 pl-3 pr-2 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white/90">
+                                                <span className="font-mono text-[11px]">{d}</span>
+                                                <button 
+                                                    onClick={() => {
+                                                        removeNeverSaveDomain(d);
+                                                        showToast(`Removed ${d} from excluded sites`);
+                                                    }}
+                                                    className="w-4 h-4 rounded hover:bg-white/10 text-white/40 hover:text-white flex items-center justify-center transition cursor-pointer"
+                                                    title="Remove exclusion"
+                                                >
+                                                    <X size={11} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Clear Data Card */}

@@ -5,7 +5,22 @@ electron/bin
 *.exe
 *.AppImage
 *.zip
-certs/
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+*.env
+!.env.example
+
+# Logs & Debug
+firebase-debug.log
+*.log
+
+# Sensitive credentials
 *.pfx
 *.cer
-firebase-debug.log
+*.key
+*.pem
+certs/

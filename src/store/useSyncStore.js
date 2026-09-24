@@ -444,6 +444,13 @@ const useSyncStore = create((set, get) => ({
             if (syncCategories?.settings !== false) {
                 const uiSettings = { ...useUIStore.getState().settings };
                 delete uiSettings.syncedCloudSettings;
+                // Safe handling for custom wallpaper: only sync URL backgrounds, keep local file wallpapers device-local
+                if (uiSettings.customWallpaperSource !== 'url') {
+                    delete uiSettings.customWallpaper;
+                    delete uiSettings.customWallpaperOriginalUrl;
+                } else if (uiSettings.customWallpaperOriginalUrl) {
+                    uiSettings.customWallpaper = uiSettings.customWallpaperOriginalUrl;
+                }
                 await get().syncDataToCloud('settings', uiSettings);
                 totalItems += Object.keys(uiSettings).length;
             }
@@ -803,7 +810,17 @@ const useSyncStore = create((set, get) => ({
                         const currentSettings = useUIStore.getState().settings;
                         Object.keys(decrypted).forEach(key => {
                             if (key !== 'syncedCloudSettings' && currentSettings[key] !== decrypted[key]) {
-                                useUIStore.getState().setSettingValue(key, decrypted[key]);
+                                if (key === 'customWallpaper' && decrypted.customWallpaper && decrypted.customWallpaperSource === 'url') {
+                                    if (window.electronAPI && window.electronAPI.importWallpaperUrl) {
+                                        window.electronAPI.importWallpaperUrl(decrypted.customWallpaper).then(res => {
+                                            if (res && res.success) {
+                                                useUIStore.getState().setCustomWallpaper(res.url, 'url', decrypted.customWallpaper);
+                                            }
+                                        }).catch(() => {});
+                                    }
+                                } else {
+                                    useUIStore.getState().setSettingValue(key, decrypted[key]);
+                                }
                             }
                         });
                     } catch(e) {}

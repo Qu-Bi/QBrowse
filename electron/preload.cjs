@@ -196,6 +196,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('performance-profile-changed', handler);
     },
 
+    // Custom Wallpaper & Background
+    importWallpaperFile: () => ipcRenderer.invoke('wallpaper-import-file'),
+    importWallpaperUrl: (url) => ipcRenderer.invoke('wallpaper-import-url', url),
+    getActiveWallpaper: () => ipcRenderer.invoke('wallpaper-get-active'),
+    resetWallpaper: () => ipcRenderer.invoke('wallpaper-reset'),
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
 
