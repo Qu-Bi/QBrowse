@@ -5,6 +5,7 @@ import {
     Monitor, Lock, Eye, Download, Sliders, VolumeX, Terminal, Key
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import useTabStore from '../../store/useTabStore';
 
 const AVAILABLE_FLAGS = [
     // --- PERFORMANCE & COMPOSITING ---
@@ -342,6 +343,10 @@ const CATEGORIES = ['All', 'Performance', 'Security', 'Networking', 'Media & UI'
 
 export default function FlagsPage() {
     const showToast = useUIStore(state => state.showToast);
+    const theme = useUIStore(state => state.theme);
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
     const [search, setSearch] = useState('');
     const [activeTab, setActiveTab] = useState('available'); // 'available' | 'unavailable'
     const [selectedCategory, setSelectedCategory] = useState('All');
@@ -426,14 +431,18 @@ export default function FlagsPage() {
     });
 
     return (
-        <div className="w-full h-full bg-[#0a0a0c] text-white font-sans overflow-y-auto hide-scroll p-6 md:p-12 relative pb-36 select-none">
+        <div className={`w-full h-full ${
+            isBright ? 'bg-zinc-50/80 text-zinc-900' : 'bg-[#0a0a0c] text-white'
+        } font-sans overflow-y-auto hide-scroll p-6 md:p-12 relative pb-36 select-none`}>
             {/* Ambient Background Glow */}
             <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-accent/10 rounded-full blur-[140px] pointer-events-none" />
             <div className="fixed bottom-0 left-0 w-[400px] h-[400px] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none" />
 
             <div className="max-w-4xl mx-auto space-y-8 relative z-10">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/10 pb-8">
+                <div className={`flex flex-col md:flex-row md:items-center justify-between gap-6 border-b ${
+                    isBright ? 'border-black/10' : 'border-white/10'
+                } pb-8`}>
                     <div className="space-y-2.5">
                         <div className="flex items-center gap-3">
                             <div className="w-11 h-11 rounded-2xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-lg shadow-accent/10">
@@ -441,31 +450,39 @@ export default function FlagsPage() {
                             </div>
                             <div>
                                 <div className="flex items-center gap-2.5">
-                                    <h1 className="text-3xl font-extrabold tracking-tight text-white">Experiments</h1>
+                                    <h1 className={`text-3xl font-extrabold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>Experiments</h1>
                                     <span className="px-2.5 py-0.5 rounded-full bg-accent-10 text-accent border border-accent-30 text-xs font-mono font-bold">
                                         qbrowse://flags
                                     </span>
                                 </div>
                             </div>
                         </div>
-                        <p className="text-xs text-white/50 max-w-2xl leading-relaxed">
+                        <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/50'} max-w-2xl leading-relaxed`}>
                             Fine-tune experimental browser features, hardware graphics pipelines, post-quantum cryptographic ciphers, and Tor stream isolation parameters.
                         </p>
                     </div>
 
                     <button 
                         onClick={handleResetAll}
-                        className="self-start md:self-auto flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white/80 hover:text-white transition shadow-sm cursor-pointer active:scale-95"
+                        className={`self-start md:self-auto flex items-center gap-2 px-4 py-2.5 rounded-xl ${
+                            isBright 
+                                ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' 
+                                : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80 hover:text-white'
+                        } border text-xs font-semibold transition shadow-sm cursor-pointer active:scale-95`}
                     >
                         <RotateCcw size={14} /> Reset all to default
                     </button>
                 </div>
 
                 {/* Warning Banner */}
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-3 text-amber-300 text-xs leading-relaxed shadow-lg shadow-amber-500/5">
-                    <AlertTriangle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className={`p-4 rounded-2xl ${
+                    isBright 
+                        ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-amber-500/5' 
+                        : 'bg-amber-500/10 border-amber-500/25 text-amber-300 shadow-amber-500/5'
+                } border flex items-start gap-3 text-xs leading-relaxed shadow-lg`}>
+                    <AlertTriangle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
                     <div>
-                        <span className="font-bold text-amber-200 uppercase tracking-wide">Warning: Experimental Features Ahead! </span>
+                        <span className={`font-bold ${isBright ? 'text-amber-950' : 'text-amber-200'} uppercase tracking-wide`}>Warning: Experimental Features Ahead! </span>
                         Enabling these experimental switches alters underlying Chromium V8 execution, hardware compositing, or TLS parameters. Relaunching is required for changes to take effect.
                     </div>
                 </div>
@@ -473,25 +490,29 @@ export default function FlagsPage() {
                 {/* Search & Tabs */}
                 <div className="space-y-4">
                     <div className="relative">
-                        <Search size={18} className="absolute left-4 top-3.5 text-white/30" />
+                        <Search size={18} className={`absolute left-4 top-3.5 ${isBright ? 'text-zinc-400' : 'text-white/30'}`} />
                         <input 
                             type="text" 
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Search flags (e.g. GPU, Kyber, QUIC, DoH, bfcache)..."
-                            className="w-full bg-black/50 border border-white/10 rounded-2xl py-3 pl-11 pr-4 text-sm text-white placeholder-white/30 focus:outline-none focus:border-accent transition shadow-inner"
+                            className={`w-full ${
+                                isBright 
+                                    ? 'bg-white/80 border-black/10 text-zinc-900 placeholder-zinc-400 focus:bg-white' 
+                                    : 'bg-black/50 border-white/10 text-white placeholder-white/30'
+                            } border rounded-2xl py-3 pl-11 pr-4 text-sm focus:outline-none focus:border-accent transition shadow-inner`}
                         />
                     </div>
 
                     {/* Available / Unavailable Tabs */}
                     <div className="flex items-center justify-between gap-4 flex-wrap">
-                        <div className="flex items-center gap-2 bg-black/40 p-1 rounded-xl border border-white/10">
+                        <div className={`flex items-center gap-2 ${isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'} p-1 rounded-xl border`}>
                             <button
                                 onClick={() => setActiveTab('available')}
                                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                     activeTab === 'available'
                                         ? 'bg-accent text-black shadow-md'
-                                        : 'text-white/60 hover:text-white'
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
                                 }`}
                             >
                                 Available ({AVAILABLE_FLAGS.length})
@@ -501,7 +522,7 @@ export default function FlagsPage() {
                                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                     activeTab === 'unavailable'
                                         ? 'bg-accent text-black shadow-md'
-                                        : 'text-white/60 hover:text-white'
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
                                 }`}
                             >
                                 Unavailable ({UNAVAILABLE_FLAGS.length})
@@ -517,8 +538,8 @@ export default function FlagsPage() {
                                         onClick={() => setSelectedCategory(cat)}
                                         className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer border ${
                                             selectedCategory === cat
-                                                ? 'bg-white/15 text-white border-accent-30'
-                                                : 'bg-white/5 text-white/40 border-transparent hover:text-white hover:bg-white/10'
+                                                ? (isBright ? 'bg-white text-zinc-900 shadow-sm border-black/15 font-bold' : 'bg-white/15 text-white border-accent-30')
+                                                : (isBright ? 'bg-black/[0.03] text-zinc-600 border-transparent hover:text-zinc-900 hover:bg-black/[0.06]' : 'bg-white/5 text-white/40 border-transparent hover:text-white hover:bg-white/10')
                                         }`}
                                     >
                                         {cat}
@@ -542,32 +563,32 @@ export default function FlagsPage() {
                                         key={flag.id} 
                                         className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col md:flex-row md:items-center justify-between gap-4 group backdrop-blur-xl ${
                                             isModified 
-                                                ? 'bg-accent-10/40 border-accent-30 shadow-lg shadow-accent/5' 
-                                                : 'bg-white/[0.03] border-white/10 hover:border-white/20'
+                                                ? (isBright ? 'bg-accent-10/70 border-accent/40 shadow-md' : 'bg-accent-10/40 border-accent-30 shadow-lg shadow-accent/5') 
+                                                : (isBright ? 'bg-white/80 border-white/70 shadow-sm hover:border-black/20 hover:bg-white' : 'bg-white/[0.03] border-white/10 hover:border-white/20')
                                         }`}
                                     >
                                         <div className="space-y-1.5 flex-1 pr-4">
                                             <div className="flex items-center gap-2.5 flex-wrap">
-                                                <h3 className="font-bold text-sm text-white/90 group-hover:text-white transition">
+                                                <h3 className={`font-bold text-sm ${isBright ? 'text-zinc-900 group-hover:text-black' : 'text-white/90 group-hover:text-white'} transition`}>
                                                     {flag.name}
                                                 </h3>
-                                                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/40">
+                                                <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/40'} border text-[10px] font-mono`}>
                                                     #{flag.id}
                                                 </span>
                                                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
                                                     flag.status === 'Stable' 
-                                                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' 
+                                                        ? (isBright ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20') 
                                                         : flag.status === 'Beta' 
-                                                        ? 'bg-blue-500/10 text-blue-300 border-blue-500/20' 
+                                                        ? (isBright ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-300 border-blue-500/20') 
                                                         : 'bg-accent-10 text-accent border-accent-30'
                                                 }`}>
                                                     {flag.status}
                                                 </span>
-                                                <span className="px-2 py-0.5 rounded-md bg-white/5 text-[10px] font-medium text-white/50">
+                                                <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/5 text-white/50'} text-[10px] font-medium`}>
                                                     {flag.category}
                                                 </span>
                                             </div>
-                                            <p className="text-xs text-white/50 leading-relaxed">
+                                            <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/50'} leading-relaxed`}>
                                                 {flag.description}
                                             </p>
                                         </div>
@@ -579,19 +600,19 @@ export default function FlagsPage() {
                                                 className={`border rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none transition cursor-pointer shadow-sm min-w-[130px] ${
                                                     isModified
                                                         ? 'bg-accent-20 border-accent text-accent font-bold'
-                                                        : 'bg-black/60 border-white/15 text-white/90 focus:border-accent'
+                                                        : (isBright ? 'bg-white border-black/15 text-zinc-900 focus:border-accent' : 'bg-black/60 border-white/15 text-white/90 focus:border-accent')
                                                 }`}
                                             >
-                                                <option value="default" className="bg-[#121216] text-white">Default ({flag.defaultState})</option>
-                                                <option value="enabled" className="bg-[#121216] text-emerald-400 font-semibold">Enabled</option>
-                                                <option value="disabled" className="bg-[#121216] text-red-400 font-semibold">Disabled</option>
+                                                <option value="default" className={isBright ? "bg-white text-zinc-900" : "bg-[#121216] text-white"}>Default ({flag.defaultState})</option>
+                                                <option value="enabled" className={isBright ? "bg-white text-emerald-700 font-semibold" : "bg-[#121216] text-emerald-400 font-semibold"}>Enabled</option>
+                                                <option value="disabled" className={isBright ? "bg-white text-red-600 font-semibold" : "bg-[#121216] text-red-400 font-semibold"}>Disabled</option>
                                             </select>
                                         </div>
                                     </div>
                                 );
                             })
                         ) : (
-                            <div className="p-16 text-center text-white/40 font-medium bg-white/[0.02] border border-white/5 rounded-2xl">
+                            <div className={`p-16 text-center ${isBright ? 'text-zinc-400 bg-white/40 border-black/5' : 'text-white/40 bg-white/[0.02] border-white/5'} font-medium border rounded-2xl`}>
                                 No available flags match "{search}"
                             </div>
                         )}
@@ -602,29 +623,29 @@ export default function FlagsPage() {
                         {filteredUnavailableFlags.map((flag) => (
                             <div 
                                 key={flag.id} 
-                                className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 opacity-60"
+                                className={`p-5 rounded-2xl ${isBright ? 'bg-white/40 border-black/5 text-zinc-800' : 'bg-white/[0.02] border-white/5 text-white'} border flex flex-col md:flex-row md:items-center justify-between gap-4 opacity-60`}
                             >
                                 <div className="space-y-1.5 flex-1 pr-4">
                                     <div className="flex items-center gap-2.5 flex-wrap">
-                                        <h3 className="font-bold text-sm text-white/70">
+                                        <h3 className={`font-bold text-sm ${isBright ? 'text-zinc-800' : 'text-white/70'}`}>
                                             {flag.name}
                                         </h3>
-                                        <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/30">
+                                        <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/30'} border text-[10px] font-mono`}>
                                             #{flag.id}
                                         </span>
-                                        <span className="px-2 py-0.5 rounded-md bg-white/5 text-[10px] font-medium text-white/40">
+                                        <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/5 text-white/40'} text-[10px] font-medium`}>
                                             {flag.category}
                                         </span>
                                     </div>
-                                    <p className="text-xs text-white/40 leading-relaxed">
+                                    <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/40'} leading-relaxed`}>
                                         {flag.description}
                                     </p>
-                                    <p className="text-[11px] text-amber-400/80 font-medium pt-1">
+                                    <p className={`text-[11px] ${isBright ? 'text-amber-700' : 'text-amber-400/80'} font-medium pt-1`}>
                                         Reason: {flag.reason}
                                     </p>
                                 </div>
 
-                                <div className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-xs text-white/40 font-mono">
+                                <div className={`px-3 py-1.5 ${isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/40'} border rounded-xl text-xs font-mono`}>
                                     Unavailable
                                 </div>
                             </div>
@@ -635,8 +656,12 @@ export default function FlagsPage() {
 
             {/* Bottom Relaunch Floating Bar */}
             {hasChanged && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#121216]/95 border border-accent-30 backdrop-blur-2xl px-6 py-4 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] flex items-center gap-6 animate-pop-in">
-                    <div className="flex items-center gap-3 text-xs text-white/90 font-medium">
+                <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 ${
+                    isBright 
+                        ? 'bg-white/95 border-accent/40 text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.15)]' 
+                        : 'bg-[#121216]/95 border border-accent-30 text-white shadow-[0_20px_60px_rgba(0,0,0,0.85)]'
+                } backdrop-blur-2xl px-6 py-4 rounded-2xl flex items-center gap-6 animate-pop-in`}>
+                    <div className="flex items-center gap-3 text-xs font-medium">
                         <Sparkles size={18} className="text-accent animate-pulse" />
                         <span>Your changes will take effect the next time you relaunch QBrowse.</span>
                     </div>

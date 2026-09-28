@@ -3,7 +3,7 @@ export const topSites = [
     "linkedin.com", "wikipedia.org", "reddit.com", "netflix.com", "amazon.com", 
     "tiktok.com", "twitch.tv", "github.com", "apple.com", "microsoft.com", 
     "bing.com", "yahoo.com", "pinterest.com", "whatsapp.com", "openai.com", 
-    "chatgpt.com", "spotify.com", "discord.com", "zoom.us", "quora.com", 
+    "gemini.google.com", "chatgpt.com", "spotify.com", "discord.com", "zoom.us", "quora.com", 
     "nytimes.com", "cnn.com", "bbc.co.uk", "imdb.com", "aliexpress.com", 
     "ebay.com", "x.com", "weather.com", "craigslist.org", "zillow.com",
     "target.com", "walmart.com", "bestbuy.com", "homedepot.com", "etsy.com",

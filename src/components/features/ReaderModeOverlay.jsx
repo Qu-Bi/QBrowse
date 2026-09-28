@@ -3,7 +3,7 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { 
     X, ArrowLeft, Volume2, VolumeX, Play, Pause, SkipBack, SkipForward, 
-    Type, BookOpen, Clock, Globe, ExternalLink, RotateCcw, ChevronDown, Check, Copy
+    Type, BookOpen, Clock, Globe, ExternalLink, RotateCcw, ChevronDown, Check, Copy, StickyNote
 } from 'lucide-react';
 import { applyAnnotationsToContainer, extractPrefixAndSuffix } from '../../utils/domHighlighter';
 import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
@@ -167,7 +167,8 @@ export default function ReaderModeOverlay() {
 
             let top = rect.top - 46;
             if (rect.top < 54) top = rect.bottom + 8;
-            const left = Math.max(16, Math.min(rect.left + (rect.width / 2) - 100, window.innerWidth - 240));
+            top = Math.max(12, Math.min(top, window.innerHeight - 52));
+            const left = Math.max(16, Math.min(rect.left + (rect.width / 2) - 110, window.innerWidth - 245));
 
             setFloatingPill({
                 x: left,
@@ -796,7 +797,7 @@ export default function ReaderModeOverlay() {
             {floatingPill && (
                 <div 
                     id="reader-highlight-pill"
-                    className="fixed z-50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#121218]/95 backdrop-blur-2xl border border-white/20 shadow-2xl animate-pop-in"
+                    className="fixed z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] animate-pop-in select-none"
                     style={{ top: `${floatingPill.y}px`, left: `${floatingPill.x}px` }}
                     onClick={e => e.stopPropagation()}
                 >
@@ -820,7 +821,7 @@ export default function ReaderModeOverlay() {
                                     setFloatingPill(null);
                                 }}
                                 title={`Highlight with ${HIGHLIGHT_COLORS[key].label}`}
-                                className="w-4 h-4 rounded-full border border-white/30 hover:scale-125 transition-transform cursor-pointer"
+                                className="w-3.5 h-3.5 rounded-full border border-white/30 hover:scale-125 transition-transform cursor-pointer"
                                 style={{ backgroundColor: HIGHLIGHT_COLORS[key].border }}
                             />
                         ))}
@@ -846,9 +847,10 @@ export default function ReaderModeOverlay() {
                                 if (mark) handleOpenNoteCard(created.id, mark);
                             }, 50);
                         }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-xs font-semibold transition cursor-pointer"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.08] hover:bg-white/[0.16] border border-white/10 text-white/90 hover:text-white text-xs font-medium transition cursor-pointer"
                     >
-                        📝 Note
+                        <StickyNote size={12} className="text-accent" />
+                        <span>Note</span>
                     </button>
                     <button
                         onClick={() => {

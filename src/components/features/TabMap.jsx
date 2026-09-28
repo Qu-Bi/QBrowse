@@ -8,8 +8,11 @@ export default function TabMap() {
     const isTabMapClosing = useUIStore(state => state.isTabMapClosing);
     const handleCloseTabMap = useUIStore(state => state.closeTabMap);
     const setCurrentUrl = useUIStore(state => state.setCurrentUrl);
+    const theme = useUIStore(state => state.theme);
     
     const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
@@ -54,7 +57,7 @@ export default function TabMap() {
 
     const renderNodeInterior = (tab, isActive) => (
         <>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_1px,transparent_1px)]" style={{ backgroundSize: '12px 12px' }}></div>
+        <div className={`absolute inset-0 ${isBright ? 'bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.06)_1px,transparent_1px)]' : 'bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_1px,transparent_1px)]'}`} style={{ backgroundSize: '12px 12px' }}></div>
         {activeSpace === 'ghost' ? (
             <div className="absolute inset-0 flex items-center justify-center"><Ghost size={isActive ? 64 : 32} className={tab.active ? 'text-[#a855f7]' : 'text-white/20'} strokeWidth={1.5} /></div>
         ) : tab.url === 'youtube.com' ? (
@@ -65,9 +68,9 @@ export default function TabMap() {
             </div>
         ) : tab.url === 'qu-os.local' ? (
             <div className={`absolute inset-0 flex flex-col items-center justify-center ${isActive ? 'p-8' : 'p-4'}`}>
-                <div className={`w-1/2 bg-white/20 rounded-full mb-6 ${isActive ? 'h-3' : 'h-1.5'}`}></div>
-                <div className={`w-full bg-white/5 border border-white/10 rounded-xl mb-3 ${isActive ? 'h-12' : 'h-6'}`}></div>
-                <div className={`w-full bg-white/5 border border-white/10 rounded-xl flex justify-end items-center pr-3 ${isActive ? 'h-12' : 'h-6'}`}><div className={`bg-blue-500/30 rounded-md ${isActive ? 'w-6 h-6' : 'w-3 h-3'}`}></div></div>
+                <div className={`w-1/2 ${isBright ? 'bg-black/15' : 'bg-white/20'} rounded-full mb-6 ${isActive ? 'h-3' : 'h-1.5'}`}></div>
+                <div className={`w-full ${isBright ? 'bg-black/5 border border-black/10' : 'bg-white/5 border border-white/10'} rounded-xl mb-3 ${isActive ? 'h-12' : 'h-6'}`}></div>
+                <div className={`w-full ${isBright ? 'bg-black/5 border border-black/10' : 'bg-white/5 border border-white/10'} rounded-xl flex justify-end items-center pr-3 ${isActive ? 'h-12' : 'h-6'}`}><div className={`bg-blue-500/30 rounded-md ${isActive ? 'w-6 h-6' : 'w-3 h-3'}`}></div></div>
             </div>
         ) : tab.thumbnail ? (
             <div className="absolute inset-0">
@@ -75,7 +78,7 @@ export default function TabMap() {
             </div>
         ) : (
             <div className="absolute inset-0 flex items-center justify-center">
-                {tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=128&domain=${tab.url}`} className={`rounded-2xl drop-shadow-md transition-opacity duration-500 ${isActive ? 'w-20 h-20 opacity-90' : 'w-10 h-10 opacity-40 group-hover/card:opacity-80'}`} alt="icon" onError={(e) => { e.target.style.display = 'none'; }} /> : <Home size={isActive ? 64 : 32} className="text-white/20" />}
+                {tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=128&domain=${tab.url}`} className={`rounded-2xl drop-shadow-md transition-opacity duration-500 ${isActive ? 'w-20 h-20 opacity-90' : 'w-10 h-10 opacity-40 group-hover/card:opacity-80'}`} alt="icon" onError={(e) => { e.target.style.display = 'none'; }} /> : <Home size={isActive ? 64 : 32} className={isBright ? "text-zinc-400" : "text-white/20"} />}
             </div>
         )}
         </>
@@ -115,14 +118,18 @@ export default function TabMap() {
                                 <X size={14} strokeWidth={3} />
                                 </button>
                                 
-                                <div className={`w-[200px] md:w-[260px] aspect-video rounded-[1.5rem] md:rounded-[2rem] bg-black/60 shadow-[0_40px_80px_rgba(0,0,0,0.6)] overflow-hidden relative backdrop-blur-xl border border-white/10 group-hover/card:border-white/30 group-hover/card:bg-[#0a0a0c] group-hover/card:shadow-[0_60px_120px_rgba(0,0,0,0.9)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu ${tab.isClosing ? 'scale-75 opacity-0 pointer-events-none' : 'group-hover/card:scale-[1.04]'}`}>
+                                <div className={`w-[200px] md:w-[260px] aspect-video rounded-[1.5rem] md:rounded-[2rem] ${
+                                    isBright 
+                                        ? 'bg-white/90 border border-white/70 shadow-[0_20px_60px_rgba(0,0,0,0.12)] group-hover/card:border-black/20 group-hover/card:bg-white group-hover/card:shadow-[0_30px_90px_rgba(0,0,0,0.2)]' 
+                                        : 'bg-black/60 border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.6)] group-hover/card:border-white/30 group-hover/card:bg-[#0a0a0c] group-hover/card:shadow-[0_60px_120px_rgba(0,0,0,0.9)]'
+                                } overflow-hidden relative backdrop-blur-xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu ${tab.isClosing ? 'scale-75 opacity-0 pointer-events-none' : 'group-hover/card:scale-[1.04]'}`}>
                                     {renderNodeInterior(tab, false)}
-                                    <div className="absolute inset-0 bg-black/40 group-hover/card:bg-transparent transition-colors duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"></div>
+                                    <div className={`absolute inset-0 ${isBright ? 'bg-black/5' : 'bg-black/40'} group-hover/card:bg-transparent transition-colors duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none`}></div>
                                     
-                                    <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent z-30 flex items-center gap-3">
+                                    <div className={`absolute bottom-0 left-0 right-0 p-4 ${isBright ? 'bg-gradient-to-t from-white/95 via-white/80 to-transparent' : 'bg-gradient-to-t from-black/95 via-black/70 to-transparent'} z-30 flex items-center gap-3`}>
                                     {tab.url && tab.url !== 'about:blank' && activeSpace !== 'ghost' && <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} className="w-5 h-5 rounded-md shadow-sm opacity-50 grayscale group-hover/card:opacity-100 group-hover/card:grayscale-0 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]" onError={(e) => e.target.style.display='none'} />}
                                     <div className="flex flex-col truncate w-full">
-                                        <span className="text-xs md:text-sm font-bold text-white/70 group-hover/card:text-white truncate transition-colors duration-700">{tab.title}</span>
+                                        <span className={`text-xs md:text-sm font-bold ${isBright ? 'text-zinc-800 group-hover/card:text-zinc-950' : 'text-white/70 group-hover/card:text-white'} truncate transition-colors duration-700`}>{tab.title}</span>
                                     </div>
                                     </div>
                                 </div>
@@ -139,7 +146,9 @@ export default function TabMap() {
     };
 
     return (
-        <div className={`fixed inset-0 z-[80000] flex flex-col bg-[#050508]/85 backdrop-blur-3xl overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isTabMapClosing ? 'opacity-0 scale-[1.02]' : 'opacity-100 scale-100'}`} onClick={handleCloseTabMap}>
+        <div className={`fixed inset-0 z-[80000] flex flex-col ${
+            isBright ? 'bg-zinc-100/90 backdrop-blur-3xl text-zinc-900' : 'bg-[#050508]/85 backdrop-blur-3xl text-white'
+        } overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isTabMapClosing ? 'opacity-0 scale-[1.02]' : 'opacity-100 scale-100'}`} onClick={handleCloseTabMap}>
         
         <style>{`
             @keyframes organic-float { 
@@ -160,19 +169,26 @@ export default function TabMap() {
 
         <div className="absolute top-0 left-0 right-0 px-8 md:px-16 py-8 md:py-12 flex justify-between items-start z-[90000] pointer-events-none animate-slide-down">
             <div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-white mb-2 drop-shadow-lg">Mission Control</h1>
-            <p className="text-xs md:text-sm text-white/50 font-bold uppercase tracking-widest flex items-center gap-3 drop-shadow-md">
+            <h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${isBright ? 'text-zinc-900 drop-shadow-sm' : 'text-white drop-shadow-lg'} mb-2`}>Mission Control</h1>
+            <p className={`text-xs md:text-sm ${isBright ? 'text-zinc-500' : 'text-white/50'} font-bold uppercase tracking-widest flex items-center gap-3 drop-shadow-md`}>
                 {activeSpace === 'personal' ? <Home size={16} className="text-accent" /> : activeSpace === 'work' ? <Layers size={16} className="text-accent" /> : <Ghost size={16} className="text-[#a855f7]" />}
                 {activeSpace === 'personal' ? 'Personal Space' : activeSpace === 'work' ? 'Work Space' : 'Ghost Session'}
             </p>
             </div>
-            <button onClick={handleCloseTabMap} className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 flex items-center justify-center text-white transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 shadow-[0_10px_30px_rgba(0,0,0,0.5)] pointer-events-auto border border-white/10"><X size={20} /></button>
+            <button 
+                onClick={handleCloseTabMap} 
+                className={`w-12 h-12 rounded-full ${
+                    isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-800 border-black/10' : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                } backdrop-blur-md flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 shadow-lg pointer-events-auto border`}
+            >
+                <X size={20} />
+            </button>
         </div>
 
         <div id="orbit-system" className="relative w-full h-full animate-pop-in pointer-events-none" style={{ perspective: '1200px', transformStyle: 'preserve-3d' }}>
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-0 flex items-center justify-center" style={{ transform: 'rotateX(55deg)' }}>
-                <div className="w-[80vw] h-[80vw] max-w-[1200px] max-h-[1200px] rounded-full border border-white/5 opacity-0" style={{ animation: 'cinematic-fade 1.5s ease-out forwards 0.2s' }}></div>
-                <div className="absolute w-[50vw] h-[50vw] max-w-[700px] max-h-[700px] rounded-full border border-white/5 border-dashed opacity-0" style={{ animation: 'cinematic-fade 1.5s ease-out forwards 0.4s' }}></div>
+                <div className={`w-[80vw] h-[80vw] max-w-[1200px] max-h-[1200px] rounded-full border ${isBright ? 'border-black/10' : 'border-white/5'} opacity-0`} style={{ animation: 'cinematic-fade 1.5s ease-out forwards 0.2s' }}></div>
+                <div className={`absolute w-[50vw] h-[50vw] max-w-[700px] max-h-[700px] rounded-full border ${isBright ? 'border-black/10' : 'border-white/5'} border-dashed opacity-0`} style={{ animation: 'cinematic-fade 1.5s ease-out forwards 0.4s' }}></div>
             </div>
 
             {renderOrbitTrack(innerTabs, 'clamp(280px, 24vw, 420px)', 0.9, 0)}
@@ -185,13 +201,19 @@ export default function TabMap() {
                     onMouseLeave={() => { isOrbitHoveredRef.current = false; }}
                     onClick={(e) => { e.stopPropagation(); handleCloseTabMap(); }}
                 >
-                    <div className="w-[280px] md:w-[380px] aspect-video rounded-[2.5rem] bg-[#0a0a0c] border border-accent/40 shadow-[0_40px_120px_rgba(0,0,0,0.8)] overflow-hidden relative transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03] group-hover:shadow-[0_60px_200px_var(--accent-40)] group-hover:border-accent/80">
+                    <div className={`w-[280px] md:w-[380px] aspect-video rounded-[2.5rem] ${
+                        isBright 
+                            ? 'bg-white/95 border border-accent/60 shadow-[0_30px_90px_rgba(99,102,241,0.25)]' 
+                            : 'bg-[#0a0a0c] border border-accent/40 shadow-[0_40px_120px_rgba(0,0,0,0.8)]'
+                    } overflow-hidden relative transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03] group-hover:shadow-[0_60px_200px_var(--accent-40)] group-hover:border-accent/80`}>
                     {renderNodeInterior(tabMapActive, true)}
                     
-                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 flex items-center gap-4 border-t border-accent/20">
+                    <div className={`absolute bottom-0 left-0 right-0 p-6 ${
+                        isBright ? 'bg-gradient-to-t from-white/95 via-white/80 to-transparent' : 'bg-gradient-to-t from-black/95 via-black/80 to-transparent'
+                    } z-30 flex items-center gap-4 border-t border-accent/20`}>
                         {tabMapActive.url && activeSpace !== 'ghost' && <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tabMapActive.url}`} className="w-8 h-8 rounded-xl shadow-md transition-all duration-700" onError={(e) => e.target.style.display='none'} />}
                         <div className="flex flex-col truncate w-full">
-                            <span className="text-xl md:text-2xl font-black text-white truncate drop-shadow-md transition-colors duration-700">{tabMapActive.title}</span>
+                            <span className={`text-xl md:text-2xl font-black ${isBright ? 'text-zinc-900' : 'text-white'} truncate drop-shadow-md transition-colors duration-700`}>{tabMapActive.title}</span>
                             <span className="text-[10px] md:text-xs text-accent font-mono uppercase tracking-widest truncate flex items-center gap-2">
                             <div className="w-2 h-2 bg-accent rounded-full animate-pulse shadow-[0_0_10px_var(--accent)]"></div> Active Core
                             </span>

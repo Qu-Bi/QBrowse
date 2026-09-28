@@ -102,6 +102,9 @@ const useTorStore = create((set, get) => ({
         if (!window.electronAPI?.torStop) return;
         try {
             await window.electronAPI.torStop();
+            if (window.electronAPI?.clearTorSession) {
+                window.electronAPI.clearTorSession().catch(() => {});
+            }
             set({ isTorEnabled: false, status: 'stopped', bootstrapProgress: 0, verifiedExitIp: null, isTorVerified: false });
             useUIStore.getState().showToast('Tor Network disconnected');
         } catch (err) {

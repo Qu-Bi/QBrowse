@@ -5,7 +5,7 @@ import {
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
     UploadCloud, Compass, ExternalLink, Plus, Leaf, Gauge, BatteryCharging, Activity,
-    Image as ImageIcon, Upload, Link as LinkIcon
+    Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon
 } from 'lucide-react';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
@@ -19,27 +19,51 @@ import AIEngineSettings from '../settings/AIEngineSettings';
 import { getAllBangs } from '../../utils/searchBangs';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
-const SettingCard = ({ icon: Icon, title, description, children }) => (
-    <div className="flex items-center justify-between p-3 px-3.5 bg-white/[0.025] hover:bg-white/[0.04] border border-white/[0.04] hover:border-white/[0.08] rounded-xl transition-all duration-200 group">
-        <div className="flex items-center gap-3 min-w-0 pr-4">
-            {Icon && (
-                <div className="w-8 h-8 rounded-lg bg-white/[0.03] text-accent/80 border border-white/[0.05] group-hover:border-accent/25 group-hover:text-accent flex items-center justify-center flex-shrink-0 transition-colors">
-                    <Icon size={15} />
+const SettingCard = ({ icon: Icon, title, description, children }) => {
+    const theme = useUIStore(state => state.theme);
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    return (
+        <div className={`flex items-center justify-between p-3 px-3.5 rounded-xl transition-all duration-200 group ${
+            isBright 
+                ? 'bg-white/75 hover:bg-white/95 border border-black/[0.08] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03),0_1px_2px_rgba(0,0,0,0.02)]' 
+                : 'bg-white/[0.025] hover:bg-white/[0.04] border border-white/[0.04] hover:border-white/[0.08]'
+        }`}>
+            <div className="flex items-center gap-3 min-w-0 pr-4">
+                {Icon && (
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isBright 
+                            ? 'bg-black/[0.04] text-accent border border-black/[0.06] group-hover:border-accent/40' 
+                            : 'bg-white/[0.03] text-accent/80 border border-white/[0.05] group-hover:border-accent/25 group-hover:text-accent'
+                    }`}>
+                        <Icon size={15} />
+                    </div>
+                )}
+                <div className="min-w-0">
+                    <p className={`font-medium text-xs truncate transition-colors ${
+                        isBright 
+                            ? 'text-zinc-800 group-hover:text-zinc-950 font-semibold' 
+                            : 'text-zinc-200 group-hover:text-white'
+                    }`}>{title}</p>
+                    {description && <p className={`text-[11px] mt-0.5 leading-snug ${
+                        isBright ? 'text-zinc-500' : 'text-zinc-400'
+                    }`}>{description}</p>}
                 </div>
-            )}
-            <div className="min-w-0">
-                <p className="font-medium text-xs text-zinc-200 group-hover:text-white transition-colors truncate">{title}</p>
-                {description && <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">{description}</p>}
+            </div>
+            <div className="flex-shrink-0">
+                {children}
             </div>
         </div>
-        <div className="flex-shrink-0">
-            {children}
-        </div>
-    </div>
-);
+    );
+};
 
 // Helper Toggle Switch Component (Top-level to preserve DOM instances and CSS transitions)
 const SettingToggle = ({ isChecked, onToggle }) => {
+    const theme = useUIStore(state => state.theme);
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
     return (
         <button 
             type="button"
@@ -49,8 +73,8 @@ const SettingToggle = ({ isChecked, onToggle }) => {
             }} 
             className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-all duration-200 cursor-pointer ${
                 isChecked 
-                    ? 'bg-accent shadow-[0_0_10px_var(--accent-40)]' 
-                    : 'bg-white/15 hover:bg-white/20'
+                    ? (isBright ? 'bg-accent shadow-[0_2px_8px_var(--accent-40)]' : 'bg-accent shadow-[0_0_10px_var(--accent-40)]') 
+                    : (isBright ? 'bg-zinc-200/90 hover:bg-zinc-300 border border-black/10' : 'bg-white/15 hover:bg-white/20')
             }`}
         >
             <div 
@@ -69,6 +93,8 @@ const SettingsModal = () => {
         showToast,
         settingsTab, 
         setSettingsTab,
+        theme,
+        setTheme,
         isForceDark, 
         setIsForceDark,
         isGlassEnabled, 
@@ -97,6 +123,9 @@ const SettingsModal = () => {
         resetCustomWallpaper
     } = useUIStore();
 
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
     const { user, isSyncing, lastSyncTime, syncedItemsCount, syncNow, logout, autoSyncEnabled, toggleAutoSync } = useSyncStore();
     const isTorEnabled = useTorStore(state => state.isTorEnabled);
     const toggleTorEnabled = useTorStore(state => state.toggleTorEnabled);
@@ -124,7 +153,7 @@ const SettingsModal = () => {
     const customWallpaper = settings?.customWallpaper;
     const customWallpaperSource = settings?.customWallpaperSource;
     const customWallpaperOriginalUrl = settings?.customWallpaperOriginalUrl;
-    const wallpaperDimming = settings?.wallpaperDimming ?? 20;
+    const wallpaperDimming = settings?.wallpaperDimming ?? 25;
 
     const [wallpaperUrlInput, setWallpaperUrlInput] = useState('');
     const [isImportingUrl, setIsImportingUrl] = useState(false);
@@ -270,8 +299,10 @@ const SettingsModal = () => {
 
     const handleResetAllSettings = () => {
         localStorage.removeItem('qbrowse_settings');
+        localStorage.removeItem('qbrowse_theme');
         localStorage.removeItem('qbrowse_isForceDark');
         localStorage.removeItem('qbrowse_dark_exclusions');
+        setTheme('dark');
         setIsForceDark(false);
         setIsGlassEnabled(true);
         setIsSwipeEnabled(true);
@@ -300,29 +331,45 @@ const SettingsModal = () => {
     if (activeModal !== 'settings' && !isClosingThis) return null;
 
     return (
-        <div className={`absolute inset-0 z-[200] flex bg-black/60 backdrop-blur-3xl text-white font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
+        <div className={`absolute inset-0 z-[200] flex font-sans ${
+            isBright 
+                ? 'bg-black/25 backdrop-blur-xl text-zinc-900' 
+                : 'bg-black/60 backdrop-blur-3xl text-white'
+        } ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
             {/* LEFT NAVIGATION SIDEBAR */}
-            <div className="w-64 border-r border-white/[0.06] flex flex-col bg-black/50" onClick={e => e.stopPropagation()}>
+            <div className={`w-64 border-r flex flex-col ${
+                isBright 
+                    ? 'bg-white/80 backdrop-blur-2xl border-black/10' 
+                    : 'bg-black/50 border-white/[0.06]'
+            }`} onClick={e => e.stopPropagation()}>
                 <div className="p-4 pb-2 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-sm font-semibold tracking-tight text-white flex items-center gap-2">
+                        <h2 className={`text-sm font-semibold tracking-tight flex items-center gap-2 ${
+                            isBright ? 'text-zinc-900' : 'text-white'
+                        }`}>
                             <Sliders size={14} className="text-accent" /> Settings
                         </h2>
-                        <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-white/[0.04] text-zinc-400 border border-white/[0.06]">v1.2.1</span>
+                        <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
+                            isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'
+                        }`}>v1.2.1</span>
                     </div>
 
                     {/* Live Search Input */}
                     <div className="relative">
-                        <Search size={12} className="absolute left-2.5 top-2 text-zinc-500" />
+                        <Search size={12} className={`absolute left-2.5 top-2 ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`} />
                         <input
                             type="text"
                             value={searchFilter}
                             onChange={(e) => setSearchFilter(e.target.value)}
                             placeholder="Search settings..."
-                            className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg py-1 pl-7 pr-2.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-accent/40 transition-colors font-mono"
+                            className={`w-full rounded-lg py-1 pl-7 pr-2.5 text-xs outline-none focus:border-accent/40 transition-colors font-mono border ${
+                                isBright 
+                                    ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' 
+                                    : 'bg-white/[0.03] border-white/[0.06] text-white placeholder-zinc-500'
+                            }`}
                         />
                         {searchFilter && (
-                            <button onClick={() => setSearchFilter('')} className="absolute right-2 top-1.5 text-zinc-400 hover:text-white">
+                            <button onClick={() => setSearchFilter('')} className={`absolute right-2 top-1.5 ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-zinc-400 hover:text-white'}`}>
                                 <X size={11} />
                             </button>
                         )}
@@ -339,21 +386,25 @@ const SettingsModal = () => {
                                 onClick={() => setSettingsTab(tab.id)} 
                                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition cursor-pointer text-left ${
                                     isActive 
-                                        ? 'bg-accent/15 text-white border border-accent/30 font-medium shadow-sm' 
-                                        : 'hover:bg-white/[0.03] text-zinc-400 hover:text-zinc-200 border border-transparent'
+                                        ? (isBright ? 'bg-accent/20 text-zinc-900 border border-accent/40 font-semibold shadow-sm' : 'bg-accent/15 text-white border border-accent/30 font-medium shadow-sm') 
+                                        : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900 border border-transparent' : 'hover:bg-white/[0.03] text-zinc-400 hover:text-zinc-200 border border-transparent')
                                 }`}
                             >
-                                <Icon size={14} className={isActive ? 'text-accent' : tab.color || 'text-zinc-400'} /> 
+                                <Icon size={14} className={isActive ? 'text-accent' : (isBright ? 'text-zinc-500' : (tab.color || 'text-zinc-400'))} /> 
                                 <span className="text-xs">{tab.label}</span>
                             </button>
                         );
                     })}
                 </div>
 
-                <div className="p-3 border-t border-white/[0.06]">
+                <div className={`p-3 border-t ${isBright ? 'border-black/10' : 'border-white/[0.06]'}`}>
                     <button 
                         onClick={handleResetAllSettings}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-red-500/10 hover:bg-red-500/15 text-red-400 border border-red-500/20 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                        className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-[11px] font-medium transition cursor-pointer border ${
+                            isBright 
+                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200' 
+                                : 'bg-red-500/10 hover:bg-red-500/15 text-red-400 border-red-500/20'
+                        }`}
                     >
                         <RotateCcw size={12} /> Reset Defaults
                     </button>
@@ -361,8 +412,12 @@ const SettingsModal = () => {
             </div>
 
             {/* RIGHT CONTENT PANEL */}
-            <div className="flex-1 p-10 relative overflow-y-auto w-[600px] md:w-[800px] max-w-full" onClick={e => e.stopPropagation()}>
-                <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-zinc-400 hover:text-white transition z-[999] cursor-pointer">
+            <div className={`flex-1 p-10 relative overflow-y-auto w-[600px] md:w-[800px] max-w-full ${
+                isBright ? 'bg-white/70 backdrop-blur-3xl text-zinc-900 settings-bright-mode' : 'bg-transparent text-white'
+            }`} onClick={e => e.stopPropagation()}>
+                <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className={`absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-xl border transition z-[999] cursor-pointer ${
+                    isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600 hover:text-zinc-900' : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.06] text-zinc-400 hover:text-white'
+                }`}>
                     <X size={15} className="pointer-events-none" />
                 </button>
 
@@ -578,7 +633,58 @@ const SettingsModal = () => {
                                 </div>
                             </div>
 
-                            {/* Force Dark Mode Card */}
+                            {/* Browser Appearance Card */}
+                            <div className="p-5 bg-white/[0.025] hover:bg-white/[0.035] border border-white/[0.05] rounded-2xl space-y-3 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
+                                            {theme === 'light' ? <Sun size={17} /> : <Moon size={17} />}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-sm">Browser Interface Theme</p>
+                                            <p className="text-xs text-white/40 mt-0.5">Switch between dark obsidian and bright frosted chrome interface.</p>
+                                        </div>
+                                    </div>
+                                    <div className={`relative flex p-1 rounded-full border shadow-xs min-w-[200px] ${isBright ? 'bg-black/[0.03] border-black/[0.05]' : 'bg-[#0c0d14]/78 border-white/[0.06]'}`}>
+                                        <div 
+                                            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                                theme === 'dark'
+                                                    ? (isBright ? 'bg-zinc-900 text-white shadow-xs' : 'bg-accent text-zinc-950 font-bold shadow-xs')
+                                                    : (isBright ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'bg-accent text-zinc-950 font-bold shadow-xs')
+                                            }`}
+                                            style={{ 
+                                                transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)'
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setTheme('dark')}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                                theme === 'dark'
+                                                    ? (isBright ? 'text-white font-bold' : 'text-zinc-950 font-bold')
+                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
+                                            }`}
+                                        >
+                                            <Moon size={13} className={theme === 'dark' ? 'fill-current' : ''} />
+                                            <span>Dark</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTheme('light')}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                                theme === 'light'
+                                                    ? (isBright ? 'text-zinc-900 font-bold' : 'text-zinc-950 font-bold')
+                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
+                                            }`}
+                                        >
+                                            <Sun size={13} className={theme === 'light' ? 'text-amber-600 fill-amber-500/20' : ''} />
+                                            <span>Bright</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Smart Dark Mode (Websites) Card */}
                             <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -586,8 +692,8 @@ const SettingsModal = () => {
                                             <Eye size={16} />
                                         </div>
                                         <div>
-                                            <p className="font-semibold text-sm">Force Dark Mode (Web & UI)</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Smart luminosity engine inverts light sites while preserving native dark sites.</p>
+                                            <p className="font-semibold text-sm">Smart Dark Mode (Websites)</p>
+                                            <p className="text-xs text-white/40 mt-0.5">Smart luminosity engine inverts light websites while preserving native dark sites.</p>
                                         </div>
                                     </div>
                                     <SettingToggle isChecked={isForceDark} onToggle={() => setIsForceDark(!isForceDark)} />
@@ -626,7 +732,7 @@ const SettingsModal = () => {
                             </SettingCard>
 
                             <SettingCard icon={Monitor} title="UI Density & Scale" description="Adjust spacing and padding for navigation controls.">
-                                <div className="relative flex items-center p-1 bg-black/40 border border-white/[0.06] rounded-xl overflow-hidden">
+                                <div className={`relative flex items-center p-1 border rounded-xl overflow-hidden ${isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/[0.06]'}`}>
                                     <div 
                                         className="absolute top-1 bottom-1 w-[calc(50%-6px)] rounded-lg bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-md pointer-events-none"
                                         style={{
@@ -643,8 +749,8 @@ const SettingsModal = () => {
                                             onClick={() => setSettingValue('uiScale', s.id)}
                                             className={`relative z-10 w-24 py-1.5 rounded-lg text-xs font-bold transition-colors duration-200 cursor-pointer text-center select-none ${
                                                 (settings.uiScale || 'comfortable') === s.id
-                                                    ? 'text-black'
-                                                    : 'text-white/60 hover:text-white'
+                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-black')
+                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
                                             }`}
                                         >
                                             {s.label}
@@ -749,8 +855,8 @@ const SettingsModal = () => {
                                             }}
                                             className={`py-2 px-4 rounded-xl text-xs font-semibold border transition cursor-pointer ${
                                                 (settings.doh || 'cloudflare') === d.id
-                                                    ? 'bg-accent-20 border-accent-30 text-accent font-bold'
-                                                    : 'bg-white/[0.03] border-white/[0.06] text-white/60 hover:text-white'
+                                                    ? (isBright ? 'bg-accent/15 border-accent text-accent font-bold shadow-sm' : 'bg-accent-20 border-accent-30 text-accent font-bold')
+                                                    : (isBright ? 'bg-white/60 hover:bg-white/90 border-black/10 text-zinc-700 hover:text-black' : 'bg-white/[0.03] border-white/[0.06] text-white/60 hover:text-white')
                                             }`}
                                         >
                                             {d.name}
@@ -787,20 +893,20 @@ const SettingsModal = () => {
                                     </div>
                                 </div>
                                 {neverSaveDomains.length === 0 ? (
-                                    <div className="text-center text-xs text-white/30 italic py-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                                    <div className={`text-center text-xs italic py-3 rounded-xl border ${isBright ? 'text-zinc-500 bg-black/[0.02] border-black/5' : 'text-white/30 bg-white/[0.02] border-white/[0.04]'}`}>
                                         No sites excluded. QVault will offer to save logins across all websites.
                                     </div>
                                 ) : (
                                     <div className="flex flex-wrap gap-2 mt-2">
                                         {neverSaveDomains.map(d => (
-                                            <div key={d} className="flex items-center gap-2 pl-3 pr-2 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white/90">
+                                            <div key={d} className={`flex items-center gap-2 pl-3 pr-2 py-1 rounded-lg text-xs border ${isBright ? 'bg-white/80 border-black/10 text-zinc-900 shadow-sm' : 'bg-white/5 border-white/10 text-white/90'}`}>
                                                 <span className="font-mono text-[11px]">{d}</span>
                                                 <button 
                                                     onClick={() => {
                                                         removeNeverSaveDomain(d);
                                                         showToast(`Removed ${d} from excluded sites`);
                                                     }}
-                                                    className="w-4 h-4 rounded hover:bg-white/10 text-white/40 hover:text-white flex items-center justify-center transition cursor-pointer"
+                                                    className={`w-4 h-4 rounded flex items-center justify-center transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-black' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}
                                                     title="Remove exclusion"
                                                 >
                                                     <X size={11} />
@@ -812,10 +918,10 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Clear Data Card */}
-                            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between">
+                            <div className={`p-4 rounded-2xl flex items-center justify-between border ${isBright ? 'bg-red-500/[0.08] border-red-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                                 <div>
-                                    <p className="font-semibold text-sm text-red-400">Clear Browsing Data</p>
-                                    <p className="text-xs text-red-400/60 mt-0.5">Clear history, cookies, and cache from local storage & SQLite.</p>
+                                    <p className={`font-semibold text-sm ${isBright ? 'text-red-600' : 'text-red-400'}`}>Clear Browsing Data</p>
+                                    <p className={`text-xs mt-0.5 ${isBright ? 'text-red-600/70' : 'text-red-400/60'}`}>Clear history, cookies, and cache from local storage & SQLite.</p>
                                 </div>
                                 <button 
                                     onClick={async () => {
@@ -854,7 +960,9 @@ const SettingsModal = () => {
                                 </div>
                                 <button 
                                     onClick={() => openModal('cookies')}
-                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95"
+                                    className={`px-3 py-1.5 border font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95 ${
+                                        isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/15 border-white/15 text-white'
+                                    }`}
                                 >
                                     Open Explorer
                                 </button>
@@ -942,8 +1050,8 @@ const SettingsModal = () => {
                                             }}
                                             className={`py-2 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer ${
                                                 (settings.searchEngine || 'google') === se.id
-                                                    ? 'bg-accent-20 border-accent-30 text-accent font-bold'
-                                                    : 'bg-white/[0.03] border-white/[0.06] text-white/60 hover:text-white'
+                                                    ? (isBright ? 'bg-accent/15 border-accent text-accent font-bold shadow-sm' : 'bg-accent-20 border-accent-30 text-accent font-bold')
+                                                    : (isBright ? 'bg-white/70 hover:bg-white/95 border-black/10 text-zinc-700 hover:text-black shadow-sm' : 'bg-white/[0.03] border-white/[0.06] text-white/60 hover:text-white')
                                             }`}
                                         >
                                             {se.name}
@@ -1188,7 +1296,9 @@ const SettingsModal = () => {
                                             showToast('Downloads directory configured');
                                         }
                                     }}
-                                    className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold transition cursor-pointer border border-white/10"
+                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border ${
+                                        isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                                    }`}
                                 >
                                     Change...
                                 </button>
@@ -1251,9 +1361,11 @@ const SettingsModal = () => {
                                     </div>
                                     <button 
                                         onClick={() => openModal('resources')}
-                                        className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white rounded-lg text-xs font-medium border border-white/15 transition flex items-center gap-1.5 self-start sm:self-center cursor-pointer active:scale-95"
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 self-start sm:self-center cursor-pointer active:scale-95 ${
+                                            isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                                        }`}
                                     >
-                                        <Activity size={12} className="text-zinc-300" />
+                                        <Activity size={12} className={isBright ? 'text-zinc-600' : 'text-zinc-300'} />
                                         <span>Task Manager</span>
                                     </button>
                                 </div>
@@ -1311,20 +1423,20 @@ const SettingsModal = () => {
                                                 onClick={() => setPerformanceMode(mode.id)}
                                                 className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                                                     isSelected 
-                                                        ? mode.selectedClass
-                                                        : 'bg-white/[0.02] border-white/[0.05] text-zinc-400 hover:bg-white/[0.035] hover:text-zinc-200 hover:border-white/[0.08]'
+                                                        ? (isBright ? 'bg-accent/15 border-accent/40 text-zinc-900 shadow-sm' : mode.selectedClass)
+                                                        : (isBright ? 'bg-white/70 hover:bg-white/95 border-black/10 text-zinc-700 shadow-sm' : 'bg-white/[0.02] border-white/[0.05] text-zinc-400 hover:bg-white/[0.035] hover:text-zinc-200 hover:border-white/[0.08]')
                                                 }`}
                                             >
                                                 <div className="flex items-center justify-between mb-1.5">
                                                     <div className="flex items-center gap-2">
-                                                        <Icon size={14} className={isSelected ? mode.color : 'text-zinc-500'} />
-                                                        <span className="font-medium text-xs text-white">{mode.title}</span>
+                                                        <Icon size={14} className={isSelected ? (isBright ? 'text-accent' : mode.color) : (isBright ? 'text-zinc-500' : 'text-zinc-500')} />
+                                                        <span className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>{mode.title}</span>
                                                     </div>
                                                     {isSelected && (
                                                         <span className={`w-1.5 h-1.5 rounded-full ${mode.dotClass}`}></span>
                                                     )}
                                                 </div>
-                                                <p className="text-[11px] text-zinc-400 leading-snug">{mode.desc}</p>
+                                                <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>{mode.desc}</p>
                                             </div>
                                         );
                                     })}
@@ -1340,12 +1452,16 @@ const SettingsModal = () => {
                                 <select 
                                     value={tabSleepTimeoutMinutes}
                                     onChange={(e) => setTabSleepTimeoutMinutes(Number(e.target.value))}
-                                    className="bg-[#101217] border border-white/[0.06] rounded-xl px-3 py-1.5 text-xs text-white font-medium outline-none focus:border-accent/40 cursor-pointer"
+                                    className={`border rounded-xl px-3 py-1.5 text-xs font-medium outline-none focus:border-accent/40 cursor-pointer ${
+                                        isBright 
+                                            ? 'bg-white border-black/15 text-zinc-900 shadow-sm' 
+                                            : 'bg-[#101217] border-white/[0.06] text-white'
+                                    }`}
                                 >
-                                    <option value={5} className="bg-[#12141a] text-white">5 Minutes (Aggressive)</option>
-                                    <option value={15} className="bg-[#12141a] text-white">15 Minutes (Balanced)</option>
-                                    <option value={30} className="bg-[#12141a] text-white">30 Minutes (Relaxed)</option>
-                                    <option value={0} className="bg-[#12141a] text-white">Never Hibernate</option>
+                                    <option value={5} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>5 Minutes (Aggressive)</option>
+                                    <option value={15} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>15 Minutes (Balanced)</option>
+                                    <option value={30} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>30 Minutes (Relaxed)</option>
+                                    <option value={0} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>Never Hibernate</option>
                                 </select>
                             </SettingCard>
 
@@ -1388,7 +1504,9 @@ const SettingsModal = () => {
                                             useTabStore.getState().handleNavigateTab(activeTab.id, 'qbrowse://flags');
                                         }
                                     }}
-                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95"
+                                    className={`px-3 py-1.5 border font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95 ${
+                                        isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/15 border-white/15 text-white'
+                                    }`}
                                 >
                                     Open Flags
                                 </button>

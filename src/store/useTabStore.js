@@ -65,6 +65,12 @@ const useTabStore = create((set, get) => ({
               window.electronAPI.clearGhostSession().catch(() => {});
           }
       }
+      if (state.activeSpace === 'tor' && space !== 'tor') {
+          updates.torTabs = [{ id: 't-' + Date.now(), title: 'New Tor Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+          if (window.electronAPI && window.electronAPI.clearTorSession) {
+              window.electronAPI.clearTorSession().catch(() => {});
+          }
+      }
       return updates;
   }),
 
@@ -107,15 +113,40 @@ const useTabStore = create((set, get) => ({
   pinnedTabs: (() => {
       try {
           const stored = localStorage.getItem('qbrowse_pinned_tabs');
-          if (stored) return JSON.parse(stored);
+          if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                  // If legacy default pin contains chatgpt, suggest/migrate to Gemini
+                  const migrated = parsed.map(p => {
+                      if (p.domain === 'chatgpt.com' || (p.title === 'ChatGPT' && String(p.domain).includes('chatgpt'))) {
+                          return { ...p, title: 'Gemini', domain: 'gemini.google.com' };
+                      }
+                      return p;
+                  });
+                  return migrated;
+              }
+          }
       } catch(e) {}
       return [
           { id: 'pin-1', title: 'GitHub', domain: 'github.com' },
           { id: 'pin-2', title: 'YouTube', domain: 'youtube.com' },
-          { id: 'pin-3', title: 'ChatGPT', domain: 'chatgpt.com' }
+          { id: 'pin-3', title: 'Gemini', domain: 'gemini.google.com' }
       ];
   })(),
-  setPinnedTabs: (tabs) => set({ pinnedTabs: tabs }),
+  setPinnedTabs: (tabs) => {
+      const list = Array.isArray(tabs) ? tabs : [];
+      set({ pinnedTabs: list });
+      try {
+          localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(list));
+          const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+          if (profileId && profileId !== 'default') {
+              localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(list));
+          }
+      } catch(e) {}
+      if (typeof window !== 'undefined' && window.__syncStore) {
+          window.__syncStore.getState().triggerDebouncedSync?.(3000);
+      }
+  },
 
   addPinnedTab: (title, urlOrDomain) => {
       if (!urlOrDomain) return;
@@ -129,10 +160,17 @@ const useTabStore = create((set, get) => ({
           const updated = [...state.pinnedTabs, newPin];
           try {
               localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
+              const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+              if (profileId && profileId !== 'default') {
+                  localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
+              }
           } catch(e) {}
           return { pinnedTabs: updated };
       });
       useUIStore.getState().showToast(`Pinned "${newPin.title}" to sidebar`);
+      if (typeof window !== 'undefined' && window.__syncStore) {
+          window.__syncStore.getState().triggerDebouncedSync?.(3000);
+      }
   },
 
   handleUnpinTab: (pin) => {
@@ -140,10 +178,17 @@ const useTabStore = create((set, get) => ({
           const updated = state.pinnedTabs.filter(p => p.id !== (pin.id || pin));
           try {
               localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
+              const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+              if (profileId && profileId !== 'default') {
+                  localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
+              }
           } catch(e) {}
           return { pinnedTabs: updated };
       });
       useUIStore.getState().showToast(`Unpinned "${pin.title || 'app'}"`);
+      if (typeof window !== 'undefined' && window.__syncStore) {
+          window.__syncStore.getState().triggerDebouncedSync?.(3000);
+      }
   },
 
   privateTabs: [
@@ -462,9 +507,9 @@ const useTabStore = create((set, get) => ({
         }
     }
 
-    // Track in recently closed tabs for Cmd+Shift+T restore
-    if (tabToClose.url && tabToClose.url !== 'about:blank') {
-        const space = get().activeSpace;
+    // Track in recently closed tabs for Cmd+Shift+T restore (Strict privacy: never for ghost, tor, or .onion)
+    const space = get().activeSpace;
+    if (tabToClose.url && tabToClose.url !== 'about:blank' && space !== 'ghost' && space !== 'tor' && !tabToClose.url.includes('.onion')) {
         set(state => ({
             recentlyClosedTabs: [
                 ...(state.recentlyClosedTabs || []).slice(-19),
@@ -494,19 +539,23 @@ const useTabStore = create((set, get) => ({
         }
         setTimeout(() => {
             const current = get().getActiveList();
+            const currentSpace = get().activeSpace;
             if (current.length > 0) {
                 setList([{
                     ...current[0],
                     url: '',
-                    title: get().activeSpace === 'ghost' ? 'New Incognito Tab' : 'New Tab',
+                    title: currentSpace === 'ghost' ? 'New Incognito Tab' : (currentSpace === 'tor' ? 'New Tor Tab' : 'New Tab'),
                     thumbnail: null,
                     isClosing: false,
                     lastActiveAt: Date.now()
                 }]);
             }
             useUIStore.getState().setIsReaderAvailable(false);
-            if (get().activeSpace === 'ghost' && window.electronAPI && window.electronAPI.clearGhostSession) {
+            if (currentSpace === 'ghost' && window.electronAPI && window.electronAPI.clearGhostSession) {
                 window.electronAPI.clearGhostSession().catch(() => {});
+            }
+            if (currentSpace === 'tor' && window.electronAPI && window.electronAPI.clearTorSession) {
+                window.electronAPI.clearTorSession().catch(() => {});
             }
         }, 250);
         return;
@@ -567,6 +616,174 @@ const useTabStore = create((set, get) => ({
     }, 250);
   },
 
+  duplicateTab: (tabId, spaceType) => {
+    const space = spaceType || get().activeSpace || 'personal';
+    const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
+    const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+
+    const sourceIdx = list.findIndex(t => t.id === tabId);
+    if (sourceIdx === -1) return;
+    const sourceTab = list[sourceIdx];
+
+    const newTabId = `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const clonedTab = {
+      ...sourceTab,
+      id: newTabId,
+      title: sourceTab.title || 'New Tab',
+      url: sourceTab.url || '',
+      active: true,
+      lastActiveAt: Date.now(),
+      suspended: false,
+      isClosing: false
+    };
+
+    const nextList = list.map(t => ({ ...t, active: false }));
+    nextList.splice(sourceIdx + 1, 0, clonedTab);
+    setList(nextList);
+
+    const ui = useUIStore.getState();
+    ui.setCurrentUrl(clonedTab.url);
+    ui.showToast(`Duplicated "${clonedTab.title}"`);
+    return newTabId;
+  },
+
+  closeOtherTabs: (tabId, spaceType) => {
+    const space = spaceType || get().activeSpace || 'personal';
+    const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
+    const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+
+    const targetTab = list.find(t => t.id === tabId);
+    if (!targetTab) return;
+
+    // Track closed tabs in recentlyClosedTabs (Strict privacy: never for ghost or tor)
+    if (space !== 'ghost' && space !== 'tor') {
+      const closed = list.filter(t => t.id !== tabId && t.url && t.url !== 'about:blank' && !t.url.includes('.onion'));
+      if (closed.length > 0) {
+        set(state => ({
+          recentlyClosedTabs: [
+            ...(state.recentlyClosedTabs || []).slice(-15),
+            ...closed.map(t => ({ url: t.url, title: t.title, space }))
+          ]
+        }));
+      }
+    }
+
+    const nextList = [{ ...targetTab, active: true, suspended: false, lastActiveAt: Date.now() }];
+    setList(nextList);
+
+    const ui = useUIStore.getState();
+    ui.setCurrentUrl(targetTab.url || '');
+    ui.showToast('Closed other tabs');
+  },
+
+  closeTabsBelow: (tabId, spaceType) => {
+    const space = spaceType || get().activeSpace || 'personal';
+    const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
+    const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+
+    const targetIdx = list.findIndex(t => t.id === tabId);
+    if (targetIdx === -1 || targetIdx === list.length - 1) return;
+
+    const remaining = list.slice(0, targetIdx + 1);
+    if (space !== 'ghost' && space !== 'tor') {
+      const closed = list.slice(targetIdx + 1).filter(t => t.url && t.url !== 'about:blank' && !t.url.includes('.onion'));
+      if (closed.length > 0) {
+        set(state => ({
+          recentlyClosedTabs: [
+            ...(state.recentlyClosedTabs || []).slice(-15),
+            ...closed.map(t => ({ url: t.url, title: t.title, space }))
+          ]
+        }));
+      }
+    }
+
+    const hasActive = remaining.some(t => t.active);
+    if (!hasActive && remaining.length > 0) {
+      remaining[targetIdx].active = true;
+      useUIStore.getState().setCurrentUrl(remaining[targetIdx].url || '');
+    }
+
+    setList(remaining);
+    useUIStore.getState().showToast('Closed tabs below');
+  },
+
+  moveTabToSpace: (tabId, sourceSpace, targetSpace) => {
+    if (!sourceSpace || !targetSpace || sourceSpace === targetSpace) return;
+    const srcList = sourceSpace === 'personal' ? get().privateTabs : (sourceSpace === 'work' ? get().workTabs : (sourceSpace === 'ghost' ? get().ghostTabs : get().torTabs));
+    const setSrcList = sourceSpace === 'personal' ? get().setPrivateTabs : (sourceSpace === 'work' ? get().setWorkTabs : (sourceSpace === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+
+    const dstList = targetSpace === 'personal' ? get().privateTabs : (targetSpace === 'work' ? get().workTabs : (targetSpace === 'ghost' ? get().ghostTabs : get().torTabs));
+    const setDstList = targetSpace === 'personal' ? get().setPrivateTabs : (targetSpace === 'work' ? get().setWorkTabs : (targetSpace === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+
+    const tabToMove = srcList.find(t => t.id === tabId);
+    if (!tabToMove) return;
+
+    // Remove from source space
+    let nextSrc = srcList.filter(t => t.id !== tabId);
+    if (nextSrc.length === 0) {
+      nextSrc = [{ id: `t-${Date.now()}`, title: sourceSpace === 'ghost' ? 'New Incognito Tab' : 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+    } else if (!nextSrc.some(t => t.active)) {
+      nextSrc[0].active = true;
+    }
+    setSrcList(nextSrc);
+
+    // Add to target space and activate it
+    const movedTab = { ...tabToMove, folderId: null, active: true, lastActiveAt: Date.now() };
+    const nextDst = [...dstList.map(t => ({ ...t, active: false })), movedTab];
+    setDstList(nextDst);
+
+    // Switch active space to target
+    get().setActiveSpace(targetSpace);
+    const ui = useUIStore.getState();
+    ui.setCurrentUrl(movedTab.url || '');
+    const spaceLabel = targetSpace.charAt(0).toUpperCase() + targetSpace.slice(1);
+    ui.showToast(`Moved "${tabToMove.title}" to ${spaceLabel} space`);
+  },
+
+  reloadTab: (tabId) => {
+    const wv = window.qbrowseWebviews ? window.qbrowseWebviews[tabId] : null;
+    if (wv && typeof wv.reload === 'function') {
+      try {
+        wv.reload();
+        useUIStore.getState().showToast('Reloading tab...');
+      } catch (_) {}
+    }
+  },
+
+  addTabToFolder: (folderId, spaceType) => {
+    const space = spaceType || get().activeSpace || 'personal';
+    if (get().activeSpace !== space) {
+      get().setActiveSpace(space);
+    }
+    const newTab = {
+      id: `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      title: 'New Tab',
+      url: '',
+      active: true,
+      folderId: folderId,
+      lastActiveAt: Date.now(),
+      suspended: false
+    };
+    get().addTab(newTab);
+    useUIStore.getState().showToast('New tab created in folder');
+  },
+
+  closeAllTabsInFolder: (folderId, spaceType) => {
+    const space = spaceType || get().activeSpace || 'personal';
+    const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
+    const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+
+    let nextList = list.filter(t => t.folderId !== folderId);
+    if (nextList.length === 0) {
+      nextList = [{ id: `t-${Date.now()}`, title: space === 'ghost' ? 'New Incognito Tab' : 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+    } else if (!nextList.some(t => t.active)) {
+      nextList[0].active = true;
+      useUIStore.getState().setCurrentUrl(nextList[0].url || '');
+    }
+    setList(nextList);
+    useUIStore.getState().showToast('Closed all tabs in folder');
+  },
+
   handleSwitchToTab: (tabId, spaceType) => {
     if (get().activeSpace !== spaceType) {
         get().setActiveSpace(spaceType);
@@ -593,6 +810,11 @@ const useTabStore = create((set, get) => ({
         suspended: t.id === tabId ? false : t.suspended,
         lastActiveAt: t.id === tabId ? Date.now() : t.lastActiveAt
     })));
+  },
+
+  setActiveTab: (tabId, spaceType) => {
+    const space = spaceType || get().activeSpace || 'personal';
+    get().handleSwitchToTab(tabId, space);
   },
 
   updateTabThumbnail: (tabId, thumbnail) => {
@@ -765,11 +987,13 @@ const useTabStore = create((set, get) => ({
 
   serializeCurrentProfileTabs: (profileId) => {
     if (!profileId) return;
-    const { privateTabs, workTabs, ghostTabs, pinnedTabs, folders } = get();
+    const { privateTabs, workTabs, pinnedTabs, folders } = get();
     try {
       localStorage.setItem(`qbrowse_tabs_${profileId}_personal`, JSON.stringify(privateTabs));
       localStorage.setItem(`qbrowse_tabs_${profileId}_work`, JSON.stringify(workTabs));
-      localStorage.setItem(`qbrowse_tabs_${profileId}_ghost`, JSON.stringify(ghostTabs));
+      // STRICT PRIVACY: Never persist ghost or tor tabs locally under any circumstances
+      localStorage.removeItem(`qbrowse_tabs_${profileId}_ghost`);
+      localStorage.removeItem(`qbrowse_tabs_${profileId}_tor`);
       localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(pinnedTabs));
       localStorage.setItem(`qbrowse_folders_${profileId}`, JSON.stringify(folders));
     } catch(e) {}
@@ -778,29 +1002,36 @@ const useTabStore = create((set, get) => ({
   loadProfileTabs: (profileId) => {
     if (!profileId) return;
     try {
+      // Purge any accidental legacy ghost or tor persisted tabs
+      try {
+        localStorage.removeItem(`qbrowse_tabs_${profileId}_ghost`);
+        localStorage.removeItem(`qbrowse_tabs_${profileId}_tor`);
+      } catch (_) {}
+
       const storedPersonal = localStorage.getItem(`qbrowse_tabs_${profileId}_personal`);
       const storedWork = localStorage.getItem(`qbrowse_tabs_${profileId}_work`);
-      const storedGhost = localStorage.getItem(`qbrowse_tabs_${profileId}_ghost`);
       const storedPins = localStorage.getItem(`qbrowse_pins_${profileId}`);
       const storedFolders = localStorage.getItem(`qbrowse_folders_${profileId}`);
 
       const defaultPersonal = [{ id: `t1-${profileId}`, title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
       const defaultWork = [{ id: `w1-${profileId}`, title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
       const defaultGhost = [{ id: `g1-${profileId}`, title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+      const defaultTor = [{ id: `t1-${profileId}`, title: 'New Tor Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
 
       const pTabs = storedPersonal ? JSON.parse(storedPersonal) : defaultPersonal;
       const wTabs = storedWork ? JSON.parse(storedWork) : defaultWork;
-      const gTabs = storedGhost ? JSON.parse(storedGhost) : defaultGhost;
       const pins = storedPins ? JSON.parse(storedPins) : [
         { id: 'pin-1', title: 'GitHub', domain: 'github.com' },
-        { id: 'pin-2', title: 'YouTube', domain: 'youtube.com' }
+        { id: 'pin-2', title: 'YouTube', domain: 'youtube.com' },
+        { id: 'pin-3', title: 'Gemini', domain: 'gemini.google.com' }
       ];
       const folders = storedFolders ? JSON.parse(storedFolders) : [];
 
       set({
         privateTabs: pTabs,
         workTabs: wTabs,
-        ghostTabs: gTabs,
+        ghostTabs: defaultGhost,
+        torTabs: defaultTor,
         pinnedTabs: pins,
         folders: folders,
         activeSpace: 'personal'
@@ -813,6 +1044,17 @@ const useTabStore = create((set, get) => ({
     }
   }
 }));
+
+// Clean up any legacy ghost or tor persisted keys from localStorage immediately on startup
+try {
+  if (typeof localStorage !== 'undefined') {
+    Object.keys(localStorage).forEach(key => {
+      if (key.includes('_ghost') || key.includes('_tor')) {
+        localStorage.removeItem(key);
+      }
+    });
+  }
+} catch (_) {}
 
 if (typeof window !== 'undefined') {
   window.__tabStore = useTabStore;

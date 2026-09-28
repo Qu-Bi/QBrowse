@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Compass, X, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import useTabStore from '../../store/useTabStore';
 
 export default function DefaultBrowserBanner() {
     const showToast = useUIStore(state => state.showToast);
+    const theme = useUIStore(state => state.theme);
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
     const [isVisible, setIsVisible] = useState(false);
     const [isDefault, setIsDefault] = useState(false);
     const [isSetting, setIsSetting] = useState(false);
@@ -78,7 +83,11 @@ export default function DefaultBrowserBanner() {
 
     return (
         <div className="fixed top-12 right-6 z-[9990] max-w-md w-full animate-pop-in pointer-events-auto select-none">
-            <div className="relative overflow-hidden p-4 rounded-2xl bg-[#0c0c10]/90 backdrop-blur-2xl border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.7)] text-white">
+            <div className={`relative overflow-hidden p-4 rounded-2xl backdrop-blur-3xl transition-all duration-300 ${
+                isBright
+                    ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14),0_1px_2px_rgba(0,0,0,0.05)] text-zinc-900'
+                    : 'bg-[#0c0c10]/90 border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.7)] text-white'
+            }`}>
                 {/* Subtle top accent gradient line */}
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-accent to-transparent opacity-80" />
 
@@ -91,12 +100,12 @@ export default function DefaultBrowserBanner() {
                     {/* Content */}
                     <div className="flex-1 min-w-0 pr-2">
                         <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold text-white tracking-tight">Make QBrowse your default browser</h4>
+                            <h4 className={`text-sm font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>Make QBrowse your default browser</h4>
                             <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-accent/20 text-accent border border-accent-30">
                                 Privacy
                             </span>
                         </div>
-                        <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                        <p className={`text-xs mt-1 leading-relaxed ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
                             Open all web links with built-in Tor onion routing, isolated workspaces, and zero-knowledge encrypted sync.
                         </p>
 
@@ -119,7 +128,9 @@ export default function DefaultBrowserBanner() {
 
                             <button
                                 onClick={handleNeverAskAgain}
-                                className="text-xs text-white/40 hover:text-white/80 transition-colors cursor-pointer"
+                                className={`text-xs transition-colors cursor-pointer ${
+                                    isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white/80'
+                                }`}
                             >
                                 Don't ask again
                             </button>
@@ -129,7 +140,9 @@ export default function DefaultBrowserBanner() {
                     {/* Dismiss X button */}
                     <button
                         onClick={handleDismissSession}
-                        className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                        className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                            isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'
+                        }`}
                         title="Dismiss for now"
                     >
                         <X size={14} />

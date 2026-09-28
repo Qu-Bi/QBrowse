@@ -18,7 +18,14 @@ const useHistoryStore = create((set, get) => ({
             const key = getActiveHistoryKey();
             const data = localStorage.getItem(key);
             if (data) {
-                set({ history: JSON.parse(data) });
+                const parsed = JSON.parse(data);
+                const sanitized = Array.isArray(parsed) 
+                    ? parsed.filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor') 
+                    : [];
+                if (Array.isArray(parsed) && sanitized.length !== parsed.length) {
+                    try { localStorage.setItem(key, JSON.stringify(sanitized)); } catch (_) {}
+                }
+                set({ history: sanitized });
             } else {
                 set({ history: [] });
             }
@@ -30,7 +37,8 @@ const useHistoryStore = create((set, get) => ({
     serializeCurrentProfileHistory: (profileId) => {
         try {
             const key = (!profileId || profileId === 'default') ? 'qbrowse_history' : `qbrowse_history_${profileId}`;
-            localStorage.setItem(key, JSON.stringify(get().history));
+            const cleanHistory = (get().history || []).filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor');
+            localStorage.setItem(key, JSON.stringify(cleanHistory));
         } catch (e) {
             console.error('Failed to serialize profile history', e);
         }
@@ -40,16 +48,28 @@ const useHistoryStore = create((set, get) => ({
         try {
             const key = (!profileId || profileId === 'default') ? 'qbrowse_history' : `qbrowse_history_${profileId}`;
             const data = localStorage.getItem(key);
-            set({ history: data ? JSON.parse(data) : [] });
+            if (data) {
+                const parsed = JSON.parse(data);
+                const sanitized = Array.isArray(parsed) 
+                    ? parsed.filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor') 
+                    : [];
+                set({ history: sanitized });
+            } else {
+                set({ history: [] });
+            }
         } catch (e) {
             console.error('Failed to load profile history', e);
             set({ history: [] });
         }
     },
 
-    addEntry: (url, title) => {
-        // Don't add internal pages or empty urls or about:blank
+    addEntry: (url, title, space) => {
+        // STRICT PRIVACY: Never save history for Ghost (incognito) or Tor spaces or .onion domains
+        if (space === 'ghost' || space === 'tor') return;
+        const currentSpace = typeof window !== 'undefined' ? window.__tabStore?.getState()?.activeSpace : null;
+        if (currentSpace === 'ghost' || currentSpace === 'tor') return;
         if (!url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('qbrowse://') || url.startsWith('file://')) return;
+        if (url.includes('.onion')) return;
 
         set(state => {
             const cleanTitle = (title && title !== url) ? title : url;
@@ -84,7 +104,13 @@ const useHistoryStore = create((set, get) => ({
         });
     },
 
-    updateLatestTitle: (url, title) => {
+    updateLatestTitle: (url, title, space) => {
+        // STRICT PRIVACY: Never update or save history for Ghost or Tor spaces or .onion
+        if (space === 'ghost' || space === 'tor') return;
+        const currentSpace = typeof window !== 'undefined' ? window.__tabStore?.getState()?.activeSpace : null;
+        if (currentSpace === 'ghost' || currentSpace === 'tor') return;
+        if (!url || url.includes('.onion')) return;
+
         set(state => {
             if (state.history.length === 0) return state;
             const newHistory = [...state.history];
@@ -104,13 +130,15 @@ const useHistoryStore = create((set, get) => ({
         if (!Array.isArray(remoteHistory) || remoteHistory.length === 0) return;
         set(state => {
             const historyMap = new Map();
-            // Load current local history
+            // Load current local history (filtering out any ghost/tor/.onion)
             state.history.forEach(item => {
-                if (item && item.url) historyMap.set(item.url, { ...item });
+                if (item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor') {
+                    historyMap.set(item.url, { ...item });
+                }
             });
             // Merge remote items
             remoteHistory.forEach(remoteItem => {
-                if (!remoteItem || !remoteItem.url) return;
+                if (!remoteItem || !remoteItem.url || remoteItem.url.includes('.onion') || remoteItem.space === 'ghost' || remoteItem.space === 'tor') return;
                 const existing = historyMap.get(remoteItem.url);
                 if (existing) {
                     historyMap.set(remoteItem.url, {

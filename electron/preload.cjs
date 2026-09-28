@@ -123,6 +123,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearSiteCookies: (domain) => ipcRenderer.invoke('clear-site-cookies', domain),
     clearAllData: (options) => ipcRenderer.invoke('clear-all-data', options),
     clearGhostSession: () => ipcRenderer.invoke('clear-ghost-session'),
+    clearTorSession: () => ipcRenderer.invoke('clear-tor-session'),
     getSitePermissions: (domain) => ipcRenderer.invoke('get-site-permissions', domain),
     setSitePermission: (domain, permission, value) => ipcRenderer.invoke('set-site-permission', domain, permission, value),
     getAllSitePermissions: () => ipcRenderer.invoke('get-all-site-permissions'),

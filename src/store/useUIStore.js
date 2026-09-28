@@ -37,13 +37,19 @@ const defaultSettings = {
     customWallpaper: null,
     customWallpaperSource: 'default',
     customWallpaperOriginalUrl: null,
-    wallpaperDimming: 30
+    wallpaperDimming: 25
 };
 
 const loadSettings = () => {
     try {
         const stored = localStorage.getItem('qbrowse_settings');
-        if (stored) return { ...defaultSettings, ...JSON.parse(stored) };
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed.wallpaperDimming === 40 || parsed.wallpaperDimming === 30 || parsed.wallpaperDimming === undefined) {
+                parsed.wallpaperDimming = 25;
+            }
+            return { ...defaultSettings, ...parsed };
+        }
     } catch(e) {}
     return defaultSettings;
 };
@@ -158,6 +164,9 @@ const useUIStore = create((set, get) => ({
   updateDownload: (id, updates) => set(state => ({
       downloads: state.downloads.map(d => d.id === id ? { ...d, ...updates } : d)
   })),
+  removeDownload: (id) => set(state => ({
+      downloads: state.downloads.filter(d => d.id !== id)
+  })),
 
   activeDownloadPopup: null,
   setActiveDownloadPopup: (popup) => set({ activeDownloadPopup: popup }),
@@ -191,6 +200,30 @@ const useUIStore = create((set, get) => ({
     setTimeout(() => set({ folderContextMenu: null, isFolderContextMenuClosing: false }), 200);
   },
 
+  pinnedContextMenu: null,
+  isPinnedContextMenuClosing: false,
+  setPinnedContextMenu: (menu) => set({ pinnedContextMenu: menu, isPinnedContextMenuClosing: false }),
+  closePinnedContextMenu: () => {
+    set({ isPinnedContextMenuClosing: true });
+    setTimeout(() => set({ pinnedContextMenu: null, isPinnedContextMenuClosing: false }), 200);
+  },
+
+  topBarContextMenu: null,
+  isTopBarContextMenuClosing: false,
+  setTopBarContextMenu: (menu) => set({ topBarContextMenu: menu, isTopBarContextMenuClosing: false }),
+  closeTopBarContextMenu: () => {
+    set({ isTopBarContextMenuClosing: true });
+    setTimeout(() => set({ topBarContextMenu: null, isTopBarContextMenuClosing: false }), 200);
+  },
+
+  toolHubContextMenu: null,
+  isToolHubContextMenuClosing: false,
+  setToolHubContextMenu: (menu) => set({ toolHubContextMenu: menu, isToolHubContextMenuClosing: false }),
+  closeToolHubContextMenu: () => {
+    set({ isToolHubContextMenuClosing: true });
+    setTimeout(() => set({ toolHubContextMenu: null, isToolHubContextMenuClosing: false }), 200);
+  },
+
   closeContextMenus: () => {
     const state = useUIStore.getState();
     if (state.contextMenu) {
@@ -204,6 +237,18 @@ const useUIStore = create((set, get) => ({
     if (state.folderContextMenu) {
       set({ isFolderContextMenuClosing: true });
       setTimeout(() => set({ folderContextMenu: null, isFolderContextMenuClosing: false }), 200);
+    }
+    if (state.pinnedContextMenu) {
+      set({ isPinnedContextMenuClosing: true });
+      setTimeout(() => set({ pinnedContextMenu: null, isPinnedContextMenuClosing: false }), 200);
+    }
+    if (state.topBarContextMenu) {
+      set({ isTopBarContextMenuClosing: true });
+      setTimeout(() => set({ topBarContextMenu: null, isTopBarContextMenuClosing: false }), 200);
+    }
+    if (state.toolHubContextMenu) {
+      set({ isToolHubContextMenuClosing: true });
+      setTimeout(() => set({ toolHubContextMenu: null, isToolHubContextMenuClosing: false }), 200);
     }
     if (state.activePinnedStack) {
       set({ activePinnedStack: null });
@@ -888,14 +933,23 @@ const useUIStore = create((set, get) => ({
       } catch(e) {}
   },
   
-  adblockStats: { count: 0, domains: [] },
+  adblockStats: (() => {
+      try {
+          const stored = localStorage.getItem('qbrowse_adblock_count');
+          return { count: stored !== null ? Math.max(1, parseInt(stored, 10)) : 1, domains: [] };
+      } catch (e) {
+          return { count: 1, domains: [] };
+      }
+  })(),
   addBlockedTracker: (url) => set((state) => {
       try {
           const domain = new URL(url).hostname;
           const newDomains = [domain, ...state.adblockStats.domains.filter(d => d !== domain)].slice(0, 5);
+          const nextCount = (state.adblockStats.count || 0) + 1;
+          try { localStorage.setItem('qbrowse_adblock_count', String(nextCount)); } catch (_) {}
           return {
               adblockStats: {
-                  count: state.adblockStats.count + 1,
+                  count: nextCount,
                   domains: newDomains
               }
           };
@@ -1060,6 +1114,41 @@ const useUIStore = create((set, get) => ({
   setIsWebviewFullscreen: (val) => set({ isWebviewFullscreen: val }),
 
   // Theme & Appearance
+  theme: localStorage.getItem('qbrowse_theme') || 'dark', // 'dark' | 'light'
+  themeTransition: null, // { from: 'dark', to: 'light' } or null
+  setTheme: (theme) => {
+      const validTheme = theme === 'light' ? 'light' : 'dark';
+      const currentTheme = get().theme;
+      if (currentTheme === validTheme) return;
+      
+      try {
+          localStorage.setItem('qbrowse_theme', validTheme);
+          if (typeof document !== 'undefined') {
+              if (validTheme === 'light') {
+                  document.documentElement.classList.add('theme-light', 'bright-mode');
+                  document.documentElement.classList.remove('theme-dark');
+              } else {
+                  document.documentElement.classList.add('theme-dark');
+                  document.documentElement.classList.remove('theme-light', 'bright-mode');
+              }
+          }
+      } catch(e) {}
+
+      // Trigger GPU compositor veil crossfade
+      set({ 
+          theme: validTheme,
+          themeTransition: { from: currentTheme, to: validTheme }
+      });
+
+      // Clear veil after animation finishes
+      setTimeout(() => {
+          set({ themeTransition: null });
+      }, 340);
+  },
+  toggleTheme: () => {
+      const next = get().theme === 'light' ? 'dark' : 'light';
+      get().setTheme(next);
+  },
   accentColor: '#d4bc94',
   setAccentColor: (color) => set({ accentColor: color }),
 
@@ -1368,6 +1457,19 @@ const useUIStore = create((set, get) => ({
     }
   },
 }));
+
+try {
+  if (typeof document !== 'undefined') {
+    const initialTheme = localStorage.getItem('qbrowse_theme') || 'dark';
+    if (initialTheme === 'light') {
+      document.documentElement.classList.add('theme-light', 'bright-mode');
+      document.documentElement.classList.remove('theme-dark');
+    } else {
+      document.documentElement.classList.add('theme-dark');
+      document.documentElement.classList.remove('theme-light', 'bright-mode');
+    }
+  }
+} catch (_) {}
 
 if (typeof window !== 'undefined') {
   window.__uiStore = useUIStore;

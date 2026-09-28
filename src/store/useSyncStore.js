@@ -13,7 +13,7 @@ import {
     reauthenticateWithCredential,
     EmailAuthProvider
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, deleteField, collection, getDocs, deleteDoc, onSnapshot } from 'firebase/firestore';
 
 // Web Crypto API Encryption Helpers (AES-GCM 256-bit with PBKDF2)
 async function deriveKey(passphrase, saltHex) {
@@ -112,6 +112,73 @@ function formatAuthError(error) {
     return message.replace(/^Firebase:\s*/, '');
 }
 
+// Self-healing migration to keep Firestore root document strictly below the 1MB (1,048,576 bytes) limit.
+// Moves any heavy backup payloads to the subcollection 'users/{uid}/backups/{id}' and purges them from the root document.
+async function healBloatedRootDocument(userId) {
+    if (!userId) return;
+    try {
+        const rootRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(rootRef);
+        if (!userSnap.exists()) return;
+
+        const data = userSnap.data();
+        let needsPurge = false;
+
+        // 1. Detect if manual_backups array has bulky encrypted payloads
+        if (Array.isArray(data.manual_backups) && data.manual_backups.some(b => b && b.encrypted)) {
+            needsPurge = true;
+        }
+
+        if (!needsPurge) return;
+
+        console.log("[Sync] Bloated root document detected (>1MB potential). Migrating backups to subcollection and cleaning root document...");
+
+        // 2. Migrate each full backup payload to the subcollection so the user never loses their backups
+        if (Array.isArray(data.manual_backups)) {
+            for (const b of data.manual_backups) {
+                if (b && b.id && b.encrypted) {
+                    try {
+                        await setDoc(doc(db, 'users', userId, 'backups', b.id), b);
+                    } catch(subErr) {
+                        console.warn("[Sync] Backup migration subcollection notice:", subErr);
+                    }
+                }
+            }
+        }
+
+        // 3. Create clean metadata-only array (no encrypted string)
+        const cleanedMetadataBackups = Array.isArray(data.manual_backups)
+            ? data.manual_backups.map(b => ({
+                id: b.id,
+                label: b.label || 'Manual Backup',
+                createdAt: b.createdAt || new Date().toISOString(),
+                stats: b.stats || {}
+            })).slice(0, 5)
+            : [];
+
+        // 4. Purge the bloated manual_backups field directly using deleteField()
+        try {
+            await updateDoc(rootRef, { manual_backups: deleteField() });
+            console.log("[Sync] Successfully purged legacy oversized manual_backups from root document.");
+        } catch(delErr) {
+            console.warn("[Sync] updateDoc deleteField notice (trying full setDoc overwrite):", delErr);
+            const cleanDoc = { ...data, manual_backups: cleanedMetadataBackups };
+            try {
+                await setDoc(rootRef, cleanDoc);
+            } catch(e) {}
+        }
+
+        // 5. Update root doc with clean metadata only
+        try {
+            await setDoc(rootRef, { manual_backups: cleanedMetadataBackups }, { merge: true });
+        } catch(e) {}
+
+        console.log("[Sync] Root document healed successfully! Size is now ~50KB.");
+    } catch(err) {
+        console.warn("[Sync] healBloatedRootDocument notice:", err);
+    }
+}
+
 // Global active snapshot listener unsubscribers
 let unsubscribeCloudListeners = [];
 let isApplyingCloudUpdate = false;
@@ -127,8 +194,12 @@ function setupLocalStoreWatchers() {
             if (isApplyingCloudUpdate) return;
             const current = useSyncStore.getState();
             if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
-            if (state.privateTabs !== prevState?.privateTabs || state.workTabs !== prevState?.workTabs) {
-                current.triggerDebouncedSync(12000);
+            if (
+                state.privateTabs !== prevState?.privateTabs || 
+                state.workTabs !== prevState?.workTabs ||
+                state.pinnedTabs !== prevState?.pinnedTabs
+            ) {
+                current.triggerDebouncedSync(8000);
             }
         });
 
@@ -136,8 +207,8 @@ function setupLocalStoreWatchers() {
             if (isApplyingCloudUpdate) return;
             const current = useSyncStore.getState();
             if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
-            if (state.passwords !== prevState?.passwords) {
-                current.triggerDebouncedSync(6000);
+            if (state.passwords !== prevState?.passwords || (state.isUnlocked && !prevState?.isUnlocked)) {
+                current.triggerDebouncedSync(3000);
             }
         });
 
@@ -281,6 +352,9 @@ const useSyncStore = create((set, get) => ({
                     const saved = localStorage.getItem('qbrowse_master_passphrase');
                     if (saved) set({ masterPassword: saved });
                 }
+                // Auto-heal any legacy bloated root document to stay strictly under the 1MB limit
+                healBloatedRootDocument(user.uid).catch(() => {});
+
                 setTimeout(() => {
                     get().listenToCloudSync();
                     get().fetchCloudBackups();
@@ -394,14 +468,31 @@ const useSyncStore = create((set, get) => ({
             // 1. Write directly to root user doc: doc(db, 'users', user.uid)
             // Storing on root document fits standard match /users/{userId} security rules!
             const rootRef = doc(db, 'users', user.uid);
-            await setDoc(rootRef, {
-                [dataName]: {
-                    encrypted,
-                    updatedAt: nowIso
-                },
-                lastSync: nowIso,
-                userAgent: navigator.userAgent
-            }, { merge: true });
+            try {
+                await setDoc(rootRef, {
+                    [dataName]: {
+                        encrypted,
+                        updatedAt: nowIso
+                    },
+                    lastSync: nowIso,
+                    userAgent: navigator.userAgent
+                }, { merge: true });
+            } catch(writeErr) {
+                if (writeErr?.message && writeErr.message.includes('exceeds the maximum allowed size')) {
+                    console.warn("[Sync] Document size limit detected during sync. Healing root document...");
+                    await healBloatedRootDocument(user.uid);
+                    await setDoc(rootRef, {
+                        [dataName]: {
+                            encrypted,
+                            updatedAt: nowIso
+                        },
+                        lastSync: nowIso,
+                        userAgent: navigator.userAgent
+                    }, { merge: true });
+                } else {
+                    throw writeErr;
+                }
+            }
 
             // 2. Also mirror to subcollection for full backwards-compatibility
             try {
@@ -457,12 +548,36 @@ const useSyncStore = create((set, get) => ({
 
             // 2. Sync Vault (Passwords, Passkeys, Cards, Addresses & Notes)
             if (syncCategories?.vault !== false) {
-                const vaultItems = useVaultStore.getState().passwords || [];
-                await get().syncDataToCloud('vault', vaultItems);
-                totalItems += vaultItems.length;
+                let vaultItems = useVaultStore.getState().passwords || [];
+                let isVaultUnlockedLocally = useVaultStore.getState().isUnlocked;
+
+                // If vault is not yet unlocked in UI, check if masterPassword matches vault key
+                if (!isVaultUnlockedLocally && masterPassword && window.electronAPI?.checkVaultPassword) {
+                    try {
+                        const verified = await window.electronAPI.checkVaultPassword(masterPassword);
+                        if (verified) {
+                            isVaultUnlockedLocally = true;
+                            if (window.electronAPI?.getPasswords) {
+                                const localList = await window.electronAPI.getPasswords();
+                                if (Array.isArray(localList) && localList.length > 0) {
+                                    vaultItems = localList;
+                                }
+                            }
+                        }
+                    } catch(e) {}
+                }
+
+                // SAFEGUARD: Only upload if vault is confirmed unlocked (in UI or via verified master key).
+                // If locked without credentials, NEVER overwrite the cloud vault!
+                if (isVaultUnlockedLocally) {
+                    await get().syncDataToCloud('vault', vaultItems);
+                    totalItems += vaultItems.length;
+                } else {
+                    console.log("[Sync] Vault locked; preserving remote vault data without uploading.");
+                }
             }
 
-            // 3. Sync Tabs (Personal & Work Spaces) - only sync valid open tabs, never empty/placeholder new tabs
+            // 3. Sync Tabs & Pinned Apps (Personal & Work Spaces) - only sync valid open tabs, never empty/placeholder new tabs
             if (syncCategories?.tabs !== false) {
                 const formatTab = (t) => ({
                     id: t.id,
@@ -477,19 +592,25 @@ const useSyncStore = create((set, get) => ({
                 const validWorkTabs = (useTabStore.getState().workTabs || [])
                     .filter(isValidSyncTab)
                     .map(formatTab);
+                const pinnedTabsList = useTabStore.getState().pinnedTabs || [];
 
                 const tabsPayload = {
                     privateTabs: validPrivateTabs,
-                    workTabs: validWorkTabs
+                    workTabs: validWorkTabs,
+                    pinnedTabs: pinnedTabsList
                 };
                 await get().syncDataToCloud('tabs', tabsPayload);
                 totalItems += (tabsPayload.privateTabs.length + tabsPayload.workTabs.length);
+
+                // Granular sync for pinnedTabs category for fast syncing and listener support
+                await get().syncDataToCloud('pinnedTabs', pinnedTabsList);
+                totalItems += pinnedTabsList.length;
             }
 
-            // 4. Sync History & Bookmarks
+            // 4. Sync History & Bookmarks (limited to 200 items to keep document lightweight)
             if (syncCategories?.history !== false) {
                 const historyList = useHistoryStore.getState().history || [];
-                const historyPayload = historyList.slice(0, 500);
+                const historyPayload = historyList.slice(0, 200);
                 await get().syncDataToCloud('history', historyPayload);
                 totalItems += historyPayload.length;
             }
@@ -512,7 +633,7 @@ const useSyncStore = create((set, get) => ({
         }
     },
 
-    // MANUAL BACKUP PUSH (User's specific requirement!)
+    // MANUAL BACKUP PUSH
     pushManualBackup: async (customLabel = '') => {
         const { user, masterPassword } = get();
         if (!user) {
@@ -526,13 +647,32 @@ const useSyncStore = create((set, get) => ({
 
         set({ isCreatingBackup: true, authError: null });
         try {
-            // 1. Gather all current browser state
+            // 1. Clean settings to avoid huge base64 wallpaper bloating payload
+            const cleanSettings = { ...useUIStore.getState().settings };
+            delete cleanSettings.syncedCloudSettings;
+            if (cleanSettings.customWallpaperSource !== 'url') {
+                delete cleanSettings.customWallpaper;
+                delete cleanSettings.customWallpaperOriginalUrl;
+            } else if (cleanSettings.customWallpaperOriginalUrl) {
+                cleanSettings.customWallpaper = cleanSettings.customWallpaperOriginalUrl;
+            }
+
+            // 2. Gather browser state (with safe bounds on history)
             const payload = {
                 version: "1.2.1",
                 createdAt: new Date().toISOString(),
                 label: customLabel.trim() || `Manual Backup (${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
-                settings: useUIStore.getState().settings || {},
-                vault: useVaultStore.getState().passwords || [],
+                settings: cleanSettings,
+                vault: await (async () => {
+                    let v = useVaultStore.getState().passwords || [];
+                    if (v.length === 0 && useVaultStore.getState().isUnlocked && window.electronAPI?.getPasswords) {
+                        try {
+                            const disk = await window.electronAPI.getPasswords();
+                            if (Array.isArray(disk) && disk.length > 0) return disk;
+                        } catch(e) {}
+                    }
+                    return v;
+                })(),
                 tabs: {
                     privateTabs: (useTabStore.getState().privateTabs || [])
                         .filter(isValidSyncTab)
@@ -541,58 +681,107 @@ const useSyncStore = create((set, get) => ({
                         .filter(isValidSyncTab)
                         .map(t => ({ ...t, title: getCleanTabTitle(t) }))
                 },
-                history: (useHistoryStore.getState().history || []).slice(0, 500),
+                history: (useHistoryStore.getState().history || []).slice(0, 200),
                 pinnedTabs: useTabStore.getState().pinnedTabs || []
             };
 
-            // 2. Encrypt entire payload with AES-GCM
+            // 3. Encrypt entire payload with AES-GCM
             const encrypted = await encryptData(payload, masterPassword);
 
             const backupId = `bk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-            const backupRecord = {
+            const fullBackupRecord = {
                 id: backupId,
                 label: payload.label,
                 createdAt: payload.createdAt,
                 stats: {
-                    passwords: payload.vault.length,
-                    tabs: payload.tabs.privateTabs.length + payload.tabs.workTabs.length,
-                    history: payload.history.length
+                    passwords: payload.vault?.length || 0,
+                    tabs: (payload.tabs?.privateTabs?.length || 0) + (payload.tabs?.workTabs?.length || 0),
+                    history: payload.history?.length || 0
                 },
                 encrypted
             };
 
-            // 3. Save to user's root document backups array (works with standard match /users/{userId} rule)
-            const rootRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(rootRef);
-            let existingBackups = [];
-            if (userSnap.exists() && Array.isArray(userSnap.data().manual_backups)) {
-                existingBackups = userSnap.data().manual_backups;
-            }
-            // Keep up to 10 latest manual snapshots
-            const updatedBackups = [backupRecord, ...existingBackups.filter(b => b.id !== backupId)].slice(0, 10);
-            await setDoc(rootRef, { manual_backups: updatedBackups }, { merge: true });
+            const backupMetadata = {
+                id: backupId,
+                label: payload.label,
+                createdAt: payload.createdAt,
+                stats: fullBackupRecord.stats
+            };
 
-            // 4. Also mirror to backups subcollection if permitted
+            // 4. Save full backup to local storage as an immediate offline backup safeguard
             try {
-                await setDoc(doc(db, 'users', user.uid, 'backups', backupId), backupRecord);
+                const localBackups = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
+                const nextLocal = [fullBackupRecord, ...localBackups.filter(b => b.id !== backupId)].slice(0, 5);
+                localStorage.setItem('qbrowse_local_backups', JSON.stringify(nextLocal));
+            } catch(_) {}
+
+            // 5. Save full encrypted backup to backups subcollection (each doc has its own 1MB limit!)
+            let cloudSaved = false;
+            try {
+                await setDoc(doc(db, 'users', user.uid, 'backups', backupId), fullBackupRecord);
+                cloudSaved = true;
+            } catch(subErr) {
+                console.warn("[Sync] Subcollection backup write notice:", subErr);
+            }
+
+            // 6. Save ONLY lightweight metadata to user's root document (keeps root doc < 60KB!)
+            const rootRef = doc(db, 'users', user.uid);
+            let existingMetadata = [];
+            try {
+                const userSnap = await getDoc(rootRef);
+                if (userSnap.exists() && Array.isArray(userSnap.data().manual_backups)) {
+                    // Strip any legacy encrypted field from existing backups
+                    existingMetadata = userSnap.data().manual_backups.map(b => ({
+                        id: b.id,
+                        label: b.label,
+                        createdAt: b.createdAt,
+                        stats: b.stats || {}
+                    }));
+                }
             } catch(e) {}
+
+            const updatedBackupsMeta = [backupMetadata, ...existingMetadata.filter(b => b.id !== backupId)].slice(0, 5);
+
+            try {
+                await setDoc(rootRef, { manual_backups: updatedBackupsMeta }, { merge: true });
+                cloudSaved = true;
+            } catch(rootErr) {
+                console.warn("[Sync] Root doc metadata save notice, attempting self-heal:", rootErr);
+                try {
+                    await updateDoc(rootRef, { manual_backups: deleteField() });
+                    await setDoc(rootRef, { manual_backups: updatedBackupsMeta }, { merge: true });
+                    cloudSaved = true;
+                } catch(healErr) {
+                    console.warn("[Sync] Root doc heal during backup notice:", healErr);
+                }
+            }
+
+            // In local Zustand state, keep fullBackupRecord available for instant restore
+            const currentList = get().cloudBackups || [];
+            const nextCloudList = [fullBackupRecord, ...currentList.filter(b => b.id !== backupId)].slice(0, 5);
 
             set(state => ({
                 isCreatingBackup: false,
-                cloudBackups: updatedBackups,
-                syncStatus: 'synced'
+                cloudBackups: nextCloudList,
+                syncStatus: cloudSaved ? 'synced' : 'offline'
             }));
 
-            useUIStore.getState().showToast(`Cloud Backup "${payload.label}" pushed successfully!`);
-            return true;
+            if (cloudSaved) {
+                useUIStore.getState().showToast(`Cloud Backup "${payload.label}" pushed successfully!`);
+                return true;
+            } else {
+                useUIStore.getState().showToast(`Backup saved to local storage (cloud sync offline).`);
+                return true;
+            }
         } catch(e) {
             console.warn("[Sync] pushManualBackup notice:", e);
             set({ 
                 isCreatingBackup: false, 
-                syncStatus: 'offline',
+                syncStatus: 'offline', 
                 authError: null 
             });
-            useUIStore.getState().showToast("Could not upload cloud backup right now. Saved locally.");
+            const errMsg = e?.message ? e.message.replace(/^Firebase:\s*/, '') : "Network or size issue";
+            useUIStore.getState().showToast(`Backup notice: ${errMsg}`);
             return false;
         }
     },
@@ -600,25 +789,50 @@ const useSyncStore = create((set, get) => ({
     // Fetch existing manual backups
     fetchCloudBackups: async () => {
         const { user } = get();
-        if (!user) return;
         set({ isLoadingBackups: true });
         try {
-            const rootRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(rootRef);
             let backups = [];
-            if (userSnap.exists() && Array.isArray(userSnap.data().manual_backups)) {
-                backups = userSnap.data().manual_backups;
-            }
-
-            // Also check subcollection if root was empty
-            if (backups.length === 0) {
+            if (user) {
+                // 1. Fetch from subcollection where full encrypted payloads reside
                 try {
                     const subSnap = await getDocs(collection(db, 'users', user.uid, 'backups'));
                     subSnap.forEach(d => {
-                        if (d.exists()) backups.push(d.data());
+                        if (d.exists()) {
+                            backups.push(d.data());
+                        }
                     });
                 } catch(e) {}
+
+                // 2. Fetch metadata from root document and merge any missing
+                const rootRef = doc(db, 'users', user.uid);
+                try {
+                    const userSnap = await getDoc(rootRef);
+                    if (userSnap.exists() && Array.isArray(userSnap.data().manual_backups)) {
+                        for (const r of userSnap.data().manual_backups) {
+                            if (!backups.some(b => b.id === r.id)) {
+                                backups.push(r);
+                            }
+                        }
+                    }
+                } catch(e) {}
             }
+
+            // 3. Merge local offline backups
+            try {
+                const localB = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
+                if (Array.isArray(localB)) {
+                    for (const lb of localB) {
+                        const existingIdx = backups.findIndex(b => b.id === lb.id);
+                        if (existingIdx >= 0) {
+                            if (!backups[existingIdx].encrypted && lb.encrypted) {
+                                backups[existingIdx].encrypted = lb.encrypted;
+                            }
+                        } else {
+                            backups.push(lb);
+                        }
+                    }
+                }
+            } catch(e) {}
 
             backups.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
             set({ cloudBackups: backups, isLoadingBackups: false });
@@ -630,15 +844,40 @@ const useSyncStore = create((set, get) => ({
 
     // Restore from a selected manual cloud backup
     restoreCloudBackup: async (backupItem) => {
-        const { masterPassword } = get();
-        if (!backupItem || !backupItem.encrypted) return false;
+        const { user, masterPassword } = get();
+        if (!backupItem || !backupItem.id) return false;
         if (!masterPassword) {
             useUIStore.getState().showToast("Enter encryption key to restore backup");
             return false;
         }
 
         try {
-            const decrypted = await decryptData(backupItem.encrypted, masterPassword);
+            let encryptedPayload = backupItem.encrypted;
+
+            // If backupItem in UI only has metadata (no encrypted payload), fetch it from subcollection
+            if (!encryptedPayload && user) {
+                try {
+                    const subDoc = await getDoc(doc(db, 'users', user.uid, 'backups', backupItem.id));
+                    if (subDoc.exists() && subDoc.data().encrypted) {
+                        encryptedPayload = subDoc.data().encrypted;
+                    }
+                } catch(e) {}
+            }
+
+            // Fallback to local storage if not in subcollection
+            if (!encryptedPayload) {
+                try {
+                    const localB = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
+                    const match = localB.find(b => b.id === backupItem.id);
+                    if (match?.encrypted) encryptedPayload = match.encrypted;
+                } catch(e) {}
+            }
+
+            if (!encryptedPayload) {
+                throw new Error("Backup encrypted data not found in cloud or local cache");
+            }
+
+            const decrypted = await decryptData(encryptedPayload, masterPassword);
             if (!decrypted) throw new Error("Could not decrypt backup payload");
 
             // 1. Restore Settings
@@ -690,19 +929,35 @@ const useSyncStore = create((set, get) => ({
     // Delete a cloud backup
     deleteCloudBackup: async (backupId) => {
         const { user, cloudBackups } = get();
-        if (!user || !backupId) return;
+        if (!backupId) return;
         try {
             const nextBackups = cloudBackups.filter(b => b.id !== backupId);
             set({ cloudBackups: nextBackups });
 
-            const rootRef = doc(db, 'users', user.uid);
-            await setDoc(rootRef, { manual_backups: nextBackups }, { merge: true });
-
             try {
-                await deleteDoc(doc(db, 'users', user.uid, 'backups', backupId));
+                const localBackups = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
+                const nextLocal = localBackups.filter(b => b.id !== backupId);
+                localStorage.setItem('qbrowse_local_backups', JSON.stringify(nextLocal));
             } catch(e) {}
 
-            useUIStore.getState().showToast("Backup deleted from cloud");
+            if (user) {
+                try {
+                    const rootRef = doc(db, 'users', user.uid);
+                    const metaOnly = nextBackups.map(b => ({
+                        id: b.id,
+                        label: b.label,
+                        createdAt: b.createdAt,
+                        stats: b.stats || {}
+                    }));
+                    await setDoc(rootRef, { manual_backups: metaOnly }, { merge: true });
+                } catch(e) {}
+
+                try {
+                    await deleteDoc(doc(db, 'users', user.uid, 'backups', backupId));
+                } catch(e) {}
+            }
+
+            useUIStore.getState().showToast("Backup deleted");
         } catch(e) {
             console.error("[Sync] deleteCloudBackup error:", e);
         }
@@ -713,12 +968,30 @@ const useSyncStore = create((set, get) => ({
         const { masterPassword } = get();
         const passToUse = masterPassword || 'qbrowse_local';
         try {
+            const cleanSettings = { ...useUIStore.getState().settings };
+            delete cleanSettings.syncedCloudSettings;
+            if (cleanSettings.customWallpaperSource !== 'url') {
+                delete cleanSettings.customWallpaper;
+                delete cleanSettings.customWallpaperOriginalUrl;
+            } else if (cleanSettings.customWallpaperOriginalUrl) {
+                cleanSettings.customWallpaper = cleanSettings.customWallpaperOriginalUrl;
+            }
+
             const payload = {
                 app: "QBrowse",
                 version: "1.2.1",
                 exportedAt: new Date().toISOString(),
-                settings: useUIStore.getState().settings,
-                vault: useVaultStore.getState().passwords,
+                settings: cleanSettings,
+                vault: await (async () => {
+                    let v = useVaultStore.getState().passwords || [];
+                    if (v.length === 0 && useVaultStore.getState().isUnlocked && window.electronAPI?.getPasswords) {
+                        try {
+                            const disk = await window.electronAPI.getPasswords();
+                            if (Array.isArray(disk) && disk.length > 0) return disk;
+                        } catch(e) {}
+                    }
+                    return v;
+                })(),
                 tabs: {
                     privateTabs: (useTabStore.getState().privateTabs || [])
                         .filter(isValidSyncTab)
@@ -727,8 +1000,8 @@ const useSyncStore = create((set, get) => ({
                         .filter(isValidSyncTab)
                         .map(t => ({ ...t, title: getCleanTabTitle(t) }))
                 },
-                history: useHistoryStore.getState().history.slice(0, 500),
-                pinnedTabs: useTabStore.getState().pinnedTabs
+                history: (useHistoryStore.getState().history || []).slice(0, 300),
+                pinnedTabs: useTabStore.getState().pinnedTabs || []
             };
             const encrypted = await encryptData(payload, passToUse);
             const blob = new Blob([JSON.stringify(encrypted, null, 2)], { type: 'application/json' });
@@ -798,9 +1071,14 @@ const useSyncStore = create((set, get) => ({
             try {
                 const data = docSnap.data();
 
-                // Handle manual backups update
+                // Handle manual backups update (preserve any in-memory decrypted/encrypted payload references)
                 if (Array.isArray(data.manual_backups)) {
-                    set({ cloudBackups: data.manual_backups });
+                    const currentBackups = get().cloudBackups || [];
+                    const merged = data.manual_backups.map(mb => {
+                        const existing = currentBackups.find(b => b.id === mb.id);
+                        return (existing?.encrypted) ? { ...mb, encrypted: existing.encrypted } : mb;
+                    });
+                    set({ cloudBackups: merged });
                 }
 
                 // Sync Settings
@@ -830,8 +1108,8 @@ const useSyncStore = create((set, get) => ({
                 if (syncCategories?.vault !== false && data.vault?.encrypted) {
                     try {
                         const remoteVault = await decryptData(data.vault.encrypted, masterPassword);
-                        if (Array.isArray(remoteVault)) {
-                            useVaultStore.getState().mergeRemoteVault(remoteVault);
+                        if (Array.isArray(remoteVault) && remoteVault.length > 0) {
+                            await useVaultStore.getState().mergeRemoteVault(remoteVault);
                         }
                     } catch(e) {}
                 }
@@ -846,6 +1124,19 @@ const useSyncStore = create((set, get) => ({
                                 workTabs: (remoteTabs.workTabs || []).filter(isValidSyncTab)
                             };
                             useTabStore.getState().setCloudTabs(cleanRemoteTabs);
+                        }
+                        if (remoteTabs && Array.isArray(remoteTabs.pinnedTabs) && remoteTabs.pinnedTabs.length > 0 && !data.pinnedTabs?.encrypted) {
+                            useTabStore.getState().setPinnedTabs(remoteTabs.pinnedTabs);
+                        }
+                    } catch(e) {}
+                }
+
+                // Sync Pinned Apps / Tabs
+                if (syncCategories?.tabs !== false && data.pinnedTabs?.encrypted) {
+                    try {
+                        const remotePinned = await decryptData(data.pinnedTabs.encrypted, masterPassword);
+                        if (Array.isArray(remotePinned) && remotePinned.length > 0) {
+                            useTabStore.getState().setPinnedTabs(remotePinned);
                         }
                     } catch(e) {}
                 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Globe, Check } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import useTabStore from '../../store/useTabStore';
 
 // Apple-style synthesized unlock chime using Web Audio API
 const playUnlockChime = () => {
@@ -41,7 +42,10 @@ const playUnlockChime = () => {
 };
 
 const PasskeyVerificationModal = () => {
-    const { passkeyPrompt, setPasskeyPrompt, showToast } = useUIStore();
+    const { passkeyPrompt, setPasskeyPrompt, showToast, theme } = useUIStore();
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
     const [passwordInput, setPasswordInput] = useState('');
     const [showPass, setShowPass] = useState(false);
     const [authStatus, setAuthStatus] = useState('idle'); // 'idle' | 'scanning' | 'checking-pass' | 'success'
@@ -98,21 +102,17 @@ const PasskeyVerificationModal = () => {
         try {
             const domain = passkeyPrompt.rpId || passkeyPrompt.hostname || 'the website';
             const res = await window.electronAPI.verifyWindowsHello(`Sign in to ${domain} with your QVault passkey`);
-            if (res && res.verified) {
+            if (res && res.success) {
                 await triggerSuccessSequence();
-            } else if (res && res.status === 'Canceled') {
-                setAuthStatus('idle');
-                setErrorMessage('Windows Hello verification was canceled.');
-            } else if (res && res.status === 'NotAvailable') {
-                setAuthStatus('idle');
-                setErrorMessage('Windows Hello is not configured on this PC. Please enter your Master Password or PIN.');
             } else {
                 setAuthStatus('idle');
-                setErrorMessage('Windows Hello verification failed. Please try again or use your password.');
+                if (res && res.error && !res.error.includes('canceled') && !res.error.includes('cancelled')) {
+                    setErrorMessage(res.error);
+                }
             }
         } catch (e) {
             setAuthStatus('idle');
-            setErrorMessage('Error triggering Windows Hello: ' + (e.message || e));
+            setErrorMessage('Biometric error: ' + (e.message || e));
         }
     };
 
@@ -121,10 +121,11 @@ const PasskeyVerificationModal = () => {
         if (!passwordInput.trim() || authStatus !== 'idle') return;
         setAuthStatus('checking-pass');
         setErrorMessage('');
+
         try {
-            // Check Quick PIN first
-            const storedPin = localStorage.getItem('qbrowse_vault_pin');
-            if (storedPin && passwordInput.trim() === storedPin) {
+            // Check 4-digit Quick PIN first
+            const savedPin = localStorage.getItem('qvault_quick_pin');
+            if (savedPin && passwordInput.trim() === savedPin) {
                 await triggerSuccessSequence();
                 return;
             }
@@ -148,14 +149,18 @@ const PasskeyVerificationModal = () => {
 
     return (
         <div 
-            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-2xl text-white font-sans animate-pop-in"
+            className={`fixed inset-0 z-[300] flex items-center justify-center p-6 ${
+                isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/80 backdrop-blur-2xl text-white'
+            } font-sans animate-pop-in`}
             onClick={handleCancel}
         >
             <div 
-                className={`w-full max-w-md bg-[#0d0e12]/95 border rounded-3xl p-7 relative overflow-hidden transition-all duration-500 ${
+                className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 ${
                     authStatus === 'success' 
                         ? 'border-emerald-500/40 shadow-[0_0_90px_rgba(16,185,129,0.35)]' 
-                        : 'border-white/10 shadow-[0_30px_90px_rgba(0,0,0,0.9)]'
+                        : (isBright 
+                            ? 'bg-white/60 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.12)] text-zinc-900' 
+                            : 'bg-[#0d0e12]/95 border border-white/10 shadow-[0_30px_90px_rgba(0,0,0,0.9)] text-white')
                 }`} 
                 onClick={e => e.stopPropagation()}
             >
@@ -171,7 +176,9 @@ const PasskeyVerificationModal = () => {
                 {authStatus !== 'success' && (
                     <button 
                         onClick={handleCancel} 
-                        className="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition text-white/50 hover:text-white cursor-pointer"
+                        className={`absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full transition cursor-pointer ${
+                            isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'bg-white/5 hover:bg-white/10 text-white/50 hover:text-white'
+                        }`}
                         title="Cancel & Deny"
                     >
                         <X size={16} />
@@ -190,16 +197,16 @@ const PasskeyVerificationModal = () => {
                                     ? 'scale-105 animate-pulse'
                                     : 'scale-100'
                         }`}>
-                            <span className={`absolute top-0 left-0 w-3.5 h-3.5 border-t-2 border-l-2 rounded-tl-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : 'border-white/30'}`}></span>
-                            <span className={`absolute top-0 right-0 w-3.5 h-3.5 border-t-2 border-r-2 rounded-tr-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : 'border-white/30'}`}></span>
-                            <span className={`absolute bottom-0 left-0 w-3.5 h-3.5 border-b-2 border-l-2 rounded-bl-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : 'border-white/30'}`}></span>
-                            <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 border-b-2 border-r-2 rounded-br-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : 'border-white/30'}`}></span>
+                            <span className={`absolute top-0 left-0 w-3.5 h-3.5 border-t-2 border-l-2 rounded-tl-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : (isBright ? 'border-black/20' : 'border-white/30')}`}></span>
+                            <span className={`absolute top-0 right-0 w-3.5 h-3.5 border-t-2 border-r-2 rounded-tr-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : (isBright ? 'border-black/20' : 'border-white/30')}`}></span>
+                            <span className={`absolute bottom-0 left-0 w-3.5 h-3.5 border-b-2 border-l-2 rounded-bl-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : (isBright ? 'border-black/20' : 'border-white/30')}`}></span>
+                            <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 border-b-2 border-r-2 rounded-br-md transition-colors duration-300 ${authStatus === 'scanning' ? 'border-accent' : (isBright ? 'border-black/20' : 'border-white/30')}`}></span>
                         </div>
 
                         {/* Center Core Badge */}
                         <div className={`relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 overflow-hidden ${
                             authStatus === 'success'
-                                ? 'bg-emerald-500/20 border-2 border-emerald-400 text-emerald-400 shadow-[0_0_40px_rgba(52,211,153,0.5)] scale-110 animate-success-pulse'
+                                ? 'bg-emerald-500/20 border-2 border-emerald-400 text-emerald-500 shadow-[0_0_40px_rgba(52,211,153,0.5)] scale-110 animate-success-pulse'
                                 : authStatus === 'scanning'
                                     ? 'bg-accent/15 border-2 border-accent text-accent shadow-[0_0_30px_rgba(212,188,148,0.3)]'
                                     : 'bg-accent/15 text-accent border border-accent/30 shadow-lg shadow-accent/10'
@@ -221,7 +228,9 @@ const PasskeyVerificationModal = () => {
                     </div>
 
                     <h2 className={`text-xl font-bold tracking-tight transition-colors duration-300 ${
-                        authStatus === 'success' ? 'text-emerald-400' : 'text-white'
+                        authStatus === 'success' 
+                            ? 'text-emerald-500' 
+                            : (isBright ? 'text-zinc-900' : 'text-white')
                     }`}>
                         {authStatus === 'success' 
                             ? 'Identity Verified!' 
@@ -229,7 +238,7 @@ const PasskeyVerificationModal = () => {
                                 ? 'Scanning Windows Hello...'
                                 : 'Passkey Authentication'}
                     </h2>
-                    <p className="text-xs text-white/50 mt-1">
+                    <p className={`text-xs mt-1 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
                         {authStatus === 'success'
                             ? 'Passkey released and signed successfully'
                             : authStatus === 'scanning'
@@ -239,28 +248,30 @@ const PasskeyVerificationModal = () => {
                 </div>
 
                 {/* Website & Account Card */}
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 mb-5 flex items-center gap-3">
+                <div className={`border rounded-2xl p-3.5 mb-5 flex items-center gap-3 ${
+                    isBright ? 'bg-black/[0.03] border-black/10' : 'bg-white/5 border-white/10'
+                }`}>
                     <div className="w-10 h-10 rounded-xl bg-accent/15 text-accent border border-accent/30 flex items-center justify-center shrink-0">
                         <Globe size={18} />
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-white truncate">
+                            <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                 {passkeyPrompt.rpId || passkeyPrompt.hostname}
                             </span>
                             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
                                 Passkey
                             </span>
                         </div>
-                        <p className="text-xs text-white/50 truncate mt-0.5">
-                            Account: <span className="text-white/80 font-medium">{passkeyPrompt.username || 'Passkey User'}</span>
+                        <p className={`text-xs truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
+                            Account: <span className={`font-medium ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{passkeyPrompt.username || 'Passkey User'}</span>
                         </p>
                     </div>
                 </div>
 
                 {/* Error Banner */}
                 {errorMessage && (
-                    <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-300 text-xs animate-shake">
+                    <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-600 dark:text-rose-300 text-xs animate-shake">
                         <AlertCircle size={14} className="shrink-0" />
                         <span className="flex-1">{errorMessage}</span>
                     </div>
@@ -299,15 +310,15 @@ const PasskeyVerificationModal = () => {
 
                     {/* Divider */}
                     <div className="flex items-center gap-3">
-                        <div className="flex-1 h-px bg-white/10"></div>
-                        <span className="text-[10px] tracking-wider uppercase text-white/40 font-semibold">Or with Master Password / PIN</span>
-                        <div className="flex-1 h-px bg-white/10"></div>
+                        <div className={`flex-1 h-px ${isBright ? 'bg-black/10' : 'bg-white/10'}`}></div>
+                        <span className={`text-[10px] tracking-wider uppercase font-semibold ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>Or with Master Password / PIN</span>
+                        <div className={`flex-1 h-px ${isBright ? 'bg-black/10' : 'bg-white/10'}`}></div>
                     </div>
 
                     {/* Method 2: Master Password / PIN Form */}
                     <form onSubmit={handlePasswordSubmit} className="space-y-3">
                         <div className="relative">
-                            <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                            <Lock size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
                             <input
                                 type={showPass ? 'text' : 'password'}
                                 value={passwordInput}
@@ -315,13 +326,19 @@ const PasskeyVerificationModal = () => {
                                 placeholder="Master Password or 4-digit PIN"
                                 disabled={authStatus !== 'idle'}
                                 autoFocus
-                                className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-10 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-accent focus:bg-white/[0.08] transition disabled:opacity-40"
+                                className={`w-full border rounded-xl pl-9 pr-10 py-2.5 text-sm transition disabled:opacity-40 focus:outline-none focus:border-accent ${
+                                    isBright 
+                                        ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder:text-zinc-400 focus:bg-white' 
+                                        : 'bg-white/5 border-white/10 text-white placeholder:text-white/30 focus:bg-white/[0.08]'
+                                }`}
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPass(!showPass)}
                                 disabled={authStatus !== 'idle'}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition cursor-pointer disabled:opacity-40"
+                                className={`absolute right-3 top-1/2 -translate-y-1/2 transition cursor-pointer disabled:opacity-40 ${
+                                    isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white'
+                                }`}
                             >
                                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                             </button>
@@ -330,7 +347,11 @@ const PasskeyVerificationModal = () => {
                         <button
                             type="submit"
                             disabled={!passwordInput.trim() || authStatus !== 'idle'}
-                            className="w-full py-2.5 px-4 rounded-xl font-semibold bg-white/10 hover:bg-white/15 border border-white/10 text-white transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-xs"
+                            className={`w-full py-2.5 px-4 rounded-xl font-semibold border transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-xs ${
+                                isBright 
+                                    ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' 
+                                    : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'
+                            }`}
                         >
                             {authStatus === 'checking-pass' ? (
                                 <>
@@ -346,11 +367,11 @@ const PasskeyVerificationModal = () => {
 
                 {/* Footer Cancel */}
                 {authStatus !== 'success' && (
-                    <div className="mt-5 pt-3 border-t border-white/5 flex justify-center">
+                    <div className={`mt-5 pt-3 border-t flex justify-center ${isBright ? 'border-black/10' : 'border-white/5'}`}>
                         <button
                             type="button"
                             onClick={handleCancel}
-                            className="text-xs text-white/40 hover:text-white/80 transition cursor-pointer font-medium"
+                            className={`text-xs transition cursor-pointer font-medium ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white/80'}`}
                         >
                             Cancel & Deny Request
                         </button>

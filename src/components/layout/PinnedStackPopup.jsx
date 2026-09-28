@@ -22,8 +22,10 @@ export default function PinnedStackPopup() {
     const closePinnedStack = useUIStore(state => state.closePinnedStack);
     const setCurrentUrl = useUIStore(state => state.setCurrentUrl);
     const showToast = useUIStore(state => state.showToast);
+    const theme = useUIStore(state => state.theme);
 
     const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
@@ -77,8 +79,9 @@ export default function PinnedStackPopup() {
     let top = 100;
     let left = 270;
     if (rect) {
-        top = Math.max(16, Math.min(rect.top - 8, window.innerHeight - 390));
-        left = Math.min(rect.right + 12, window.innerWidth - 340);
+        const estH = Math.min(pinTabs.length * 48 + 140, 420);
+        top = Math.max(16, Math.min(rect.top - 8, window.innerHeight - estH - 16));
+        left = Math.max(16, Math.min(rect.right + 12, window.innerWidth - 340));
     }
 
     const handleSelectTab = (tab) => {
@@ -135,14 +138,20 @@ export default function PinnedStackPopup() {
             {/* Floating Stack Popup Picker */}
             <div 
                 ref={popupRef}
-                className="fixed z-[65000] w-[320px] bg-[#121217]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_20px_rgba(0,0,0,0.4)] flex flex-col p-3 gap-2.5 animate-pop-in select-none"
+                className={`fixed z-[65000] w-[320px] max-h-[calc(100vh-32px)] overflow-hidden backdrop-blur-3xl rounded-2xl flex flex-col p-3 gap-2.5 animate-pop-in select-none transition-all duration-300 ${
+                    isBright
+                        ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900'
+                        : 'bg-[#121217]/95 border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_20px_rgba(0,0,0,0.4)] text-white'
+                }`}
                 style={{ top: `${top}px`, left: `${left}px` }}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header: Service Info & Actions */}
-                <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                <div className={`flex items-center justify-between pb-2 border-b ${isBright ? 'border-black/10' : 'border-white/10'}`}>
                     <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center p-1 flex-shrink-0 shadow-inner">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center p-1 flex-shrink-0 shadow-inner ${
+                            isBright ? 'bg-black/5 border border-black/10' : 'bg-white/5 border border-white/10'
+                        }`}>
                             <img 
                                 src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} 
                                 alt="" 
@@ -152,12 +161,14 @@ export default function PinnedStackPopup() {
                         </div>
                         <div className="flex flex-col min-w-0">
                             <div className="flex items-center gap-2">
-                                <h3 className="text-white font-semibold text-xs truncate max-w-[130px]">{pin.title}</h3>
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-white/10 text-white/70 border border-white/10">
+                                <h3 className={`font-semibold text-xs truncate max-w-[130px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>{pin.title}</h3>
+                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full border ${
+                                    isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/10 text-white/70 border-white/10'
+                                }`}>
                                     {pinTabs.length} {pinTabs.length === 1 ? 'tab' : 'tabs'}
                                 </span>
                             </div>
-                            <span className="text-[10px] text-white/40 font-mono truncate">{pin.domain}</span>
+                            <span className={`text-[10px] font-mono truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{pin.domain}</span>
                         </div>
                     </div>
 
@@ -166,7 +177,9 @@ export default function PinnedStackPopup() {
                         {pinTabs.length > 1 && (
                             <button
                                 onClick={handleCloseAllInStack}
-                                className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-white/10 transition"
+                                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                    isBright ? 'text-zinc-400 hover:text-red-600 hover:bg-black/5' : 'text-white/40 hover:text-red-400 hover:bg-white/10'
+                                }`}
                                 title={`Close all ${pinTabs.length} tabs`}
                             >
                                 <Trash2 size={13} />
@@ -174,14 +187,18 @@ export default function PinnedStackPopup() {
                         )}
                         <button
                             onClick={handleUnpin}
-                            className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition"
+                            className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'
+                            }`}
                             title="Unpin service"
                         >
                             <PinOff size={13} />
                         </button>
                         <button
                             onClick={closePinnedStack}
-                            className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition"
+                            className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'
+                            }`}
                             title="Close picker (Esc)"
                         >
                             <X size={14} />
@@ -192,10 +209,10 @@ export default function PinnedStackPopup() {
                 {/* Tabs List */}
                 <div className="max-h-60 overflow-y-auto hide-scroll flex flex-col gap-1 pr-0.5">
                     {pinTabs.length === 0 ? (
-                        <div className="py-6 flex flex-col items-center justify-center text-center gap-1.5 text-white/40">
+                        <div className={`py-6 flex flex-col items-center justify-center text-center gap-1.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                             <Globe size={22} className="opacity-40 mb-1" />
-                            <span className="text-xs font-medium text-white/70">No open tabs</span>
-                            <span className="text-[10px] text-white/40 max-w-[200px]">Click below to launch an instance of {pin.title}</span>
+                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>No open tabs</span>
+                            <span className={`text-[10px] max-w-[200px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Click below to launch an instance of {pin.title}</span>
                         </div>
                     ) : (
                         pinTabs.map((tab) => {
@@ -206,8 +223,8 @@ export default function PinnedStackPopup() {
                                     onClick={() => handleSelectTab(tab)}
                                     className={`group relative flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
                                         tab.active 
-                                            ? 'bg-accent/20 border-accent/40 text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]' 
-                                            : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/80 hover:text-white'
+                                            ? (isBright ? 'bg-accent/20 border-accent/40 text-zinc-950 font-semibold shadow-sm' : 'bg-accent/20 border-accent/40 text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]')
+                                            : (isBright ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/80 hover:text-white')
                                     }`}
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -220,7 +237,7 @@ export default function PinnedStackPopup() {
                                                     onError={(e) => { e.target.style.display = 'none'; }}
                                                 />
                                             ) : (
-                                                <Globe size={13} className="text-white/40" />
+                                                <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
                                             )}
                                         </div>
                                         <div className="flex flex-col min-w-0">
@@ -228,7 +245,7 @@ export default function PinnedStackPopup() {
                                                 {tab.title || 'New Tab'}
                                             </span>
                                             {tab.url && (
-                                                <span className="text-[9px] font-mono text-white/40 truncate max-w-[190px]">
+                                                <span className={`text-[9px] font-mono truncate max-w-[190px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                                     {tab.url.replace(/^https?:\/\//i, '')}
                                                 </span>
                                             )}
@@ -238,7 +255,7 @@ export default function PinnedStackPopup() {
                                     {/* Right Status / Actions */}
                                     <div className="flex items-center gap-1.5 flex-shrink-0">
                                         {isAudible && (
-                                            <Volume2 size={12} className="text-emerald-400 animate-pulse flex-shrink-0" />
+                                            <Volume2 size={12} className="text-emerald-500 animate-pulse flex-shrink-0" />
                                         )}
                                         {tab.active && (
                                             <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)] flex-shrink-0" />
@@ -248,7 +265,9 @@ export default function PinnedStackPopup() {
                                                 e.stopPropagation();
                                                 handleCloseTab(tab.id);
                                             }}
-                                            className="p-1 rounded text-white/30 hover:text-red-400 hover:bg-white/10 transition opacity-60 group-hover:opacity-100"
+                                            className={`p-1 rounded transition opacity-60 group-hover:opacity-100 ${
+                                                isBright ? 'text-zinc-400 hover:text-red-600 hover:bg-black/5' : 'text-white/30 hover:text-red-400 hover:bg-white/10'
+                                            }`}
                                             title="Close tab"
                                         >
                                             <X size={11} />
@@ -261,10 +280,14 @@ export default function PinnedStackPopup() {
                 </div>
 
                 {/* Footer: Open New Tab Action */}
-                <div className="pt-1.5 border-t border-white/10">
+                <div className={`pt-1.5 border-t ${isBright ? 'border-black/10' : 'border-white/10'}`}>
                     <button
                         onClick={handleNewTabForPin}
-                        className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-white/[0.06] hover:bg-accent/20 hover:text-accent hover:border-accent/40 border border-white/[0.08] text-xs font-medium text-white/80 transition shadow-sm cursor-pointer"
+                        className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-medium transition shadow-sm cursor-pointer ${
+                            isBright
+                                ? 'bg-black/5 hover:bg-accent/20 hover:text-accent border-black/10 text-zinc-800 font-semibold'
+                                : 'bg-white/[0.06] hover:bg-accent/20 hover:text-accent hover:border-accent/40 border-white/[0.08] text-white/80'
+                        }`}
                     >
                         <Plus size={13} />
                         <span>New {pin.title} Tab</span>

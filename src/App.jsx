@@ -32,7 +32,8 @@ import UserProfilePopover from './components/popovers/UserProfilePopover';
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
 export default function App() {
-    const isForceDark = useUIStore(state => state.isForceDark);
+    const theme = useUIStore(state => state.theme);
+    const themeTransition = useUIStore(state => state.themeTransition);
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
@@ -46,8 +47,10 @@ export default function App() {
     const closePopover = useUIStore(state => state.closePopover);
     const activeSpace = useTabStore(state => state.activeSpace);
     const customWallpaper = useUIStore(state => state.settings?.customWallpaper);
-    const wallpaperDimming = useUIStore(state => state.settings?.wallpaperDimming ?? 20);
+    const wallpaperDimming = useUIStore(state => state.settings?.wallpaperDimming ?? 25);
     const loadStoredWallpaper = useUIStore(state => state.loadStoredWallpaper);
+
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
     const [currentWallpaper, setCurrentWallpaper] = useState(activeWallpaper);
@@ -275,8 +278,10 @@ export default function App() {
         let finalAccent = accentColor;
         if (activeSpace === 'ghost') {
             finalAccent = '#a855f7';
-        } else if (!isForceDark && accentColor === '#d4bc94') {
-            finalAccent = '#7a623a'; // Premium darker sand in light mode if default is untouched
+        } else if (activeSpace === 'tor') {
+            finalAccent = '#c084fc';
+        } else if (isBright && accentColor === '#d4bc94') {
+            finalAccent = '#c08434'; // Radiant warm golden amber with high contrast on light backgrounds
         }
 
         const rgb = hexToRgb(finalAccent);
@@ -309,17 +314,17 @@ export default function App() {
         return () => {
             if (unlistenCommand) unlistenCommand();
         };
-    }, [accentColor, activeSpace, isForceDark]);
+    }, [accentColor, activeSpace, theme, isBright]);
 
     const handleContextMenu = (e) => {
         e.preventDefault();
-        useUIStore.getState().setContextMenu({ x: e.clientX, y: e.clientY });
+        useUIStore.getState().setContextMenu({ x: e.clientX, y: e.clientY, openedAt: Date.now() });
     };
 
     return (
         <ContextMenuProvider>
             <div
-                className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 transition-all duration-300 bg-[#08080a] ${isForceDark || activeSpace === 'ghost' ? 'text-white' : 'text-black'} ${isFullscreen ? 'p-0 gap-0' : uiScale === 'compact' ? `p-1.5 ${isSidebarHidden ? 'gap-0' : 'gap-2'}` : `p-3 md:p-4 ${isSidebarHidden ? 'gap-0' : 'gap-4 md:gap-6'}`}`}
+                className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 ${isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'} ${isFullscreen ? 'p-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'}`}
                 onClick={() => closeContextMenus()}
                 onContextMenu={handleContextMenu}
                 onDragOver={(e) => onDragOver(e, 'root')}
@@ -341,14 +346,18 @@ export default function App() {
                         className="absolute inset-0 bg-cover bg-center animate-wallpaper-fade will-change-transform"
                         style={{ backgroundImage: `url('${currentWallpaper}')` }}
                     />
-                    {/* Dimming overlay layer to ensure UI readability */}
+                    {/* Dimming / Frosted overlay layer to ensure UI readability without bleaching */}
                     <div 
-                        className="absolute inset-0 pointer-events-none transition-colors duration-150 ease-out z-0" 
-                        style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} 
+                        className="absolute inset-0 pointer-events-none z-0" 
+                        style={{ 
+                            backgroundColor: isBright
+                                ? `rgba(255, 255, 255, ${(wallpaperDimming / 100) * 0.12})` 
+                                : `rgba(0, 0, 0, ${wallpaperDimming / 100})` 
+                        }} 
                     />
                 </div>
                 <Sidebar />
-                <div className="flex-1 flex flex-col h-full relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
+                <div className="flex-1 flex flex-col h-full relative z-10 transition-[margin,padding] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)]">
                     <MainFrame />
                 </div>
 
@@ -373,11 +382,24 @@ export default function App() {
                 {((activePopover === 'user' || activePopover === 'userProfile') || (isPopoverClosing && (activePopover === 'user' || activePopover === 'userProfile'))) && (
                     <>
                         <div 
-                            className={`fixed inset-0 z-[69990] transition-colors duration-200 ${isPopoverClosing ? 'bg-transparent' : 'bg-black/40 backdrop-blur-[2px]'}`}
+                            className="fixed inset-0 z-[69990] bg-transparent"
                             onClick={closePopover} 
                         />
                         <UserProfilePopover isClosing={isPopoverClosing} />
                     </>
+                )}
+
+                {/* 60FPS GPU-COMPOSITED THEME TRANSITION VEIL */}
+                {themeTransition && (
+                    <div 
+                        key={`${themeTransition.from}-to-${themeTransition.to}`}
+                        className="theme-transition-curtain"
+                        style={{
+                            backgroundColor: themeTransition.from === 'dark' 
+                                ? 'rgba(8, 8, 10, 0.95)' 
+                                : 'rgba(244, 245, 248, 0.95)'
+                        }}
+                    />
                 )}
             </div>
         </ContextMenuProvider>

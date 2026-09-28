@@ -265,6 +265,15 @@ function createWindow(options = {}) {
     mainWindow = win;
   }
 
+  win.webContents.on('console-message', (event) => {
+    const level = event?.level ?? 0;
+    const message = event?.message ?? '';
+    if (typeof message !== 'string') return;
+    if (level >= 2 || message.includes('[Sync]') || message.includes('error') || message.includes('Error') || message.includes('Backup')) {
+      console.log(`[Renderer] ${message}`);
+    }
+  });
+
   win.on('closed', () => {
     browserWindows.delete(win);
     if (mainWindow === win) {
@@ -914,6 +923,9 @@ app.whenReady().then(async () => {
   // Proactively configure in-memory ghost partition (Incognito space)
   const ghostSession = session.fromPartition('ghost');
   setupWebviewSession(ghostSession);
+  if (ghostSession && typeof ghostSession.setWebRTCIPHandlingPolicy === 'function') {
+      ghostSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+  }
 
   // Proactively configure in-memory tor partition (Tor Onion space)
   const torSession = session.fromPartition('tor');
@@ -921,6 +933,14 @@ app.whenReady().then(async () => {
   if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
       torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
   }
+
+  // Ensure ghost and tor sessions start completely fresh with no remnants
+  try {
+      ghostSession.clearStorageData().catch(() => {});
+      ghostSession.clearCache().catch(() => {});
+      torSession.clearStorageData().catch(() => {});
+      torSession.clearCache().catch(() => {});
+  } catch (_) {}
 
   // Auto-configure any dynamic sessions created by webviews
   app.on('session-created', (sess) => {
@@ -959,6 +979,20 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  try {
+    const ghostSess = session.fromPartition('ghost');
+    if (ghostSess) {
+      ghostSess.clearStorageData().catch(() => {});
+      ghostSess.clearCache().catch(() => {});
+    }
+  } catch (_) {}
+  try {
+    const torSess = session.fromPartition('tor');
+    if (torSess) {
+      torSess.clearStorageData().catch(() => {});
+      torSess.clearCache().catch(() => {});
+    }
+  } catch (_) {}
   try {
     torEngine.stopTor();
   } catch (_) {}
@@ -1054,7 +1088,7 @@ ipcMain.handle('vault-unlock', async (event, masterPassword) => {
         masterKey = key;
         return true;
     } catch (e) {
-        console.error('Vault unlock error:', e);
+        console.warn('[Vault] Unlock attempt failed (password mismatch)');
         return false;
     }
 });
@@ -1684,6 +1718,21 @@ ipcMain.handle('clear-ghost-session', async () => {
         return true;
     } catch (e) {
         console.warn('[Ghost Mode] Error clearing ghost session:', e);
+        return false;
+    }
+});
+
+ipcMain.handle('clear-tor-session', async () => {
+    try {
+        const torSess = session.fromPartition('tor');
+        if (torSess) {
+            await torSess.clearStorageData();
+            await torSess.clearCache();
+            console.log('[Tor Mode] In-memory tor session data and cache cleared.');
+        }
+        return true;
+    } catch (e) {
+        console.warn('[Tor Mode] Error clearing tor session:', e);
         return false;
     }
 });

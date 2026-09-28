@@ -57,7 +57,6 @@ const COUNTRY_FLAGS = {
 const getFlag = (country) => COUNTRY_FLAGS[country] || '🌐';
 
 export default function TorCircuitPopover({ isClosing }) {
-    const isForceDark = useUIStore(state => state.isForceDark);
     const closePopover = useUIStore(state => state.closePopover);
     const showToast = useUIStore(state => state.showToast);
 
@@ -107,12 +106,9 @@ export default function TorCircuitPopover({ isClosing }) {
     return (
         <div 
             onClick={e => e.stopPropagation()}
-            className={`absolute top-2 right-4 w-[390px] max-h-[calc(100vh-70px)] overflow-y-auto hide-scroll rounded-2xl backdrop-blur-2xl border shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[70000] p-4 text-white origin-top-right transition-all duration-200 ${
+            style={{ backgroundColor: '#0c0a1a', color: '#ffffff' }}
+            className={`absolute top-2 right-4 w-[390px] max-h-[calc(100vh-70px)] overflow-y-auto hide-scroll rounded-2xl bg-[#0c0a1a]/95 backdrop-blur-3xl border border-purple-500/30 shadow-[0_25px_80px_rgba(0,0,0,0.95),0_0_30px_rgba(147,51,234,0.18)] z-[70000] p-4 text-white origin-top-right transition-all duration-200 ${
                 isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'
-            } ${
-                isForceDark 
-                    ? 'bg-[#0c0e14]/95 border-white/10' 
-                    : 'bg-[#10121a]/95 border-white/10'
             }`}
         >
             {/* Header */}

@@ -9,15 +9,19 @@ export const HIGHLIGHT_COLORS = {
   pink:   { id: 'pink',   label: 'Pink',   bg: 'rgba(244, 114, 182, 0.35)', border: '#f472b6', text: '#ec4899' },
 };
 
-// Helper: normalize URL by removing hashes/fragments
+// Helper: normalize URL by removing hashes/fragments and normalizing trailing slashes
 export function normalizeAnnotationUrl(rawUrl) {
   if (!rawUrl) return '';
   try {
     const parsed = new URL(rawUrl);
     parsed.hash = '';
-    return parsed.toString();
+    let res = parsed.toString().toLowerCase();
+    if (res.endsWith('/') && parsed.pathname !== '/') {
+      res = res.slice(0, -1);
+    }
+    return res;
   } catch (_) {
-    return (rawUrl || '').split('#')[0];
+    return (rawUrl || '').split('#')[0].replace(/\/+$/, '').toLowerCase();
   }
 }
 
@@ -40,7 +44,13 @@ function loadStoredAnnotations() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const sanitized = Array.isArray(parsed) 
+      ? parsed.filter(a => a && a.space !== 'ghost' && a.space !== 'tor' && !a.url?.includes('.onion')) 
+      : [];
+    if (Array.isArray(parsed) && sanitized.length !== parsed.length) {
+      saveStoredAnnotations(sanitized);
+    }
+    return sanitized;
   } catch (e) {
     console.warn('[useAnnotationStore] Failed to load annotations from localStorage:', e);
     return [];
@@ -50,7 +60,8 @@ function loadStoredAnnotations() {
 function saveStoredAnnotations(annotations) {
   try {
     if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(annotations));
+    const sanitized = (annotations || []).filter(a => a && a.space !== 'ghost' && a.space !== 'tor' && !a.url?.includes('.onion'));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
   } catch (e) {
     console.warn('[useAnnotationStore] Failed to save annotations to localStorage:', e);
   }
@@ -65,7 +76,11 @@ export const useAnnotationStore = create((set, get) => ({
    * @returns {Object} created annotation
    */
   addAnnotation: (data) => {
+    // STRICT PRIVACY: Never persist annotations in ghost or tor spaces
+    if (!data || data.space === 'ghost' || data.space === 'tor') return null;
     const cleanUrl = normalizeAnnotationUrl(data.url);
+    if (cleanUrl.includes('.onion')) return null;
+
     const domain = data.domain || extractDomainFromUrl(cleanUrl);
     const id = data.id || `ann-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = Date.now();

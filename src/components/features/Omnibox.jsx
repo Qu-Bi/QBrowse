@@ -142,6 +142,8 @@ export default function Omnibox() {
     const setActiveBang = useUIStore(state => state.setActiveBang);
     const clearActiveBang = useUIStore(state => state.clearActiveBang);
     const customBangs = useUIStore(state => state.settings?.customBangs) || [];
+    const theme = useUIStore(state => state.theme);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor' && !isTor;
 
     const engineNames = {
         google: 'Google',
@@ -170,7 +172,7 @@ export default function Omnibox() {
     useEffect(() => {
         setSelectedIndex(0);
         setSelectedOptionText(null);
-        if (isTor || !searchQuery || searchQuery.startsWith('>') || isBangSuggestionMode) {
+        if (isTor || isIncognito || !searchQuery || searchQuery.startsWith('>') || isBangSuggestionMode) {
             setLiveSuggestions([]);
             return;
         }
@@ -199,7 +201,7 @@ export default function Omnibox() {
             document.body.appendChild(script);
         }, 150);
         return () => clearTimeout(timer);
-    }, [searchQuery, isBangSuggestionMode]);
+    }, [searchQuery, isBangSuggestionMode, isTor, isIncognito]);
 
     useEffect(() => {
         if (!omniboxContainerRef.current) return;
@@ -237,7 +239,8 @@ export default function Omnibox() {
             .filter(site => site.startsWith(q))
             .map(site => ({ url: site, title: `Go to ${site}`, score: 100, visits: 10, lastVisit: Date.now() }));
 
-        return [...historyStoreData, ...siteMatches]
+        const historySource = (isTor || isIncognito) ? [] : historyStoreData;
+        return [...historySource, ...siteMatches]
             .filter(item => item.url.includes(q) || item.title.toLowerCase().includes(q))
             .map(item => {
                 const hoursSinceVisit = (Date.now() - item.lastVisit) / (1000 * 60 * 60);
@@ -794,31 +797,43 @@ export default function Omnibox() {
     if (!isOmniboxOpen && !isOmniboxClosing) return null;
 
     return (
-        <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] bg-black/50 backdrop-blur-md transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
+        <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] ${isBright ? 'bg-black/25 backdrop-blur-md' : 'bg-black/50 backdrop-blur-md'} transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
             <div className={`w-full max-w-[720px] mx-4 flex flex-col relative ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => { e.stopPropagation(); searchInputRef.current?.focus(); }} onKeyDown={handleOmniboxKeyDown}>
 
                 <div 
-                    className={`w-full bg-[#121214]/85 backdrop-blur-3xl border border-white/10 rounded-[1.5rem] p-4 md:p-5 flex items-center gap-3 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${
-                        isCommandMode ? 'border-yellow-500/30' : ''
+                    className={`w-full rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${
+                        isBright
+                            ? 'bg-white/70 backdrop-blur-3xl border border-black/[0.06] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.08)]'
+                            : 'bg-[#0c0d14]/90 backdrop-blur-3xl border border-white/10 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                    } ${
+                        isCommandMode ? (isBright ? 'border-yellow-500/50' : 'border-yellow-500/30') : ''
                     }`}
                     style={{
                         boxShadow: isCommandMode 
-                            ? '0 0 50px -5px rgba(234, 179, 8, 0.25), 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)' 
+                            ? (isBright 
+                                ? '0 20px 60px -10px rgba(234, 179, 8, 0.25), 0 10px 25px -5px rgba(0, 0, 0, 0.08)'
+                                : '0 0 35px -5px rgba(234, 179, 8, 0.2), 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)')
                             : isTor 
-                                ? '0 0 50px -5px rgba(168, 85, 247, 0.3), 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)'
-                                : activeBang 
-                                    ? `0 0 50px -5px ${activeBang.color}30, 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)`
-                                    : '0 0 50px -5px var(--accent-30, rgba(59, 130, 246, 0.28)), 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)'
+                                ? '0 0 35px -5px rgba(168, 85, 247, 0.25), 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)'
+                                : isBright
+                                    ? (activeBang 
+                                        ? `0 20px 60px -10px ${activeBang.color}25, 0 8px 24px -4px rgba(0, 0, 0, 0.08)`
+                                        : '0 20px 60px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.04)')
+                                    : (activeBang 
+                                        ? `0 0 35px -5px ${activeBang.color}25, 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)`
+                                        : '0 25px 80px rgba(0,0,0,0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.06)')
                     }}
                 >
                     {isCommandMode ? (
-                        <Terminal size={24} className="text-yellow-400 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)] animate-pulse flex-shrink-0" />
+                        <Terminal size={20} className="text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)] animate-pulse flex-shrink-0" />
                     ) : activeBang ? (
-                        <div className="w-6 h-6 flex items-center justify-center flex-shrink-0" style={{ color: activeBang.color, filter: `drop-shadow(0 0 6px ${activeBang.color}70)` }}>
-                            {activeBang.icon ? <activeBang.icon size={22} /> : <Search size={22} />}
+                        <div className="w-5 h-5 flex items-center justify-center flex-shrink-0" style={{ color: activeBang.color, filter: `drop-shadow(0 0 6px ${activeBang.color}70)` }}>
+                            {activeBang.icon ? <activeBang.icon size={20} /> : <Search size={20} />}
                         </div>
                     ) : (
-                        <Search size={24} className="text-accent transition-transform duration-300 flex-shrink-0" style={{ filter: 'drop-shadow(0 0 8px var(--accent-30, rgba(59, 130, 246, 0.4)))' }} />
+                        <Search size={20} className={`flex-shrink-0 transition-colors ${
+                            isTor ? 'text-purple-400' : (isBright ? 'text-zinc-600 group-hover:text-accent' : 'text-white/40 group-hover:text-accent')
+                        }`} />
                     )}
 
                     {/* Active Bang Badge Chip */}
@@ -827,7 +842,7 @@ export default function Omnibox() {
                             className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border shadow-sm select-none flex-shrink-0 animate-pop-in"
                             style={{ 
                                 backgroundColor: `${activeBang.color}20`, 
-                                borderColor: `${activeBang.color}40`,
+                                borderColor: `${activeBang.color}40`, 
                                 color: activeBang.color 
                             }}
                         >
@@ -839,7 +854,9 @@ export default function Omnibox() {
                                     clearActiveBang();
                                     searchInputRef.current?.focus();
                                 }}
-                                className="p-0.5 hover:bg-white/20 rounded-full transition ml-0.5 cursor-pointer text-white/70 hover:text-white"
+                                className={`p-0.5 rounded-full transition ml-0.5 cursor-pointer ${
+                                    isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-800' : 'hover:bg-white/20 text-white/70 hover:text-white'
+                                }`}
                                 title="Remove engine filter (Backspace)"
                             >
                                 <X size={12} />
@@ -861,15 +878,30 @@ export default function Omnibox() {
                                 ? "Type a browser command..." 
                                 : activeBang 
                                     ? `Search ${activeBang.name} directly...` 
-                                    : `Search ${currentEngineName}, type '!bang' or '>' for commands...`
+                                    : isTor
+                                        ? "Search the web via Tor, enter .onion address..."
+                                        : "Search the web, or type a command..."
                         }
-                        className={`flex-1 min-w-0 bg-transparent border-none text-lg font-light text-white placeholder-white/30 focus:outline-none focus:ring-0 transition-all duration-300 ${isCommandMode ? 'font-mono text-yellow-500 tracking-wide' : ''}`}
+                        className={`flex-1 min-w-0 bg-transparent border-none text-base md:text-lg font-normal focus:outline-none focus:ring-0 transition-all duration-300 ${
+                            isCommandMode 
+                                ? (isBright ? 'font-mono text-yellow-600 tracking-wide font-normal' : 'font-mono text-yellow-400 tracking-wide font-normal') 
+                                : (isBright ? 'text-zinc-900 placeholder-zinc-500 font-normal' : 'text-white placeholder-white/30 font-normal')
+                        }`}
                         spellCheck="false"
                     />
 
-                    <div className="flex gap-1.5 text-[10px] text-white/40 font-mono uppercase font-bold whitespace-nowrap items-center flex-shrink-0">
-                        <span className="border border-white/10 bg-white/5 px-2 py-1 rounded-md shadow-sm">↵ Ent</span>
-                        <span className="border border-white/10 bg-white/5 px-2 py-1 rounded-md shadow-sm">Esc</span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0 select-none">
+                        <div className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-medium transition-colors ${
+                            isBright ? 'bg-black/[0.03] border-black/[0.06] text-zinc-700' : 'bg-white/5 border-white/10 text-white/50'
+                        }`}>
+                            <span className="text-[11px] font-mono leading-none">↵</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Ent</span>
+                        </div>
+                        <div className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-medium transition-colors ${
+                            isBright ? 'bg-black/[0.03] border-black/[0.06] text-zinc-700' : 'bg-white/5 border-white/10 text-white/50'
+                        }`}>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Esc</span>
+                        </div>
                     </div>
                 </div>
 
@@ -877,17 +909,27 @@ export default function Omnibox() {
                     <div className="overflow-hidden">
                         <div 
                             ref={omniboxContainerRef} 
-                            className={`w-full bg-[#121214]/85 backdrop-blur-3xl border border-white/10 rounded-2xl p-2 flex flex-col gap-1 transition-all duration-300 max-h-[50vh] overflow-y-auto hide-scroll ${
-                                isCommandMode ? 'border-yellow-500/20' : ''
+                            className={`w-full rounded-2xl p-2 flex flex-col gap-1 transition-all duration-300 max-h-[50vh] overflow-y-auto hide-scroll ${
+                                isBright 
+                                    ? 'bg-white/75 backdrop-blur-3xl border border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.08)]' 
+                                    : 'bg-[#0c0d14]/90 backdrop-blur-3xl border border-white/10 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                            } ${
+                                isCommandMode ? (isBright ? 'border-yellow-500/40' : 'border-yellow-500/20') : ''
                             }`}
                             style={{
                                 boxShadow: isCommandMode 
-                                    ? '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(234, 179, 8, 0.15), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)' 
+                                    ? (isBright 
+                                        ? '0 20px 40px -15px rgba(0, 0, 0, 0.12), 0 0 25px -8px rgba(234, 179, 8, 0.15)'
+                                        : '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(234, 179, 8, 0.15), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)')
                                     : isTor 
                                         ? '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(168, 85, 247, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)'
-                                        : activeBang 
-                                            ? `0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px ${activeBang.color}20, inset 0 1px 0 0 rgba(255, 255, 255, 0.08)`
-                                            : '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px var(--accent-15, rgba(59, 130, 246, 0.15)), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)'
+                                        : isBright
+                                            ? (activeBang 
+                                                ? `0 20px 40px -15px rgba(0, 0, 0, 0.12), 0 0 25px -8px ${activeBang.color}20, inset 0 1px 1px 0 rgba(255, 255, 255, 0.95)`
+                                                : '0 25px 60px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.05), inset 0 1px 1px rgba(255,255,255,0.95)')
+                                            : (activeBang 
+                                                ? `0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px ${activeBang.color}20, inset 0 1px 0 0 rgba(255, 255, 255, 0.08)`
+                                                : '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px var(--accent-15, rgba(59, 130, 246, 0.15)), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)')
                             }}
                         >
                             {isCommandMode ? (
@@ -906,40 +948,42 @@ export default function Omnibox() {
                                                 }} 
                                                 className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-150 group text-left border ${
                                                     isSelected 
-                                                        ? 'bg-yellow-500/15 border-yellow-500/30 scale-[1.005]' 
-                                                        : 'border-transparent hover:border-white/5 hover:bg-white/5'
+                                                        ? (isBright ? 'bg-yellow-500/15 border-yellow-500/40 shadow-sm scale-[1.005]' : 'bg-yellow-500/15 border-yellow-500/30 scale-[1.005]') 
+                                                        : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.04]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
                                                 }`}
                                             >
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${isSelected ? 'bg-yellow-500/25 scale-105' : 'bg-white/5 group-hover:scale-105'} ${cmd.color}`}>
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${isSelected ? 'bg-yellow-500/25 scale-105' : (isBright ? 'bg-black/5 group-hover:scale-105' : 'bg-white/5 group-hover:scale-105')} ${cmd.color}`}>
                                                     <cmd.icon size={16} />
                                                 </div>
                                                 <div className="flex flex-col flex-1 overflow-hidden">
-                                                    <span className={`font-mono font-medium truncate transition-colors ${isSelected ? 'text-yellow-300 font-semibold' : 'text-yellow-500 group-hover:text-yellow-400'}`}>{'> ' + cmd.cmd}</span>
-                                                    <span className={`text-xs truncate transition-colors ${isSelected ? 'text-yellow-200/80' : 'text-white/40 group-hover:text-yellow-500/70'}`}>{cmd.title}</span>
+                                                    <span className={`font-mono font-medium truncate transition-colors ${isSelected ? (isBright ? 'text-yellow-700 font-bold' : 'text-yellow-300 font-semibold') : (isBright ? 'text-yellow-600 group-hover:text-yellow-700' : 'text-yellow-500 group-hover:text-yellow-400')}`}>{'> ' + cmd.cmd}</span>
+                                                    <span className={`text-xs truncate transition-colors ${isSelected ? (isBright ? 'text-zinc-700' : 'text-yellow-200/80') : (isBright ? 'text-zinc-500 group-hover:text-zinc-700' : 'text-white/40 group-hover:text-yellow-500/70')}`}>{cmd.title}</span>
                                                 </div>
                                                 {isSelected ? (
                                                     <div className="flex items-center gap-2 flex-shrink-0">
-                                                        <span className="border border-yellow-500/30 bg-yellow-500/15 text-yellow-300 text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm">↵ Enter</span>
-                                                        <Zap size={15} className="text-yellow-400 rotate-12" />
+                                                        <span className={`border text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm ${isBright ? 'border-yellow-600/30 bg-yellow-500/20 text-yellow-800' : 'border-yellow-500/30 bg-yellow-500/15 text-yellow-300'}`}>↵ Enter</span>
+                                                        <Zap size={15} className="text-yellow-500 rotate-12" />
                                                     </div>
                                                 ) : (
-                                                    <Zap size={15} className="text-white/20 opacity-0 group-hover:opacity-100 group-hover:text-yellow-400 transition-all duration-200" />
+                                                    <Zap size={15} className={`transition-all duration-200 ${isBright ? 'text-zinc-300 opacity-0 group-hover:opacity-100 group-hover:text-yellow-600' : 'text-white/20 opacity-0 group-hover:opacity-100 group-hover:text-yellow-400'}`} />
                                                 )}
                                             </button>
                                         );
                                     })
                                 ) : (
-                                    <div className="p-4 flex items-center gap-4 text-white/50 animate-pop-in"><Terminal size={18} className="animate-pulse text-red-400" /><span className="text-sm font-mono">Command not found: <strong className="text-red-400">"{commandQuery}"</strong></span></div>
+                                    <div className={`p-4 flex items-center gap-4 animate-pop-in ${isBright ? 'text-zinc-600' : 'text-white/50'}`}><Terminal size={18} className="animate-pulse text-red-500" /><span className="text-sm font-mono">Command not found: <strong className="text-red-500">"{commandQuery}"</strong></span></div>
                                 )
                             ) : isBangSuggestionMode ? (
                                 bangSuggestions.length > 0 ? (
                                     <div className="flex flex-col gap-1 p-1">
-                                        <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white/40 flex items-center justify-between border-b border-white/5 mb-1">
+                                        <div className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center justify-between border-b mb-1 ${
+                                            isBright ? 'text-zinc-500 border-black/5' : 'text-white/40 border-white/5'
+                                        }`}>
                                             <span className="flex items-center gap-1.5">
                                                 <Sparkles size={12} className="text-accent" />
                                                 Search Bangs & Engines
                                             </span>
-                                            <span className="text-[10px] font-mono lowercase text-white/30">Tab ⇥ or Enter ↵ to activate</span>
+                                            <span className={`text-[10px] font-mono lowercase ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>Tab ⇥ or Enter ↵ to activate</span>
                                         </div>
                                         {bangSuggestions.map((bang, i) => {
                                             const BangIcon = bang.icon || Search;
@@ -958,12 +1002,12 @@ export default function Omnibox() {
                                                     onMouseMove={(e) => handleOptionMouseMove(i, e)}
                                                     style={isSelected ? {
                                                         backgroundColor: `${bangColor}15`,
-                                                        borderColor: `${bangColor}30`
+                                                        borderColor: `${bangColor}40`
                                                     } : undefined}
                                                     className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all duration-150 group text-left border ${
                                                         isSelected 
-                                                            ? 'scale-[1.005]' 
-                                                            : 'border-transparent hover:border-white/5 hover:bg-white/5'
+                                                            ? 'scale-[1.005] shadow-sm' 
+                                                            : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.04]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
                                                     }`}
                                                 >
                                                     <div className="flex items-center gap-3 min-w-0">
@@ -975,30 +1019,30 @@ export default function Omnibox() {
                                                         </div>
                                                         <div className="flex flex-col min-w-0">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={`font-semibold text-sm ${isSelected ? 'text-white' : 'text-white/90'}`}>{bang.name}</span>
+                                                                <span className={`font-semibold text-sm ${isSelected ? (isBright ? 'text-zinc-950 font-bold' : 'text-white') : (isBright ? 'text-zinc-800' : 'text-white/90')}`}>{bang.name}</span>
                                                                 <div className="flex items-center gap-1">
                                                                     {bang.bangs.slice(0, 3).map((b, bi) => (
-                                                                        <span key={bi} className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-semibold ${isSelected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70'}`}>
+                                                                        <span key={bi} className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-semibold ${isSelected ? (isBright ? 'bg-black/10 text-zinc-900' : 'bg-white/20 text-white') : (isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/10 text-white/70')}`}>
                                                                             {b}
                                                                         </span>
                                                                     ))}
                                                                 </div>
-                                                                <span className="text-[10px] text-white/30 font-medium">({bang.category || 'Engine'})</span>
+                                                                <span className={`text-[10px] font-medium ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>({bang.category || 'Engine'})</span>
                                                             </div>
-                                                            <span className={`text-xs truncate font-mono mt-0.5 ${isSelected ? 'text-white/70' : 'text-white/40'}`}>
+                                                            <span className={`text-xs truncate font-mono mt-0.5 ${isSelected ? (isBright ? 'text-zinc-600' : 'text-white/70') : (isBright ? 'text-zinc-400' : 'text-white/40')}`}>
                                                                 {bang.url}
                                                             </span>
                                                         </div>
                                                     </div>
                                                     <div className={`flex items-center gap-1.5 text-[10px] font-mono transition ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                        <span className="border border-white/20 bg-white/10 text-white/90 px-2 py-0.5 rounded font-medium shadow-sm">Tab ⇥ or ↵ Enter</span>
+                                                        <span className={`border px-2 py-0.5 rounded font-medium shadow-sm ${isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/20 bg-white/10 text-white/90'}`}>Tab ⇥ or ↵ Enter</span>
                                                     </div>
                                                 </button>
                                             );
                                         })}
                                     </div>
                                 ) : (
-                                    <div className="p-4 flex items-center gap-4 text-white/50 animate-pop-in">
+                                    <div className={`p-4 flex items-center gap-4 animate-pop-in ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
                                         <Search size={18} className="text-accent" />
                                         <span className="text-sm">No search engine bang found for <strong>"{searchQuery}"</strong></span>
                                     </div>
@@ -1016,8 +1060,8 @@ export default function Omnibox() {
                                                 onMouseMove={(e) => handleOptionMouseMove(i, e)}
                                                 className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-150 group text-left border ${
                                                     isSelected 
-                                                        ? 'bg-white/10 border-white/15 scale-[1.005]' 
-                                                        : 'border-transparent hover:border-white/5 hover:bg-white/5'
+                                                        ? (isBright ? 'bg-black/[0.06] border-black/10 shadow-sm scale-[1.005]' : 'bg-white/10 border-white/15 scale-[1.005]') 
+                                                        : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.03]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
                                                 }`}
                                             >
                                                 <div 
@@ -1025,36 +1069,36 @@ export default function Omnibox() {
                                                         pred.bang 
                                                             ? '' 
                                                             : (pred.isMath 
-                                                                ? (isSelected ? 'bg-accent/25 text-accent scale-105' : 'bg-accent-20 text-accent group-hover:bg-accent-30') 
+                                                                ? (isSelected ? 'bg-accent/25 text-accent scale-105' : 'bg-accent/15 text-accent group-hover:bg-accent/25') 
                                                                 : (pred.isSearch 
-                                                                    ? (isSelected ? 'bg-purple-500/25 text-purple-200 scale-105' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20')
-                                                                    : (isSelected ? 'bg-white/20 text-accent scale-105' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent')))
+                                                                    ? (isSelected ? (isBright ? 'bg-purple-500/20 text-purple-700 scale-105' : 'bg-purple-500/25 text-purple-200 scale-105') : (isBright ? 'bg-purple-500/10 text-purple-600 group-hover:bg-purple-500/20' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20'))
+                                                                    : (isSelected ? (isBright ? 'bg-accent/15 text-accent scale-105' : 'bg-white/20 text-accent scale-105') : (isBright ? 'bg-black/5 text-zinc-500 group-hover:bg-black/10 group-hover:text-accent' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent'))))
                                                     } ${isSelected ? 'scale-105' : 'group-hover:scale-105'}`}
                                                     style={pred.bang ? { backgroundColor: `${pred.bang.color}25`, color: pred.bang.color } : undefined}
                                                 >
                                                     {pred.bang ? (BangIcon ? <BangIcon size={16} /> : <Search size={16} />) : (pred.isMath ? <Calculator size={16} /> : (pred.isSearch ? <Search size={16} /> : <Globe size={16} />))}
                                                 </div>
                                                 <div className="flex flex-col flex-1 overflow-hidden">
-                                                    <span className={`font-medium truncate transition-colors ${pred.isMath ? 'text-accent text-lg font-bold' : (isSelected ? 'text-white font-semibold' : 'text-white/80 group-hover:text-white')}`}>
+                                                    <span className={`font-medium truncate transition-colors ${pred.isMath ? 'text-accent text-lg font-bold' : (isSelected ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-semibold') : (isBright ? 'text-zinc-800 group-hover:text-zinc-950' : 'text-white/80 group-hover:text-white'))}`}>
                                                         {pred.title}
                                                     </span>
-                                                    <span className={`text-xs truncate font-mono transition-colors ${isSelected ? 'text-white/70' : 'text-white/40'}`}>
+                                                    <span className={`text-xs truncate font-mono transition-colors ${isSelected ? (isBright ? 'text-zinc-700' : 'text-white/70') : (isBright ? 'text-zinc-500' : 'text-white/40')}`}>
                                                         {pred.url}
                                                     </span>
                                                 </div>
                                                 {isSelected ? (
                                                     <div className="flex items-center gap-2 flex-shrink-0 animate-fade-in">
-                                                        <span className="border border-white/15 bg-white/10 text-white/80 text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm">↵ Enter</span>
+                                                        <span className={`border text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm ${isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/15 bg-white/10 text-white/80'}`}>↵ Enter</span>
                                                         <ArrowRight size={15} className="text-accent translate-x-0.5 transition-all" />
                                                     </div>
                                                 ) : (
-                                                    <ArrowRight size={15} className="text-white/20 opacity-0 group-hover:opacity-100 group-hover:text-accent transition-all duration-200" />
+                                                    <ArrowRight size={15} className={`${isBright ? 'text-zinc-300' : 'text-white/20'} opacity-0 group-hover:opacity-100 group-hover:text-accent transition-all duration-200`} />
                                                 )}
                                             </button>
                                         );
                                     })
                                 ) : (
-                                    <div className="p-4 flex items-center gap-4 text-white/50"><Search size={18} /><span className="text-sm">No results for "{searchQuery}"</span></div>
+                                    <div className={`p-4 flex items-center gap-4 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}><Search size={18} /><span className="text-sm">No results for "{searchQuery}"</span></div>
                                 )
                             )}
                         </div>

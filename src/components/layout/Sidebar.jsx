@@ -12,6 +12,7 @@ export default function Sidebar() {
     // UI Store State
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
+    const uiScale = useUIStore(state => state.settings?.uiScale);
     const currentUrl = useUIStore(state => state.currentUrl);
     const setHoverPreview = useUIStore(state => state.setHoverPreview);
     const showToast = useUIStore(state => state.showToast);
@@ -19,6 +20,8 @@ export default function Sidebar() {
     const setActiveModal = useUIStore(state => state.openModal);
     const setOnboardingStep = useUIStore(state => state.setOnboardingStep);
     const setTabContextMenu = useUIStore(state => state.setTabContextMenu);
+    const setPinnedContextMenu = useUIStore(state => state.setPinnedContextMenu);
+    const setFolderContextMenu = useUIStore(state => state.setFolderContextMenu);
     const faviconGlow = useUIStore(state => state.settings?.faviconGlow);
     const togglePopover = useUIStore(state => state.togglePopover);
     const activePopover = useUIStore(state => state.activePopover);
@@ -71,7 +74,8 @@ export default function Sidebar() {
     const isTorEnabled = useTorStore(state => state.isTorEnabled);
     const isIncognito = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
-    const isForceDark = useUIStore(state => state.isForceDark);
+    const theme = useUIStore(state => state.theme);
+    const isBright = theme === 'light' && !isIncognito && !isTor;
     const hoverTimeout = useRef(null);
 
     // Vault Store state for folder open logic (since they belong to folders)
@@ -85,9 +89,7 @@ export default function Sidebar() {
         e.stopPropagation();
         clearTimeout(hoverTimeout.current);
         setHoverPreview(null);
-        const x = e.clientX + 220 > window.innerWidth ? window.innerWidth - 230 : e.clientX;
-        const y = e.clientY + 250 > window.innerHeight ? window.innerHeight - 260 : e.clientY;
-        setTabContextMenu({ x, y, tab, spaceType });
+        setTabContextMenu({ x: e.clientX, y: e.clientY, tab, spaceType, openedAt: Date.now() });
     };
 
     const handlePinnedTabClick = (e, pin) => {
@@ -141,12 +143,8 @@ export default function Sidebar() {
     const handlePinnedContextMenu = (e, pin) => {
         e.preventDefault();
         e.stopPropagation();
-        const rect = e.currentTarget.getBoundingClientRect();
-        if (activePinnedStack?.pin?.id === pin.id) {
-            closePinnedStack();
-        } else {
-            setActivePinnedStack({ pin, rect });
-        }
+        closePinnedStack();
+        setPinnedContextMenu({ x: e.clientX, y: e.clientY, pin, openedAt: Date.now() });
     };
 
     const renderTab = (tab, spaceType) => (
@@ -210,10 +208,23 @@ export default function Sidebar() {
                     handleCloseTab(tab.id);
                 }
             }}
-            className={`group relative flex items-center justify-between p-3 rounded-xl ${tab.active ? 'bg-accent-20 text-accent border-accent-30 shadow-accent' : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent'} border cursor-grab active:cursor-grabbing w-full ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''}`}>
+            className={`group relative flex items-center justify-between p-3 rounded-xl border cursor-grab active:cursor-grabbing w-full ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${
+                tab.active 
+                    ? (isBright 
+                        ? 'bg-white/80 border-black/[0.08] text-zinc-950 font-bold shadow-[0_2px_8px_rgba(0,0,0,0.06)]' 
+                        : 'text-accent font-semibold') 
+                    : (isBright 
+                        ? 'bg-transparent hover:bg-black/[0.04] text-zinc-700 hover:text-zinc-950 border-transparent' 
+                        : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent')
+            }`}
+            style={tab.active && !isBright ? { 
+                borderColor: 'var(--accent-40)', 
+                backgroundColor: 'var(--accent-15)',
+                boxShadow: '0 0 18px var(--accent-30)'
+            } : undefined}>
             <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                 {spaceType === 'ghost' ? (
-                    <Ghost size={14} className={`flex-shrink-0 opacity-50 ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
+                    <Ghost size={14} className={`flex-shrink-0 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
                 ) : spaceType === 'tor' ? (
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
                         <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
@@ -221,8 +232,8 @@ export default function Sidebar() {
                         <circle cx="12" cy="12" r="1.5"/>
                     </svg>
                 ) : (
-                    tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="icon" className={`w-4 h-4 rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} onError={(e) => e.target.style.display = 'none'} /> : <Globe size={14} className={`flex-shrink-0 opacity-50 ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
-                )}<span className="text-sm font-medium truncate hidden md:block">{tab.title}</span>
+                    tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="icon" className={`w-4 h-4 rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} onError={(e) => e.target.style.display = 'none'} /> : <Globe size={14} className={`flex-shrink-0 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
+                )}<span className={`text-sm truncate hidden md:block ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>{tab.title}</span>
             </div>
 
             {(tab.isAudioPlaying || tab.isMuted) && (
@@ -231,10 +242,10 @@ export default function Sidebar() {
                 </div>
             )}
 
-            <div className="hidden md:flex opacity-0 group-hover:opacity-100 transition absolute right-2 gap-1 bg-[#1a1a1c] p-1 rounded-xl border border-white/10 shadow-[0_4px_12px_rgba(0,0,0,0.6)] z-20">
+            <div className={`hidden md:flex opacity-0 group-hover:opacity-100 transition absolute right-2 gap-0.5 ${isBright ? 'bg-black/[0.06] border border-black/[0.08] text-zinc-700 backdrop-blur-md' : 'bg-[#1a1a1c]/90 border border-white/10 text-white shadow-[0_4px_12px_rgba(0,0,0,0.6)]'} p-1 rounded-xl z-20`}>
                 <button 
                     onClick={(e) => { e.stopPropagation(); handleToggleMute(tab.id, spaceType); }} 
-                    className={`p-1 transition rounded ${tab.isMuted ? 'text-red-400 hover:bg-red-400/20' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
+                    className={`p-1 transition rounded ${tab.isMuted ? 'text-red-500 hover:bg-red-500/20' : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10')}`} 
                     title={tab.isMuted ? "Unmute Tab" : "Mute Tab"}
                 >
                     {tab.isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
@@ -247,14 +258,14 @@ export default function Sidebar() {
                             useUIStore.getState().sendMediaCommand('toggle-pip'); 
                             showToast('Picture-in-Picture'); 
                         }} 
-                        className="p-1 text-accent opacity-70 hover:opacity-100 hover:bg-accent-10 rounded transition" 
+                        className={`p-1 rounded transition ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
                         title="Picture in Picture"
                     >
                         <PictureInPicture2 size={12} />
                     </button>
                 )}
                 {spaceType !== 'ghost' && spaceType !== 'tor' && tab.url && tab.url !== 'about:blank' && (
-                    <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className="p-1 text-accent opacity-70 hover:opacity-100 hover:bg-accent-10 rounded transition" title="Pin Tab"><Pin size={12} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className={`p-1 rounded transition ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} title="Pin Tab"><Pin size={12} /></button>
                 )}
                 <button 
                     onClick={(e) => { 
@@ -263,7 +274,7 @@ export default function Sidebar() {
                         setHoverPreview(null);
                         handleCloseTab(tab.id); 
                     }} 
-                    className="p-1 text-accent opacity-70 hover:opacity-100 hover:bg-accent-10 rounded transition" 
+                    className={`p-1 rounded transition ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
                     title="Close Tab"
                 >
                     <X size={12} />
@@ -278,7 +289,17 @@ export default function Sidebar() {
 
     return (
         <>
-        <aside className={`flex-shrink-0 flex flex-col backdrop-blur-2xl rounded-[2rem] shadow-2xl overflow-hidden relative z-50 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isForceDark || isIncognito ? 'bg-black/50 border border-white/10 text-white/90 sidebar-dark' : 'bg-white/60 border border-black/10 text-black/90 sidebar-light'} ${isFullscreen || isSidebarHidden ? 'w-0 opacity-0 border-none m-0' : 'w-16 md:w-64 opacity-100'}`}>
+        <aside className={`flex-shrink-0 flex flex-col backdrop-blur-3xl rounded-[2rem] shadow-2xl overflow-hidden relative z-50 will-change-[width,margin,opacity] transition-[width,margin,opacity] duration-350 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            isBright 
+                ? 'bg-white/45 border border-white/25 text-zinc-900 sidebar-light shadow-[0_20px_50px_rgba(0,0,0,0.04)]' 
+                : 'bg-black/50 border border-white/10 text-white/90 sidebar-dark'
+        } ${
+            isFullscreen || isSidebarHidden 
+                ? 'w-0 mr-0 opacity-0 pointer-events-none' 
+                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100'
+        }`}>
+            {/* Fixed-Width Inner Container to prevent content squishing and text wrapping */}
+            <div className={`h-full flex flex-col flex-shrink-0 ${uiScale === 'compact' ? 'w-16 md:w-60 min-w-[15rem]' : 'w-16 md:w-64 min-w-[16rem]'}`}>
 
             <div className="drag-region flex gap-2 p-5 border-b border-[color:var(--sidebar-border)] items-center justify-between">
                 <div className="flex gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -292,7 +313,7 @@ export default function Sidebar() {
                         className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all hover:scale-110 cursor-pointer relative ${
                             activePopover === 'user' || activePopover === 'userProfile'
                                 ? 'bg-accent-20 border-accent text-accent shadow-[0_0_10px_var(--accent)]'
-                                : 'bg-white/10 border-white/20 text-white/70 hover:text-white'
+                                : (isBright ? 'bg-white/70 border-white/40 text-zinc-700 hover:text-black shadow-xs' : 'bg-white/10 border-white/20 text-white/70 hover:text-white')
                         }`} 
                         style={{ borderColor: activeProfile?.color || '#d4bc94' }}
                         title={`Profile: ${activeProfile?.name || 'Default'} & Cloud Sync`}
@@ -390,7 +411,7 @@ export default function Sidebar() {
                         </button>
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleUnpinTab(pin); }} 
-                            className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-[#2a251e] border-accent-30 text-accent rounded-full p-0.5 hover:scale-110 bg-accent hover:text-black transition-all shadow-md z-10" 
+                            className={`absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 ${isBright ? 'bg-zinc-100 border border-black/10 text-zinc-700 hover:bg-red-500 hover:text-white' : 'bg-[#2a251e] border-accent-30 text-accent hover:bg-accent hover:text-black'} rounded-full p-0.5 hover:scale-110 transition-all shadow-md z-10`}
                             title="Unpin"
                         >
                             <Minus size={10} />
@@ -425,7 +446,7 @@ export default function Sidebar() {
                             const filtered = privateTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-300 w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
@@ -454,7 +475,7 @@ export default function Sidebar() {
                             const filtered = workTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-300 w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
@@ -551,10 +572,29 @@ export default function Sidebar() {
             </div>
 
             <div className="p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-2">
-                <div className="relative flex-1 flex bg-[color:var(--sidebar-bg-hover)] p-1 rounded-xl border border-[color:var(--sidebar-border)]">
-                    <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent-20 border border-accent-30 rounded-lg transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-sm ${isIncognito || isTor ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`} style={{ transform: activeSpace === 'work' ? 'translateX(100%)' : 'translateX(0)' }}></div>
-                    <button onClick={() => setActiveSpace('personal')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold transition-colors duration-300 ${activeSpace === 'personal' ? 'text-accent' : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><User size={14} /> <span className="hidden md:block">Personal</span></button>
-                    <button onClick={() => setActiveSpace('work')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold transition-colors duration-300 ${activeSpace === 'work' ? 'text-accent' : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><Layers size={14} /> <span className="hidden md:block">Work</span></button>
+                <div className={`relative flex-1 flex p-1 rounded-full border shadow-xs backdrop-blur-2xl ${
+                    isBright 
+                        ? 'bg-black/[0.03] border-black/[0.05]' 
+                        : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
+                }`}>
+                    <div 
+                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                            isIncognito || isTor ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
+                        } ${
+                            isBright
+                                ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                : 'border shadow-xs'
+                        }`} 
+                        style={{ 
+                            transform: activeSpace === 'work' ? 'translateX(100%)' : 'translateX(0)',
+                            ...(!isBright ? {
+                                borderColor: 'var(--accent-30)',
+                                backgroundColor: 'var(--accent-15)'
+                            } : {})
+                        }}
+                    />
+                    <button onClick={() => setActiveSpace('personal')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-300 ${activeSpace === 'personal' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><User size={14} /> <span className="hidden md:block">Personal</span></button>
+                    <button onClick={() => setActiveSpace('work')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-300 ${activeSpace === 'work' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><Layers size={14} /> <span className="hidden md:block">Work</span></button>
                 </div>
 
                 {/* Animated Morphing Ghost <-> Onion Button */}
@@ -570,16 +610,17 @@ export default function Sidebar() {
                     }}
                     onContextMenu={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         useTorStore.getState().toggleTorEnabled();
                     }}
-                    className={`relative p-2 rounded-xl transition-all duration-300 border flex-shrink-0 overflow-hidden group ${
+                    className={`relative p-2 rounded-2xl transition-all duration-300 border flex-shrink-0 overflow-hidden group ${
                         (isTorEnabled ? isTor : isIncognito)
                             ? (isTorEnabled 
-                                ? 'border-purple-500/40 text-purple-300 bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.35)]' 
-                                : 'border-accent-30 text-accent bg-accent-20 shadow-accent')
+                                ? 'border-purple-500/30 text-purple-300 bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.35)]' 
+                                : 'border-accent/30 text-accent bg-accent-15 shadow-accent')
                             : (isTorEnabled
-                                ? 'border-transparent text-purple-400/60 hover:text-purple-300 hover:bg-purple-500/10'
-                                : 'border-transparent text-[color:var(--sidebar-text-muted)] hover:bg-[color:var(--sidebar-bg-hover)] hover:text-[color:var(--sidebar-text-hover)]')
+                                ? 'border-transparent bg-transparent text-purple-400/60 hover:text-purple-300 hover:bg-purple-500/10'
+                                : (isBright ? 'border-transparent bg-transparent text-zinc-500 hover:text-zinc-900 hover:bg-black/[0.05]' : 'border-transparent bg-transparent text-white/50 hover:text-white hover:bg-white/10'))
                     }`}
                     title={isTorEnabled 
                         ? (isTor ? "Tor Space Active (Click to switch to Personal • Right-click to switch to Ghost)" : "Enter Tor Space • Right-click to switch to Ghost")
@@ -633,6 +674,7 @@ export default function Sidebar() {
                         <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_#fbbf24] animate-ping"></span>
                     )}
                 </button>
+            </div>
             </div>
         </aside>
         <PinnedStackPopup />

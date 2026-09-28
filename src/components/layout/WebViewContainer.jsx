@@ -5,9 +5,10 @@ import useHistoryStore from '../../store/useHistoryStore';
 import useVaultStore, { extractDomain } from '../../store/useVaultStore';
 import useProfileStore from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
-import { useAnnotationStore, normalizeAnnotationUrl } from '../../store/useAnnotationStore';
+import { useAnnotationStore, normalizeAnnotationUrl, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
+import { X, StickyNote, Trash2, Copy, Check } from 'lucide-react';
 import FlagsPage from '../pages/FlagsPage';
 import DrmHandOffBanner from '../features/DrmHandOffBanner';
 
@@ -17,6 +18,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
     const wvRef = useRef(null);
     const isInternalNavigation = useRef(false);
     const isDomReadyRef = useRef(false);
+    const pendingScrollAnnotationRef = useRef(null);
     const torSecurityLevel = useTorStore(state => state.securityLevel);
     const torStatus = useTorStore(state => state.status);
     const torBootstrapProgress = useTorStore(state => state.bootstrapProgress);
@@ -26,6 +28,11 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
 
     const [isDrmDismissed, setIsDrmDismissed] = useState(false);
     const [genericDrmError, setGenericDrmError] = useState(null);
+    const [activeNoteCard, setActiveNoteCard] = useState(null);
+    const [selectionPill, setSelectionPill] = useState(null);
+    const [pillCopied, setPillCopied] = useState(false);
+    const activeNoteCardRef = useRef(null);
+    activeNoteCardRef.current = activeNoteCard;
     const prevHostRef = useRef('');
 
     useEffect(() => {
@@ -219,8 +226,8 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 }
                 scheduleReaderChecks();
             }
-            if (e.url !== 'about:blank' && space !== 'ghost') {
-                useHistoryStore.getState().addEntry(e.url, e.url); // Initial entry without title
+            if (e.url !== 'about:blank' && space !== 'ghost' && space !== 'tor') {
+                useHistoryStore.getState().addEntry(e.url, e.url, space); // Initial entry without title
             }
         };
 
@@ -234,8 +241,8 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     currentUrl = wvRef.current.getURL();
                 }
             } catch (_) {}
-            if (currentUrl && currentUrl !== 'about:blank' && space !== 'ghost') {
-                useHistoryStore.getState().updateLatestTitle(currentUrl, newTitle);
+            if (currentUrl && currentUrl !== 'about:blank' && space !== 'ghost' && space !== 'tor') {
+                useHistoryStore.getState().updateLatestTitle(currentUrl, newTitle, space);
             }
         };
         
@@ -281,10 +288,24 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         };
 
         const sendAnnotationsToWebview = () => {
-            if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
+            if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://') || space === 'ghost' || space === 'tor') return;
             try {
                 const annotations = useAnnotationStore.getState().getAnnotationsForUrl(tab.url, space);
                 wv.send('qbrowse-apply-annotations', annotations);
+                if (pendingScrollAnnotationRef.current) {
+                    const pending = pendingScrollAnnotationRef.current;
+                    const targetId = typeof pending === 'object' ? pending.id : pending;
+                    const annPayload = (typeof pending === 'object' && pending.annotation) 
+                        ? pending.annotation 
+                        : (annotations.find(a => a.id === targetId) || useAnnotationStore.getState().annotations.find(a => a.id === targetId));
+                    setTimeout(() => {
+                        try {
+                            if (wvRef.current) {
+                                wvRef.current.send('qbrowse-scroll-to-annotation', { id: targetId, annotation: annPayload });
+                            }
+                        } catch (_) {}
+                    }, 250);
+                }
             } catch (_) {}
         };
 
@@ -324,6 +345,21 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
 
             sendAnnotationsToWebview();
             sendVaultMatchesToWebview();
+
+            if (pendingScrollAnnotationRef.current) {
+                const pending = pendingScrollAnnotationRef.current;
+                const targetId = typeof pending === 'object' ? pending.id : pending;
+                const annPayload = (typeof pending === 'object' && pending.annotation)
+                    ? pending.annotation
+                    : useAnnotationStore.getState().annotations.find(a => a.id === targetId);
+                setTimeout(() => {
+                    try {
+                        if (wvRef.current) {
+                            wvRef.current.send('qbrowse-scroll-to-annotation', { id: targetId, annotation: annPayload });
+                        }
+                    } catch (_) {}
+                }, 350);
+            }
 
             if (isActive && isSpaceActive) {
                 scheduleReaderChecks();
@@ -478,6 +514,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         const handleNavigateSafe = (e) => {
             console.log(`[WebView ${tab.id}] did-navigate:`, e.url);
             wv.hasCrashed = false;
+            setActiveNoteCard(null);
             let displayUrl = e.url;
             if (displayUrl && displayUrl.startsWith('http://127.0.0.1:8080')) {
                 displayUrl = displayUrl.replace('http://127.0.0.1:8080', 'qbrowse://ai');
@@ -526,6 +563,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     useTabStore.getState().updateTabAudible(tab.id, !!data.isPlaying);
                 }
             } else if (e.channel === 'webauthn-credential-created') {
+                if (space === 'ghost' || space === 'tor') return;
                 const data = e.args && e.args[0];
                 if (data) {
                     console.log("[QVault WebAuthn] Received webauthn-credential-created in UI:", data.hostname);
@@ -563,40 +601,84 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     useUIStore.getState().showToast(`No QVault passkey found for ${data.hostname}`, 'info');
                 }
             } else if (e.channel === 'qbrowse-annotation-create') {
+                if (space === 'ghost' || space === 'tor') return;
                 const annData = e.args && e.args[0];
                 if (annData) {
                     useAnnotationStore.getState().addAnnotation({
                         ...annData,
                         space: space || 'personal',
-                        url: tab.url,
-                        title: tab.title
+                        url: annData.url || tab.url,
+                        title: annData.title || tab.title
                     });
                 }
             } else if (e.channel === 'qbrowse-annotation-update') {
+                if (space === 'ghost' || space === 'tor') return;
                 const updateData = e.args && e.args[0];
                 if (updateData && updateData.id) {
                     useAnnotationStore.getState().updateAnnotation(updateData.id, updateData);
                 }
             } else if (e.channel === 'qbrowse-annotation-delete') {
+                if (space === 'ghost' || space === 'tor') return;
                 const deleteId = e.args && (e.args[0]?.id || e.args[0]);
                 if (deleteId) {
                     useAnnotationStore.getState().removeAnnotation(deleteId);
                 }
-            } else if (e.channel === 'qbrowse-selection-contextmenu') {
-                const selData = e.args && e.args[0];
-                if (selData && wv) {
-                    try {
-                        const rect = wv.getBoundingClientRect();
-                        useUIStore.getState().setContextMenu({
-                            x: rect.left + (selData.clientX || 0),
-                            y: rect.top + (selData.clientY || 0),
-                            hasSelection: !!selData.hasSelection,
-                            selectionText: selData.text || '',
-                            tabId: tab.id,
-                            space
-                        });
-                    } catch (_) {}
+            } else if (e.channel === 'qbrowse-open-note-card') {
+                const cardData = e.args && e.args[0];
+                if (cardData) {
+                    setActiveNoteCard(cardData);
                 }
+            } else if (e.channel === 'qbrowse-update-note-anchor') {
+                const updateData = e.args && e.args[0];
+                if (updateData) {
+                    setActiveNoteCard(prev => {
+                        if (!prev || prev.id !== updateData.id) return prev;
+                        return { ...prev, rect: updateData.rect };
+                    });
+                }
+            } else if (e.channel === 'webview-page-clicked') {
+                useUIStore.getState().closeContextMenus();
+                if (useUIStore.getState().activePopover) {
+                    useUIStore.getState().closePopover();
+                }
+                setSelectionPill(null);
+                const currentCard = activeNoteCardRef.current;
+                if (currentCard) {
+                    const { id, note, color } = currentCard;
+                    const noteText = (note || '').trim();
+                    const existing = useAnnotationStore.getState().annotations.find(a => a.id === id);
+                    if (existing && (existing.note !== noteText || existing.color !== color)) {
+                        useAnnotationStore.getState().updateAnnotation(id, { note: noteText, color: color || 'accent' });
+                        if (wv) {
+                            try { wv.send('qbrowse-annotation-update', { id, note: noteText, color: color || 'accent' }); } catch (_) {}
+                        }
+                    }
+                    setActiveNoteCard(null);
+                    if (wv) {
+                        try { wv.send('qbrowse-close-note-card'); } catch (_) {}
+                    }
+                }
+            } else if (e.channel === 'qbrowse-show-selection-pill') {
+                const pillData = e.args && e.args[0];
+                if (pillData && pillData.rect) {
+                    setSelectionPill(pillData);
+                }
+            } else if (e.channel === 'qbrowse-hide-selection-pill') {
+                setSelectionPill(null);
+            } else if (e.channel === 'qbrowse-close-note-card') {
+                const currentCard = activeNoteCardRef.current;
+                if (currentCard) {
+                    const { id, note, color } = currentCard;
+                    const noteText = (note || '').trim();
+                    const existing = useAnnotationStore.getState().annotations.find(a => a.id === id);
+                    if (existing && (existing.note !== noteText || existing.color !== color)) {
+                        useAnnotationStore.getState().updateAnnotation(id, { note: noteText, color: color || 'accent' });
+                        if (wv) {
+                            try { wv.send('qbrowse-annotation-update', { id, note: noteText, color: color || 'accent' }); } catch (_) {}
+                        }
+                    }
+                }
+                setActiveNoteCard(null);
             } else if (e.channel === 'qvault-credentials-submitted') {
                 const data = e.args && e.args[0];
                 if (data && data.password) {
@@ -694,6 +776,35 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             }
         };
 
+        const handleContextMenu = (e) => {
+            const params = e.params || {};
+            const rect = wv.getBoundingClientRect();
+            const hasImage = params.mediaType === 'image' || !!params.srcURL;
+            const hasSelection = !hasImage && !!(params.selectionText && params.selectionText.trim());
+
+            useUIStore.getState().setContextMenu({
+                type: 'webview',
+                openedAt: Date.now(),
+                x: params.x != null ? params.x : rect.left,
+                y: params.y != null ? params.y : rect.top,
+                tabId: tab.id,
+                space,
+                linkURL: params.linkURL || '',
+                srcURL: params.srcURL || '',
+                mediaType: params.mediaType || 'none',
+                hasImage,
+                hasSelection,
+                selectionText: hasSelection ? params.selectionText.trim() : '',
+                isEditable: !!params.isEditable,
+                editFlags: params.editFlags || {},
+                pageURL: params.pageURL || tab.url,
+                title: tab.title,
+                canGoBack: typeof wv.canGoBack === 'function' ? wv.canGoBack() : false,
+                canGoForward: typeof wv.canGoForward === 'function' ? wv.canGoForward() : false
+            });
+        };
+
+        wv.addEventListener('context-menu', handleContextMenu);
         wv.addEventListener('found-in-page', handleFoundInPage);
         wv.addEventListener('did-start-loading', handleDidStartLoading);
         wv.addEventListener('did-navigate', handleNavigateSafe);
@@ -715,6 +826,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
 
         return () => {
             if (captureInterval) clearInterval(captureInterval);
+            wv.removeEventListener('context-menu', handleContextMenu);
             wv.removeEventListener('did-start-loading', handleDidStartLoading);
             wv.removeEventListener('did-navigate', handleNavigateSafe);
             wv.removeEventListener('did-navigate-in-page', handleNavigateInPage);
@@ -837,18 +949,28 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
     // Listen for Jump to Page / Scroll to Annotation requests
     useEffect(() => {
         const handleJump = (event) => {
-            const { id, tabId, url } = event.detail || {};
-            if (tabId === tab.id || (url && tab.url && normalizeAnnotationUrl(url) === normalizeAnnotationUrl(tab.url))) {
+            const { id, tabId, url, annotation } = event.detail || {};
+            const matchesTab = tabId && tabId === tab.id;
+            const matchesUrl = url && tab.url && (
+                normalizeAnnotationUrl(url) === normalizeAnnotationUrl(tab.url) ||
+                (typeof tab.url === 'string' && tab.url.includes(url)) ||
+                (typeof url === 'string' && url.includes(tab.url))
+            );
+
+            if (matchesTab || (matchesUrl && (isActive || !tabId))) {
+                const annPayload = annotation || useAnnotationStore.getState().annotations.find(a => a.id === id);
+                pendingScrollAnnotationRef.current = { id, annotation: annPayload };
+
                 if (wvRef.current && isDomReadyRef.current) {
                     try {
-                        wvRef.current.send('qbrowse-scroll-to-annotation', id);
+                        wvRef.current.send('qbrowse-scroll-to-annotation', { id, annotation: annPayload });
                     } catch (_) {}
                 }
             }
         };
         window.addEventListener('qbrowse-jump-to-annotation', handleJump);
         return () => window.removeEventListener('qbrowse-jump-to-annotation', handleJump);
-    }, [tab.id, tab.url]);
+    }, [tab.id, tab.url, isActive]);
 
 
     
@@ -992,6 +1114,121 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         );
     }
 
+    const handleSaveNote = () => {
+        if (!activeNoteCard) return;
+        const { id, note, color } = activeNoteCard;
+        const colorKey = color || 'accent';
+        const noteText = (note || '').trim();
+        useAnnotationStore.getState().updateAnnotation(id, { note: noteText, color: colorKey });
+        if (wvRef.current) {
+            wvRef.current.send('qbrowse-annotation-update', { id, note: noteText, color: colorKey });
+        }
+        setActiveNoteCard(null);
+    };
+
+    const handleDeleteNote = () => {
+        if (!activeNoteCard) return;
+        const { id } = activeNoteCard;
+        useAnnotationStore.getState().removeAnnotation(id);
+        if (wvRef.current) {
+            wvRef.current.send('qbrowse-annotation-delete', id);
+        }
+        setActiveNoteCard(null);
+    };
+
+    const handleNoteColorChange = (newColor) => {
+        if (!activeNoteCard) return;
+        const { id, note } = activeNoteCard;
+        setActiveNoteCard(prev => ({ ...prev, color: newColor }));
+        useAnnotationStore.getState().updateAnnotation(id, { color: newColor });
+        if (wvRef.current) {
+            wvRef.current.send('qbrowse-annotation-update', { id, color: newColor, note: note || '' });
+        }
+    };
+
+    const handleCloseNoteCard = () => {
+        const card = activeNoteCardRef.current || activeNoteCard;
+        if (card) {
+            const { id, note, color } = card;
+            const noteText = (note || '').trim();
+            const existing = useAnnotationStore.getState().annotations.find(a => a.id === id);
+            if (existing && (existing.note !== noteText || existing.color !== color)) {
+                useAnnotationStore.getState().updateAnnotation(id, { note: noteText, color: color || 'accent' });
+                if (wvRef.current) {
+                    wvRef.current.send('qbrowse-annotation-update', { id, note: noteText, color: color || 'accent' });
+                }
+            }
+        }
+        setActiveNoteCard(null);
+        if (wvRef.current) {
+            wvRef.current.send('qbrowse-close-note-card');
+        }
+    };
+
+    const handlePillHighlight = (colorKey) => {
+        if (wvRef.current) {
+            try {
+                wvRef.current.send('qbrowse-pill-create-highlight', { color: colorKey });
+            } catch (_) {}
+        }
+        setSelectionPill(null);
+    };
+
+    const handlePillAddNote = () => {
+        if (wvRef.current) {
+            try {
+                wvRef.current.send('qbrowse-pill-add-note');
+            } catch (_) {}
+        }
+        setSelectionPill(null);
+    };
+
+    const handlePillCopy = (e) => {
+        e.stopPropagation();
+        if (selectionPill?.text) {
+            try {
+                navigator.clipboard.writeText(selectionPill.text);
+                setPillCopied(true);
+                setTimeout(() => {
+                    setPillCopied(false);
+                    setSelectionPill(null);
+                }, 600);
+            } catch (_) {
+                setSelectionPill(null);
+            }
+        }
+    };
+
+    // Dismiss selection pill when clicking outside on the host window
+    useEffect(() => {
+        if (!selectionPill) return;
+        const handleHostDismiss = (e) => {
+            if (e.target && e.target.closest && e.target.closest('#qbrowse-highlight-pill')) return;
+            setSelectionPill(null);
+        };
+        window.addEventListener('mousedown', handleHostDismiss, true);
+        return () => window.removeEventListener('mousedown', handleHostDismiss, true);
+    }, [selectionPill]);
+
+    const containerW = wvRef.current?.clientWidth || 800;
+    const containerH = wvRef.current?.clientHeight || 600;
+
+    const cardTop = activeNoteCard?.rect 
+        ? Math.max(10, Math.min(activeNoteCard.rect.bottom + 8, containerH - 240))
+        : 10;
+    const cardLeft = activeNoteCard?.rect
+        ? Math.max(12, Math.min(activeNoteCard.rect.left, containerW - 340))
+        : 12;
+
+    const pillTop = selectionPill?.rect
+        ? (selectionPill.rect.top < 52
+            ? Math.max(10, Math.min(selectionPill.rect.bottom + 8, containerH - 46))
+            : Math.max(10, Math.min(selectionPill.rect.top - 44, containerH - 46)))
+        : 10;
+    const pillLeft = selectionPill?.rect
+        ? Math.max(12, Math.min(selectionPill.rect.left + (selectionPill.rect.width / 2) - 115, containerW - 245))
+        : 12;
+
     const shouldShow = isVisible && !tab.isClosing;
 
     return (
@@ -1068,6 +1305,151 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 plugins="true"
                 webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}
             />
+            {activeNoteCard && shouldShow && (
+                <>
+                    <div
+                        className="fixed inset-0 z-[99990] bg-transparent cursor-default select-none"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleCloseNoteCard();
+                        }}
+                        onMouseDown={(e) => {
+                            e.stopPropagation();
+                            handleCloseNoteCard();
+                        }}
+                    />
+                    <div
+                        className="absolute z-[99999] w-[320px] bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] p-3.5 text-white flex flex-col gap-2.5 animate-pop-in select-none"
+                        style={{
+                            top: `${cardTop}px`,
+                            left: `${cardLeft}px`
+                        }}
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
+                                    <StickyNote size={13} className="text-accent" />
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-white/70 font-mono">Sticky Note</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 ml-1">
+                                    {Object.keys(HIGHLIGHT_COLORS).map(key => {
+                                        const col = HIGHLIGHT_COLORS[key];
+                                        const isSelected = (activeNoteCard.color || 'accent') === key;
+                                        return (
+                                            <button
+                                                key={key}
+                                                onClick={() => handleNoteColorChange(key)}
+                                                className={`w-3.5 h-3.5 rounded-full transition-transform cursor-pointer border ${isSelected ? 'border-white scale-125 shadow-[0_0_8px_rgba(255,255,255,0.4)]' : 'border-white/20 hover:scale-110'}`}
+                                                style={{ backgroundColor: col.border }}
+                                                title={col.label}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleCloseNoteCard}
+                                className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer text-xs flex items-center justify-center"
+                                title="Close (Esc)"
+                            >
+                                <X size={13} />
+                            </button>
+                        </div>
+
+                        {/* Textarea */}
+                        <textarea
+                            autoFocus
+                            value={activeNoteCard.note || ''}
+                            onChange={e => setActiveNoteCard(prev => ({ ...prev, note: e.target.value }))}
+                            onKeyDown={e => {
+                                if (e.key === 'Escape') {
+                                    e.stopPropagation();
+                                    handleCloseNoteCard();
+                                } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveNote();
+                                }
+                            }}
+                            placeholder="Type your note, thought, or takeaway..."
+                            className="w-full h-24 bg-white/[0.03] focus:bg-white/[0.06] border border-white/[0.08] focus:border-accent/60 rounded-xl p-2.5 text-xs text-white/90 resize-none outline-none transition placeholder-white/30 font-sans leading-relaxed focus:shadow-[0_0_15px_rgba(212,163,115,0.15)] custom-scrollbar"
+                        />
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between pt-0.5">
+                            <button
+                                onClick={handleDeleteNote}
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                            >
+                                <Trash2 size={12} />
+                                <span>Delete</span>
+                            </button>
+                            <button
+                                onClick={handleSaveNote}
+                                className="bg-accent hover:opacity-90 text-black px-4 py-1.5 rounded-xl text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95"
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+            {/* Floating Selection Highlight Pill */}
+            {selectionPill && shouldShow && (
+                <div
+                    id="qbrowse-highlight-pill"
+                    className="absolute z-[99998] flex items-center gap-1.5 px-3 py-1.5 bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/10 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] animate-pop-in select-none text-white font-sans"
+                    style={{
+                        top: `${pillTop}px`,
+                        left: `${pillLeft}px`
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }}
+                >
+                    {/* 5 Color Dots */}
+                    <div className="flex items-center gap-1.5">
+                        {Object.keys(HIGHLIGHT_COLORS).map(key => {
+                            const col = HIGHLIGHT_COLORS[key];
+                            return (
+                                <button
+                                    key={key}
+                                    onClick={() => handlePillHighlight(key)}
+                                    title={`Highlight with ${col.label}`}
+                                    className="w-3.5 h-3.5 rounded-full border border-white/30 hover:scale-125 hover:border-white transition-all cursor-pointer shadow-sm"
+                                    style={{ backgroundColor: col.border }}
+                                />
+                            );
+                        })}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="w-[1px] h-3.5 bg-white/20 mx-0.5" />
+
+                    {/* Sticky Note Button */}
+                    <button
+                        onClick={handlePillAddNote}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.08] hover:bg-white/[0.16] border border-white/10 rounded-full text-xs font-medium text-white/90 hover:text-white transition cursor-pointer"
+                        title="Add Note"
+                    >
+                        <StickyNote size={12} className="text-accent" />
+                        <span>Note</span>
+                    </button>
+
+                    {/* Copy Selection Button */}
+                    <button
+                        onClick={handlePillCopy}
+                        className="flex items-center justify-center p-1 px-1.5 bg-white/[0.08] hover:bg-white/[0.16] border border-white/10 rounded-full text-xs font-medium text-white/90 hover:text-white transition cursor-pointer"
+                        title="Copy selection"
+                    >
+                        {pillCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
@@ -1077,7 +1459,12 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
     privateTabs, workTabs, ghostTabs, torTabs, activeSpace,
     setPrivateTabs, setWorkTabs, setGhostTabs, setTorTabs
   } = useTabStore();
-  const { isSidebarHidden, isRightPanelOpen, isFullscreen, isSplitView, splitRightTabId, zoomLevel, showSwitcherUI, currentUrl, isForceDark, darkExclusions } = useUIStore();
+  const { 
+    isSidebarHidden, isRightPanelOpen, isFullscreen, isSplitView, 
+    splitRightTabId, zoomLevel, showSwitcherUI, currentUrl, 
+    isForceDark, darkExclusions,
+    activePopover, activeModal, isOmniboxOpen, activePinnedStack, theme
+  } = useUIStore();
   const activeProfileId = useProfileStore(state => state.activeProfileId);
 
   const isSpaceActive = activeSpace === space;
@@ -1104,8 +1491,18 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
 
   const containerRef = useRef(null);
 
+  const isBright = theme === 'light' && space !== 'ghost' && space !== 'tor';
+  const isWebviewBlurred = Boolean(activePopover || activeModal || isOmniboxOpen || activePinnedStack);
+
   return (
-    <div ref={containerRef} className="absolute inset-0 w-full h-full">
+    <div 
+      ref={containerRef} 
+      className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        isWebviewBlurred 
+          ? 'filter blur-[5px] scale-[0.996] pointer-events-none' 
+          : 'filter-none scale-100'
+      }`}
+    >
       {spaceTabs.map(tab => {
           if (tab.url === undefined || tab.suspended) return null;
           
@@ -1137,6 +1534,15 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
               />
           );
       })}
+
+      {/* Depth Focus Scrim Overlay to pop dialogs and popovers into sharp focus */}
+      <div 
+        className={`absolute inset-0 z-20 pointer-events-none transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isWebviewBlurred 
+            ? (isBright ? 'bg-black/[0.04] backdrop-blur-[1px] opacity-100' : 'bg-black/25 backdrop-blur-[1px] opacity-100')
+            : 'opacity-0'
+        }`}
+      />
     </div>
   );
 }

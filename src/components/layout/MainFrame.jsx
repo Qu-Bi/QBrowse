@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-    Command, Search, ChevronUp, ChevronDown, X, Moon, Trash2, 
+    Command, Search, ChevronUp, ChevronDown, X, Moon, Sun, Trash2, 
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
     ZoomIn, RotateCcw, AlertCircle, Info, Sliders
 } from 'lucide-react';
 
-function getToastIcon(message) {
-    if (!message) return <Info size={13} className="text-white/70 flex-shrink-0" />;
+function getToastIcon(message, isBright = false) {
+    const iconClass = isBright ? "text-zinc-700 flex-shrink-0" : "text-white/80 flex-shrink-0";
+    if (!message) return <Info size={13} className={iconClass} />;
     const str = String(message).toLowerCase();
     
     // Alert / Error / Warning
@@ -21,7 +22,7 @@ function getToastIcon(message) {
         str.includes('disconnect') ||
         str.includes('limit')
     ) {
-        return <AlertCircle size={13} className="text-white/80 flex-shrink-0" />;
+        return <AlertCircle size={13} className={isBright ? "text-red-500 flex-shrink-0" : "text-red-400 flex-shrink-0"} />;
     }
     
     // Performance / Mode / Settings / Toggles
@@ -33,7 +34,7 @@ function getToastIcon(message) {
         str.includes('flags') ||
         str.includes('reader')
     ) {
-        return <Sliders size={13} className="text-white/80 flex-shrink-0" />;
+        return <Sliders size={13} className={iconClass} />;
     }
     
     // Success / Copied / Saved / Connected / Restored / Enabled
@@ -49,11 +50,11 @@ function getToastIcon(message) {
         str.includes('freed') ||
         str.includes('cleared')
     ) {
-        return <Check size={13} className="text-white/90 flex-shrink-0" />;
+        return <Check size={13} className={isBright ? "text-emerald-600 flex-shrink-0" : "text-emerald-400 flex-shrink-0"} />;
     }
     
     // Default Info
-    return <Info size={13} className="text-white/70 flex-shrink-0" />;
+    return <Info size={13} className={iconClass} />;
 }
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -73,6 +74,8 @@ const DownloadPopup = () => {
     const downloads = useUIStore(state => state.downloads);
     const activeDownloadPopup = useUIStore(state => state.activeDownloadPopup);
     const setActiveDownloadPopup = useUIStore(state => state.setActiveDownloadPopup);
+    const theme = useUIStore(state => state.theme);
+    const isBright = theme === 'light';
 
     const [popupData, setPopupData] = useState(null);
     const [isClosing, setIsClosing] = useState(false);
@@ -101,12 +104,16 @@ const DownloadPopup = () => {
     };
 
     return (
-        <div className={`absolute top-4 right-4 w-[330px] rounded-2xl bg-[#0c0d0f]/60 backdrop-blur-2xl border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.6)] z-[70000] p-4 text-white overflow-hidden ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}>
+        <div className={`absolute top-4 right-4 w-[330px] rounded-2xl backdrop-blur-3xl border shadow-2xl z-[70000] p-4 overflow-hidden transition-all ${
+            isBright 
+                ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
+                : 'bg-[#0c0d0f]/80 border-white/15 text-white shadow-[0_20px_50px_rgba(0,0,0,0.6)]'
+        } ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}>
             {/* Header */}
-            <div className="flex justify-between items-center pb-3 border-b border-white/5 mb-3">
+            <div className={`flex justify-between items-center pb-3 border-b mb-3 ${isBright ? 'border-black/5' : 'border-white/5'}`}>
                 <div className="flex items-center gap-2">
                     {popupData.state === 'completed' ? (
-                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center border border-emerald-500/30">
                             <Check size={11} strokeWidth={3} />
                         </div>
                     ) : (
@@ -114,23 +121,23 @@ const DownloadPopup = () => {
                             <Download size={11} strokeWidth={3} />
                         </div>
                     )}
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${popupData.state === 'completed' ? 'text-emerald-400' : 'text-accent'}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${popupData.state === 'completed' ? 'text-emerald-500' : 'text-accent'}`}>
                         {popupData.state === 'completed' ? 'Download Complete' : 'Downloading'}
                     </span>
                 </div>
-                <button onClick={handleClose} className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition-colors">
+                <button onClick={handleClose} className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-black' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}>
                     <X size={12} />
                 </button>
             </div>
 
             {/* Body */}
             <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/70 shrink-0">
+                <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${isBright ? 'bg-black/5 border-black/10 text-zinc-700' : 'bg-white/5 border-white/10 text-white/70'}`}>
                     <FileText size={18} />
                 </div>
                 <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-xs font-semibold text-white/90 truncate" title={popupData.fileName}>{popupData.fileName}</span>
-                    <div className="flex items-center gap-2 text-[10px] text-white/40 font-mono mt-0.5">
+                    <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`} title={popupData.fileName}>{popupData.fileName}</span>
+                    <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                         <span>
                             {popupData.state === 'progressing' 
                                 ? `${((popupData.receivedBytes || 0) / 1024 / 1024).toFixed(1)} / ${((popupData.totalBytes || 1) / 1024 / 1024).toFixed(1)} MB`
@@ -148,15 +155,15 @@ const DownloadPopup = () => {
 
             {/* Progress Bar (if active) */}
             {popupData.state === 'progressing' && (
-                <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5 mt-3 relative">
+                <div className={`w-full h-1.5 rounded-full overflow-hidden border mt-3 relative ${isBright ? 'bg-black/10 border-black/5' : 'bg-white/5 border-white/5'}`}>
                     <div className="h-full bg-accent rounded-full shadow-[0_0_10px_var(--accent)] transition-all duration-300" style={{ width: `${Math.min(100, Math.max(0, ((popupData.receivedBytes || 0) / (popupData.totalBytes || 1)) * 100))}%` }}></div>
                 </div>
             )}
 
             {/* Action Buttons (if completed) */}
             {popupData.state === 'completed' && (
-                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/5">
-                    <button onClick={() => window.electronAPI.showItemInFolder(popupData.savePath)} className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-xs font-medium transition" title="Show in folder">
+                <div className={`grid grid-cols-2 gap-2 mt-3 pt-3 border-t ${isBright ? 'border-black/5' : 'border-white/5'}`}>
+                    <button onClick={() => window.electronAPI.showItemInFolder(popupData.savePath)} className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-medium transition ${isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700 hover:text-black' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80 hover:text-white'}`} title="Show in folder">
                         <FolderOpen size={13} /> Folder
                     </button>
                     <button onClick={() => window.electronAPI.openFile(popupData.savePath)} className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-accent hover:brightness-110 text-white text-xs font-semibold transition shadow-md shadow-accent/20" title="Open file">
@@ -171,6 +178,8 @@ const DownloadPopup = () => {
 export default function MainFrame() {
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const setIsFullscreen = useUIStore(state => state.setIsFullscreen);
+    const theme = useUIStore(state => state.theme);
+    const setTheme = useUIStore(state => state.setTheme);
     const isForceDark = useUIStore(state => state.isForceDark);
     const darkExclusions = useUIStore(state => state.darkExclusions);
     const setDarkExclusions = useUIStore(state => state.setDarkExclusions);
@@ -208,6 +217,8 @@ export default function MainFrame() {
 
     const isIncognito = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
+    const isBright = theme === 'light' && !isIncognito && !isTor;
+
     const isPrywatneEmpty = privateTabs.find(t => t.active)?.url === '' || privateTabs.find(t => t.active)?.url === 'about:blank';
     const isPracaEmpty = workTabs.find(t => t.active)?.url === '' || workTabs.find(t => t.active)?.url === 'about:blank';
     const isGhostEmpty = ghostTabs.find(t => t.active)?.url === '' || ghostTabs.find(t => t.active)?.url === 'about:blank';
@@ -234,7 +245,7 @@ export default function MainFrame() {
 
 
     const renderZenDashboard = () => {
-        const isDark = isForceDark || isIncognito || isTor;
+        const isDark = !isBright;
         const greeting = "Welcome";
 
         return (
@@ -247,24 +258,30 @@ export default function MainFrame() {
                                 <span>Tor Onion Routing • Zero-Disk Memory Mode</span>
                             </div>
                         ) : (
-                            <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isDark ? 'text-white/50' : 'text-slate-500/80'}`}>{dateString}</span>
+                            <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isDark ? 'text-white/50' : 'text-zinc-700 font-bold'}`}>{dateString}</span>
                         )}
-                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isTor ? 'from-purple-200 via-purple-300/80 to-purple-500/20' : (isDark ? 'from-white via-white/90 to-white/20' : 'from-slate-800 via-slate-600 to-slate-400')} select-none transition-colors duration-500 px-4`} style={{ textShadow: isTor ? '0 20px 50px rgba(168,85,247,0.3)' : (isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)') }}>
+                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isTor ? 'from-purple-200 via-purple-300/80 to-purple-500/20' : (isDark ? 'from-white via-white/90 to-white/20' : 'from-zinc-900 via-zinc-800 to-zinc-700')} select-none transition-colors duration-500 px-4`} style={{ textShadow: isTor ? '0 20px 50px rgba(168,85,247,0.3)' : (isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)') }}>
                             {timeString}
                         </h1>
                     </div>
 
                     <button
                         onClick={() => openOmnibox('')}
-                        className={`group relative w-[90%] max-w-[720px] backdrop-blur-3xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-500 hover:scale-[1.02] ${isTor ? 'bg-purple-950/40 border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_20px_80px_rgba(168,85,247,0.35)]' : (isDark ? 'bg-black/40 border-white/10 hover:border-accent/50 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_80px_var(--accent-20)]' : 'bg-white/60 border-black/5 hover:border-accent/40 shadow-[0_20px_50px_rgba(0,0,0,0.05)] hover:shadow-[0_20px_80px_var(--accent-20)]')}`}
+                        className={`group relative w-[90%] max-w-[720px] backdrop-blur-2xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-500 hover:scale-[1.015] ${
+                            isTor 
+                                ? 'bg-purple-950/40 border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_20px_80px_rgba(168,85,247,0.35)]' 
+                                : (isDark 
+                                    ? 'bg-black/40 border-white/10 hover:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.4)]' 
+                                    : 'bg-white/70 hover:bg-white/85 border-black/[0.08] hover:border-black/[0.14] shadow-[0_14px_40px_rgba(0,0,0,0.06)] text-zinc-900')
+                        }`}
                     >
-                        <Search size={22} className={`transition-colors ${isTor ? 'text-purple-400 group-hover:text-purple-300' : (isDark ? 'text-white/40 group-hover:text-accent' : 'text-slate-400 group-hover:text-accent')}`} />
-                        <span className={`text-lg font-medium transition-colors flex-1 text-left ${isTor ? 'text-purple-200/70 group-hover:text-purple-100' : (isDark ? 'text-white/30 group-hover:text-white/80' : 'text-slate-400 group-hover:text-slate-700')}`}>
+                        <Search size={20} className={`transition-colors ${isTor ? 'text-purple-400 group-hover:text-purple-300' : (isDark ? 'text-white/40 group-hover:text-accent' : 'text-zinc-600 group-hover:text-accent')}`} />
+                        <span className={`text-base md:text-lg font-medium transition-colors flex-1 text-left ${isTor ? 'text-purple-200/70 group-hover:text-purple-100' : (isDark ? 'text-white/40 group-hover:text-white/85' : 'text-zinc-700 group-hover:text-zinc-950')}`}>
                             {isTor ? 'Search the web via Tor, enter .onion address...' : 'Search the web, or type a command...'}
                         </span>
-                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-inner transition-colors duration-300 ${isTor ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' : (isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30 text-white/60' : 'bg-black/5 border-black/5 group-hover:bg-accent/10 group-hover:border-accent/30 text-slate-500')}`}>
-                            <Command size={12} className={`transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-slate-500 group-hover:text-accent')}`} />
-                            <span className={`text-xs font-bold transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-slate-500 group-hover:text-accent')}`}>K</span>
+                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-colors duration-300 ${isTor ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' : (isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30 text-white/60' : 'bg-white/70 border border-black/[0.08] group-hover:bg-white/90 text-zinc-700 group-hover:text-zinc-950 shadow-2xs')}`}>
+                            <Command size={11} className={`transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-zinc-600 group-hover:text-zinc-900')}`} />
+                            <span className={`text-xs font-semibold transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-zinc-700 group-hover:text-zinc-950')}`}>K</span>
                         </div>
                     </button>
 
@@ -368,7 +385,7 @@ export default function MainFrame() {
     };
 
     return (
-        <main className={`flex-1 min-w-0 relative z-10 flex flex-col overflow-hidden transform-gpu transition-colors duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]`}>
+        <main className={`flex-1 min-w-0 relative z-10 flex flex-col overflow-hidden transform-gpu`}>
             
             <TopBar />
 
@@ -378,55 +395,142 @@ export default function MainFrame() {
             )}
 
             {(activePopover === 'darkmode' || (isPopoverClosing && activePopover === 'darkmode')) && (
-                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-32 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
-                    <div className="p-4 border-b border-white/10 flex items-center justify-between">
-                        <div className="flex items-center gap-2 font-semibold text-sm">
-                            <Moon size={16} className="text-accent" /> Smart Dark Mode
+                <div 
+                    onClick={e => e.stopPropagation()} 
+                    className={`absolute top-16 right-32 z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-all border ${
+                        isBright 
+                            ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
+                            : 'bg-[#0c0d14]/85 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                    } ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                >
+                    {/* Section 1: Browser Appearance Theme */}
+                    <div className={`p-4 border-b ${isBright ? 'border-black/5 bg-zinc-50/50' : 'border-white/[0.05] bg-white/[0.02]'}`}>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 block ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                            Browser Appearance
+                        </span>
+                        <div className={`relative flex p-1 rounded-full border shadow-xs backdrop-blur-2xl ${
+                            isBright 
+                                ? 'bg-black/[0.03] border-black/[0.05]' 
+                                : 'bg-[#0c0d14]/78 border-white/[0.06]'
+                        }`}>
+                            {/* Sliding Pill Indicator */}
+                            <div 
+                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                    theme === 'dark'
+                                        ? (isBright ? 'bg-zinc-900 text-white shadow-xs' : 'bg-accent text-zinc-950 font-bold shadow-xs')
+                                        : (isBright ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'bg-accent text-zinc-950 font-bold shadow-xs')
+                                }`}
+                                style={{ 
+                                    transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)'
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setTheme('dark')}
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                    theme === 'dark'
+                                        ? (isBright ? 'text-white font-bold' : 'text-zinc-950 font-bold')
+                                        : (isBright ? 'text-zinc-600 hover:text-black' : 'text-white/60 hover:text-white')
+                                }`}
+                            >
+                                <Moon size={14} className={theme === 'dark' ? 'fill-current' : ''} />
+                                <span>Dark</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTheme('light')}
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                    theme === 'light'
+                                        ? (isBright ? 'text-zinc-900 font-bold' : 'text-zinc-950 font-bold')
+                                        : (isBright ? 'text-zinc-600 hover:text-black' : 'text-white/60 hover:text-white')
+                                }`}
+                            >
+                                <Sun size={14} className={theme === 'light' ? 'text-amber-600 fill-amber-500/20' : ''} />
+                                <span>Bright</span>
+                            </button>
                         </div>
-                        <button onClick={() => setIsForceDark(!isForceDark)} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${isForceDark ? 'bg-accent' : 'bg-white/20'}`}>
-                            <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isForceDark ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                        </button>
                     </div>
-                    <div className="p-4 bg-black/20">
-                        <span className="text-xs font-bold uppercase text-white/40 tracking-wider mb-2 block">Site List (One per line)</span>
-                        <textarea 
-                            className="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-2 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
-                            value={localDarkExclusions}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setLocalDarkExclusions(val);
-                                const newExclusions = val.split('\n').map(d => d.trim()).filter(Boolean);
-                                setDarkExclusions(newExclusions);
-                            }}
-                            onBlur={() => {
-                                const cleaned = (localDarkExclusions || '').split('\n').map(d => d.trim()).filter(Boolean);
-                                setDarkExclusions(cleaned);
-                                setLocalDarkExclusions(cleaned.join('\n'));
-                            }}
-                            placeholder="example.com&#10;github.com"
-                        />
+
+                    {/* Section 2: Smart Dark Mode for Websites */}
+                    <div className="p-4 flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <span className="text-xs font-semibold">Web Smart Dark</span>
+                                <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Invert light webpages only</span>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={() => setIsForceDark(!isForceDark)} 
+                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-colors duration-200 cursor-pointer ${
+                                    isForceDark ? 'bg-accent shadow-[0_0_8px_var(--accent)]' : (isBright ? 'bg-zinc-300' : 'bg-white/20')
+                                }`}
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200 shadow-sm ${isForceDark ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                            </button>
+                        </div>
+
+                        <div>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 block ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                Excluded Domains (One per line)
+                            </span>
+                            <textarea 
+                                className={`w-full h-24 rounded-xl p-2.5 text-xs font-mono resize-none outline-none transition-colors border ${
+                                    isBright
+                                        ? 'bg-zinc-50 border-black/10 text-zinc-800 placeholder-zinc-400 focus:border-accent'
+                                        : 'bg-white/[0.04] border-white/[0.08] text-white/90 placeholder-white/30 focus:border-accent/60'
+                                }`}
+                                value={localDarkExclusions}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setLocalDarkExclusions(val);
+                                    const newExclusions = val.split('\n').map(d => d.trim()).filter(Boolean);
+                                    setDarkExclusions(newExclusions);
+                                }}
+                                onBlur={() => {
+                                    const cleaned = (localDarkExclusions || '').split('\n').map(d => d.trim()).filter(Boolean);
+                                    setDarkExclusions(cleaned);
+                                    setLocalDarkExclusions(cleaned.join('\n'));
+                                }}
+                                placeholder="youtube.com&#10;github.com"
+                            />
+                        </div>
                     </div>
                 </div>
             )}
 
             {(activePopover === 'adblock' || (isPopoverClosing && activePopover === 'adblock')) && (
-                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-12 z-[60] w-72 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
-                    <div className={`p-5 flex flex-col items-center justify-center border-b border-white/10 transition-colors duration-500 ${isAdblockActive ? 'bg-green-500/10' : 'bg-transparent'}`}>
-                        <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? 'text-green-400' : 'text-white/20'}`} strokeWidth={1.5} />
-                        <span className={`text-3xl font-black tracking-tight ${isAdblockActive ? 'text-white' : 'text-white/40'}`}>{isAdblockActive ? adblockStats.count : '0'}</span>
-                        <span className="text-[10px] font-bold uppercase text-white/40 tracking-widest mt-1">Blocked Trackers</span>
+                <div 
+                    onClick={e => e.stopPropagation()} 
+                    className={`absolute top-16 right-12 z-[60] w-72 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
+                        isBright 
+                            ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
+                            : 'bg-[#0c0d14]/78 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                    } ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                >
+                    <div className={`p-5 flex flex-col items-center justify-center border-b transition-colors duration-500 ${
+                        isBright
+                            ? (isAdblockActive ? 'bg-emerald-500/10 border-black/5' : 'bg-black/[0.02] border-black/5')
+                            : (isAdblockActive ? 'bg-green-500/10 border-white/[0.05]' : 'bg-white/[0.02] border-white/[0.05]')
+                    }`}>
+                        <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? (isBright ? 'text-emerald-600' : 'text-green-400') : (isBright ? 'text-zinc-300' : 'text-white/20')}`} strokeWidth={1.5} />
+                        <span className={`text-3xl font-black tracking-tight ${isAdblockActive ? (isBright ? 'text-zinc-900' : 'text-white') : (isBright ? 'text-zinc-400' : 'text-white/40')}`}>{isAdblockActive ? adblockStats.count : '0'}</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Blocked Trackers</span>
                     </div>
-                    <div className="p-4 bg-black/20 flex flex-col gap-3">
+                    <div className="p-4 bg-transparent flex flex-col gap-3">
                         <div className="flex items-center justify-between">
-                            <span className="text-sm font-semibold text-white/90">Native Interceptor</span>
-                            <button onClick={() => setIsAdblockActive(!isAdblockActive)} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 ${isAdblockActive ? 'bg-green-500' : 'bg-white/20'}`}>
+                            <span className={`text-sm font-semibold ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>Native Interceptor</span>
+                            <button onClick={() => setIsAdblockActive(!isAdblockActive)} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 cursor-pointer ${isAdblockActive ? 'bg-green-500' : (isBright ? 'bg-zinc-300' : 'bg-white/20')}`}>
                                 <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isAdblockActive ? 'translate-x-4' : 'translate-x-0'}`}></div>
                             </button>
                         </div>
-                        <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 ${isAdblockActive ? 'opacity-100' : 'opacity-30'}`}>
-                            {adblockStats.domains.length === 0 && <div className="text-center text-white/40 py-2">No trackers blocked yet</div>}
+                        <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 rounded-xl p-2.5 border ${
+                            isBright 
+                                ? 'bg-black/[0.02] border-black/5 text-zinc-700' 
+                                : 'bg-white/[0.03] border-white/[0.06] text-white/80'
+                        } ${isAdblockActive ? 'opacity-100' : 'opacity-30'}`}>
+                            {adblockStats.domains.length === 0 && <div className={`text-center py-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>No trackers blocked yet</div>}
                             {adblockStats.domains.map((domain, i) => (
-                                <div key={i} className="flex justify-between"><span className="text-white/60 truncate mr-2">{domain}</span><span className="text-red-400 flex-shrink-0">Blocked</span></div>
+                                <div key={i} className="flex justify-between"><span className="truncate mr-2">{domain}</span><span className="text-red-500 flex-shrink-0 font-semibold">Blocked</span></div>
                             ))}
                         </div>
                     </div>
@@ -438,43 +542,54 @@ export default function MainFrame() {
             )}
 
             {(activePopover === 'downloads' || (isPopoverClosing && activePopover === 'downloads')) && (
-                <div onClick={e => e.stopPropagation()} className={`absolute top-16 right-6 z-[60] w-80 bg-black/60 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col text-white ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
-                    <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">
+                <div 
+                    onClick={e => e.stopPropagation()} 
+                    className={`absolute top-16 right-6 z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
+                        isBright 
+                            ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
+                            : 'bg-[#0c0d14]/78 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                    } ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                >
+                    <div className={`p-4 border-b flex items-center justify-between ${isBright ? 'border-black/5 bg-zinc-50/50' : 'border-white/[0.05] bg-white/[0.02]'}`}>
                         <div className="flex items-center gap-2 font-semibold text-sm">
                             <Download size={16} className="text-accent" /> Downloads
                         </div>
-                        <button className="text-white/40 hover:text-white transition text-xs font-medium">Clear All</button>
+                        <button className={`transition text-xs font-medium ${isBright ? 'text-zinc-400 hover:text-black' : 'text-white/40 hover:text-white'}`}>Clear All</button>
                     </div>
                     <div className="p-2 flex flex-col gap-1">
-                        <div className="p-3 bg-white/5 border border-white/5 rounded-xl flex flex-col gap-2 relative overflow-hidden group">
+                        <div className={`p-3 border rounded-xl flex flex-col gap-2 relative overflow-hidden group transition ${
+                            isBright ? 'bg-black/[0.02] hover:bg-black/[0.04] border-black/5' : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.06]'
+                        }`}>
                             <div className="flex justify-between items-start relative z-10">
                                 <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0 shadow-inner"><Cpu size={14} /></div>
+                                    <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500 flex-shrink-0 shadow-inner"><Cpu size={14} /></div>
                                     <div className="flex flex-col truncate">
-                                        <span className="text-sm font-semibold text-white/90 truncate">ubuntu-24.04-desktop.iso</span>
-                                        <span className="text-[10px] text-white/40 font-mono mt-0.5">1.2 GB / 4.5 GB • 12 MB/s</span>
+                                        <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>ubuntu-24.04-desktop.iso</span>
+                                        <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>1.2 GB / 4.5 GB • 12 MB/s</span>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <button className="p-1 text-white/40 hover:text-white hover:bg-white/10 rounded-lg transition" title="Pause"><Pause size={14} /></button>
-                                    <button className="p-1 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition" title="Cancel"><XCircle size={14} /></button>
+                                    <button className={`p-1 rounded-lg transition ${isBright ? 'text-zinc-400 hover:text-black hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`} title="Pause"><Pause size={14} /></button>
+                                    <button className="p-1 text-red-500 hover:bg-red-500/10 rounded-lg transition" title="Cancel"><XCircle size={14} /></button>
                                 </div>
                             </div>
-                            <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden mt-1 relative z-10 border border-white/5">
+                            <div className={`w-full h-1.5 rounded-full overflow-hidden mt-1 relative z-10 border ${isBright ? 'bg-black/10 border-black/5' : 'bg-black/40 border-white/5'}`}>
                                 <div className="h-full bg-accent w-[35%] rounded-full relative">
                                     <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
                                 </div>
                             </div>
                         </div>
-                        <div className="p-3 bg-transparent hover:bg-white/5 border border-transparent rounded-xl flex items-center justify-between transition group cursor-pointer mt-1">
+                        <div className={`p-3 border rounded-xl flex items-center justify-between transition group cursor-pointer mt-1 ${
+                            isBright ? 'hover:bg-black/[0.03] border-transparent' : 'hover:bg-white/[0.04] border-transparent'
+                        }`}>
                             <div className="flex items-center gap-3 overflow-hidden">
-                                <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center text-green-400 flex-shrink-0 shadow-inner"><FolderOpen size={14} /></div>
+                                <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center text-green-500 flex-shrink-0 shadow-inner"><FolderOpen size={14} /></div>
                                 <div className="flex flex-col truncate">
-                                    <span className="text-sm font-medium text-white/80 group-hover:text-white truncate">Q4_Financial_Report.pdf</span>
-                                    <span className="text-[10px] text-green-400 font-mono mt-0.5">Completed • 2.4 MB</span>
+                                    <span className={`text-sm font-medium truncate ${isBright ? 'text-zinc-800 group-hover:text-black' : 'text-white/80 group-hover:text-white'}`}>Q4_Financial_Report.pdf</span>
+                                    <span className="text-[10px] text-green-500 font-mono mt-0.5">Completed • 2.4 MB</span>
                                 </div>
                             </div>
-                            <button className="p-1.5 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition shadow-sm" title="Show in folder">
+                            <button className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition shadow-sm ${isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 text-white/60'}`} title="Show in folder">
                                 <FolderOpen size={14} />
                             </button>
                         </div>
@@ -482,8 +597,8 @@ export default function MainFrame() {
                 </div>
             )}
 
-            <div ref={mainContainerRef} className={`flex-1 min-w-0 relative overflow-hidden transition-colors duration-700 ease-in-out flex ${isForceDark || isIncognito ? 'text-white' : 'text-black'} ${isFullscreen ? '' : 'pb-0 pt-2'}`}>
-                <div className={`relative w-full h-full overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.1)] transition-[background-color,border] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border border-white/20'} ${isForceDark || isIncognito ? 'bg-black/60 backdrop-blur-3xl' : 'bg-white/60 backdrop-blur-3xl'}`}>
+            <div ref={mainContainerRef} className={`flex-1 min-w-0 relative overflow-hidden transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? '' : 'pb-0 pt-2'}`}>
+                <div className={`relative w-full h-full overflow-hidden transition-[background-color,border-color] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border'} ${isBright ? ((isPrywatneEmpty && activeSpace === 'personal') || (isPracaEmpty && activeSpace === 'work') || (isGhostEmpty && activeSpace === 'ghost') ? 'bg-white/40 border-white/25 backdrop-blur-3xl shadow-[0_20px_60px_rgba(0,0,0,0.04)]' : 'bg-white/65 border-white/25 backdrop-blur-3xl shadow-[0_20px_60px_rgba(0,0,0,0.04)]') : 'bg-black/60 border-white/10 backdrop-blur-3xl shadow-[0_10px_35px_rgba(0,0,0,0.4)]'}`}>
                     <DownloadPopup />
                     <SavePasswordBanner />
                     <FindInPageBar />
@@ -497,7 +612,7 @@ export default function MainFrame() {
                         <TorCircuitPopover isClosing={isPopoverClosing} />
                     )}
                     {((activePopover && activePopover !== 'user' && activePopover !== 'userProfile') || (isPopoverClosing && activePopover !== 'user' && activePopover !== 'userProfile')) && (
-                        <div className={`absolute inset-0 z-[50] transition-colors duration-200 ${isPopoverClosing ? 'bg-transparent' : 'bg-black/60'}`} onClick={closePopover} />
+                        <div className="absolute inset-0 z-[50] bg-transparent" onClick={closePopover} />
                     )}
 
                     {/* LEFT PANE CONTAINER */}
@@ -515,25 +630,25 @@ export default function MainFrame() {
                             {/* PERSONAL */}
                             <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative">
                                 {isPrywatneEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPrywatneEmpty ? 1 : 0.2 }}></div>
+                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPrywatneEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPrywatneEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="personal" />
                                 </div>
                             </div>
 
                             {/* WORK */}
-                            <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito || isTor ? 'text-white' : 'text-black'}`}>
+                            <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${!isBright ? 'text-white' : 'text-zinc-900'}`}>
                                 {isPracaEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPracaEmpty ? 1 : 0.2 }}></div>
+                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPracaEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPracaEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="work" />
                                 </div>
                             </div>
 
                             {/* GHOST */}
-                            <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${isForceDark || isIncognito || isTor ? 'text-white' : 'text-black'}`}>
+                            <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative text-white">
                                 {isGhostEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito || isTor ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isGhostEmpty ? 1 : 0.2 }}></div>
+                                <div key="bg" className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 opacity-20 invert" style={{ backgroundSize: '24px 24px', opacity: isGhostEmpty ? 1 : 0.2 }}></div>
                                 <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isGhostEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="ghost" />
                                 </div>
@@ -566,16 +681,16 @@ export default function MainFrame() {
                             <div className={`absolute top-0 bottom-0 w-[1px] pointer-events-none transition-colors ${
                                 isDraggingSplit 
                                     ? 'bg-accent shadow-[0_0_10px_var(--accent)]' 
-                                    : (isForceDark || isIncognito ? 'bg-white/10 group-hover:bg-accent' : 'bg-black/10 group-hover:bg-accent')
+                                    : (!isBright ? 'bg-white/10 group-hover:bg-accent' : 'bg-black/10 group-hover:bg-accent')
                             }`} />
 
                             {/* Floating Grab Pill Handle */}
                             <div className={`absolute w-4 h-10 rounded-full border flex items-center justify-center transition-all duration-200 shadow-xl cursor-col-resize ${
                                 isDraggingSplit 
                                     ? 'bg-accent border-accent text-white scale-110 shadow-[0_0_20px_var(--accent)]' 
-                                    : (isForceDark || isIncognito
+                                    : (!isBright
                                         ? 'bg-[#18181b] border-white/20 text-white/50 group-hover:text-white group-hover:border-accent group-hover:bg-accent/20 group-hover:scale-105'
-                                        : 'bg-white border-black/10 text-gray-400 group-hover:text-accent group-hover:border-accent group-hover:bg-white group-hover:scale-105')
+                                        : 'bg-white border-black/10 text-gray-500 group-hover:text-accent group-hover:border-accent group-hover:bg-white group-hover:scale-105')
                             }`}>
                                 <div className="flex flex-col gap-0.5 items-center pointer-events-none">
                                     <div className="w-1 h-1 rounded-full bg-current opacity-80" />
@@ -595,28 +710,30 @@ export default function MainFrame() {
                                 ? 'pointer-events-none select-none' 
                                 : 'transition-[width,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
                         } ${isSplitView ? 'opacity-100' : 'w-0 opacity-0 pointer-events-none'} ${
-                            isForceDark || isIncognito ? 'bg-[#0a0a0c]' : 'bg-[#f0f0f0]'
+                            !isBright ? 'bg-[#0a0a0c]' : 'bg-[#f4f5f8]'
                         }`}
                         style={{ width: isSplitView ? `${100 - splitRatio}%` : '0%' }}
                     >
                             {rightTab ? (
                                 <div className="relative w-full h-full flex flex-col">
                                     {/* Right Pane Overlay Controls */}
-                                    <div className="h-8 bg-black/40 border-b border-white/10 px-3 flex items-center justify-between text-white text-xs z-30 shrink-0 backdrop-blur-md">
+                                    <div className={`h-8 border-b px-3 flex items-center justify-between text-xs z-30 shrink-0 backdrop-blur-md ${
+                                        isBright ? 'bg-white/80 border-black/10 text-zinc-900' : 'bg-black/40 border-white/10 text-white'
+                                    }`}>
                                         <div className="flex items-center gap-2 truncate max-w-[60%]">
                                             {rightTab.url ? (
                                                 <img src={`https://www.google.com/s2/favicons?sz=32&domain=${rightTab.url}`} className="w-3.5 h-3.5 rounded-sm flex-shrink-0" onError={e=>e.target.style.display='none'} />
                                             ) : (
-                                                <Globe size={13} className="text-white/50" />
+                                                <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/50'} />
                                             )}
                                             <span className="font-semibold truncate text-[11px]">{rightTab.title}</span>
                                         </div>
 
                                         <div className="flex items-center gap-1">
-                                            <button onClick={handleSwapPanes} className="p-1 hover:bg-white/10 rounded-md transition text-white/70 hover:text-white" title="Swap Left/Right Panes">
+                                            <button onClick={handleSwapPanes} className={`p-1 rounded-md transition ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Swap Left/Right Panes">
                                                 <ArrowLeftRight size={12} />
                                             </button>
-                                            <button onClick={() => setSplitRightTabId(null)} className="p-1 hover:bg-white/10 rounded-md transition text-white/70 hover:text-white" title="Change Right Tab">
+                                            <button onClick={() => setSplitRightTabId(null)} className={`p-1 rounded-md transition ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Change Right Tab">
                                                 <Search size={12} />
                                             </button>
                                             <button onClick={() => toggleSplitView()} className="p-1 hover:bg-red-500/20 text-white/70 hover:text-red-400 rounded-md transition" title="Close Split View">
@@ -633,14 +750,14 @@ export default function MainFrame() {
                             ) : (
                                 /* Split Screen Launcher / Picker */
                                 <div className="w-full h-full p-6 flex flex-col items-center justify-center text-center overflow-y-auto relative z-10">
-                                    <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.06)_1px,transparent_1px)] pointer-events-none z-0 ${isForceDark || isIncognito ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px' }}></div>
+                                    <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.06)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px' }}></div>
                                     
                                     <div className="relative z-10 flex flex-col items-center max-w-md w-full animate-pop-in">
                                         <div className="w-14 h-14 rounded-2xl bg-accent/20 border border-accent/30 flex items-center justify-center text-accent mb-4 shadow-lg shadow-accent/10">
                                             <MonitorPlay size={28} strokeWidth={2} />
                                         </div>
-                                        <h2 className={`text-xl font-bold tracking-tight mb-1 ${isForceDark || isIncognito ? 'text-white' : 'text-gray-800'}`}>Split Screen View</h2>
-                                        <p className="text-xs text-white/50 mb-6">Select an open tab or enter a URL to view side-by-side</p>
+                                        <h2 className={`text-xl font-bold tracking-tight mb-1 ${!isBright ? 'text-white' : 'text-zinc-900'}`}>Split Screen View</h2>
+                                        <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/50'} mb-6`}>Select an open tab or enter a URL to view side-by-side</p>
 
                                         {/* URL Input Form */}
                                         <form onSubmit={handleOpenSplitUrl} className="w-full mb-6 relative">
@@ -649,7 +766,7 @@ export default function MainFrame() {
                                                 placeholder="Search or enter URL for Right Pane..."
                                                 value={splitSearchUrl}
                                                 onChange={e => setSplitSearchUrl(e.target.value)}
-                                                className="w-full h-10 pl-4 pr-10 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 outline-none focus:border-accent transition-colors shadow-inner"
+                                                className={`w-full h-10 pl-4 pr-10 border rounded-xl text-xs outline-none focus:border-accent transition-colors shadow-inner ${isBright ? 'bg-white/90 border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-black/40 border-white/10 text-white placeholder-white/30'}`}
                                             />
                                             <button type="submit" className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 bg-accent text-white rounded-lg hover:brightness-110 transition shadow-sm">
                                                 <Search size={12} />
@@ -658,9 +775,9 @@ export default function MainFrame() {
 
                                         {/* Available Tabs List */}
                                         <div className="w-full flex flex-col gap-2 max-h-60 overflow-y-auto hide-scroll pr-1">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/40 text-left mb-1">Open Tabs in this Space</span>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'} text-left mb-1`}>Open Tabs in this Space</span>
                                             {availableRightTabs.length === 0 ? (
-                                                <div className="text-center text-xs text-white/30 italic py-4 bg-white/5 rounded-xl border border-white/5">
+                                                <div className={`text-center text-xs italic py-4 rounded-xl border ${isBright ? 'bg-black/[0.03] text-zinc-500 border-black/[0.06]' : 'text-white/30 bg-white/5 border-white/5'}`}>
                                                     No other open tabs. Type a URL above to open a split tab!
                                                 </div>
                                             ) : (
@@ -668,17 +785,21 @@ export default function MainFrame() {
                                                     <div 
                                                         key={t.id} 
                                                         onClick={() => setSplitRightTabId(t.id)}
-                                                        className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-accent/40 cursor-pointer transition-all group"
+                                                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all group ${
+                                                            isBright 
+                                                                ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.06] hover:border-accent/50 text-zinc-900' 
+                                                                : 'bg-white/5 hover:bg-white/10 border-white/10 hover:border-accent/40 text-white'
+                                                        }`}
                                                     >
                                                         <div className="flex items-center gap-3 truncate min-w-0">
                                                             {t.url ? (
                                                                 <img src={`https://www.google.com/s2/favicons?sz=32&domain=${t.url}`} className="w-4 h-4 rounded-sm flex-shrink-0" onError={e=>e.target.style.display='none'} />
                                                             ) : (
-                                                                <Globe size={14} className="text-white/40" />
+                                                                <Globe size={14} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
                                                             )}
                                                             <div className="flex flex-col text-left truncate">
-                                                                <span className="text-xs font-semibold text-white/90 group-hover:text-white truncate">{t.title}</span>
-                                                                {t.url && <span className="text-[10px] text-white/40 font-mono truncate">{t.url}</span>}
+                                                                <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900 group-hover:text-accent' : 'text-white/90 group-hover:text-white'}`}>{t.title}</span>
+                                                                {t.url && <span className={`text-[10px] font-mono truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t.url}</span>}
                                                             </div>
                                                         </div>
                                                         <button className="px-2.5 py-1 rounded-lg bg-accent/20 border border-accent/30 text-accent group-hover:bg-accent group-hover:text-white text-[10px] font-bold transition">
@@ -697,13 +818,13 @@ export default function MainFrame() {
 
             {/* PEEK WINDOW */}
             {(peekWindow || isPeekClosing) && (
-                <div className={`absolute inset-8 md:inset-20 z-[1000] flex flex-col rounded-2xl shadow-[0_40px_100px_rgba(0,0,0,0.4)] overflow-hidden backdrop-blur-3xl border ${isForceDark || isIncognito ? 'bg-black/60 border-white/10' : 'bg-white/70 border-white/30'} ${isPeekClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
+                <div className={`absolute inset-8 md:inset-20 z-[1000] flex flex-col rounded-2xl shadow-[0_40px_100px_rgba(0,0,0,0.4)] overflow-hidden backdrop-blur-3xl border ${isBright ? 'bg-white/80 border-black/10 text-zinc-900 shadow-[0_30px_90px_rgba(0,0,0,0.15)]' : 'bg-black/60 border-white/10 text-white'} ${isPeekClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
                     <button onClick={closePeek} className="absolute top-4 left-4 z-10 w-4 h-4 bg-red-500 hover:bg-red-400 text-transparent hover:text-white rounded-full flex items-center justify-center transition-colors shadow-sm group">
                         <X size={10} className="opacity-0 group-hover:opacity-100" />
                     </button>
-                    <div className={`flex-1 flex flex-col items-center justify-center relative ${isForceDark || isIncognito ? 'text-white' : 'text-black'}`}>
-                        <Globe size={32} className={isForceDark || isIncognito ? 'text-white/20 mb-4' : 'text-gray-300 mb-4'} />
-                        <span className={`text-sm font-bold uppercase tracking-widest ${isForceDark || isIncognito ? 'text-white/40' : 'text-gray-400'}`}>Content Preview</span>
+                    <div className={`flex-1 flex flex-col items-center justify-center relative ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                        <Globe size={32} className={isBright ? 'text-zinc-300 mb-4' : 'text-white/20 mb-4'} />
+                        <span className={`text-sm font-bold uppercase tracking-widest ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Content Preview</span>
                     </div>
                 </div>
             )}
@@ -716,20 +837,20 @@ export default function MainFrame() {
             }`}>
                 <div 
                     className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all ${
-                        isForceDark || isIncognito 
-                            ? 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]' 
-                            : 'bg-white/90 border-black/10 text-gray-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]'
+                        isBright 
+                            ? 'bg-white/90 border-black/10 text-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]' 
+                            : 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]'
                     }`}
                 >
                     <ZoomIn size={14} className="text-accent" />
                     <span className="text-xs font-bold font-mono tracking-tight min-w-[42px] text-center select-none">
                         {zoomLevel}%
                     </span>
-                    <div className={`flex items-center gap-1 pl-2 border-l ${isForceDark || isIncognito ? 'border-white/10' : 'border-black/10'}`}>
+                    <div className={`flex items-center gap-1 pl-2 border-l ${isBright ? 'border-black/10' : 'border-white/10'}`}>
                         <button 
                             onClick={() => setZoomLevel(zoomLevel - 10)}
                             className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
-                                isForceDark || isIncognito ? 'hover:bg-white/10 text-white' : 'hover:bg-black/5 text-gray-700'
+                                isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
                             }`}
                             title="Zoom Out (Ctrl -)"
                         >
@@ -738,7 +859,7 @@ export default function MainFrame() {
                         <button 
                             onClick={() => setZoomLevel(zoomLevel + 10)}
                             className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
-                                isForceDark || isIncognito ? 'hover:bg-white/10 text-white' : 'hover:bg-black/5 text-gray-700'
+                                isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
                             }`}
                             title="Zoom In (Ctrl +)"
                         >
@@ -762,9 +883,13 @@ export default function MainFrame() {
                 <div 
                     role="status" 
                     aria-live="polite"
-                    className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 rounded-full bg-[#0c0d12]/95 backdrop-blur-2xl border border-white/12 text-white/90 text-xs font-medium shadow-[0_12px_36px_rgba(0,0,0,0.65)] animate-toast flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide"
+                    className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 rounded-full backdrop-blur-2xl border text-xs font-medium animate-toast flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide ${
+                        isBright 
+                            ? 'bg-white/95 border-black/10 text-zinc-900 shadow-[0_12px_36px_rgba(0,0,0,0.15)]' 
+                            : 'bg-[#0c0d12]/95 border-white/12 text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.65)]'
+                    }`}
                 >
-                    {getToastIcon(toast)}
+                    {getToastIcon(toast, isBright)}
                     <span className="truncate leading-none">{typeof toast === 'object' && toast !== null ? (toast.message || toast.text || '') : toast}</span>
                 </div>
             )}

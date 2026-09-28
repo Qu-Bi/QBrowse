@@ -10,10 +10,14 @@ const HistoryModal = () => {
         isModalClosing,
         closeModal,
         historySearchQuery,
-        setHistorySearchQuery
+        setHistorySearchQuery,
+        theme
     } = useUIStore();
     const history = useHistoryStore(state => state.history);
     const clearHistory = useHistoryStore(state => state.clearHistory);
+    const activeSpace = useTabStore(state => state.activeSpace);
+
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const isClosingThis = isModalClosing && useUIStore.getState().closingModal === 'history';
     if (activeModal !== 'history' && !isClosingThis) return null;
@@ -30,26 +34,37 @@ const HistoryModal = () => {
     };
 
     return (
-        <div className={`absolute inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-3xl text-white font-sans p-6 ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
-            <div className="w-full max-w-3xl h-[80vh] min-h-[500px] bg-[#121214]/80 backdrop-blur-md border border-white/10 rounded-3xl shadow-[0_40px_100px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]" onClick={e => e.stopPropagation()}>
-                <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/20">
+        <div className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/60 backdrop-blur-3xl text-white'} font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
+            <div 
+                className={`w-full max-w-3xl h-[80vh] min-h-[500px] rounded-3xl overflow-hidden flex flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                    isBright 
+                        ? 'bg-white/60 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.12)] text-zinc-900' 
+                        : 'bg-[#121214]/80 backdrop-blur-md border border-white/10 shadow-[0_40px_100px_rgba(0,0,0,0.8)] text-white'
+                }`} 
+                onClick={e => e.stopPropagation()}
+            >
+                <div className={`p-6 border-b flex justify-between items-center ${isBright ? 'border-black/10 bg-black/[0.02]' : 'border-white/10 bg-black/20'}`}>
                     <div>
-                        <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-3"><Clock className="text-accent" /> Archive (History)</h2>
-                        <p className="text-xs text-white/40 mt-1">Local SQLite database (Securely synced)</p>
+                        <h2 className={`text-xl font-bold tracking-tight flex items-center gap-3 ${isBright ? 'text-zinc-900' : 'text-white'}`}><Clock className="text-accent" /> Archive (History)</h2>
+                        <p className={`text-xs mt-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Local SQLite database (Securely synced)</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <button onClick={clearHistory} className="px-3 py-1.5 text-xs font-bold bg-white/5 hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-colors">Clear</button>
+                        <button onClick={clearHistory} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${isBright ? 'bg-black/5 hover:bg-red-500/15 text-zinc-700 hover:text-red-600' : 'bg-white/5 hover:bg-red-500/20 text-white hover:text-red-400'}`}>Clear</button>
                         <div className="relative">
-                            <Search size={14} className="absolute left-3 top-2.5 text-white/30" />
+                            <Search size={14} className={`absolute left-3 top-2.5 ${isBright ? 'text-zinc-400' : 'text-white/30'}`} />
                             <input
                                 type="text"
                                 value={historySearchQuery}
                                 onChange={(e) => setHistorySearchQuery(e.target.value)}
                                 placeholder="Search history..."
-                                className="bg-white/5 border border-white/10 rounded-xl py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-accent-30 transition-colors w-64 text-white"
+                                className={`border rounded-xl py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-accent-30 transition-colors w-64 ${
+                                    isBright 
+                                        ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' 
+                                        : 'bg-white/5 border-white/10 text-white placeholder-white/30'
+                                }`}
                             />
                         </div>
-                        <button onClick={closeModal} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition"><X size={16} /></button>
+                        <button onClick={closeModal} className={`w-8 h-8 flex items-center justify-center rounded-full transition cursor-pointer ${isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600' : 'bg-white/5 hover:bg-white/10 text-white'}`}><X size={16} /></button>
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto hide-scroll p-6 space-y-6">
@@ -63,23 +78,35 @@ const HistoryModal = () => {
                                         <div 
                                             key={item.url} 
                                             onClick={() => handleOpenUrl(item.url)}
-                                            className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition group cursor-pointer border border-transparent hover:border-white/5 animate-pop-in" 
+                                            className={`flex items-center gap-4 p-3 rounded-xl transition group cursor-pointer border animate-pop-in ${
+                                                isBright 
+                                                    ? 'hover:bg-black/[0.04] border-transparent hover:border-black/5' 
+                                                    : 'hover:bg-white/5 border-transparent hover:border-white/5'
+                                            }`} 
                                             style={{ animationFillMode: 'both', animationDelay: `${i * 0.04}s` }}
                                         >
-                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 group-hover:text-accent transition overflow-hidden">
-                                                <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition overflow-hidden ${
+                                                isBright ? 'bg-black/5 text-zinc-500 group-hover:text-accent' : 'bg-white/5 text-white/40 group-hover:text-accent'
+                                            }`}>
+                                                <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-75 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
                                             </div>
                                             <div className="flex flex-col flex-1 min-w-0">
-                                                <span className="text-sm font-semibold text-white/90 group-hover:text-white transition truncate">{item.title}</span>
-                                                <span className="text-xs text-white/40 truncate">{item.url}</span>
+                                                <span className={`text-sm font-semibold transition truncate ${
+                                                    isBright ? 'text-zinc-900 group-hover:text-accent' : 'text-white/90 group-hover:text-white'
+                                                }`}>{item.title}</span>
+                                                <span className={`text-xs truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{item.url}</span>
                                             </div>
-                                            <span className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full group-hover:text-purple-300 group-hover:border-purple-500/30 transition flex-shrink-0">
+                                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full transition flex-shrink-0 ${
+                                                isBright 
+                                                    ? 'text-zinc-600 bg-black/5 border border-black/10 group-hover:text-purple-600 group-hover:border-purple-400/40' 
+                                                    : 'text-white/40 bg-white/5 border border-white/10 group-hover:text-purple-300 group-hover:border-purple-500/30'
+                                            }`}>
                                                 {item.visits || 1} {item.visits === 1 ? 'visit' : 'visits'}
                                             </span>
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="p-8 text-center text-white/40 font-medium animate-pop-in">No results for "{historySearchQuery}"</div>
+                                    <div className={`p-8 text-center font-medium animate-pop-in ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>No results for "{historySearchQuery}"</div>
                                 )}
                             </div>
                         </div>
@@ -113,11 +140,19 @@ const HistoryModal = () => {
 
                         let globalIndex = 0;
 
+                        if (groupedHistory.length === 0) {
+                            return (
+                                <div className={`p-12 text-center font-medium animate-pop-in ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                    No browsing history recorded yet.
+                                </div>
+                            );
+                        }
+
                         return (
                             <div className="animate-pop-in space-y-6">
                                 {groupedHistory.map(group => (
                                     <div key={group.name}>
-                                        <h3 className="text-xs font-bold uppercase text-white/30 tracking-widest mb-3 pl-1">{group.name}</h3>
+                                        <h3 className={`text-xs font-bold uppercase tracking-widest mb-3 pl-1 ${isBright ? 'text-zinc-500' : 'text-white/30'}`}>{group.name}</h3>
                                         <div className="flex flex-col gap-2">
                                             {group.items.map((item) => {
                                                 const i = globalIndex++;
@@ -125,20 +160,32 @@ const HistoryModal = () => {
                                                 <div 
                                                     key={item.url + i} 
                                                     onClick={() => handleOpenUrl(item.url)}
-                                                    className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition group cursor-pointer border border-transparent hover:border-white/5 animate-pop-in" 
+                                                    className={`flex items-center gap-4 p-3 rounded-xl transition group cursor-pointer border animate-pop-in ${
+                                                        isBright 
+                                                            ? 'hover:bg-black/[0.04] border-transparent hover:border-black/5' 
+                                                            : 'hover:bg-white/5 border-transparent hover:border-white/5'
+                                                    }`} 
                                                     style={{ animationFillMode: 'both', animationDelay: `${i * 0.03}s` }}
                                                 >
-                                                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 group-hover:text-accent transition overflow-hidden">
-                                                        <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition overflow-hidden ${
+                                                        isBright ? 'bg-black/5 text-zinc-500 group-hover:text-accent' : 'bg-white/5 text-white/40 group-hover:text-accent'
+                                                    }`}>
+                                                        <img src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} alt="icon" className="w-4 h-4 opacity-75 group-hover:opacity-100 transition-opacity" onError={(e) => e.target.style.display = 'none'} />
                                                     </div>
                                                     <div className="flex flex-col flex-1 min-w-0">
                                                         <div className="flex items-center gap-3">
-                                                            <span className="text-sm font-semibold text-white/90 group-hover:text-white transition truncate max-w-[400px]">{item.title}</span>
-                                                            <span className="text-[10px] text-white/30 font-mono whitespace-nowrap">{new Date(item.lastVisit).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                                            <span className={`text-sm font-semibold transition truncate max-w-[400px] ${
+                                                                isBright ? 'text-zinc-900 group-hover:text-accent' : 'text-white/90 group-hover:text-white'
+                                                            }`}>{item.title}</span>
+                                                            <span className={`text-[10px] font-mono whitespace-nowrap ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>{new Date(item.lastVisit).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                                         </div>
-                                                        <span className="text-xs text-white/40 truncate">{item.url}</span>
+                                                        <span className={`text-xs truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{item.url}</span>
                                                     </div>
-                                                    <span className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full group-hover:text-purple-300 group-hover:border-purple-500/30 transition flex-shrink-0">
+                                                    <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full transition flex-shrink-0 ${
+                                                        isBright 
+                                                            ? 'text-zinc-600 bg-black/5 border border-black/10 group-hover:text-purple-600 group-hover:border-purple-400/40' 
+                                                            : 'text-white/40 bg-white/5 border border-white/10 group-hover:text-purple-300 group-hover:border-purple-500/30'
+                                                    }`}>
                                                         {item.visits || 1} {item.visits === 1 ? 'visit' : 'visits'}
                                                     </span>
                                                 </div>

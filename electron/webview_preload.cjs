@@ -795,7 +795,7 @@ function runSmartDark() {
             styleEl.textContent = `
                 @media screen {
                     html.qbrowse-smart-dark-active {
-                        filter: invert(0.92) hue-rotate(180deg) !important;
+                        filter: invert(1) hue-rotate(180deg) !important;
                         background-color: #121214 !important;
                         color-scheme: dark !important;
                     }
@@ -806,8 +806,6 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active svg {
                         filter: invert(1) hue-rotate(180deg) !important;
                     }
-                    html.qbrowse-smart-dark-active #qbrowse-highlight-pill,
-                    html.qbrowse-smart-dark-active #qbrowse-note-card,
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
                     html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
                         filter: invert(1) hue-rotate(180deg) !important;
@@ -827,8 +825,6 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active svg {
                         filter: none !important;
                     }
-                    html.qbrowse-smart-dark-active #qbrowse-highlight-pill,
-                    html.qbrowse-smart-dark-active #qbrowse-note-card,
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
                     html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
                         filter: none !important;
@@ -861,27 +857,37 @@ function runSmartDark() {
             return Math.abs(bg[0] - 18) <= 2 && Math.abs(bg[1] - 18) <= 2 && Math.abs(bg[2] - 20) <= 2;
         };
 
-        if (docEl.getAttribute('data-theme') === 'dark' ||
-            docEl.getAttribute('data-color-mode') === 'dark' ||
-            docEl.getAttribute('data-bs-theme') === 'dark' ||
-            docEl.classList.contains('dark') ||
-            docEl.classList.contains('dark-theme') ||
-            docEl.classList.contains('theme-dark') ||
-            (body && (body.classList.contains('dark') || body.classList.contains('dark-theme') || body.classList.contains('theme-dark')))) {
+        const darkClasses = [
+            'dark', 'dark-theme', 'theme-dark', 'night', 'theme-night', 'night-mode',
+            'skin-theme-clientpref-night', 'skin-night', 'vector-feature-night-mode-enabled',
+            'darkmode', 'dark-mode'
+        ];
+        const hasDarkClass = (el) => el && darkClasses.some(cls => el.classList.contains(cls));
+        const hasDarkAttr = (el) => el && (
+            el.getAttribute('data-theme') === 'dark' ||
+            el.getAttribute('data-color-mode') === 'dark' ||
+            el.getAttribute('data-bs-theme') === 'dark' ||
+            el.getAttribute('data-mode') === 'dark' ||
+            el.getAttribute('color-scheme') === 'dark'
+        );
+
+        if (hasDarkClass(docEl) || hasDarkAttr(docEl) || hasDarkClass(body) || hasDarkAttr(body)) {
             isNativelyDark = true;
         } else {
             const containers = [
                 body ? window.getComputedStyle(body) : null,
+                document.getElementById('content') ? window.getComputedStyle(document.getElementById('content')) : null,
                 document.getElementById('root') ? window.getComputedStyle(document.getElementById('root')) : null,
                 document.getElementById('app') ? window.getComputedStyle(document.getElementById('app')) : null,
                 document.querySelector('main') ? window.getComputedStyle(document.querySelector('main')) : null,
+                document.querySelector('.vector-body') ? window.getComputedStyle(document.querySelector('.vector-body')) : null,
                 docEl ? window.getComputedStyle(docEl) : null
             ].filter(Boolean);
 
             for (const st of containers) {
                 const bg = parseRGB(st.backgroundColor);
                 if (bg && !isOurInjectedBg(bg)) {
-                    if (getLuminance(bg) < 0.35) {
+                    if (getLuminance(bg) < 0.38) {
                         isNativelyDark = true;
                     }
                     break;
@@ -955,10 +961,10 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         pink:   { id: 'pink',   label: 'Pink',   bg: 'rgba(244, 114, 182, 0.42)', border: '#f472b6', text: '#ec4899', dot: '#f472b6' }
     };
 
-    let activePillEl = null;
     let activeCardEl = null;
     let currentAnnotations = [];
     let lastRightClickSelection = null;
+    let currentSelectionState = null;
 
     // Inject styles once DOM is ready
     function injectHighlighterStyles() {
@@ -989,94 +995,23 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
                 margin-left: 3px;
                 vertical-align: 1px;
                 cursor: pointer;
-                background: rgba(18, 18, 24, 0.85);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 5px;
+                background: rgba(12, 13, 20, 0.78);
+                backdrop-filter: blur(64px);
+                -webkit-backdrop-filter: blur(64px);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 6px;
                 padding: 1px 4px;
                 font-size: 11px;
                 line-height: 14px;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+                box-shadow: 0 4px 14px rgba(0,0,0,0.6);
                 transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
                 user-select: none;
             }
             .qbrowse-note-badge:hover {
                 transform: scale(1.18);
-                background: rgba(0, 0, 0, 0.95);
+                background: rgba(12, 13, 20, 0.95);
                 border-color: #d4bc94;
             }
-            #qbrowse-highlight-pill {
-                position: absolute;
-                z-index: 2147483646;
-                display: flex;
-                align-items: center;
-                gap: 5px;
-                padding: 5px 8px;
-                background: rgba(18, 18, 24, 0.92);
-                backdrop-filter: blur(20px);
-                -webkit-backdrop-filter: blur(20px);
-                border: 1px solid rgba(255, 255, 255, 0.18);
-                border-radius: 9999px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.65), 0 0 1px rgba(255,255,255,0.4);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                color: #fff;
-                user-select: none;
-                animation: qbrowsePillPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            }
-            @keyframes qbrowsePillPop {
-                0% { opacity: 0; transform: scale(0.92) translateY(6px); }
-                100% { opacity: 1; transform: scale(1) translateY(0); }
-            }
-            .qb-pill-color-dot {
-                width: 16px;
-                height: 16px;
-                border-radius: 50%;
-                cursor: pointer;
-                border: 1.5px solid rgba(255,255,255,0.3);
-                transition: transform 0.15s ease, border-color 0.15s ease;
-                flex-shrink: 0;
-            }
-            .qb-pill-color-dot:hover {
-                transform: scale(1.25);
-                border-color: #ffffff;
-            }
-            .qb-pill-btn {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                background: rgba(255,255,255,0.1);
-                border: 1px solid rgba(255,255,255,0.15);
-                color: rgba(255,255,255,0.9);
-                border-radius: 9999px;
-                padding: 3px 8px;
-                font-size: 11px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: background 0.15s ease, color 0.15s ease;
-            }
-            .qb-pill-btn:hover {
-                background: rgba(255,255,255,0.22);
-                color: #fff;
-            }
-            #qbrowse-note-card {
-                position: absolute;
-                z-index: 2147483647;
-                width: 290px;
-                background: rgba(18, 18, 24, 0.94);
-                backdrop-filter: blur(24px);
-                -webkit-backdrop-filter: blur(24px);
-                border: 1px solid rgba(255, 255, 255, 0.18);
-                border-radius: 14px;
-                box-shadow: 0 16px 40px rgba(0,0,0,0.7), 0 0 1px rgba(255,255,255,0.3);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                color: #fff;
-                padding: 12px;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                animation: qbrowsePillPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            }
-            html.qbrowse-smart-dark-active #qbrowse-highlight-pill,
-            html.qbrowse-smart-dark-active #qbrowse-note-card,
             html.qbrowse-smart-dark-active .qbrowse-note-badge,
             html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
                 filter: invert(1) hue-rotate(180deg) !important;
@@ -1091,14 +1026,9 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         injectHighlighterStyles();
     }
 
-    function removePill() {
-        if (activePillEl) {
-            activePillEl.remove();
-            activePillEl = null;
-        }
-    }
-
     function removeCard() {
+        const legacyCard = document.getElementById('qbrowse-note-card');
+        if (legacyCard) legacyCard.remove();
         if (activeCardEl) {
             activeCardEl.remove();
             activeCardEl = null;
@@ -1172,7 +1102,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         badge.className = 'qbrowse-note-badge';
         badge.setAttribute('data-qbrowse-id', id);
         badge.title = 'Click to view note';
-        badge.textContent = '📝';
+        badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#d4bc94" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; display: inline-block;"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v6h6"/></svg>`;
         badge.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1243,15 +1173,32 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
             }
         }
 
+        let matchLength = cleanTarget.length;
         if (bestIndex === -1) {
             const lowerFull = fullText.toLowerCase();
             const lowerTarget = cleanTarget.toLowerCase();
             bestIndex = lowerFull.indexOf(lowerTarget);
         }
 
+        // Whitespace-normalized fallback (collapses multiple spaces, newlines, tabs)
+        if (bestIndex === -1) {
+            const normClean = cleanTarget.replace(/\s+/g, ' ').toLowerCase();
+            const normFull = fullText.replace(/\s+/g, ' ').toLowerCase();
+            const normFound = normFull.indexOf(normClean);
+            if (normFound !== -1) {
+                // Approximate original index in raw fullText
+                const leadWords = normClean.split(' ').slice(0, 3).join(' ');
+                const leadIdx = fullText.toLowerCase().indexOf(leadWords);
+                if (leadIdx !== -1) {
+                    bestIndex = leadIdx;
+                    matchLength = Math.min(cleanTarget.length, fullText.length - bestIndex);
+                }
+            }
+        }
+
         if (bestIndex === -1) return null;
 
-        const matchEnd = bestIndex + cleanTarget.length;
+        const matchEnd = bestIndex + matchLength;
         let startContainer = null, startOffset = 0;
         let endContainer = null, endOffset = 0;
 
@@ -1311,208 +1258,122 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         return { id, marks, annotation };
     }
 
+    let activeAnchorId = null;
+
     function openNoteCard(id, anchorEl) {
         removeCard();
-        removePill();
+        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
 
         const ann = currentAnnotations.find(a => a.id === id) || { id, note: '', color: 'accent' };
-        const rect = anchorEl.getBoundingClientRect();
+        const rect = anchorEl ? anchorEl.getBoundingClientRect() : { top: 100, bottom: 120, left: 100, right: 120, width: 20, height: 20 };
+        activeAnchorId = id;
 
-        const card = document.createElement('div');
-        card.id = 'qbrowse-note-card';
-
-        const top = window.scrollY + rect.bottom + 8;
-        const left = Math.max(12, Math.min(window.scrollX + rect.left, window.innerWidth - 310));
-
-        card.style.top = `${top}px`;
-        card.style.left = `${left}px`;
-
-        setSafeHTML(card, `
-            <div style="display: flex; items-center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; tracking: 0.05em; color: rgba(255,255,255,0.5);">Sticky Note</span>
-                    <div style="display: flex; align-items: center; gap: 4px; margin-left: 6px;">
-                        ${Object.keys(QB_HIGHLIGHT_COLORS).map(key => `
-                            <div class="qb-pill-color-dot" data-color="${key}" style="background-color: ${QB_HIGHLIGHT_COLORS[key].dot}; width: 12px; height: 12px; ${ann.color === key ? 'border-color: #fff; transform: scale(1.2);' : ''}"></div>
-                        `).join('')}
-                    </div>
-                </div>
-                <button id="qb-card-close" style="background: none; border: none; color: rgba(255,255,255,0.5); cursor: pointer; font-size: 14px; line-height: 1;">✕</button>
-            </div>
-            <textarea id="qb-card-textarea" placeholder="Type your note, thought, or takeaway..." style="width: 100%; height: 85px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #fff; font-size: 12px; font-family: inherit; padding: 8px; resize: none; outline: none; box-sizing: border-box;"></textarea>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
-                <button id="qb-card-delete" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer;">Delete</button>
-                <button id="qb-card-save" style="background: var(--accent, #d4bc94); border: none; color: #000; border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: 700; cursor: pointer;">Save</button>
-            </div>
-        `);
-
-        document.body.appendChild(card);
-        activeCardEl = card;
-
-        const textarea = card.querySelector('#qb-card-textarea');
-        textarea.value = ann.note || '';
-        textarea.focus();
-
-        // Handle color dot clicks
-        card.querySelectorAll('.qb-pill-color-dot').forEach(dot => {
-            dot.onclick = (e) => {
-                e.stopPropagation();
-                const newColor = dot.getAttribute('data-color');
-                ann.color = newColor;
-                
-                // Update marks in DOM
-                const colorConfig = QB_HIGHLIGHT_COLORS[newColor] || QB_HIGHLIGHT_COLORS.accent;
-                document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`).forEach(m => {
-                    m.setAttribute('data-color', newColor);
-                    m.style.backgroundColor = colorConfig.bg;
-                    m.style.borderBottomColor = colorConfig.border;
-                });
-
-                ipcRenderer.sendToHost('qbrowse-annotation-update', { id, color: newColor });
-
-                // Highlight active dot
-                card.querySelectorAll('.qb-pill-color-dot').forEach(d => {
-                    d.style.borderColor = 'rgba(255,255,255,0.3)';
-                    d.style.transform = 'scale(1)';
-                });
-                dot.style.borderColor = '#ffffff';
-                dot.style.transform = 'scale(1.2)';
-            };
+        ipcRenderer.sendToHost('qbrowse-open-note-card', {
+            id,
+            rect: {
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                height: rect.height
+            },
+            note: ann.note || '',
+            color: ann.color || 'accent',
+            text: ann.text || ''
         });
+    }
 
-        // Close button
-        card.querySelector('#qb-card-close').onclick = () => removeCard();
+    window.addEventListener('scroll', () => {
+        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        if (activeAnchorId) {
+            const anchor = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${activeAnchorId}"]`) || document.querySelector(`.qbrowse-highlight[data-qbrowse-id="${activeAnchorId}"]`);
+            if (anchor) {
+                const rect = anchor.getBoundingClientRect();
+                ipcRenderer.sendToHost('qbrowse-update-note-anchor', {
+                    id: activeAnchorId,
+                    rect: {
+                        top: rect.top,
+                        bottom: rect.bottom,
+                        left: rect.left,
+                        right: rect.right,
+                        width: rect.width,
+                        height: rect.height
+                    }
+                });
+            }
+        }
+    }, { passive: true });
 
-        // Save button
-        card.querySelector('#qb-card-save').onclick = () => {
-            const noteVal = textarea.value.trim();
-            ann.note = noteVal;
+    window.addEventListener('mousedown', (e) => {
+        const isBadge = e.target && e.target.closest && e.target.closest('.qbrowse-note-badge');
+        if (activeAnchorId && !isBadge) {
+            ipcRenderer.sendToHost('qbrowse-close-note-card');
+            activeAnchorId = null;
+        }
+        if (!isBadge) {
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        }
+    });
 
+    ipcRenderer.on('qbrowse-annotation-update', (event, { id, note, color }) => {
+        const ann = currentAnnotations.find(a => a.id === id);
+        if (ann) {
+            if (note !== undefined) ann.note = note;
+            if (color !== undefined) ann.color = color;
+        }
+
+        if (color) {
+            const colorConfig = QB_HIGHLIGHT_COLORS[color] || QB_HIGHLIGHT_COLORS.accent;
+            document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`).forEach(m => {
+                m.setAttribute('data-color', color);
+                m.style.backgroundColor = `${colorConfig.bg} !important`;
+                m.style.borderBottom = `2px solid ${colorConfig.border} !important`;
+            });
+        }
+
+        if (note !== undefined) {
             const targetMarks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
             if (targetMarks.length > 0) {
-                if (noteVal) {
+                if (note) {
                     attachNoteBadge(targetMarks[targetMarks.length - 1], id);
                 } else {
                     const existingBadge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
                     if (existingBadge) existingBadge.remove();
                 }
             }
-
-            ipcRenderer.sendToHost('qbrowse-annotation-update', { id, note: noteVal, color: ann.color || 'accent' });
-            removeCard();
-        };
-
-        // Delete button
-        card.querySelector('#qb-card-delete').onclick = () => {
-            document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`).forEach(m => {
-                const parent = m.parentNode;
-                while (m.firstChild) parent.insertBefore(m.firstChild, m);
-                m.remove();
-            });
-            const badge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
-            if (badge) badge.remove();
-
-            currentAnnotations = currentAnnotations.filter(a => a.id !== id);
-            ipcRenderer.sendToHost('qbrowse-annotation-delete', id);
-            removeCard();
-        };
-
-        // Click outside dismisses card
-        const handleOutsideClick = (e) => {
-            if (activeCardEl && !activeCardEl.contains(e.target) && !anchorEl.contains(e.target)) {
-                // Auto-save note on blur/outside click
-                const noteVal = textarea.value.trim();
-                if (noteVal !== (ann.note || '')) {
-                    ann.note = noteVal;
-                    ipcRenderer.sendToHost('qbrowse-annotation-update', { id, note: noteVal, color: ann.color || 'accent' });
-                    const targetMarks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
-                    if (targetMarks.length > 0) {
-                        if (noteVal) attachNoteBadge(targetMarks[targetMarks.length - 1], id);
-                    }
-                }
-                removeCard();
-                document.removeEventListener('mousedown', handleOutsideClick);
-            }
-        };
-        setTimeout(() => document.addEventListener('mousedown', handleOutsideClick), 10);
-    }
-
-    function showPill(range, rect, text) {
-        removePill();
-
-        const pill = document.createElement('div');
-        pill.id = 'qbrowse-highlight-pill';
-
-        let top = window.scrollY + rect.top - 44;
-        if (rect.top < 52) {
-            top = window.scrollY + rect.bottom + 8;
         }
-        const left = Math.max(12, Math.min(window.scrollX + rect.left + (rect.width / 2) - 110, window.innerWidth - 240));
+    });
 
-        pill.style.top = `${top}px`;
-        pill.style.left = `${left}px`;
-
-        setSafeHTML(pill, `
-            <div style="display: flex; align-items: center; gap: 4px;">
-                ${Object.keys(QB_HIGHLIGHT_COLORS).map(key => `
-                    <div class="qb-pill-color-dot" data-color="${key}" title="Highlight with ${QB_HIGHLIGHT_COLORS[key].label}" style="background-color: ${QB_HIGHLIGHT_COLORS[key].dot};"></div>
-                `).join('')}
-            </div>
-            <div style="width: 1px; height: 14px; background: rgba(255,255,255,0.2); margin: 0 2px;"></div>
-            <button class="qb-pill-btn" id="qb-pill-add-note" title="Add Note">📝 Note</button>
-            <button class="qb-pill-btn" id="qb-pill-copy" title="Copy selection">📋</button>
-        `);
-
-        document.body.appendChild(pill);
-        activePillEl = pill;
-
-        // Color dot click
-        pill.querySelectorAll('.qb-pill-color-dot').forEach(dot => {
-            dot.onmousedown = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const color = dot.getAttribute('data-color');
-                createHighlightFromRange(range, color);
-                removePill();
-            };
+    ipcRenderer.on('qbrowse-annotation-delete', (event, id) => {
+        document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`).forEach(m => {
+            const parent = m.parentNode;
+            while (m.firstChild) parent.insertBefore(m.firstChild, m);
+            m.remove();
         });
+        const badge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
+        if (badge) badge.remove();
 
-        // Add note button
-        pill.querySelector('#qb-pill-add-note').onmousedown = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const res = createHighlightFromRange(range, 'accent');
-            removePill();
-            if (res && res.marks.length > 0) {
-                openNoteCard(res.id, res.marks[res.marks.length - 1]);
-            }
-        };
+        currentAnnotations = currentAnnotations.filter(a => a.id !== id);
+        if (activeAnchorId === id) activeAnchorId = null;
+    });
 
-        // Copy button
-        pill.querySelector('#qb-pill-copy').onmousedown = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            try {
-                navigator.clipboard.writeText(text);
-                const copyBtn = pill.querySelector('#qb-pill-copy');
-                if (copyBtn) copyBtn.textContent = '✓';
-                setTimeout(removePill, 600);
-            } catch (_) {
-                removePill();
-            }
-        };
-    }
+    ipcRenderer.on('qbrowse-close-note-card', () => {
+        activeAnchorId = null;
+    });
 
     function handleSelectionCheck() {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-            removePill();
+            currentSelectionState = null;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
             return;
         }
 
         const text = sel.toString().trim();
         if (text.length < 2) {
-            removePill();
+            currentSelectionState = null;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
             return;
         }
 
@@ -1522,31 +1383,64 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         const focusEl = focus?.nodeType === 1 ? focus : focus?.parentElement;
         if (anchorEl?.closest('input, textarea, [contenteditable="true"]') ||
             focusEl?.closest('input, textarea, [contenteditable="true"]')) {
-            removePill();
+            currentSelectionState = null;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
             return;
         }
 
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) {
-            removePill();
+            currentSelectionState = null;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
             return;
         }
 
-        // Store for right-click context menu bridge
-        lastRightClickSelection = {
+        const { prefix, suffix } = extractPrefixAndSuffix(range);
+        currentSelectionState = {
             range: range.cloneRange(),
             text,
-            prefix: extractPrefixAndSuffix(range).prefix,
-            suffix: extractPrefixAndSuffix(range).suffix
+            prefix,
+            suffix
         };
+        lastRightClickSelection = currentSelectionState;
 
-        showPill(range, rect, text);
+        ipcRenderer.sendToHost('qbrowse-show-selection-pill', {
+            rect: {
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                height: rect.height
+            },
+            text
+        });
     }
 
-    window.addEventListener('mouseup', (e) => {
-        if (activePillEl && activePillEl.contains(e.target)) return;
-        if (activeCardEl && activeCardEl.contains(e.target)) return;
+    window.addEventListener('mousedown', (e) => {
+        // Send page clicked to dismiss any context menus, popovers, or active popups on host
+        ipcRenderer.sendToHost('webview-page-clicked');
+
+        // If not right-click, hide selection pill immediately on mouse press
+        if (e.button !== 2) {
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        }
+    }, true);
+
+    document.addEventListener('selectionchange', () => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        }
+    });
+
+    window.addEventListener('scroll', () => {
+        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+    }, { passive: true });
+
+    window.addEventListener('mouseup', () => {
+        if (activeCardEl) return;
         setTimeout(handleSelectionCheck, 20);
     });
 
@@ -1556,34 +1450,49 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         }
     });
 
-    window.addEventListener('mousedown', (e) => {
-        if (activePillEl && !activePillEl.contains(e.target)) {
-            removePill();
+    // Right-click context menu tracking for annotations
+    window.addEventListener('contextmenu', (e) => {
+        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed && sel.toString().trim().length >= 1) {
+            try {
+                const range = sel.getRangeAt(0);
+                if (range && (range.intersectsNode ? range.intersectsNode(e.target) : true)) {
+                    const text = sel.toString().trim();
+                    const { prefix, suffix } = extractPrefixAndSuffix(range);
+                    lastRightClickSelection = {
+                        range: range.cloneRange(),
+                        text,
+                        prefix,
+                        suffix
+                    };
+                    return;
+                }
+            } catch (_) {}
+        }
+        lastRightClickSelection = null;
+    });
+
+    // IPC: Create highlight triggered from host floating pill
+    ipcRenderer.on('qbrowse-pill-create-highlight', (event, { color = 'accent' } = {}) => {
+        const targetRange = currentSelectionState?.range || lastRightClickSelection?.range || (window.getSelection()?.rangeCount > 0 ? window.getSelection().getRangeAt(0) : null);
+        if (targetRange) {
+            createHighlightFromRange(targetRange, color);
+            currentSelectionState = null;
+            try { window.getSelection().removeAllRanges(); } catch (_) {}
         }
     });
 
-    // Right-click context menu tracking
-    window.addEventListener('contextmenu', (e) => {
-        const sel = window.getSelection();
-        if (sel && !sel.isCollapsed && sel.toString().trim().length >= 1) {
-            const text = sel.toString().trim();
-            const range = sel.getRangeAt(0);
-            const { prefix, suffix } = extractPrefixAndSuffix(range);
-            lastRightClickSelection = {
-                range: range.cloneRange(),
-                text,
-                prefix,
-                suffix
-            };
-            ipcRenderer.sendToHost('qbrowse-selection-contextmenu', {
-                hasSelection: true,
-                text: text.slice(0, 120)
-            });
-        } else {
-            lastRightClickSelection = null;
-            ipcRenderer.sendToHost('qbrowse-selection-contextmenu', {
-                hasSelection: false
-            });
+    // IPC: Add note triggered from host floating pill
+    ipcRenderer.on('qbrowse-pill-add-note', () => {
+        const targetRange = currentSelectionState?.range || lastRightClickSelection?.range || (window.getSelection()?.rangeCount > 0 ? window.getSelection().getRangeAt(0) : null);
+        if (targetRange) {
+            const res = createHighlightFromRange(targetRange, 'accent');
+            currentSelectionState = null;
+            try { window.getSelection().removeAllRanges(); } catch (_) {}
+            if (res && res.marks.length > 0) {
+                openNoteCard(res.id, res.marks[res.marks.length - 1]);
+            }
         }
     });
 
@@ -1632,12 +1541,96 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
     });
 
     // IPC: Scroll to annotation and pulse it
-    ipcRenderer.on('qbrowse-scroll-to-annotation', (event, id) => {
-        const el = document.querySelector(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.classList.add('qbrowse-highlight-pulse');
-            setTimeout(() => el.classList.remove('qbrowse-highlight-pulse'), 1800);
+    ipcRenderer.on('qbrowse-scroll-to-annotation', (event, data) => {
+        const id = typeof data === 'string' ? data : (data?.id || '');
+        if (!id) return;
+        
+        const directAnn = (typeof data === 'object' && data?.annotation) ? data.annotation : null;
+        if (directAnn && !currentAnnotations.some(a => a.id === id)) {
+            currentAnnotations.push(directAnn);
+        }
+
+        function attemptScrollAndReveal() {
+            let marks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
+            if (marks.length === 0) {
+                // If not yet wrapped in DOM, wrap immediately from direct payload or currentAnnotations
+                const targetAnn = directAnn || currentAnnotations.find(a => a.id === id);
+                if (targetAnn && targetAnn.text) {
+                    const range = findTextRangeInDocument(targetAnn.text, targetAnn.prefix, targetAnn.suffix);
+                    if (range) {
+                        wrapRangeWithHighlight(range, targetAnn.id, targetAnn.color || 'accent', targetAnn.note || '');
+                        marks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
+                    }
+                }
+            }
+
+            if (marks.length > 0) {
+                const firstMark = marks[0];
+                const lastMark = marks[marks.length - 1];
+
+                // 1. Smooth element scroll
+                try {
+                    firstMark.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                } catch (_) {
+                    firstMark.scrollIntoView();
+                }
+
+                // 2. Ensure parent scrollable containers or window adjust correctly
+                setTimeout(() => {
+                    try {
+                        const rect = firstMark.getBoundingClientRect();
+                        if (rect.top < 60 || rect.bottom > (window.innerHeight - 60)) {
+                            const targetY = window.pageYOffset + rect.top - (window.innerHeight / 2);
+                            window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                        }
+
+                        // Scroll internal overflow container if applicable
+                        let parent = firstMark.parentElement;
+                        while (parent && parent !== document.body && parent !== document.documentElement) {
+                            const style = window.getComputedStyle(parent);
+                            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+                                const pRect = parent.getBoundingClientRect();
+                                const mRect = firstMark.getBoundingClientRect();
+                                const pOffset = mRect.top - pRect.top - (parent.clientHeight / 2);
+                                parent.scrollBy({ top: pOffset, behavior: 'smooth' });
+                                break;
+                            }
+                            parent = parent.parentElement;
+                        }
+                    } catch (_) {}
+                }, 100);
+
+                // 3. Bright pulse animation
+                marks.forEach(m => {
+                    m.classList.remove('qbrowse-highlight-pulse');
+                    void m.offsetWidth; // Force reflow
+                    m.classList.add('qbrowse-highlight-pulse');
+                });
+                setTimeout(() => {
+                    marks.forEach(m => m.classList.remove('qbrowse-highlight-pulse'));
+                }, 2800);
+
+                // 4. Reveal Note Card or Pill
+                const annObj = directAnn || currentAnnotations.find(a => a.id === id);
+                if (annObj && annObj.note) {
+                    setTimeout(() => {
+                        openNoteCard(id, lastMark);
+                    }, 350);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        if (!attemptScrollAndReveal()) {
+            let retries = 0;
+            const maxRetries = 15;
+            const interval = setInterval(() => {
+                retries++;
+                if (attemptScrollAndReveal() || retries >= maxRetries) {
+                    clearInterval(interval);
+                }
+            }, 150);
         }
     });
 

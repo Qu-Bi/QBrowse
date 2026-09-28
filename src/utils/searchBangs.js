@@ -138,6 +138,17 @@ export const DEFAULT_SEARCH_BANGS = [
         icon: FileText
     },
     {
+        id: 'gemini',
+        name: 'Google Gemini',
+        prefix: 'gemini',
+        bangs: ['!gemini', '!gem', '@gemini', '@gem', '!ai'],
+        url: 'https://gemini.google.com/app?q={q}',
+        color: '#818CF8',
+        bg: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+        category: 'AI',
+        icon: Sparkles
+    },
+    {
         id: 'chatgpt',
         name: 'ChatGPT',
         prefix: 'chatgpt',

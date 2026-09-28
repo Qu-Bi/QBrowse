@@ -2,10 +2,12 @@ import { create } from 'zustand';
 import { unlockVault, unlockVaultWindowsHello, getPasswords, addPassword, deletePassword, updatePassword } from '../services/electronIPC';
 
 const triggerVaultSync = () => {
+    const { isUnlocked, passwords } = useVaultStore.getState();
+    if (!isUnlocked) return;
     import('./useSyncStore').then(m => {
         const syncStore = m.default.getState();
-        if (syncStore.syncCategories?.vault !== false) {
-            syncStore.syncDataToCloud('vault', useVaultStore.getState().passwords || []);
+        if (syncStore.syncCategories?.vault !== false && syncStore.user && syncStore.masterPassword) {
+            syncStore.syncDataToCloud('vault', passwords || []);
         }
     }).catch(() => {});
 };
@@ -35,7 +37,14 @@ const useVaultStore = create((set, get) => ({
     masterPassword: '',
     pinCode: localStorage.getItem('qbrowse_vault_pin') || '',
     passwords: [],
-    cloudVaultBackup: null,
+    cloudVaultBackup: (() => {
+        try {
+            const pending = localStorage.getItem('qbrowse_vault_cloud_pending');
+            return pending ? JSON.parse(pending) : null;
+        } catch(e) {
+            return null;
+        }
+    })(),
     isLoading: false,
     error: null,
 
@@ -46,11 +55,18 @@ const useVaultStore = create((set, get) => ({
             if (unlocked) {
                 set({ isUnlocked: true, masterPassword: password, isLoading: false });
                 await get().fetchPasswords();
-                const { cloudVaultBackup } = get();
-                if (cloudVaultBackup) {
-                    await get().mergeRemoteVault(cloudVaultBackup);
+                const pendingRemote = get().cloudVaultBackup || (() => {
+                    try {
+                        const p = localStorage.getItem('qbrowse_vault_cloud_pending');
+                        return p ? JSON.parse(p) : null;
+                    } catch(e) { return null; }
+                })();
+                if (pendingRemote && Array.isArray(pendingRemote) && pendingRemote.length > 0) {
+                    await get().mergeRemoteVault(pendingRemote);
                     set({ cloudVaultBackup: null });
+                    try { localStorage.removeItem('qbrowse_vault_cloud_pending'); } catch(e) {}
                 }
+                triggerVaultSync();
                 return true;
             } else {
                 set({ error: 'Invalid master password', isLoading: false });
@@ -69,11 +85,18 @@ const useVaultStore = create((set, get) => ({
             if (success) {
                 set({ isUnlocked: true, isLoading: false });
                 await get().fetchPasswords();
-                const { cloudVaultBackup } = get();
-                if (cloudVaultBackup) {
-                    await get().mergeRemoteVault(cloudVaultBackup);
+                const pendingRemote = get().cloudVaultBackup || (() => {
+                    try {
+                        const p = localStorage.getItem('qbrowse_vault_cloud_pending');
+                        return p ? JSON.parse(p) : null;
+                    } catch(e) { return null; }
+                })();
+                if (pendingRemote && Array.isArray(pendingRemote) && pendingRemote.length > 0) {
+                    await get().mergeRemoteVault(pendingRemote);
                     set({ cloudVaultBackup: null });
+                    try { localStorage.removeItem('qbrowse_vault_cloud_pending'); } catch(e) {}
                 }
+                triggerVaultSync();
                 return true;
             } else {
                 set({ error: 'Windows Security authentication failed', isLoading: false });
@@ -99,11 +122,18 @@ const useVaultStore = create((set, get) => ({
             } else {
                 set({ isUnlocked: true });
                 await get().fetchPasswords();
-                const { cloudVaultBackup } = get();
-                if (cloudVaultBackup) {
-                    await get().mergeRemoteVault(cloudVaultBackup);
+                const pendingRemote = get().cloudVaultBackup || (() => {
+                    try {
+                        const p = localStorage.getItem('qbrowse_vault_cloud_pending');
+                        return p ? JSON.parse(p) : null;
+                    } catch(e) { return null; }
+                })();
+                if (pendingRemote && Array.isArray(pendingRemote) && pendingRemote.length > 0) {
+                    await get().mergeRemoteVault(pendingRemote);
                     set({ cloudVaultBackup: null });
+                    try { localStorage.removeItem('qbrowse_vault_cloud_pending'); } catch(e) {}
                 }
+                triggerVaultSync();
                 return true;
             }
         } else {
@@ -165,10 +195,31 @@ const useVaultStore = create((set, get) => ({
     },
 
     mergeRemoteVault: async (remoteVault) => {
-        if (!Array.isArray(remoteVault)) return;
-        const { isUnlocked, masterPassword, passwords } = get();
+        if (!Array.isArray(remoteVault) || remoteVault.length === 0) return;
+        let { isUnlocked, masterPassword, passwords } = get();
+
+        // If not unlocked, check if stored session pass from an active session is available
+        if (!isUnlocked) {
+            const sessionPass = sessionStorage.getItem('qbrowse_vault_mp');
+            if (sessionPass) {
+                try {
+                    const unlocked = await unlockVault(sessionPass);
+                    if (unlocked) {
+                        set({ isUnlocked: true, masterPassword: sessionPass });
+                        await get().fetchPasswords();
+                        isUnlocked = true;
+                        masterPassword = sessionPass;
+                        passwords = get().passwords;
+                    }
+                } catch(_) {}
+            }
+        }
+
         if (!isUnlocked) {
             set({ cloudVaultBackup: remoteVault });
+            try {
+                localStorage.setItem('qbrowse_vault_cloud_pending', JSON.stringify(remoteVault));
+            } catch(e) {}
             return;
         }
         let addedAny = false;

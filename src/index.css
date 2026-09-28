@@ -138,20 +138,20 @@ body {
 }
 
 .sidebar-light {
-  --sidebar-text-muted: rgba(0, 0, 0, 0.5);
-  --sidebar-text-normal: rgba(0, 0, 0, 0.7);
-  --sidebar-text-hover: rgba(0, 0, 0, 1);
-  --sidebar-bg-hover: rgba(0, 0, 0, 0.05);
-  --sidebar-bg-active: rgba(0, 0, 0, 0.1);
-  --sidebar-border: rgba(0, 0, 0, 0.1);
+  --sidebar-text-muted: rgba(24, 24, 27, 0.55);
+  --sidebar-text-normal: rgba(24, 24, 27, 0.85);
+  --sidebar-text-hover: rgba(24, 24, 27, 1);
+  --sidebar-bg-hover: rgba(0, 0, 0, 0.04);
+  --sidebar-bg-active: var(--accent-20);
+  --sidebar-border: rgba(0, 0, 0, 0.06);
 }
 .sidebar-dark {
   --sidebar-text-muted: rgba(255, 255, 255, 0.4);
   --sidebar-text-normal: rgba(255, 255, 255, 0.6);
   --sidebar-text-hover: rgba(255, 255, 255, 1);
-  --sidebar-bg-hover: rgba(255, 255, 255, 0.05);
-  --sidebar-bg-active: rgba(255, 255, 255, 0.1);
-  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-bg-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-bg-active: rgba(255, 255, 255, 0.12);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
 }
 
 .transition-structural {
@@ -341,37 +341,31 @@ body {
    Eliminates GPU composition bottlenecks and frame drops on
    integrated graphics (Intel UHD / Iris / AMD Radeon Vega)
    ========================================================= */
-html.eco-mode {
+/* Eco Mode - Dark Theme (Default) */
+html:not(.theme-light).eco-mode {
   --eco-bg: #0c0e14;
 }
 
-html.eco-mode,
-html.eco-mode body {
-  background-color: #0c0e14 !important;
+html:not(.theme-light).eco-mode,
+html:not(.theme-light).eco-mode body {
+  background-color: #0c0e14;
 }
 
-html.eco-mode [class*="backdrop-blur"] {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  background-color: rgba(14, 16, 22, 0.96) !important;
+/* Eco Mode - Bright / Light Theme */
+html.theme-light.eco-mode {
+  --eco-bg: #f4f5f8;
 }
 
-html.eco-mode .backdrop-blur-3xl,
-html.eco-mode .backdrop-blur-2xl,
-html.eco-mode .backdrop-blur-xl,
-html.eco-mode .backdrop-blur-lg,
-html.eco-mode .backdrop-blur-md,
-html.eco-mode .backdrop-blur-sm,
-html.eco-mode .backdrop-blur {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  background-color: rgba(14, 16, 22, 0.96) !important;
+html.theme-light.eco-mode,
+html.theme-light.eco-mode body {
+  background-color: #f4f5f8;
+  color: #18181b;
 }
 
-/* Flatten heavy Gaussian drop shadows into crisp minimal borders for iGPU rendering */
+/* Keep subtle shadows on eco mode */
 html.eco-mode .shadow-2xl,
 html.eco-mode .shadow-xl {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 /* Shorten transition durations to avoid frame drops on low-frequency CPUs */
@@ -395,6 +389,116 @@ html.eco-mode * {
 .animate-wallpaper-fade {
   animation: wallpaperCrossfade 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: opacity, transform;
+}
+
+/* =========================================================
+   Bright Mode Glassmorphic Settings Modal Theme Overrides
+   Ensures AAA typography contrast and frosted glass elegance
+   ========================================================= */
+.settings-bright-mode {
+  color: #18181b;
+}
+
+.settings-bright-mode h1,
+.settings-bright-mode h2,
+.settings-bright-mode h3,
+.settings-bright-mode h4,
+.settings-bright-mode h5,
+.settings-bright-mode .font-bold,
+.settings-bright-mode .font-semibold {
+  color: #18181b;
+}
+
+.settings-bright-mode [class*="text-white/40"],
+.settings-bright-mode [class*="text-white/50"],
+.settings-bright-mode [class*="text-white/60"],
+.settings-bright-mode [class*="text-zinc-400"],
+.settings-bright-mode [class*="text-zinc-500"] {
+  color: #52525b !important;
+}
+
+.settings-bright-mode [class*="text-white/80"],
+.settings-bright-mode [class*="text-white/90"],
+.settings-bright-mode [class*="text-zinc-200"],
+.settings-bright-mode [class*="text-zinc-300"] {
+  color: #27272a !important;
+}
+
+.settings-bright-mode [class*="text-white"]:not([class*="bg-accent"]):not([class*="text-accent"]):not(.terminal-console *):not([class*="bg-[#060709]"] *) {
+  color: #18181b;
+}
+
+/* Card containers in bright settings */
+.settings-bright-mode [class*="bg-white/[0.02]"],
+.settings-bright-mode [class*="bg-white/[0.025]"],
+.settings-bright-mode [class*="bg-white/[0.03]"],
+.settings-bright-mode [class*="bg-white/[0.04]"],
+.settings-bright-mode [class*="bg-[#0e0f13]"],
+.settings-bright-mode [class*="bg-black/[0.03]"],
+.settings-bright-mode [class*="bg-white/5"]:not([class*="bg-[#060709]"] *) {
+  background-color: rgba(255, 255, 255, 0.75) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+
+.settings-bright-mode [class*="hover:bg-white/[0.04]"]:hover,
+.settings-bright-mode [class*="hover:bg-white/[0.035]"]:hover,
+.settings-bright-mode [class*="hover:bg-white/10"]:hover:not([class*="bg-[#060709]"] *) {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Input boxes, textareas, and selects in bright settings */
+.settings-bright-mode input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+.settings-bright-mode textarea,
+.settings-bright-mode select {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+  color: #18181b !important;
+}
+
+.settings-bright-mode input::placeholder,
+.settings-bright-mode textarea::placeholder {
+  color: #a1a1aa !important;
+}
+
+.settings-bright-mode [class*="bg-black/40"],
+.settings-bright-mode [class*="bg-black/30"],
+.settings-bright-mode [class*="bg-black/20"]:not([class*="bg-[#060709]"] *) {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #18181b !important;
+}
+
+/* Accent badges / chips */
+.settings-bright-mode [class*="border-white/[0.05]"],
+.settings-bright-mode [class*="border-white/[0.06]"],
+.settings-bright-mode [class*="border-white/[0.08]"],
+.settings-bright-mode [class*="border-white/10"]:not([class*="bg-[#060709]"] *) {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* =========================================================
+   Ultra-Smooth 60FPS GPU-Composited Theme Transition Veil
+   Zero DOM reflow, zero synchronous readbacks, zero blur passes
+   ========================================================= */
+@keyframes themeDissolve {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.theme-transition-curtain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999999;
+  will-change: opacity;
+  transform: translateZ(0);
+  animation: themeDissolve 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 
