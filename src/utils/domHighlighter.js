@@ -24,7 +24,7 @@ export function attachNoteBadge(targetEl, id, onClick = null) {
   badge.className = 'qbrowse-note-badge';
   badge.setAttribute('data-qbrowse-id', id);
   badge.title = 'Click to view note';
-  badge.innerHTML = '📝';
+  badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #d4bc94;"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
   badge.style.cssText = `
     display: inline-flex;
     align-items: center;

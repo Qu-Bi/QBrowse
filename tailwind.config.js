@@ -8,7 +8,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        accent: 'var(--accent)',
+        accent: ({ opacityValue, opacityVariable }) => {
+          if (opacityValue !== undefined) {
+            return `rgba(var(--accent-rgb, 212, 188, 148), ${opacityValue})`;
+          }
+          if (opacityVariable !== undefined) {
+            return `rgba(var(--accent-rgb, 212, 188, 148), var(${opacityVariable}, 1))`;
+          }
+          return `var(--accent, #d4bc94)`;
+        },
         'accent-10': 'var(--accent-10)',
         'accent-20': 'var(--accent-20)',
         'accent-30': 'var(--accent-30)',

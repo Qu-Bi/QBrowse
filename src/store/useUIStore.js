@@ -829,13 +829,13 @@ const useUIStore = create((set, get) => ({
   })),
   sendMediaCommand: (cmd) => {
       const commandName = typeof cmd === 'string' ? cmd : (cmd ? cmd.action : 'unknown');
-      console.log(`[QBrowse MediaControl] 🚀 Dispatching command: "${commandName}"`, cmd);
+      console.log(`[QBrowse MediaControl] Dispatching command: "${commandName}"`, cmd);
       
       const webviews = Array.from(document.querySelectorAll('webview'));
       console.log(`[QBrowse MediaControl] Found ${webviews.length} active webview tag(s) in DOM`);
       
       if (webviews.length === 0) {
-          console.warn('[QBrowse MediaControl] ⚠️ No webview elements found in DOM!');
+          console.warn('[QBrowse MediaControl] No webview elements found in DOM!');
       }
 
       webviews.forEach((wv, index) => {
@@ -879,17 +879,17 @@ const useUIStore = create((set, get) => ({
                               }
                           })();
                       `, true)
-                      .then(res => console.log(`[QBrowse MediaControl] 🎉 PiP result on webview #${index}:`, res))
+                      .then(res => console.log(`[QBrowse MediaControl] PiP result on webview #${index}:`, res))
                       .catch(err => console.warn(`[QBrowse MediaControl] PiP execution warning on webview #${index}:`, err));
                   }
               }
 
               if (typeof wv.send === 'function') {
                   wv.send('media-control-command', cmd);
-                  console.log(`[QBrowse MediaControl] ✅ Successfully sent "${commandName}" to webview #${index} (${wv.src || 'about:blank'})`);
+                  console.log(`[QBrowse MediaControl] Successfully sent "${commandName}" to webview #${index} (${wv.src || 'about:blank'})`);
               }
           } catch (e) {
-              console.error(`[QBrowse MediaControl] ❌ Error sending command to webview #${index}:`, e);
+              console.error(`[QBrowse MediaControl] Error sending command to webview #${index}:`, e);
           }
       });
   },

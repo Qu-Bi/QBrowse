@@ -72,7 +72,7 @@ export default function UserProfilePopover({ isClosing }) {
     const historyCount = useHistoryStore(state => state.history?.length || 0);
 
     const [username, setUsername] = useState(() => localStorage.getItem('qbrowse_profile_username') || activeProfile?.name || (user ? user.email.split('@')[0] : 'Zen Explorer'));
-    const [statusQuote, setStatusQuote] = useState(() => localStorage.getItem('qbrowse_profile_status') || 'Exploring the Zen web 🌌');
+    const [statusQuote, setStatusQuote] = useState(() => localStorage.getItem('qbrowse_profile_status') || 'Exploring the Zen web');
     const [avatarPreset, setAvatarPreset] = useState(() => localStorage.getItem('qbrowse_profile_avatar_preset') || 'rocket');
     const [customAvatarUrl, setCustomAvatarUrl] = useState(() => localStorage.getItem('qbrowse_profile_avatar_url') || '');
     
@@ -695,10 +695,10 @@ export default function UserProfilePopover({ isClosing }) {
                                                 </span>
                                             </div>
                                             {bk.stats && (
-                                                <div className={`flex gap-2 text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                                                    <span>🛡️ {bk.stats.passwords || 0} Passwords</span>
-                                                    <span>📑 {bk.stats.tabs || 0} Tabs</span>
-                                                    <span>🕒 {bk.stats.history || 0} History</span>
+                                                <div className={`flex gap-3 text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
+                                                    <span className="flex items-center gap-1"><Key size={10} className="text-accent/80" /> {bk.stats.passwords || 0} Passwords</span>
+                                                    <span className="flex items-center gap-1"><Layers size={10} className="text-accent/80" /> {bk.stats.tabs || 0} Tabs</span>
+                                                    <span className="flex items-center gap-1"><History size={10} className="text-accent/80" /> {bk.stats.history || 0} History</span>
                                                 </div>
                                             )}
                                             <div className={`flex gap-2 pt-1 border-t ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>

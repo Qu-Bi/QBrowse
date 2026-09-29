@@ -276,9 +276,9 @@ export default function AIEngineSettings() {
                     <h4 className={`text-sm font-bold flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}><Sliders size={16} className="text-accent" /> llama-server Parameter Overrides</h4>
                     <button 
                         onClick={handleAutoDetect}
-                        className="px-3 py-1 bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent text-[10px] font-bold rounded-lg transition cursor-pointer"
+                        className="px-3 py-1 bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5"
                     >
-                        ⚡ Auto-Detect Hardware
+                        <Zap size={11} /> Auto-Detect Hardware
                     </button>
                 </div>
                 

@@ -63,6 +63,7 @@ import WebViewContainer from './WebViewContainer';
 import QVaultPopover from '../popovers/QVaultPopover';
 import SavePasswordBanner from '../popovers/SavePasswordBanner';
 import SiteInfoPopover from '../popovers/SiteInfoPopover';
+import { formatCompactNumber } from '../../utils/formatters';
 import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
 import FindInPageBar from '../common/FindInPageBar';
@@ -514,7 +515,12 @@ export default function MainFrame() {
                             : (isAdblockActive ? 'bg-green-500/10 border-white/[0.05]' : 'bg-white/[0.02] border-white/[0.05]')
                     }`}>
                         <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? (isBright ? 'text-emerald-600' : 'text-green-400') : (isBright ? 'text-zinc-300' : 'text-white/20')}`} strokeWidth={1.5} />
-                        <span className={`text-3xl font-black tracking-tight ${isAdblockActive ? (isBright ? 'text-zinc-900' : 'text-white') : (isBright ? 'text-zinc-400' : 'text-white/40')}`}>{isAdblockActive ? adblockStats.count : '0'}</span>
+                        <span 
+                            title={isAdblockActive ? `${Number(adblockStats.count || 0).toLocaleString()} blocked trackers` : 'Adblock inactive'}
+                            className={`text-3xl font-black tracking-tight ${isAdblockActive ? (isBright ? 'text-zinc-900' : 'text-white') : (isBright ? 'text-zinc-400' : 'text-white/40')}`}
+                        >
+                            {isAdblockActive ? formatCompactNumber(adblockStats.count) : '0'}
+                        </span>
                         <span className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Blocked Trackers</span>
                     </div>
                     <div className="p-4 bg-transparent flex flex-col gap-3">

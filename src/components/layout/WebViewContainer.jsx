@@ -10,6 +10,7 @@ import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 import { X, StickyNote, Trash2, Copy, Check } from 'lucide-react';
 import FlagsPage from '../pages/FlagsPage';
+import LocalFileViewer from '../pages/LocalFileViewer';
 import DrmHandOffBanner from '../features/DrmHandOffBanner';
 
 // We extract WebViewItem so we can freeze its initial URL 
@@ -423,26 +424,24 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             
             let errorTitle = 'This site can’t be reached';
             let errorMsg = e.errorDescription || 'An unknown error occurred.';
-            let errorIcon = '🌐';
             
             const codes = {
-                '-105': { t: 'Server DNS address could not be found.', m: 'Check your internet connection or the spelling of the URL.', i: '📡' },
-                '-106': { t: 'No internet connection', m: 'Check your network cables, modem, and routers.', i: '🔌' },
-                '-102': { t: 'Connection refused', m: 'The site might be down or your network is blocking the request.', i: '🛑' },
-                '-109': { t: 'Address is unreachable', m: 'The server could not be reached. Try again later.', i: '🚧' },
-                '-501': { t: 'Insecure connection', m: 'The connection is not secure. Certificate is invalid.', i: '🔒' },
-                '-137': { t: 'Name resolution failed', m: 'The domain name could not be resolved.', i: '🔍' },
-                '-118': { t: 'Connection timed out', m: 'The server took too long to respond.', i: '⏳' },
-                '-101': { t: 'Connection reset', m: 'The connection was reset by the server.', i: '🔄' },
-                '-104': { t: 'Connection closed', m: 'The connection was unexpectedly closed.', i: '🚪' },
-                '-111': { t: 'Pipe routing error', m: 'Failed to route the connection to the host.', i: '🛣️' },
-                '-200': { t: 'Certificate Error', m: 'The site provided an invalid security certificate.', i: '🛡️' }
+                '-105': { t: 'Server DNS address could not be found.', m: 'Check your internet connection or the spelling of the URL.' },
+                '-106': { t: 'No internet connection', m: 'Check your network cables, modem, and routers.' },
+                '-102': { t: 'Connection refused', m: 'The site might be down or your network is blocking the request.' },
+                '-109': { t: 'Address is unreachable', m: 'The server could not be reached. Try again later.' },
+                '-501': { t: 'Insecure connection', m: 'The connection is not secure. Certificate is invalid.' },
+                '-137': { t: 'Name resolution failed', m: 'The domain name could not be resolved.' },
+                '-118': { t: 'Connection timed out', m: 'The server took too long to respond.' },
+                '-101': { t: 'Connection reset', m: 'The connection was reset by the server.' },
+                '-104': { t: 'Connection closed', m: 'The connection was unexpectedly closed.' },
+                '-111': { t: 'Pipe routing error', m: 'Failed to route the connection to the host.' },
+                '-200': { t: 'Certificate Error', m: 'The site provided an invalid security certificate.' }
             };
             
             if (codes[e.errorCode.toString()]) {
                 errorTitle = codes[e.errorCode.toString()].t;
                 errorMsg = codes[e.errorCode.toString()].m;
-                errorIcon = codes[e.errorCode.toString()].i;
             }
 
             const isDark = useUIStore.getState().isForceDark || useUIStore.getState().isIncognito;
@@ -471,19 +470,19 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                             text-align: center;
                             padding: 20px;
                         }
-                        .icon { font-size: 64px; margin-bottom: 24px; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.1)); }
-                        h1 { margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: -0.5px; }
-                        p { margin: 0 0 8px; color: ${subTextColor}; max-width: 400px; line-height: 1.5; font-size: 15px; }
-                        .error-code { margin-top: 24px; font-size: 12px; font-family: monospace; color: ${subTextColor}; opacity: 0.7; }
+                        .icon { display: flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 20px; background: rgba(129, 140, 248, 0.1); border: 1px solid rgba(129, 140, 248, 0.2); margin-bottom: 24px; color: ${accentColor}; }
+                        h1 { margin: 0 0 16px; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
+                        p { margin: 0 0 8px; color: ${subTextColor}; max-width: 400px; line-height: 1.5; font-size: 14px; }
+                        .error-code { margin-top: 24px; font-size: 11px; font-family: monospace; color: ${subTextColor}; opacity: 0.7; }
                         button {
-                            margin-top: 32px;
+                            margin-top: 28px;
                             padding: 10px 24px;
                             background-color: ${accentColor};
                             color: white;
                             border: none;
                             border-radius: 99px;
-                            font-size: 14px;
-                            font-weight: 500;
+                            font-size: 13px;
+                            font-weight: 600;
                             cursor: pointer;
                             transition: opacity 0.2s, transform 0.2s;
                             box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
@@ -493,7 +492,13 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     </style>
                 </head>
                 <body>
-                    <div class="icon">${errorIcon}</div>
+                    <div class="icon">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    </div>
                     <h1>${errorTitle}</h1>
                     <p>${errorMsg}</p>
                     <button onclick="window.location.reload()">Try Again</button>
@@ -1137,18 +1142,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
     }, [isForceDark, tab.url, darkExclusions]);
 
     const isFlagsPage = tab.url && (tab.url.startsWith('qbrowse://flags') || tab.url.startsWith('chrome://flags') || tab.url.startsWith('about:flags'));
-
-    if (isFlagsPage) {
-        return (
-            <div className="w-full absolute inset-0 bg-[#0a0a0c] transition-opacity duration-300" style={{ 
-                zIndex: isVisible ? 10 : -1,
-                opacity: isVisible ? 1 : 0,
-                pointerEvents: isVisible ? 'auto' : 'none'
-            }}>
-                <FlagsPage />
-            </div>
-        );
-    }
+    const isLocalResource = tab.url && tab.url.startsWith('file://') && !/\.(html?|xhtml)$/i.test(tab.url);
 
     const handleSaveNote = () => {
         if (!activeNoteCard) return;
@@ -1282,7 +1276,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 pointerEvents: shouldShow ? 'auto' : 'none'
             }}
         >
-            {shouldShow && !tab.isClosing && (
+            {shouldShow && !tab.isClosing && !isFlagsPage && !isLocalResource && (
                 <DrmHandOffBanner
                     url={tab.url}
                     genericDrmError={genericDrmError}
@@ -1290,7 +1284,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     onDismiss={() => setIsDrmDismissed(true)}
                 />
             )}
-            {space === 'tor' && torStatus !== 'connected' && shouldShow && tab.url && tab.url !== 'about:blank' && (
+            {space === 'tor' && torStatus !== 'connected' && shouldShow && tab.url && tab.url !== 'about:blank' && !isFlagsPage && !isLocalResource && (
                 <div className="absolute inset-0 z-30 bg-[#0a0a0c] flex flex-col items-center justify-center text-white select-none">
                     <div className={`w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(168,85,247,0.2)] ${torStatus === 'starting' || torStatus === 'downloading' ? 'animate-pulse' : ''}`}>
                         <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2" className="text-purple-400">
@@ -1330,13 +1324,23 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                     )}
                 </div>
             )}
+            {isFlagsPage && shouldShow && (
+                <div className="w-full h-full absolute inset-0 z-20 bg-[#0a0a0c]">
+                    <FlagsPage />
+                </div>
+            )}
+            {isLocalResource && shouldShow && (
+                <div className="w-full h-full absolute inset-0 z-20 overflow-hidden">
+                    <LocalFileViewer tab={tab} />
+                </div>
+            )}
             <webview
                 ref={wvRef}
                 id={`webview-${tab.id}`}
                 src={initialUrl}
                 partition={space === 'ghost' ? 'ghost' : (space === 'tor' ? 'tor' : `persist:profile_${activeProfileId || 'default'}`)}
                 className="w-full h-full"
-                style={{ display: 'flex' }}
+                style={{ display: 'flex', visibility: isFlagsPage || isLocalResource ? 'hidden' : 'visible' }}
                 allowpopups="true"
                 plugins="true"
                 webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}

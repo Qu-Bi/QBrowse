@@ -5,10 +5,19 @@ import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
 import { onGlobalNavigateBack, onGlobalNavigateForward } from '../../services/electronIPC';
+import { formatCompactNumber } from '../../utils/formatters';
 
 function formatDisplayUrl(rawUrl) {
     if (!rawUrl || rawUrl === 'about:blank') return '';
     if (rawUrl.startsWith('qbrowse://') || rawUrl.startsWith('chrome://') || rawUrl.startsWith('about:')) return rawUrl;
+    if (rawUrl.startsWith('file://')) {
+        try {
+            const decoded = decodeURIComponent(rawUrl.replace(/^file:\/\/\/?/, ''));
+            return decoded.length > 45 ? '...' + decoded.slice(-42) : decoded;
+        } catch (_) {
+            return rawUrl;
+        }
+    }
     
     try {
         let urlObj;
@@ -439,12 +448,12 @@ export default function TopBar() {
                                             ? (isBright ? 'text-emerald-600 hover:bg-emerald-500/10' : 'text-emerald-400 hover:bg-emerald-500/10') 
                                             : (isBright ? 'text-gray-400 hover:bg-black/5' : 'text-white/30 hover:bg-white/10'))
                                 }`}
-                                title="QShield Ad & Tracker Blocker"
+                                title={`QShield: ${adblockStats?.count ? Number(adblockStats.count).toLocaleString() : 1} trackers blocked`}
                             >
                                 <ShieldCheck size={14} className="group-hover:scale-110 transition-transform" />
                                 {isAdblockActive && (
                                     <span className="text-[10px] font-bold opacity-80">
-                                        {adblockStats?.count > 0 ? adblockStats.count : 1}
+                                        {formatCompactNumber(adblockStats?.count > 0 ? adblockStats.count : 1)}
                                     </span>
                                 )}
                             </button>

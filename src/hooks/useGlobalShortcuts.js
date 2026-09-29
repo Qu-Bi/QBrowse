@@ -310,6 +310,19 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             }
             break;
 
+        // Open File / Folder (Cmd+O / Ctrl+O)
+        case 'o':
+            if (window.electronAPI && window.electronAPI.openFileDialog) {
+                window.electronAPI.openFileDialog().then(fileUrls => {
+                    if (fileUrls && fileUrls.length > 0) {
+                        tabStore.openLocalFiles(fileUrls);
+                    }
+                }).catch(err => {
+                    console.error('[Open File] Error:', err);
+                });
+            }
+            break;
+
         // History Archive (Cmd+H and Cmd+Y)
         case 'h':
         case 'y':

@@ -977,6 +977,29 @@ const useTabStore = create((set, get) => ({
     }
   },
 
+  openLocalFiles: (fileUrls) => {
+    if (!Array.isArray(fileUrls) || fileUrls.length === 0) return;
+    const activeTab = get().getActiveTab();
+    const isBlank = !activeTab?.url || activeTab.url === 'about:blank' || activeTab.url.startsWith('qbrowse://newtab');
+    
+    fileUrls.forEach((url, idx) => {
+      let title = '';
+      try {
+        const decoded = decodeURIComponent(url);
+        const parts = decoded.split(/[/\\]/).filter(Boolean);
+        title = parts[parts.length - 1] || 'Local Resource';
+      } catch (_) {
+        title = 'Local Resource';
+      }
+
+      if (idx === 0 && isBlank && activeTab) {
+        get().handleNavigateTab(activeTab.id, url, title);
+      } else {
+        get().handleNewTab(url);
+      }
+    });
+  },
+
   updateTabNavState: (tabId, canGoBack, canGoForward) => {
     const update = (list) => list.map(t => t.id === tabId ? { ...t, canGoBack: !!canGoBack, canGoForward: !!canGoForward } : t);
     get().setPrivateTabs(update(get().privateTabs));

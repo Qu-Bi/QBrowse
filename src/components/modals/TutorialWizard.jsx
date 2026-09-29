@@ -360,7 +360,7 @@ const TutorialWizard = () => {
                                     </div>
                                 </div>
                                 <div className={`p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs font-mono ${isBright ? 'text-purple-900' : 'text-purple-200'} leading-relaxed`}>
-                                    <span className="font-bold text-purple-600">✨ Qu-AI:</span> "I analyze web pages and answer questions entirely inside your machine's RAM without external APIs."
+                                    <span className="font-bold text-purple-600 inline-flex items-center gap-1 mr-1.5"><Sparkles size={12} /> Qu-AI:</span> "I analyze web pages and answer questions entirely inside your machine's RAM without external APIs."
                                 </div>
                             </div>
 

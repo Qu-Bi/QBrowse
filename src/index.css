@@ -4,12 +4,25 @@
 
 @layer utilities {
   .hide-scroll {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none !important;  /* IE and Edge */
+    scrollbar-width: none !important;  /* Firefox */
   }
   .hide-scroll::-webkit-scrollbar {
-    display: none;
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
   }
+}
+
+.hide-scroll {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+.hide-scroll::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
 /* Custom Glassmorphism Scrollbar System */
@@ -39,12 +52,22 @@
   background: transparent;
 }
 
+@layer base {
+  *, ::before, ::after {
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  .theme-light *, .theme-light ::before, .theme-light ::after {
+    border-color: rgba(0, 0, 0, 0.08);
+  }
+}
+
 :root {
-  --accent: #3b82f6; /* default blue */
-  --accent-10: rgba(59, 130, 246, 0.1);
-  --accent-20: rgba(59, 130, 246, 0.2);
-  --accent-30: rgba(59, 130, 246, 0.3);
-  --accent-40: rgba(59, 130, 246, 0.4);
+  --accent: #d4bc94;
+  --accent-rgb: 212, 188, 148;
+  --accent-10: rgba(212, 188, 148, 0.1);
+  --accent-20: rgba(212, 188, 148, 0.2);
+  --accent-30: rgba(212, 188, 148, 0.3);
+  --accent-40: rgba(212, 188, 148, 0.4);
 }
 
 body {

@@ -5,7 +5,7 @@ const fs = require('fs/promises');
 const fsSync = require('fs');
 const os = require('os');
 const http = require('http');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
 
 // In-Tab JavaScript Dialog state collections
@@ -244,6 +244,278 @@ ipcMain.handle('save-firebase-config', async (event, config) => {
     }
 });
 
+// Helper to safely convert file:// or string path to clean OS filesystem path
+function toLocalFsPath(input) {
+    if (!input || typeof input !== 'string') return '';
+    let target = input.trim();
+    if (target.startsWith('file://')) {
+        try {
+            target = fileURLToPath(target);
+        } catch (_) {
+            target = target.replace(/^file:\/\/\/?/, '');
+            if (process.platform === 'win32' && /^[a-zA-Z]:/.test(target)) {
+                // Keep Windows drive letter
+            } else if (process.platform !== 'win32' && !target.startsWith('/')) {
+                target = '/' + target;
+            }
+        }
+    }
+    if (target.startsWith('~/') || target === '~') {
+        target = path.join(os.homedir(), target.slice(1));
+    }
+    return path.normalize(target);
+}
+
+// Native Open File / Folder Dialog (Ctrl+O)
+ipcMain.handle('open-file-dialog', async (event, options = {}) => {
+    try {
+        const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+        const properties = options.directory ? ['openDirectory'] : ['openFile', 'multiSelections'];
+        const result = await dialog.showOpenDialog(win, {
+            title: options.title || 'Open File in QBrowse',
+            properties,
+            filters: options.filters || [
+                { name: 'All Supported Formats', extensions: ['pdf', 'html', 'htm', 'md', 'txt', 'json', 'png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'mp4', 'webm', 'mp3', 'wav', 'js', 'css', 'py', 'ts'] },
+                { name: 'PDF Documents (*.pdf)', extensions: ['pdf'] },
+                { name: 'Web Documents (*.html, *.htm)', extensions: ['html', 'htm'] },
+                { name: 'Markdown & Text (*.md, *.txt, *.json)', extensions: ['md', 'txt', 'json', 'js', 'py', 'css'] },
+                { name: 'Images & Media', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'mp4', 'webm', 'mp3'] },
+                { name: 'All Files (*.*)', extensions: ['*'] }
+            ]
+        });
+        if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
+        return result.filePaths.map(p => pathToFileURL(p).href);
+    } catch (e) {
+        console.error('[Main] open-file-dialog error:', e);
+        return null;
+    }
+});
+
+// List Directory contents for QBrowse Local Glass Explorer
+ipcMain.handle('list-local-directory', async (event, dirUrlOrPath) => {
+    try {
+        const targetPath = toLocalFsPath(dirUrlOrPath);
+        if (!targetPath || !fsSync.existsSync(targetPath)) {
+            return { error: 'Folder does not exist or access is restricted' };
+        }
+        const stat = await fs.stat(targetPath);
+        if (!stat.isDirectory()) {
+            return { error: 'Path is a file, not a directory', isFile: true, path: targetPath, url: pathToFileURL(targetPath).href };
+        }
+
+        const entries = await fs.readdir(targetPath, { withFileTypes: true });
+        const items = [];
+
+        for (const entry of entries) {
+            try {
+                // Ignore broken symlinks or hidden system files if they throw
+                const fullItemPath = path.join(targetPath, entry.name);
+                let itemStat = null;
+                try {
+                    itemStat = await fs.stat(fullItemPath);
+                } catch (_) {}
+
+                const isDir = entry.isDirectory();
+                items.push({
+                    name: entry.name,
+                    path: fullItemPath,
+                    url: pathToFileURL(fullItemPath).href,
+                    isDirectory: isDir,
+                    size: itemStat && !isDir ? itemStat.size : 0,
+                    modified: itemStat ? itemStat.mtimeMs : 0,
+                    extension: isDir ? '' : path.extname(entry.name).toLowerCase().replace('.', '')
+                });
+            } catch (_) {}
+        }
+
+        // Sort: directories first alphabetically, then files alphabetically
+        items.sort((a, b) => {
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        // Determine parent path
+        const parentPath = path.dirname(targetPath);
+        const hasParent = parentPath && parentPath !== targetPath;
+
+        return {
+            success: true,
+            currentPath: targetPath,
+            currentUrl: pathToFileURL(targetPath).href,
+            parentPath: hasParent ? parentPath : null,
+            parentUrl: hasParent ? pathToFileURL(parentPath).href : null,
+            items,
+            totalItems: items.length
+        };
+    } catch (err) {
+        console.error('[Main] list-local-directory error:', err);
+        return { error: err.message || 'Failed to list directory' };
+    }
+});
+
+// Autocomplete Local Paths for Omnibox
+ipcMain.handle('autocomplete-local-path', async (event, query) => {
+    try {
+        if (!query || typeof query !== 'string') return [];
+        let raw = query.trim();
+        if (raw.startsWith('file://')) {
+            try { raw = fileURLToPath(raw); } catch (_) { raw = raw.replace(/^file:\/\/\/?/, ''); }
+        }
+        if (raw.startsWith('~/') || raw === '~') {
+            raw = path.join(os.homedir(), raw.slice(1));
+        }
+
+        let searchDir = '';
+        let prefix = '';
+
+        if (raw.endsWith('/') || raw.endsWith('\\')) {
+            searchDir = path.normalize(raw);
+            prefix = '';
+        } else {
+            searchDir = path.dirname(path.normalize(raw));
+            prefix = path.basename(raw).toLowerCase();
+        }
+
+        if (!searchDir || !fsSync.existsSync(searchDir)) return [];
+        const dirStat = fsSync.statSync(searchDir);
+        if (!dirStat.isDirectory()) return [];
+
+        const entries = await fs.readdir(searchDir, { withFileTypes: true });
+        const matches = [];
+
+        for (const entry of entries) {
+            if (prefix && !entry.name.toLowerCase().startsWith(prefix)) continue;
+            const fullP = path.join(searchDir, entry.name);
+            const isDir = entry.isDirectory();
+            matches.push({
+                name: entry.name,
+                path: fullP,
+                url: pathToFileURL(fullP).href,
+                isDirectory: isDir,
+                extension: isDir ? '' : path.extname(entry.name).toLowerCase().replace('.', '')
+            });
+            if (matches.length >= 25) break;
+        }
+        return matches;
+    } catch {
+        return [];
+    }
+});
+
+// Read Local File Content / Binary for In-Tab Glass Viewers
+const LOCAL_MEDIA_MIME_MAP = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+    'svg': 'image/svg+xml',
+    'bmp': 'image/bmp',
+    'ico': 'image/x-icon',
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'm4a': 'audio/mp4',
+    'flac': 'audio/flac',
+    'aac': 'audio/aac',
+    'opus': 'audio/opus',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mov': 'video/quicktime',
+    'mkv': 'video/x-matroska',
+    'pdf': 'application/pdf'
+};
+
+ipcMain.handle('read-local-file-data', async (event, fileUrlOrPath) => {
+    try {
+        const targetPath = toLocalFsPath(fileUrlOrPath);
+        if (!targetPath || !fsSync.existsSync(targetPath)) {
+            return { error: 'File does not exist or has been moved' };
+        }
+        const stat = await fs.stat(targetPath);
+        if (stat.isDirectory()) {
+            return { isDirectory: true, path: targetPath, url: pathToFileURL(targetPath).href };
+        }
+
+        const ext = path.extname(targetPath).toLowerCase();
+        const cleanExt = ext.replace('.', '');
+        const textExtensions = new Set([
+            '.txt', '.md', '.json', '.js', '.jsx', '.ts', '.tsx', '.css', '.scss',
+            '.html', '.htm', '.xml', '.yaml', '.yml', '.py', '.sh', '.bash', '.bat',
+            '.c', '.cpp', '.h', '.java', '.rs', '.go', '.sql', '.log', '.env'
+        ]);
+
+        const isText = textExtensions.has(ext);
+        let content = null;
+        let base64 = null;
+
+        if (isText) {
+            if (stat.size < 12 * 1024 * 1024) { // Up to 12MB text
+                content = await fs.readFile(targetPath, 'utf8');
+            } else {
+                content = '[File is larger than 12MB. Preview limited to safe sizes.]';
+            }
+        } else if (ext === '.pdf') {
+            // Read PDF into base64 for pdf.js canvas rendering
+            const buf = await fs.readFile(targetPath);
+            base64 = buf.toString('base64');
+        } else if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.bmp', '.ico', '.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.opus'].includes(ext)) {
+            if (stat.size < 150 * 1024 * 1024) { // Up to 150MB media
+                const buf = await fs.readFile(targetPath);
+                base64 = buf.toString('base64');
+            }
+        }
+
+        const mime = LOCAL_MEDIA_MIME_MAP[cleanExt] || (isText ? 'text/plain' : 'application/octet-stream');
+
+        return {
+            success: true,
+            path: targetPath,
+            url: pathToFileURL(targetPath).href,
+            name: path.basename(targetPath),
+            size: stat.size,
+            modified: stat.mtimeMs,
+            extension: cleanExt,
+            mime,
+            isText,
+            content,
+            base64
+        };
+    } catch (err) {
+        console.error('[Main] read-local-file-data error:', err);
+        return { error: err.message || 'Failed to read file' };
+    }
+});
+
+// Reveal file in Explorer / Nautilus / Finder
+ipcMain.handle('show-in-folder', async (event, fileUrlOrPath) => {
+    try {
+        const targetPath = toLocalFsPath(fileUrlOrPath);
+        if (targetPath && fsSync.existsSync(targetPath)) {
+            shell.showItemInFolder(targetPath);
+            return true;
+        }
+        return false;
+    } catch {
+        return false;
+    }
+});
+
+// Open folder with system file manager
+ipcMain.handle('open-path', async (event, dirUrlOrPath) => {
+    try {
+        const targetPath = toLocalFsPath(dirUrlOrPath);
+        if (targetPath && fsSync.existsSync(targetPath)) {
+            await shell.openPath(targetPath);
+            return true;
+        }
+        return false;
+    } catch {
+        return false;
+    }
+});
+
 ipcMain.handle('open-external', async (event, url) => {
     try {
         if (!url || typeof url !== 'string') return false;
@@ -365,7 +637,6 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
 
 // Synchronously load user flags from qbrowse://flags before app is ready
-const fsSync = require('fs');
 let userFlags = {};
 try {
     const flagsPath = path.join(app.getPath('userData'), 'flags.json');

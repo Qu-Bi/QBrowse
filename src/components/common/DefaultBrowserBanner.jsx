@@ -53,7 +53,7 @@ export default function DefaultBrowserBanner() {
                 const res = await window.electronAPI.setDefaultBrowser();
                 if (res.isDefault) {
                     setIsDefault(true);
-                    showToast('QBrowse is now your default browser! 🎉');
+                    showToast('QBrowse is now your default browser!');
                     setIsVisible(false);
                 } else {
                     showToast('Default browser settings opened.');

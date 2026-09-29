@@ -4,7 +4,7 @@ import {
     VolumeX, Volume2, Cpu, Zap, Moon, Sun, PanelLeft, Layers, Puzzle,
     Trash2, XCircle, Sparkles, SplitSquareHorizontal,
     RotateCw, Plus, Settings, History, Download, Maximize, Key, Activity, HardDrive, Users,
-    Printer, FileDown, Camera, Crop, X, Video, Code, BookOpen, MessageSquare, Code2, ShoppingBag, Twitter, MapPin, Package, FileText, Bot
+    Printer, FileDown, Camera, Crop, X, Video, Code, BookOpen, MessageSquare, Code2, ShoppingBag, Twitter, MapPin, Package, FileText, Bot, Folder
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -78,6 +78,22 @@ const parseUrlInput = (input, activeBang = null, customBangs = []) => {
         return trimmed;
     }
 
+    // Direct local file:// URLs
+    if (/^file:\/\//i.test(trimmed)) {
+        return trimmed;
+    }
+
+    // Windows local drive paths (e.g. C:\Users, D:/Documents)
+    if (/^[a-zA-Z]:[\\/]/i.test(trimmed)) {
+        const normalized = trimmed.replace(/\\/g, '/');
+        return `file:///${normalized}`;
+    }
+
+    // Unix absolute paths (/home, /usr, /etc, /tmp) or Home directory (~/)
+    if (/^(\/|~\/)/.test(trimmed)) {
+        return `file://${trimmed}`;
+    }
+
     const isLocal = /^(https?:\/\/)?localhost(:\d+)?(\/.*)?$/i.test(trimmed) ||
                     /^(https?:\/\/)?\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/i.test(trimmed);
                     
@@ -107,6 +123,65 @@ const parseUrlInput = (input, activeBang = null, customBangs = []) => {
     if (engine === 'brave') return `https://search.brave.com/search?q=${q}`;
     if (engine === 'ecosia') return `https://www.ecosia.org/search?q=${q}`;
     return `https://www.google.com/search?q=${q}`;
+};
+
+const getCompletedSuggestionText = (target, currentInput) => {
+    if (!target) return '';
+    if (target.isSearch) {
+        return target.title.replace(/^Search [^:]+:\s*"?/, '').replace(/"?$/, '') || target.title;
+    }
+    if (target.isLocalFile) {
+        const input = (currentInput || '').trim();
+        let raw = target.rawPath || target.subtitle || target.url || target.title;
+
+        if (input.startsWith('file://')) {
+            let fileUrl = target.url;
+            if (!fileUrl) {
+                const norm = raw.replace(/\\/g, '/');
+                fileUrl = norm.startsWith('/') ? `file://${norm}` : `file:///${norm}`;
+            }
+            if (target.isDirectory && !fileUrl.endsWith('/')) {
+                fileUrl += '/';
+            }
+            return fileUrl;
+        }
+
+        // Native path input (e.g. C:\... or C:/... or /home/...)
+        if (raw.startsWith('file://')) {
+            try {
+                raw = decodeURIComponent(raw.replace(/^file:\/\/\/?/, ''));
+            } catch (_) {}
+        }
+
+        const hasForwardSlash = input.includes('/') && !input.includes('\\');
+        if (hasForwardSlash) {
+            raw = raw.replace(/\\/g, '/');
+            if (target.isDirectory && !raw.endsWith('/')) {
+                raw += '/';
+            }
+            return raw;
+        }
+
+        // Windows backslash style or Unix
+        if (raw.includes('\\') || /^[a-zA-Z]:/.test(raw)) {
+            raw = raw.replace(/\//g, '\\');
+            if (target.isDirectory && !raw.endsWith('\\')) {
+                raw += '\\';
+            }
+            return raw;
+        }
+
+        if (target.isDirectory && !raw.endsWith('/')) {
+            raw += '/';
+        }
+        return raw;
+    }
+
+    let text = target.url || target.title;
+    if (target.isDirectory && !text.endsWith('/') && !text.endsWith('\\')) {
+        text += '/';
+    }
+    return text;
 };
 
 export default function Omnibox() {
@@ -156,6 +231,7 @@ export default function Omnibox() {
     const searchInputRef = useRef(null);
 
     const [liveSuggestions, setLiveSuggestions] = useState([]);
+    const [localSuggestions, setLocalSuggestions] = useState([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [selectedOptionText, setSelectedOptionText] = useState(null);
     const originalQueryRef = useRef('');
@@ -175,7 +251,24 @@ export default function Omnibox() {
         setSelectedOptionText(null);
         if (isTor || isIncognito || !searchQuery || searchQuery.startsWith('>') || isBangSuggestionMode) {
             setLiveSuggestions([]);
+            setLocalSuggestions([]);
             return;
+        }
+
+        const trimmedQ = searchQuery.trim();
+        const isLocalPath = /^file:\/\//i.test(trimmedQ) || /^[a-zA-Z]:[\\/]/.test(trimmedQ) || /^(\/|~\/)/.test(trimmedQ);
+
+        // Live Local Path Autocomplete
+        if (isLocalPath && window.electronAPI?.autocompleteLocalPath) {
+            setLiveSuggestions([]);
+            window.electronAPI.autocompleteLocalPath(trimmedQ).then(matches => {
+                setLocalSuggestions(matches || []);
+            }).catch(() => {
+                setLocalSuggestions([]);
+            });
+            return;
+        } else {
+            setLocalSuggestions([]);
         }
         
         // Debounce Google Suggestions API
@@ -189,7 +282,7 @@ export default function Omnibox() {
             const callbackName = 'googleSuggestCb_' + Math.round(100000 * Math.random());
             window[callbackName] = (data) => {
                 if (data && data[1]) {
-                    setLiveSuggestions(data[1].slice(0, 5));
+                    setLiveSuggestions(data[1].slice(0, 12));
                 }
                 delete window[callbackName];
                 const scriptEl = document.getElementById(callbackName);
@@ -250,7 +343,7 @@ export default function Omnibox() {
                 return { ...item, score };
             })
             .sort((a, b) => b.score - a.score)
-            .slice(0, 3);
+            .slice(0, 10);
     };
 
     const mathPrediction = (() => {
@@ -305,7 +398,14 @@ export default function Omnibox() {
                               parsedInput.includes('search.brave.com/search?q=') ||
                               parsedInput.includes('ecosia.org/search?q=');
     const isDirectUrl = parsedInput && !isSearchEngineUrl;
-    const directUrlPrediction = isDirectUrl ? { url: parsedInput, title: `Go to ${searchQuery}`, score: 100000 } : null;
+    const isLocalInput = parsedInput && parsedInput.startsWith('file://');
+    const directUrlPrediction = isDirectUrl ? { 
+        url: parsedInput, 
+        title: isLocalInput ? `Open ${parsedInput.endsWith('/') || parsedInput.endsWith('\\') ? 'Folder' : 'File'}: ${searchQuery}` : `Go to ${searchQuery}`, 
+        score: 100000,
+        isLocalFile: isLocalInput,
+        isDirectory: parsedInput.endsWith('/') || parsedInput.endsWith('\\')
+    } : null;
 
     const searchPrediction = (!isDirectUrl && (effectiveQueryText.length > 0 || effectiveBang)) ? [{
         url: effectiveBang ? buildBangSearchUrl(effectiveBang, effectiveQueryText) : parsedInput,
@@ -317,17 +417,31 @@ export default function Omnibox() {
         bang: effectiveBang
     }] : [];
 
-    let finalPredictions = aiPrediction 
-        ? [aiPrediction, ...merged] 
-        : mathPrediction 
-            ? [mathPrediction, ...merged] 
-            : [...searchPrediction, ...merged];
+    const localPredictions = localSuggestions.map(match => ({
+        url: match.url,
+        title: match.name,
+        subtitle: match.path,
+        rawPath: match.path,
+        score: 300000,
+        isLocalFile: true,
+        isDirectory: match.isDirectory,
+        extension: match.extension
+    }));
 
-    if (directUrlPrediction && !aiPrediction) {
+    let finalPredictions = [
+        ...localPredictions,
+        ...(aiPrediction 
+            ? [aiPrediction, ...merged] 
+            : mathPrediction 
+                ? [mathPrediction, ...merged] 
+                : [...searchPrediction, ...merged])
+    ];
+
+    if (directUrlPrediction && !aiPrediction && !localPredictions.some(p => p.url === directUrlPrediction.url)) {
         finalPredictions = [directUrlPrediction, ...finalPredictions.filter(p => p.url !== directUrlPrediction.url)];
     }
 
-    const filteredPredictions = finalPredictions.slice(0, 6);
+    const filteredPredictions = finalPredictions.slice(0, 18);
 
     const isCommandMode = searchQuery.startsWith('>');
     const commandQuery = searchQuery.slice(1).trim().toLowerCase();
@@ -604,6 +718,9 @@ export default function Omnibox() {
             navigator.clipboard.writeText(pred.url.replace('= ', ''));
             showToast(`Copied to clipboard: ${pred.url.replace('= ', '')}`);
             handleCloseOmnibox(false);
+        } else if (pred.isLocalFile || (pred.url && pred.url.startsWith('file://'))) {
+            useTabStore.getState().openLocalFiles([pred.url]);
+            handleCloseOmnibox(true);
         } else {
             setCurrentUrl(pred.url);
             const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: pred.url, title: pred.title } : t));
@@ -676,7 +793,9 @@ export default function Omnibox() {
         } else {
             const pred = filteredPredictions[nextIndex];
             if (pred) {
-                if (nextIndex === 0 && originalQueryRef.current && pred.isSearch) {
+                if (pred.isLocalFile) {
+                    previewText = getCompletedSuggestionText(pred, searchQuery);
+                } else if (nextIndex === 0 && originalQueryRef.current && pred.isSearch) {
                     previewText = originalQueryRef.current;
                 } else if (pred.isSearch) {
                     const cleanText = pred.title.replace(/^Search [^:]+:\s*"?/, '').replace(/"?$/, '');
@@ -726,9 +845,7 @@ export default function Omnibox() {
             } else if (!isCommandMode && filteredPredictions.length > 0) {
                 const target = filteredPredictions[selectedIndex] || filteredPredictions[0];
                 if (target) {
-                    const text = target.isSearch 
-                        ? (target.title.replace(/^Search [^:]+:\s*"?/, '').replace(/"?$/, '') || target.title)
-                        : (target.url || target.title);
+                    const text = getCompletedSuggestionText(target, searchQuery);
                     originalQueryRef.current = text;
                     setSelectedOptionText(null);
                     setSearchQuery(text);
@@ -745,11 +862,9 @@ export default function Omnibox() {
             const currentVal = input.value;
             if (input.selectionStart === currentVal.length && !isCommandMode && !isBangSuggestionMode && filteredPredictions.length > 0) {
                 const target = filteredPredictions[selectedIndex];
-                if (target && target.title !== currentVal) {
-                    const text = target.isSearch 
-                        ? (target.title.replace(/^Search [^:]+:\s*"?/, '').replace(/"?$/, '') || target.title)
-                        : (target.url || target.title);
-                    if (text && text.toLowerCase().startsWith(currentVal.toLowerCase())) {
+                if (target) {
+                    const text = getCompletedSuggestionText(target, currentVal);
+                    if (text && text.toLowerCase().startsWith(currentVal.toLowerCase()) && text !== currentVal) {
                         e.preventDefault();
                         originalQueryRef.current = text;
                         setSelectedOptionText(null);
@@ -914,32 +1029,21 @@ export default function Omnibox() {
                     </div>
                 </div>
 
-                <div className={`grid transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${(searchQuery.length > 0 || isBangSuggestionMode) ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
-                    <div className="overflow-hidden">
+                {(searchQuery.length > 0 || isBangSuggestionMode) && (
+                    <div className="w-full mt-2 animate-fade-in">
                         <div 
                             ref={omniboxContainerRef} 
-                            className={`w-full rounded-[2rem] p-3 flex flex-col gap-1 transition-all duration-300 max-h-[50vh] overflow-y-auto hide-scroll ${
+                            style={{
+                                scrollbarWidth: 'none',
+                                msOverflowStyle: 'none'
+                            }}
+                            className={`w-full rounded-[2rem] p-3 flex flex-col gap-1 max-h-[58vh] overflow-y-auto hide-scroll [&::-webkit-scrollbar]:hidden border transition-all duration-200 ${
                                 isBright 
-                                    ? 'bg-white/75 backdrop-blur-3xl border border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.08)]' 
-                                    : 'bg-[#0c0d14]/90 backdrop-blur-3xl border border-white/10 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                                    ? 'bg-white/95 backdrop-blur-3xl border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.1)]' 
+                                    : 'bg-[#0c0d14]/95 backdrop-blur-3xl border-white/10 text-white shadow-[0_25px_60px_rgba(0,0,0,0.7)]'
                             } ${
                                 isCommandMode ? (isBright ? 'border-yellow-500/40' : 'border-yellow-500/20') : ''
                             }`}
-                            style={{
-                                boxShadow: isCommandMode 
-                                    ? (isBright 
-                                        ? '0 20px 40px -15px rgba(0, 0, 0, 0.12), 0 0 25px -8px rgba(234, 179, 8, 0.15)'
-                                        : '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(234, 179, 8, 0.15), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)')
-                                    : isTor 
-                                        ? '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(168, 85, 247, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)'
-                                        : isBright
-                                            ? (activeBang 
-                                                ? `0 20px 40px -15px rgba(0, 0, 0, 0.12), 0 0 25px -8px ${activeBang.color}20, inset 0 1px 1px 0 rgba(255, 255, 255, 0.95)`
-                                                : '0 25px 60px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.05), inset 0 1px 1px rgba(255,255,255,0.95)')
-                                            : (activeBang 
-                                                ? `0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px ${activeBang.color}20, inset 0 1px 0 0 rgba(255, 255, 255, 0.08)`
-                                                : '0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px var(--accent-15, rgba(59, 130, 246, 0.15)), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)')
-                            }}
                         >
                             {isCommandMode ? (
                                 filteredCommands.length > 0 ? (
@@ -955,7 +1059,7 @@ export default function Omnibox() {
                                                     animationFillMode: 'both', 
                                                     animationDelay: `${i * 0.03}s`
                                                 }} 
-                                                className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-150 group text-left border ${
+                                                className={`w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-150 group text-left border ${
                                                     isSelected 
                                                         ? (isBright ? 'bg-yellow-500/15 border-yellow-500/40 shadow-sm scale-[1.005]' : 'bg-yellow-500/15 border-yellow-500/30 scale-[1.005]') 
                                                         : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.04]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
@@ -1013,7 +1117,7 @@ export default function Omnibox() {
                                                         backgroundColor: `${bangColor}15`,
                                                         borderColor: `${bangColor}40`
                                                     } : undefined}
-                                                    className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all duration-150 group text-left border ${
+                                                    className={`w-full flex items-center justify-between p-2.5 rounded-2xl transition-all duration-150 group text-left border ${
                                                         isSelected 
                                                             ? 'scale-[1.005] shadow-sm' 
                                                             : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.04]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
@@ -1075,32 +1179,64 @@ export default function Omnibox() {
                                             >
                                                 <div 
                                                     className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
-                                                        pred.bang 
-                                                            ? '' 
-                                                            : (pred.isMath 
-                                                                ? (isSelected ? 'bg-accent/25 text-accent scale-105' : 'bg-accent/15 text-accent group-hover:bg-accent/25') 
-                                                                : (pred.isSearch 
-                                                                    ? (isTor 
-                                                                        ? (isSelected ? 'bg-purple-500/25 text-purple-200 scale-105' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20')
-                                                                        : (isSelected 
-                                                                            ? (isBright ? 'bg-accent/15 text-accent font-bold scale-105' : 'bg-accent/20 text-accent font-bold scale-105') 
-                                                                            : (isBright ? 'bg-black/5 text-zinc-600 group-hover:bg-accent/10 group-hover:text-accent' : 'bg-white/5 text-white/50 group-hover:bg-accent/15 group-hover:text-accent'))
-                                                                    )
-                                                                    : (isSelected ? (isBright ? 'bg-accent/15 text-accent scale-105' : 'bg-white/20 text-accent scale-105') : (isBright ? 'bg-black/5 text-zinc-500 group-hover:bg-black/10 group-hover:text-accent' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent'))))
+                                                        pred.isLocalFile
+                                                            ? (pred.isDirectory ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-accent/20 text-accent border border-accent/30')
+                                                            : (pred.bang 
+                                                                ? '' 
+                                                                : (pred.isMath 
+                                                                    ? (isSelected ? 'bg-accent/25 text-accent scale-105' : 'bg-accent/15 text-accent group-hover:bg-accent/25') 
+                                                                    : (pred.isSearch 
+                                                                        ? (isTor 
+                                                                            ? (isSelected ? 'bg-purple-500/25 text-purple-200 scale-105' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20')
+                                                                            : (isSelected 
+                                                                                ? (isBright ? 'bg-accent/15 text-accent font-bold scale-105' : 'bg-accent/20 text-accent font-bold scale-105') 
+                                                                                : (isBright ? 'bg-black/5 text-zinc-600 group-hover:bg-accent/10 group-hover:text-accent' : 'bg-white/5 text-white/50 group-hover:bg-accent/15 group-hover:text-accent'))
+                                                                        )
+                                                                        : (isSelected ? (isBright ? 'bg-accent/15 text-accent scale-105' : 'bg-white/20 text-accent scale-105') : (isBright ? 'bg-black/5 text-zinc-500 group-hover:bg-black/10 group-hover:text-accent' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent')))))
                                                     } ${isSelected ? 'scale-105' : 'group-hover:scale-105'}`}
                                                     style={pred.bang ? { backgroundColor: `${pred.bang.color}25`, color: pred.bang.color } : undefined}
                                                 >
-                                                    {pred.bang ? (BangIcon ? <BangIcon size={16} /> : <Search size={16} />) : (pred.isMath ? <Calculator size={16} /> : (pred.isSearch ? <Search size={16} /> : <Globe size={16} />))}
+                                                    {pred.isLocalFile 
+                                                        ? (pred.isDirectory ? <Folder size={16} /> : <FileText size={16} />)
+                                                        : (pred.bang 
+                                                            ? (BangIcon ? <BangIcon size={16} /> : <Search size={16} />) 
+                                                            : (pred.isMath ? <Calculator size={16} /> : (pred.isSearch ? <Search size={16} /> : <Globe size={16} />)))}
                                                 </div>
                                                 <div className="flex flex-col flex-1 overflow-hidden">
                                                     <span className={`font-medium truncate transition-colors ${pred.isMath ? 'text-accent text-lg font-bold' : (isSelected ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-semibold') : (isBright ? 'text-zinc-800 group-hover:text-zinc-950' : 'text-white/80 group-hover:text-white'))}`}>
                                                         {pred.title}
                                                     </span>
                                                     <span className={`text-xs truncate font-mono transition-colors ${isSelected ? (isBright ? 'text-zinc-700' : 'text-white/70') : (isBright ? 'text-zinc-500' : 'text-white/40')}`}>
-                                                        {pred.url}
+                                                        {pred.isLocalFile ? (pred.subtitle || pred.url) : pred.url}
                                                     </span>
                                                 </div>
-                                                {isSelected ? (
+                                                {pred.isLocalFile && pred.isDirectory ? (
+                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const text = getCompletedSuggestionText(pred, searchQuery);
+                                                                originalQueryRef.current = text;
+                                                                setSelectedOptionText(null);
+                                                                setSearchQuery(text);
+                                                                searchInputRef.current?.focus();
+                                                            }}
+                                                            className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-medium transition border flex items-center gap-1 cursor-pointer ${
+                                                                isBright 
+                                                                    ? 'border-black/10 bg-black/5 hover:bg-black/10 text-zinc-700' 
+                                                                    : 'border-white/15 bg-white/10 hover:bg-white/20 text-white/90'
+                                                            }`}
+                                                            title="Tab into folder"
+                                                        >
+                                                            <span>Tab</span>
+                                                            <span className="text-accent font-bold">⇥</span>
+                                                        </button>
+                                                        {isSelected && (
+                                                            <span className={`border text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm ${isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/15 bg-white/10 text-white/80'}`}>↵ Open</span>
+                                                        )}
+                                                    </div>
+                                                ) : isSelected ? (
                                                     <div className="flex items-center gap-2 flex-shrink-0 animate-fade-in">
                                                         <span className={`border text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm ${isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/15 bg-white/10 text-white/80'}`}>↵ Enter</span>
                                                         <ArrowRight size={15} className="text-accent translate-x-0.5 transition-all" />
@@ -1117,7 +1253,7 @@ export default function Omnibox() {
                             )}
                         </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>
     );

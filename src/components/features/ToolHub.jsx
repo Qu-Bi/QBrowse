@@ -451,16 +451,20 @@ export default function ToolHub() {
                         </h2>
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => {
                                 setIsRightPanelOpen(false);
                                 setTimeout(() => useUIStore.getState().setIsSnippingMode(true), 150);
                             }}
-                            className="px-2 py-1 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent border border-accent/25 transition text-[11px] font-mono flex items-center gap-1 cursor-pointer"
+                            className={`px-2.5 py-1 rounded-lg ${
+                                isBright 
+                                    ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/50 shadow-xs' 
+                                    : 'bg-accent/15 hover:bg-accent/25 text-accent border-accent/40 hover:border-accent/60 shadow-[0_0_12px_var(--accent-15)]'
+                            } border transition text-[11px] font-mono flex items-center gap-1.5 cursor-pointer active:scale-95`}
                             title="Interactive Screen Snip (Crop Selection)"
                         >
-                            <Crop size={11} />
+                            <Crop size={11} className="text-accent" />
                             <span>Snip</span>
                         </button>
                         <button
@@ -468,7 +472,11 @@ export default function ToolHub() {
                                 setIsRightPanelOpen(false);
                                 useUIStore.getState().captureVisibleViewport();
                             }}
-                            className={`p-1.5 rounded-lg ${isBright ? 'bg-black/[0.04] hover:bg-black/10 text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.04] hover:bg-white/10 text-zinc-400 hover:text-white border-white/8'} border transition cursor-pointer`}
+                            className={`p-1.5 rounded-lg ${
+                                isBright 
+                                    ? 'bg-accent/10 hover:bg-accent/20 text-zinc-800 border-accent/40 shadow-xs' 
+                                    : 'bg-accent/10 hover:bg-accent/20 text-accent/80 hover:text-accent border-accent/30 hover:border-accent/50 shadow-[0_0_8px_var(--accent-10)]'
+                            } border transition cursor-pointer active:scale-95`}
                             title="Capture Visible Viewport"
                         >
                             <Camera size={12} />
@@ -478,7 +486,11 @@ export default function ToolHub() {
                                 setIsRightPanelOpen(false);
                                 useUIStore.getState().captureFullPage();
                             }}
-                            className={`p-1.5 rounded-lg ${isBright ? 'bg-black/[0.04] hover:bg-black/10 text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.04] hover:bg-white/10 text-zinc-400 hover:text-white border-white/8'} border transition cursor-pointer`}
+                            className={`p-1.5 rounded-lg ${
+                                isBright 
+                                    ? 'bg-accent/10 hover:bg-accent/20 text-zinc-800 border-accent/40 shadow-xs' 
+                                    : 'bg-accent/10 hover:bg-accent/20 text-accent/80 hover:text-accent border-accent/30 hover:border-accent/50 shadow-[0_0_8px_var(--accent-10)]'
+                            } border transition cursor-pointer active:scale-95`}
                             title="Capture Full Scrolling Page"
                         >
                             <Maximize2 size={12} />
@@ -1086,8 +1098,8 @@ export default function ToolHub() {
                                         onClick={() => setAiContextEnabled(!aiContextEnabled)}
                                         className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-medium tracking-wide transition-all cursor-pointer flex-1 min-w-0 truncate ${
                                             aiContextEnabled 
-                                                ? (isBright ? 'bg-accent/25 border-accent text-zinc-950 font-bold shadow-xs' : 'bg-accent/20 border-accent/30 text-accent shadow-[0_0_12px_var(--accent-10)]') 
-                                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-950' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/80')
+                                                ? (isBright ? 'bg-accent/25 border-accent text-zinc-950 font-bold shadow-xs' : 'bg-accent/15 border-accent/50 text-accent shadow-[0_0_14px_var(--accent-20)] font-semibold hover:bg-accent/25 hover:border-accent/70') 
+                                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-950 hover:border-accent/40' : 'bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white/80 hover:border-accent/40 hover:bg-white/[0.06]')
                                         }`}
                                     >
                                         <Globe size={11} className="flex-shrink-0" />
@@ -1098,8 +1110,8 @@ export default function ToolHub() {
                                         onClick={() => setWebSearchEnabled(!webSearchEnabled)}
                                         className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-medium tracking-wide transition-all cursor-pointer flex-1 min-w-0 truncate ${
                                             webSearchEnabled 
-                                                ? (isBright ? 'bg-blue-500/20 border-blue-500/40 text-blue-700 font-bold shadow-xs' : 'bg-blue-500/20 border-blue-500/30 text-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.2)]') 
-                                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-950' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/80')
+                                                ? (isBright ? 'bg-blue-500/20 border-blue-500/50 text-blue-700 font-bold shadow-xs' : 'bg-blue-500/15 border-blue-500/40 text-blue-400 shadow-[0_0_14px_rgba(59,130,246,0.25)] font-semibold hover:bg-blue-500/25 hover:border-blue-500/60') 
+                                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-950 hover:border-blue-500/40' : 'bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white/80 hover:border-blue-500/40 hover:bg-white/[0.06]')
                                         }`}
                                     >
                                         <Search size={11} className="flex-shrink-0" />
@@ -1110,8 +1122,8 @@ export default function ToolHub() {
                                         onClick={() => setTtsEnabled(!ttsEnabled)}
                                         className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-medium tracking-wide transition-all cursor-pointer flex-1 min-w-0 truncate ${
                                             ttsEnabled 
-                                                ? (isBright ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-700 font-bold shadow-xs' : 'bg-green-500/20 border-green-500/30 text-green-400 shadow-[0_0_12px_rgba(74,222,128,0.2)]') 
-                                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-950' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/80')
+                                                ? (isBright ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-700 font-bold shadow-xs' : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 shadow-[0_0_14px_rgba(74,222,128,0.25)] font-semibold hover:bg-emerald-500/25 hover:border-emerald-500/60') 
+                                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-950 hover:border-emerald-500/40' : 'bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white/80 hover:border-emerald-500/40 hover:bg-white/[0.06]')
                                         }`}
                                     >
                                         <Volume2 size={11} className="flex-shrink-0" />
@@ -1122,10 +1134,11 @@ export default function ToolHub() {
                                 <button
                                     onClick={() => sendChatMessage("Summarize this web page", currentUrl)}
                                     className={`px-3 py-1.5 rounded-full ${
-                                        isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70 hover:text-white'
-                                    } border text-[10px] font-medium tracking-wide transition cursor-pointer flex-shrink-0`}
+                                        isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.08] hover:border-white/20 text-white/70 hover:text-white'
+                                    } border text-[10px] font-medium tracking-wide transition cursor-pointer flex-shrink-0 flex items-center gap-1.5`}
                                 >
-                                    ✨ Summarize
+                                    <FileText size={11} className="opacity-70" />
+                                    <span>Summarize</span>
                                 </button>
                             </div>
 

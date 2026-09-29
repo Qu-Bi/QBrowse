@@ -229,6 +229,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getFirebaseConfigSync: () => ipcRenderer.sendSync('get-firebase-config-sync'),
     saveFirebaseConfig: (config) => ipcRenderer.invoke('save-firebase-config', config),
 
+    // Local Files & Directory Browsing (file:// support)
+    openFileDialog: (opts) => ipcRenderer.invoke('open-file-dialog', opts),
+    listLocalDirectory: (path) => ipcRenderer.invoke('list-local-directory', path),
+    autocompleteLocalPath: (query) => ipcRenderer.invoke('autocomplete-local-path', query),
+    readLocalFileData: (path) => ipcRenderer.invoke('read-local-file-data', path),
+    showInFolder: (path) => ipcRenderer.invoke('show-in-folder', path),
+    openPath: (path) => ipcRenderer.invoke('open-path', path),
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
 

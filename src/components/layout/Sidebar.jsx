@@ -505,10 +505,10 @@ export default function Sidebar() {
                             <div className="flex items-center gap-1">
                                 <button 
                                     onClick={() => useTorStore.getState().toggleTorEnabled(true)}
-                                    className="hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition border border-purple-500/20" 
+                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition border border-purple-500/20" 
                                     title="Enable Tor Onion Routing (converts private space to Tor space)"
                                 >
-                                    <span>🧅</span> Tor Mode
+                                    <Globe size={11} /> Tor Mode
                                 </button>
                                 <button onClick={() => handleNewTab()} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T)">
                                     <Plus size={12} strokeWidth={2.5} />
@@ -546,10 +546,10 @@ export default function Sidebar() {
                             <div className="flex items-center gap-1">
                                 <button 
                                     onClick={() => useTorStore.getState().toggleTorEnabled(false)}
-                                    className="hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition border border-white/10" 
+                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition border border-white/10" 
                                     title="Turn off Tor and return to Ghost mode"
                                 >
-                                    <span>👻</span> Ghost
+                                    <Ghost size={11} /> Ghost
                                 </button>
                                 <button onClick={() => handleNewTab()} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T)">
                                     <Plus size={12} strokeWidth={2.5} />

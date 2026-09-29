@@ -511,8 +511,9 @@ const AuthModal = () => {
                                             </button>
                                         </div>
 
-                                        <p className={`text-[10px] leading-relaxed ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                                            ⚠️ Make sure to save this passphrase securely. QBrowse cannot recover encrypted data if lost.
+                                        <p className={`text-[10px] leading-relaxed flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
+                                            <AlertCircle size={12} className="shrink-0 text-amber-500" />
+                                            <span>Make sure to save this passphrase securely. QBrowse cannot recover encrypted data if lost.</span>
                                         </p>
                                     </div>
                                 )}

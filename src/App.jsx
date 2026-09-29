@@ -261,6 +261,45 @@ export default function App() {
         }
     }, []);
 
+    // Global Drag & Drop: Open local files/folders dropped into QBrowse window
+    useEffect(() => {
+        const handleWindowDragOver = (e) => {
+            if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            }
+        };
+
+        const handleWindowDrop = (e) => {
+            // Ignore if internal tab drag is in progress
+            if (useTabStore.getState().draggedItem) return;
+
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                e.preventDefault();
+                const files = Array.from(e.dataTransfer.files);
+                const fileUrls = files.map(f => {
+                    const filePath = f.path; // Electron exposed file path
+                    if (filePath) {
+                        const normalized = filePath.replace(/\\/g, '/');
+                        return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`;
+                    }
+                    return null;
+                }).filter(Boolean);
+
+                if (fileUrls.length > 0) {
+                    useTabStore.getState().openLocalFiles(fileUrls);
+                }
+            }
+        };
+
+        window.addEventListener('dragover', handleWindowDragOver);
+        window.addEventListener('drop', handleWindowDrop);
+        return () => {
+            window.removeEventListener('dragover', handleWindowDragOver);
+            window.removeEventListener('drop', handleWindowDrop);
+        };
+    }, []);
+
     // Resource Manager: Background Tab Suspender
     useEffect(() => {
         const unlisten = listenToEvent('webview_error', (err) => {
@@ -347,6 +386,7 @@ export default function App() {
         const rgb = hexToRgb(finalAccent);
         if (rgb) {
             root.style.setProperty('--accent', `rgb(${rgb})`);
+            root.style.setProperty('--accent-rgb', rgb);
             root.style.setProperty('--accent-10', `rgba(${rgb}, 0.1)`);
             root.style.setProperty('--accent-20', `rgba(${rgb}, 0.2)`);
             root.style.setProperty('--accent-30', `rgba(${rgb}, 0.3)`);

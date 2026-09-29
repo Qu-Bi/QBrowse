@@ -244,7 +244,7 @@ const SettingsModal = () => {
                 const res = await window.electronAPI.setDefaultBrowser();
                 setIsDefaultBrowser(!!res.isDefault);
                 if (res.isDefault) {
-                    showToast('QBrowse set as default browser! 🎉');
+                    showToast('QBrowse set as default browser!');
                 } else {
                     showToast('Default browser settings opened.');
                 }

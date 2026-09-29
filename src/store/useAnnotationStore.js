@@ -214,14 +214,14 @@ export const useAnnotationStore = create((set, get) => ({
     let md = `# QBrowse Web Notes\n*Exported on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}*\n\n---\n\n`;
 
     groups.forEach(group => {
-      md += `## 🌐 ${group.domain} (${group.count})\n\n`;
+      md += `## ${group.domain} (${group.count})\n\n`;
 
       group.items.forEach(item => {
         const dateStr = new Date(item.createdAt).toLocaleDateString();
         md += `### [${item.title || item.domain}](${item.url})\n`;
         md += `> ${item.text}\n\n`;
         if (item.note) {
-          md += `📝 **Note**: ${item.note}\n\n`;
+          md += `**Note**: ${item.note}\n\n`;
         }
         md += `*Saved on ${dateStr} • Color: ${item.color}*\n\n---\n\n`;
       });
