@@ -201,14 +201,14 @@ export default function TopBar() {
                                 setIsSidebarHidden(nextState);
                                 showToast(nextState ? 'Zen Mode active' : 'Sidebar visible'); 
                             }}
-                            className={`h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-full transition-all active:scale-95 group cursor-pointer border shadow-xs backdrop-blur-2xl ${
+                            className={`h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-full transition-all duration-300 active:scale-95 group cursor-pointer border shadow-xs backdrop-blur-2xl ${
                                 isBright 
                                     ? (isSidebarHidden ? 'bg-accent/15 border border-[color:var(--accent)] text-zinc-950 font-semibold' : 'bg-black/[0.04] hover:bg-black/[0.08] border border-black/[0.06] text-zinc-700 hover:text-zinc-950') 
                                     : (isSidebarHidden ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-[#0c0d14]/78 hover:bg-[#0c0d14]/95 border-white/[0.08] text-white/90 hover:text-white shadow-[0_4px_16px_rgba(0,0,0,0.4)]')
                             }`}
                             title="Zen Mode (CMD+B)"
                         >
-                            <PanelLeft size={16} strokeWidth={1.9} />
+                            <PanelLeft size={16} strokeWidth={1.9} className={`transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.4,1)] ${isSidebarHidden ? 'rotate-180 opacity-70 scale-95' : 'rotate-0 opacity-100 scale-100'}`} />
                         </button>
 
                         {/* Compact Segmented Navigation Pill */}
@@ -258,10 +258,10 @@ export default function TopBar() {
                                 const y = e.clientY + 200 > window.innerHeight ? window.innerHeight - 220 : e.clientY;
                                 useUIStore.getState().setTopBarContextMenu({ x, y, url: rawUrl, tabId: activeTab?.id });
                             }}
-                            className={`relative w-full flex items-center justify-between px-3.5 h-[38px] rounded-full transition-all group cursor-pointer border min-w-0 gap-2.5 backdrop-blur-2xl ${
+                            className={`relative w-full flex items-center justify-between px-3.5 h-[38px] rounded-full transition-all duration-300 group cursor-pointer border min-w-0 gap-2.5 backdrop-blur-2xl ${
                                 isBright 
-                                    ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.05] hover:border-black/[0.1] text-zinc-800 shadow-xs' 
-                                    : 'bg-[#0c0d14]/78 hover:bg-[#0c0d14]/92 border-white/[0.06] hover:border-white/12 text-white/90 shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
+                                    ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.05] hover:border-accent/50 hover:shadow-[0_0_24px_var(--accent-30),0_2px_8px_var(--accent-20)] text-zinc-800 shadow-xs' 
+                                    : 'bg-[#0c0d14]/78 hover:bg-[#0c0d14]/92 border-white/[0.06] hover:border-accent/50 hover:shadow-[0_0_28px_var(--accent-40),0_4px_16px_var(--accent-20)] text-white/90 shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
                             }`}
                             title={rawUrl || 'Search or enter address'}
                         >

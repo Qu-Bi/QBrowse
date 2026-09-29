@@ -368,10 +368,26 @@ html.eco-mode .shadow-xl {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
-/* Shorten transition durations to avoid frame drops on low-frequency CPUs */
-html.eco-mode * {
-  animation-duration: 0.15s !important;
-  transition-duration: 0.12s !important;
+/* Shorten transition durations to avoid frame drops on low-frequency CPUs, excluding structural layout panels */
+html.eco-mode *:not(.sidebar-container):not(.sidebar-container *):not(.sidebar-inner):not(.sidebar-inner *) {
+  animation-duration: 0.22s !important;
+  transition-duration: 0.2s !important;
+}
+
+/* Apple Arc & macOS Sonoma Fluid Sidebar System */
+.sidebar-container {
+  transition: width 0.5s cubic-bezier(0.25, 1, 0.4, 1),
+              margin-right 0.5s cubic-bezier(0.25, 1, 0.4, 1),
+              opacity 0.45s cubic-bezier(0.25, 1, 0.4, 1),
+              transform 0.5s cubic-bezier(0.25, 1, 0.4, 1) !important;
+  will-change: width, margin-right, opacity, transform;
+}
+
+.sidebar-inner {
+  transition: transform 0.5s cubic-bezier(0.25, 1, 0.4, 1),
+              opacity 0.45s cubic-bezier(0.25, 1, 0.4, 1),
+              filter 0.45s cubic-bezier(0.25, 1, 0.4, 1) !important;
+  will-change: transform, opacity;
 }
 
 /* Apple Sonoma Style Wallpaper Crossfade */

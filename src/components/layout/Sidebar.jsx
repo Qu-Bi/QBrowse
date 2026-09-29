@@ -289,17 +289,21 @@ export default function Sidebar() {
 
     return (
         <>
-        <aside className={`flex-shrink-0 flex flex-col backdrop-blur-3xl rounded-[2rem] shadow-2xl overflow-hidden relative z-50 will-change-[width,margin,opacity] transition-[width,margin,opacity] duration-350 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        <aside className={`sidebar-container flex-shrink-0 flex flex-col backdrop-blur-3xl rounded-[2rem] shadow-2xl overflow-hidden relative z-50 ${
             isBright 
                 ? 'bg-white/45 border border-white/25 text-zinc-900 sidebar-light shadow-[0_20px_50px_rgba(0,0,0,0.04)]' 
                 : 'bg-black/50 border border-white/10 text-white/90 sidebar-dark'
         } ${
             isFullscreen || isSidebarHidden 
-                ? 'w-0 mr-0 opacity-0 pointer-events-none' 
-                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100'
+                ? 'w-0 mr-0 opacity-0 pointer-events-none -translate-x-4' 
+                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100 translate-x-0' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100 translate-x-0'
         }`}>
             {/* Fixed-Width Inner Container to prevent content squishing and text wrapping */}
-            <div className={`h-full flex flex-col flex-shrink-0 ${uiScale === 'compact' ? 'w-16 md:w-60 min-w-[15rem]' : 'w-16 md:w-64 min-w-[16rem]'}`}>
+            <div className={`sidebar-inner h-full flex flex-col flex-shrink-0 ${
+                isFullscreen || isSidebarHidden
+                    ? '-translate-x-12 opacity-0 scale-[0.98]'
+                    : 'translate-x-0 opacity-100 scale-100'
+            } ${uiScale === 'compact' ? 'w-16 md:w-60 min-w-[15rem]' : 'w-16 md:w-64 min-w-[16rem]'}`}>
 
             <div className="drag-region flex gap-2 p-5 border-b border-[color:var(--sidebar-border)] items-center justify-between">
                 <div className="flex gap-2" style={{ WebkitAppRegion: 'no-drag' }}>

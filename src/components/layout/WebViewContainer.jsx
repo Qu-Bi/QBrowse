@@ -727,6 +727,42 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                         existingId
                     });
                 }
+            } else if (e.channel === 'qbrowse-js-dialog') {
+                const dialogData = e.args && e.args[0];
+                if (dialogData) {
+                    const origin = dialogData.origin || tab.url;
+                    useUIStore.getState().setActiveDialog({
+                        type: dialogData.dialogType || 'alert',
+                        message: dialogData.message || '',
+                        hostname: dialogData.hostname || extractDomain(tab.url),
+                        origin: origin,
+                        defaultValue: dialogData.defaultValue || '',
+                        hasRepeatSpam: Boolean(dialogData.hasRepeatSpam),
+                        webview: wv,
+                        onConfirm: (val) => {
+                            if (wv) {
+                                try {
+                                    wv.send('qbrowse-js-dialog-response', {
+                                        dialogId: dialogData.dialogId,
+                                        confirmed: true,
+                                        value: val
+                                    });
+                                } catch (_) {}
+                            }
+                        },
+                        onCancel: () => {
+                            if (wv) {
+                                try {
+                                    wv.send('qbrowse-js-dialog-response', {
+                                        dialogId: dialogData.dialogId,
+                                        confirmed: false,
+                                        value: null
+                                    });
+                                } catch (_) {}
+                            }
+                        }
+                    });
+                }
             }
         };
 
@@ -1463,7 +1499,8 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
     isSidebarHidden, isRightPanelOpen, isFullscreen, isSplitView, 
     splitRightTabId, zoomLevel, showSwitcherUI, currentUrl, 
     isForceDark, darkExclusions,
-    activePopover, activeModal, isOmniboxOpen, activePinnedStack, theme
+    activePopover, activeModal, isOmniboxOpen, activePinnedStack, theme,
+    activeDialog
   } = useUIStore();
   const activeProfileId = useProfileStore(state => state.activeProfileId);
 
@@ -1492,7 +1529,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
   const containerRef = useRef(null);
 
   const isBright = theme === 'light' && space !== 'ghost' && space !== 'tor';
-  const isWebviewBlurred = Boolean(activePopover || activeModal || isOmniboxOpen || activePinnedStack);
+  const isWebviewBlurred = Boolean(activePopover || activeModal || isOmniboxOpen || activePinnedStack || activeDialog);
 
   return (
     <div 

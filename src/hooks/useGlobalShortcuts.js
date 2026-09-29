@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import useUIStore from '../store/useUIStore';
 import useTabStore from '../store/useTabStore';
 import useTorStore from '../store/useTorStore';
+import { isTabForPin } from '../components/layout/PinnedStackPopup';
 
 export const handleEscapeDismissal = () => {
     const uiStore = useUIStore.getState();
@@ -214,8 +215,10 @@ export const executeShortcut = (key, shift = false, alt = false) => {
         // Close Tab (Cmd+W) & Close Window (Cmd+Shift+W)
         case 'w':
             if (shift) {
-                if (window.electronAPI && window.electronAPI.closeCurrentWindow) {
+                if (window.electronAPI && typeof window.electronAPI.closeCurrentWindow === 'function') {
                     window.electronAPI.closeCurrentWindow();
+                } else if (window.electronAPI && typeof window.electronAPI.close === 'function') {
+                    window.electronAPI.close();
                 } else {
                     window.close();
                 }
@@ -227,6 +230,52 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                     uiStore.closeReaderMode(true);
                 }
                 uiStore.setIsReaderAvailable(false);
+
+                const activeList = tabStore.getActiveList() || [];
+                const pinnedTabs = tabStore.pinnedTabs || [];
+                const shouldCloseWindowOnEmpty = uiStore.settings?.closeWindowOnLastTab !== false;
+
+                const isTabWithContent = (tab) => {
+                    if (!tab || tab.isClosing) return false;
+                    const url = typeof tab.url === 'string' ? tab.url.trim() : '';
+                    if (!url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('qbrowse://newtab')) {
+                        return false;
+                    }
+                    return true;
+                };
+
+                const isAnyPinnedTabOpen = (tabs, pins) => {
+                    if (!Array.isArray(pins) || pins.length === 0 || !Array.isArray(tabs) || tabs.length === 0) return false;
+                    return tabs.some(t => isTabWithContent(t) && pins.some(p => isTabForPin(t, p)));
+                };
+
+                const isAnyRegularTabOpen = (tabs, pins) => {
+                    if (!Array.isArray(tabs) || tabs.length === 0) return false;
+                    return tabs.some(t => isTabWithContent(t) && !(Array.isArray(pins) && pins.some(p => isTabForPin(t, p))));
+                };
+
+                const allTabs = [
+                    ...(tabStore.privateTabs || []),
+                    ...(tabStore.workTabs || []),
+                    ...(tabStore.ghostTabs || []),
+                    ...(tabStore.torTabs || [])
+                ];
+
+                const hasRegularTabOpen = isAnyRegularTabOpen(allTabs, pinnedTabs);
+                const hasPinnedTabOpen = isAnyPinnedTabOpen(allTabs, pinnedTabs);
+                const hasMultipleTabs = activeList.length > 1;
+
+                if (shouldCloseWindowOnEmpty && !hasRegularTabOpen && !hasPinnedTabOpen && !hasMultipleTabs) {
+                    if (window.electronAPI && typeof window.electronAPI.close === 'function') {
+                        window.electronAPI.close();
+                    } else if (window.electronAPI && typeof window.electronAPI.closeCurrentWindow === 'function') {
+                        window.electronAPI.closeCurrentWindow();
+                    } else {
+                        window.close();
+                    }
+                    break;
+                }
+
                 const activeTab = tabStore.getActiveTab();
                 if (activeTab) {
                     tabStore.handleCloseTab(activeTab.id);

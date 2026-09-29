@@ -82,6 +82,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('open-new-tab-url', (event, data) => callback(data));
     },
 
+    // HTTP Basic & Proxy Authentication
+    onHttpAuthRequest: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('qbrowse-http-auth-request', handler);
+        return () => ipcRenderer.removeListener('qbrowse-http-auth-request', handler);
+    },
+    respondHttpAuth: (data) => ipcRenderer.send('qbrowse-http-auth-response', data),
+
+    // In-Tab JavaScript Dialogs (Alert, Confirm, Prompt)
+    onJsDialog: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('qbrowse-js-dialog-open', handler);
+        return () => ipcRenderer.removeListener('qbrowse-js-dialog-open', handler);
+    },
+    onJsDialogDismiss: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('qbrowse-js-dialog-dismiss', handler);
+        return () => ipcRenderer.removeListener('qbrowse-js-dialog-dismiss', handler);
+    },
+    respondJsDialog: (data) => ipcRenderer.send('qbrowse-js-dialog-close', data),
+
     // Shortcuts
     onGlobalShortcut: (callback) => {
         ipcRenderer.removeAllListeners('global-shortcut');
@@ -202,6 +223,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importWallpaperUrl: (url) => ipcRenderer.invoke('wallpaper-import-url', url),
     getActiveWallpaper: () => ipcRenderer.invoke('wallpaper-get-active'),
     resetWallpaper: () => ipcRenderer.invoke('wallpaper-reset'),
+
+    // Runtime Firebase Configuration (for production packaged installations like .deb / .exe)
+    getFirebaseConfig: () => ipcRenderer.invoke('get-firebase-config'),
+    getFirebaseConfigSync: () => ipcRenderer.sendSync('get-firebase-config-sync'),
+    saveFirebaseConfig: (config) => ipcRenderer.invoke('save-firebase-config', config),
 
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });

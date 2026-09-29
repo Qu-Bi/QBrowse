@@ -161,6 +161,7 @@ export default function Omnibox() {
     const originalQueryRef = useRef('');
     const lastMousePosRef = useRef({ x: 0, y: 0 });
     const omniboxContainerRef = useRef(null);
+    const [isCardHovered, setIsCardHovered] = useState(false);
 
     const isBangSuggestionMode = !activeBang && (searchQuery.startsWith('!') || searchQuery.startsWith('@')) && !searchQuery.includes(' ');
     const bangSuggestions = isBangSuggestionMode ? matchBangSuggestions(searchQuery, customBangs) : [];
@@ -801,10 +802,12 @@ export default function Omnibox() {
             <div className={`w-full max-w-[720px] mx-4 flex flex-col relative ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => { e.stopPropagation(); searchInputRef.current?.focus(); }} onKeyDown={handleOmniboxKeyDown}>
 
                 <div 
+                    onMouseEnter={() => setIsCardHovered(true)}
+                    onMouseLeave={() => setIsCardHovered(false)}
                     className={`w-full rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${
                         isBright
-                            ? 'bg-white/70 backdrop-blur-3xl border border-black/[0.06] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.08)]'
-                            : 'bg-[#0c0d14]/90 backdrop-blur-3xl border border-white/10 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                            ? 'bg-white/70 backdrop-blur-3xl border border-black/[0.06] hover:border-accent/50 text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.08)]'
+                            : 'bg-[#0c0d14]/90 backdrop-blur-3xl border border-white/10 hover:border-accent/50 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
                     } ${
                         isCommandMode ? (isBright ? 'border-yellow-500/50' : 'border-yellow-500/30') : ''
                     }`}
@@ -814,14 +817,20 @@ export default function Omnibox() {
                                 ? '0 20px 60px -10px rgba(234, 179, 8, 0.25), 0 10px 25px -5px rgba(0, 0, 0, 0.08)'
                                 : '0 0 35px -5px rgba(234, 179, 8, 0.2), 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)')
                             : isTor 
-                                ? '0 0 35px -5px rgba(168, 85, 247, 0.25), 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)'
+                                ? (isCardHovered 
+                                    ? '0 0 45px rgba(168, 85, 247, 0.4), 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)' 
+                                    : '0 0 35px -5px rgba(168, 85, 247, 0.25), 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)')
                                 : isBright
                                     ? (activeBang 
                                         ? `0 20px 60px -10px ${activeBang.color}25, 0 8px 24px -4px rgba(0, 0, 0, 0.08)`
-                                        : '0 20px 60px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.04)')
+                                        : (isCardHovered 
+                                            ? '0 0 35px var(--accent-30), 0 10px 30px var(--accent-20), 0 20px 60px rgba(0,0,0,0.1)' 
+                                            : '0 0 25px -4px var(--accent-20), 0 20px 60px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.04)'))
                                     : (activeBang 
                                         ? `0 0 35px -5px ${activeBang.color}25, 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 0 rgba(255, 255, 255, 0.08)`
-                                        : '0 25px 80px rgba(0,0,0,0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.06)')
+                                        : (isCardHovered 
+                                            ? '0 0 45px var(--accent-40), 0 15px 40px var(--accent-20), 0 25px 80px rgba(0,0,0,0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.12)' 
+                                            : '0 0 35px -5px var(--accent-30), 0 25px 80px rgba(0,0,0,0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.06)'))
                     }}
                 >
                     {isCommandMode ? (
@@ -909,7 +918,7 @@ export default function Omnibox() {
                     <div className="overflow-hidden">
                         <div 
                             ref={omniboxContainerRef} 
-                            className={`w-full rounded-2xl p-2 flex flex-col gap-1 transition-all duration-300 max-h-[50vh] overflow-y-auto hide-scroll ${
+                            className={`w-full rounded-[2rem] p-3 flex flex-col gap-1 transition-all duration-300 max-h-[50vh] overflow-y-auto hide-scroll ${
                                 isBright 
                                     ? 'bg-white/75 backdrop-blur-3xl border border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.08)]' 
                                     : 'bg-[#0c0d14]/90 backdrop-blur-3xl border border-white/10 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
@@ -1058,20 +1067,25 @@ export default function Omnibox() {
                                                 data-selected={isSelected} 
                                                 onClick={() => handleSelectPrediction(pred)} 
                                                 onMouseMove={(e) => handleOptionMouseMove(i, e)}
-                                                className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-150 group text-left border ${
+                                                className={`w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-150 group text-left border ${
                                                     isSelected 
                                                         ? (isBright ? 'bg-black/[0.06] border-black/10 shadow-sm scale-[1.005]' : 'bg-white/10 border-white/15 scale-[1.005]') 
                                                         : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.03]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
                                                 }`}
                                             >
                                                 <div 
-                                                    className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
+                                                    className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
                                                         pred.bang 
                                                             ? '' 
                                                             : (pred.isMath 
                                                                 ? (isSelected ? 'bg-accent/25 text-accent scale-105' : 'bg-accent/15 text-accent group-hover:bg-accent/25') 
                                                                 : (pred.isSearch 
-                                                                    ? (isSelected ? (isBright ? 'bg-purple-500/20 text-purple-700 scale-105' : 'bg-purple-500/25 text-purple-200 scale-105') : (isBright ? 'bg-purple-500/10 text-purple-600 group-hover:bg-purple-500/20' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20'))
+                                                                    ? (isTor 
+                                                                        ? (isSelected ? 'bg-purple-500/25 text-purple-200 scale-105' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20')
+                                                                        : (isSelected 
+                                                                            ? (isBright ? 'bg-accent/15 text-accent font-bold scale-105' : 'bg-accent/20 text-accent font-bold scale-105') 
+                                                                            : (isBright ? 'bg-black/5 text-zinc-600 group-hover:bg-accent/10 group-hover:text-accent' : 'bg-white/5 text-white/50 group-hover:bg-accent/15 group-hover:text-accent'))
+                                                                    )
                                                                     : (isSelected ? (isBright ? 'bg-accent/15 text-accent scale-105' : 'bg-white/20 text-accent scale-105') : (isBright ? 'bg-black/5 text-zinc-500 group-hover:bg-black/10 group-hover:text-accent' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent'))))
                                                     } ${isSelected ? 'scale-105' : 'group-hover:scale-105'}`}
                                                     style={pred.bang ? { backgroundColor: `${pred.bang.color}25`, color: pred.bang.color } : undefined}

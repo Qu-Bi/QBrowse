@@ -37,7 +37,8 @@ const defaultSettings = {
     customWallpaper: null,
     customWallpaperSource: 'default',
     customWallpaperOriginalUrl: null,
-    wallpaperDimming: 25
+    wallpaperDimming: 25,
+    closeWindowOnLastTab: true
 };
 
 const loadSettings = () => {
@@ -901,6 +902,11 @@ const useUIStore = create((set, get) => ({
   // Passkey Prompt
   passkeyPrompt: null,
   setPasskeyPrompt: (prompt) => set({ passkeyPrompt: prompt }),
+
+  // Browser In-Tab Dialogs (Alerts, Confirms, Prompts, HTTP Auth)
+  activeDialog: null,
+  setActiveDialog: (dialog) => set({ activeDialog: dialog }),
+  closeActiveDialog: () => set({ activeDialog: null }),
 
   // Modals & Settings
   activeModal: localStorage.getItem('qbrowse_setup_complete') !== 'true' 

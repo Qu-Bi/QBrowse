@@ -102,7 +102,7 @@ const PasskeyVerificationModal = () => {
         try {
             const domain = passkeyPrompt.rpId || passkeyPrompt.hostname || 'the website';
             const res = await window.electronAPI.verifyWindowsHello(`Sign in to ${domain} with your QVault passkey`);
-            if (res && res.success) {
+            if (res && (res.verified || res.success)) {
                 await triggerSuccessSequence();
             } else {
                 setAuthStatus('idle');

@@ -5,7 +5,7 @@ import {
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
     UploadCloud, Compass, ExternalLink, Plus, Leaf, Gauge, BatteryCharging, Activity,
-    Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon
+    Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare
 } from 'lucide-react';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
@@ -729,6 +729,10 @@ const SettingsModal = () => {
 
                             <SettingCard icon={Sparkles} title="Active Tab Favicon Glow" description="Render a subtle glowing aura around active tab favicons.">
                                 <SettingToggle isChecked={!!settings.faviconGlow} onToggle={() => toggleSetting('faviconGlow')} />
+                            </SettingCard>
+
+                            <SettingCard icon={XSquare} title="Close Window on Last Tab (Ctrl+W)" description="Close the browser window when pressing Ctrl+W with no open tabs or pinned tabs.">
+                                <SettingToggle isChecked={settings.closeWindowOnLastTab !== false} onToggle={() => toggleSetting('closeWindowOnLastTab')} />
                             </SettingCard>
 
                             <SettingCard icon={Monitor} title="UI Density & Scale" description="Adjust spacing and padding for navigation controls.">

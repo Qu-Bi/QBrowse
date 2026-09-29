@@ -196,6 +196,66 @@ export default function App() {
                 });
             }
 
+            if (window.electronAPI.onHttpAuthRequest) {
+                window.electronAPI.onHttpAuthRequest((data) => {
+                    console.log("[App] Received HTTP auth request:", data);
+                    useUIStore.getState().setActiveDialog({
+                        type: 'auth',
+                        hostname: data.host + (data.port ? `:${data.port}` : ''),
+                        realm: data.realm,
+                        message: `${data.isProxy ? 'Proxy server' : 'The server'} ${data.host}${data.port ? `:${data.port}` : ''} requires authentication.`,
+                        onConfirm: (username, password) => {
+                            window.electronAPI?.respondHttpAuth?.({
+                                requestId: data.requestId,
+                                username,
+                                password
+                            });
+                        },
+                        onCancel: () => {
+                            window.electronAPI?.respondHttpAuth?.({
+                                requestId: data.requestId,
+                                cancel: true
+                            });
+                        }
+                    });
+                });
+            }
+
+            if (window.electronAPI.onJsDialog) {
+                window.electronAPI.onJsDialog((data) => {
+                    useUIStore.getState().setActiveDialog({
+                        dialogId: data.dialogId,
+                        type: data.dialogType,
+                        message: data.message,
+                        hostname: data.hostname,
+                        origin: data.origin,
+                        defaultValue: data.defaultValue,
+                        onConfirm: (val) => {
+                            window.electronAPI?.respondJsDialog?.({
+                                dialogId: data.dialogId,
+                                accept: true,
+                                promptText: typeof val === 'string' ? val : ''
+                            });
+                        },
+                        onCancel: () => {
+                            window.electronAPI?.respondJsDialog?.({
+                                dialogId: data.dialogId,
+                                accept: false
+                            });
+                        }
+                    });
+                });
+            }
+
+            if (window.electronAPI.onJsDialogDismiss) {
+                window.electronAPI.onJsDialogDismiss(({ dialogId }) => {
+                    const currentDialog = useUIStore.getState().activeDialog;
+                    if (currentDialog && currentDialog.dialogId === dialogId) {
+                        useUIStore.getState().closeActiveDialog();
+                    }
+                });
+            }
+
             // Initialize Hardware-Aware Performance Scaling Profile
             useUIStore.getState().initPerformanceProfile();
         }
@@ -357,7 +417,7 @@ export default function App() {
                     />
                 </div>
                 <Sidebar />
-                <div className="flex-1 flex flex-col h-full relative z-10 transition-[margin,padding] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)]">
+                <div className="flex-1 flex flex-col h-full relative z-10 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.4,1)]">
                     <MainFrame />
                 </div>
 

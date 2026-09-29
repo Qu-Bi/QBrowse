@@ -97,6 +97,12 @@ function formatAuthError(error) {
     if (code === 'auth/configuration-not-found' || message.includes('configuration-not-found')) {
         return 'Email/Password Authentication is not enabled in Firebase Console. Please enable Email/Password under Firebase Console -> Authentication -> Sign-in method.';
     }
+    if (code === 'auth/api-key-not-valid' || message.includes('api-key-not-valid') || message.includes('API key not valid')) {
+        return 'Firebase API key is invalid or expired. Check your .env configuration.';
+    }
+    if (code === 'auth/network-request-failed' || message.includes('network-request-failed')) {
+        return 'Network connection error. Please check your internet connection.';
+    }
     if (code === 'auth/email-already-in-use') {
         return 'An account with this email already exists. Try signing in instead.';
     }
@@ -572,8 +578,6 @@ const useSyncStore = create((set, get) => ({
                 if (isVaultUnlockedLocally) {
                     await get().syncDataToCloud('vault', vaultItems);
                     totalItems += vaultItems.length;
-                } else {
-                    console.log("[Sync] Vault locked; preserving remote vault data without uploading.");
                 }
             }
 

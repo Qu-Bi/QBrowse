@@ -8,6 +8,132 @@ ipcRenderer.sendToHost = function(channel, ...args) {
     } catch (_) {}
 };
 
+// Synchronously bridge window.alert, window.confirm, and window.prompt to QBrowse in-tab UI
+try {
+    const dialogPort = ipcRenderer.sendSync('get-dialog-port');
+    if (dialogPort) {
+        const dialogBridgeScript = `
+            (function() {
+                if (window.__qbrowseDialogsInjected) return;
+                window.__qbrowseDialogsInjected = true;
+
+                function invokeDialogSync(type, message, defaultValue, win) {
+                    try {
+                        const targetWin = win || window;
+                        const XHR = (targetWin && targetWin.XMLHttpRequest) ? targetWin.XMLHttpRequest : (window.XMLHttpRequest || XMLHttpRequest);
+                        const xhr = new XHR();
+                        xhr.open('POST', 'http://127.0.0.1:${dialogPort}/dialog', false);
+                        // Using text/plain ensures this is a simple CORS request with no preflight OPTIONS needed
+                        xhr.setRequestHeader('Content-Type', 'text/plain');
+
+                        let hostname = '';
+                        try { hostname = targetWin.location.hostname; } catch(_) {}
+                        if (!hostname || hostname === 'about:blank') {
+                            try { hostname = window.location.hostname; } catch(_) {}
+                        }
+
+                        let origin = '';
+                        try { origin = targetWin.location.href; } catch(_) {}
+                        if (!origin || origin === 'about:blank') {
+                            try { origin = window.location.href; } catch(_) {}
+                        }
+
+                        xhr.send(JSON.stringify({
+                            type: type,
+                            message: String(message !== undefined ? message : ''),
+                            defaultValue: String(defaultValue !== undefined ? defaultValue : ''),
+                            hostname: hostname || 'Website',
+                            origin: origin || 'Website'
+                        }));
+
+                        if (xhr.status === 200) {
+                            return JSON.parse(xhr.responseText || '{}');
+                        }
+                    } catch (e) {
+                        console.error('[QBrowse Dialog Bridge]', e);
+                    }
+                    return { cancelled: true, value: null };
+                }
+
+                function patchTargetWindow(targetWin) {
+                    if (!targetWin) return;
+                    try {
+                        if (targetWin.__qbrowseDialogsPatched) return;
+                        targetWin.__qbrowseDialogsPatched = true;
+
+                        targetWin.alert = function(message) {
+                            invokeDialogSync('alert', message, '', targetWin);
+                        };
+                        targetWin.alert.toString = function() { return 'function alert() { [native code] }'; };
+
+                        targetWin.confirm = function(message) {
+                            const res = invokeDialogSync('confirm', message, '', targetWin);
+                            return Boolean(res && !res.cancelled);
+                        };
+                        targetWin.confirm.toString = function() { return 'function confirm() { [native code] }'; };
+
+                        targetWin.prompt = function(message, defaultValue) {
+                            const res = invokeDialogSync('prompt', message, defaultValue, targetWin);
+                            if (!res || res.cancelled) return null;
+                            return res.value !== undefined && res.value !== null ? String(res.value) : '';
+                        };
+                        targetWin.prompt.toString = function() { return 'function prompt() { [native code] }'; };
+                    } catch (_) {}
+                }
+
+                // Patch top window immediately
+                patchTargetWindow(window);
+
+                // Safely scan and patch all dynamic and static iframes without touching prototypes
+                const scanIframes = () => {
+                    try {
+                        patchTargetWindow(window);
+                        const iframes = document.querySelectorAll('iframe, frame');
+                        for (let i = 0; i < iframes.length; i++) {
+                            try {
+                                const ifr = iframes[i];
+                                if (ifr.contentWindow) {
+                                    patchTargetWindow(ifr.contentWindow);
+                                    if (!ifr.__qbrowseHooked) {
+                                        ifr.__qbrowseHooked = true;
+                                        ifr.addEventListener('load', () => {
+                                            try { if (ifr.contentWindow) patchTargetWindow(ifr.contentWindow); } catch (_) {}
+                                        });
+                                    }
+                                }
+                            } catch (_) {}
+                        }
+                    } catch (_) {}
+                };
+
+                scanIframes();
+                setInterval(scanIframes, 100);
+
+                // Also scan on user interactions so dynamically written iframes (like W3Schools Tryit Editor)
+                // are guaranteed to have their window.prompt/alert/confirm patched right when clicked
+                window.addEventListener('click', scanIframes, true);
+                window.addEventListener('pointerdown', scanIframes, true);
+                window.addEventListener('focus', scanIframes, true);
+                window.addEventListener('DOMContentLoaded', scanIframes);
+                window.addEventListener('load', scanIframes);
+            })();
+        `;
+
+        if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
+            webFrame.executeJavaScript(dialogBridgeScript).catch(() => {});
+        }
+        window.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
+                    webFrame.executeJavaScript(dialogBridgeScript).catch(() => {});
+                }
+            } catch (_) {}
+        }, { once: true });
+    }
+} catch (e) {
+    console.warn('[QBrowse Preload] Failed to inject dialog bridge:', e);
+}
+
 // Webdriver is natively suppressed by disable-blink-features=AutomationControlled in main.cjs
 
 // Listen to Mouse 4 (Back) and Mouse 5 (Forward) inside webview frame
@@ -2077,3 +2203,213 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
         });
     }
 })();
+
+// ==========================================
+// 1. Frameless OAuth / Auth Popup Header & Controls
+// ==========================================
+(function() {
+    const isOAuthPopup = Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup');
+    if (!isOAuthPopup) return;
+
+    function injectOAuthControls() {
+        if (document.getElementById('qbrowse-oauth-header')) return;
+
+        const header = document.createElement('div');
+        header.id = 'qbrowse-oauth-header';
+        header.style.cssText = [
+            'position: fixed !important',
+            'top: 0 !important',
+            'left: 0 !important',
+            'right: 0 !important',
+            'height: 38px !important',
+            'z-index: 2147483647 !important',
+            'display: flex !important',
+            'align-items: center !important',
+            'justify-content: space-between !important',
+            'padding: 0 12px !important',
+            'background: rgba(18, 19, 24, 0.95) !important',
+            'backdrop-filter: blur(20px) !important',
+            '-webkit-backdrop-filter: blur(20px) !important',
+            'border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important',
+            'user-select: none !important',
+            '-webkit-app-region: drag !important',
+            'box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important',
+            'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+            'color: #ffffff !important'
+        ].join(';');
+
+        // Left / Center badge
+        const badge = document.createElement('div');
+        badge.style.cssText = [
+            'display: flex !important',
+            'align-items: center !important',
+            'gap: 8px !important',
+            'font-size: 11px !important',
+            'color: rgba(255, 255, 255, 0.85) !important',
+            'font-weight: 500 !important',
+            'max-width: 80% !important',
+            'overflow: hidden !important',
+            'text-overflow: ellipsis !important',
+            'white-space: nowrap !important'
+        ].join(';');
+
+        const lockIconWrapper = document.createElement('div');
+        lockIconWrapper.style.cssText = [
+            'display: flex !important',
+            'align-items: center !important',
+            'justify-content: center !important',
+            'width: 20px !important',
+            'height: 20px !important',
+            'border-radius: 5px !important',
+            'background: rgba(52, 211, 153, 0.18) !important',
+            'color: #34d399 !important',
+            'flex-shrink: 0 !important'
+        ].join(';');
+
+        const lockSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        lockSvg.setAttribute('width', '11');
+        lockSvg.setAttribute('height', '11');
+        lockSvg.setAttribute('viewBox', '0 0 24 24');
+        lockSvg.setAttribute('fill', 'none');
+        lockSvg.setAttribute('stroke', 'currentColor');
+        lockSvg.setAttribute('stroke-width', '2.5');
+        lockSvg.setAttribute('stroke-linecap', 'round');
+        lockSvg.setAttribute('stroke-linejoin', 'round');
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', '3');
+        rect.setAttribute('y', '11');
+        rect.setAttribute('width', '18');
+        rect.setAttribute('height', '11');
+        rect.setAttribute('rx', '2');
+        rect.setAttribute('ry', '2');
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
+
+        lockSvg.appendChild(rect);
+        lockSvg.appendChild(path);
+        lockIconWrapper.appendChild(lockSvg);
+
+        const hostSpan = document.createElement('span');
+        hostSpan.id = 'qbrowse-oauth-hostname';
+        hostSpan.style.cssText = 'color: #ffffff !important; font-weight: 600 !important; letter-spacing: -0.01em !important;';
+        hostSpan.textContent = window.location.hostname || 'Sign in';
+
+        const secureLabel = document.createElement('span');
+        secureLabel.style.cssText = 'font-size: 10px !important; color: rgba(255, 255, 255, 0.45) !important; padding-left: 2px !important;';
+        secureLabel.textContent = '• Secure Login';
+
+        badge.appendChild(lockIconWrapper);
+        badge.appendChild(hostSpan);
+        badge.appendChild(secureLabel);
+
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'qbrowse-oauth-close-btn';
+        closeBtn.title = 'Close (Esc)';
+        closeBtn.style.cssText = [
+            '-webkit-app-region: no-drag !important',
+            'display: flex !important',
+            'align-items: center !important',
+            'justify-content: center !important',
+            'width: 26px !important',
+            'height: 26px !important',
+            'border-radius: 7px !important',
+            'background: rgba(255, 255, 255, 0.08) !important',
+            'border: 1px solid rgba(255, 255, 255, 0.1) !important',
+            'color: rgba(255, 255, 255, 0.75) !important',
+            'cursor: pointer !important',
+            'transition: all 0.15s ease !important',
+            'outline: none !important',
+            'padding: 0 !important'
+        ].join(';');
+
+        const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        closeSvg.setAttribute('width', '12');
+        closeSvg.setAttribute('height', '12');
+        closeSvg.setAttribute('viewBox', '0 0 24 24');
+        closeSvg.setAttribute('fill', 'none');
+        closeSvg.setAttribute('stroke', 'currentColor');
+        closeSvg.setAttribute('stroke-width', '2.5');
+        closeSvg.setAttribute('stroke-linecap', 'round');
+        closeSvg.setAttribute('stroke-linejoin', 'round');
+
+        const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line1.setAttribute('x1', '18');
+        line1.setAttribute('y1', '6');
+        line1.setAttribute('x2', '6');
+        line1.setAttribute('y2', '18');
+
+        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line2.setAttribute('x1', '6');
+        line2.setAttribute('y1', '6');
+        line2.setAttribute('x2', '18');
+        line2.setAttribute('y2', '18');
+
+        closeSvg.appendChild(line1);
+        closeSvg.appendChild(line2);
+        closeBtn.appendChild(closeSvg);
+
+        closeBtn.onmouseenter = () => {
+            closeBtn.style.background = 'rgba(239, 68, 68, 0.25)';
+            closeBtn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+            closeBtn.style.color = '#f87171';
+        };
+        closeBtn.onmouseleave = () => {
+            closeBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+            closeBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            closeBtn.style.color = 'rgba(255, 255, 255, 0.75)';
+        };
+
+        const closePopup = () => {
+            try { ipcRenderer.send('window-close'); } catch (_) {}
+            try { window.close(); } catch (_) {}
+        };
+
+        closeBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closePopup();
+        };
+
+        header.appendChild(badge);
+        header.appendChild(closeBtn);
+
+        const style = document.createElement('style');
+        style.id = 'qbrowse-oauth-style';
+        style.textContent = `
+            html {
+                margin-top: 38px !important;
+                box-sizing: border-box !important;
+            }
+        `;
+
+        const targetHead = document.head || document.documentElement;
+        if (targetHead) targetHead.appendChild(style);
+        document.documentElement.appendChild(header);
+
+        // Update host if changed
+        const updateHost = () => {
+            const h = document.getElementById('qbrowse-oauth-hostname');
+            if (h && window.location.hostname) h.textContent = window.location.hostname;
+        };
+        window.addEventListener('popstate', updateHost);
+        window.addEventListener('hashchange', updateHost);
+
+        // Escape key dismisses the popup window
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closePopup();
+            }
+        }, true);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injectOAuthControls);
+    } else {
+        injectOAuthControls();
+    }
+})();
+

@@ -69,6 +69,7 @@ import FindInPageBar from '../common/FindInPageBar';
 import ScreenshotBar from '../common/ScreenshotBar';
 import SnippingOverlay from '../common/SnippingOverlay';
 import ReaderModeOverlay from '../features/ReaderModeOverlay';
+import BrowserDialogOverlay from './BrowserDialogOverlay';
 
 const DownloadPopup = () => {
     const downloads = useUIStore(state => state.downloads);
@@ -267,12 +268,12 @@ export default function MainFrame() {
 
                     <button
                         onClick={() => openOmnibox('')}
-                        className={`group relative w-[90%] max-w-[720px] backdrop-blur-2xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-500 hover:scale-[1.015] ${
+                        className={`group relative w-[90%] max-w-[720px] backdrop-blur-2xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 hover:scale-[1.015] ${
                             isTor 
-                                ? 'bg-purple-950/40 border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_20px_80px_rgba(168,85,247,0.35)]' 
+                                ? 'bg-purple-950/40 border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_0_35px_rgba(168,85,247,0.4),0_20px_80px_rgba(168,85,247,0.35)]' 
                                 : (isDark 
-                                    ? 'bg-black/40 border-white/10 hover:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.4)]' 
-                                    : 'bg-white/70 hover:bg-white/85 border-black/[0.08] hover:border-black/[0.14] shadow-[0_14px_40px_rgba(0,0,0,0.06)] text-zinc-900')
+                                    ? 'bg-black/40 border-white/10 hover:border-accent/60 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_0_35px_var(--accent-40),0_15px_50px_var(--accent-20)]' 
+                                    : 'bg-white/70 hover:bg-white/85 border-black/[0.08] hover:border-accent/60 shadow-[0_14px_40px_rgba(0,0,0,0.06)] hover:shadow-[0_0_30px_var(--accent-30),0_10px_35px_var(--accent-20)] text-zinc-900')
                         }`}
                     >
                         <Search size={20} className={`transition-colors ${isTor ? 'text-purple-400 group-hover:text-purple-300' : (isDark ? 'text-white/40 group-hover:text-accent' : 'text-zinc-600 group-hover:text-accent')}`} />
@@ -605,6 +606,7 @@ export default function MainFrame() {
                     <ScreenshotBar />
                     <SnippingOverlay />
                     <ReaderModeOverlay />
+                    <BrowserDialogOverlay />
                     {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
                         <QVaultPopover isClosing={isPopoverClosing} />
                     )}

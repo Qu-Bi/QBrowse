@@ -2,12 +2,146 @@ const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, d
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const os = require('os');
+const http = require('http');
 const { pathToFileURL } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
 
+// In-Tab JavaScript Dialog state collections
+const activeWebviewDialogs = new Map();
+const pendingPromptResponses = new Map();
+let localDialogPort = 0;
+let latestActiveWebviewUrl = '';
+
+// Internal dialog bridge server for synchronous window.alert, confirm, and prompt calls
+const localDialogServer = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+    }
+
+    if (req.method === 'POST' && (req.url === '/dialog' || req.url === '/prompt')) {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body || '{}');
+                const dialogId = 'dlg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                pendingPromptResponses.set(dialogId, res);
+
+                res.on('close', () => {
+                    if (!res.writableEnded && pendingPromptResponses.has(dialogId)) {
+                        pendingPromptResponses.delete(dialogId);
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('qbrowse-js-dialog-dismiss', { dialogId });
+                        }
+                    }
+                });
+
+                let hostname = '';
+                try {
+                    if (data.hostname && data.hostname !== 'about:blank') {
+                        hostname = data.hostname;
+                    } else if (data.origin && data.origin !== 'about:blank') {
+                        hostname = new URL(data.origin).hostname;
+                    } else if (latestActiveWebviewUrl) {
+                        hostname = new URL(latestActiveWebviewUrl).hostname;
+                    }
+                } catch (_) {}
+                if (!hostname) hostname = 'Website';
+
+                const dialogType = data.type || (req.url === '/prompt' ? 'prompt' : 'alert');
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('qbrowse-js-dialog-open', {
+                        dialogId,
+                        dialogType,
+                        message: data.message || '',
+                        hostname,
+                        origin: data.origin || latestActiveWebviewUrl || '',
+                        defaultValue: data.defaultValue || ''
+                    });
+                } else {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ cancelled: true, value: null }));
+                }
+            } catch (e) {
+                res.writeHead(400);
+                res.end();
+            }
+        });
+    } else {
+        res.writeHead(404);
+        res.end();
+    }
+});
+
+localDialogServer.listen(0, '127.0.0.1', () => {
+    localDialogPort = localDialogServer.address().port;
+    console.log('[Electron Main] Local dialog server listening on port:', localDialogPort);
+});
+
+ipcMain.on('get-dialog-port', (event) => {
+    event.returnValue = localDialogPort;
+});
+
+// Suppress internal native OS message boxes and route alerts/confirms through in-tab custom sheets
+const originalShowMessageBoxSync = dialog.showMessageBoxSync;
+const originalShowMessageBox = dialog.showMessageBox;
+
+dialog.showMessageBoxSync = function(targetWindow, options) {
+    const opts = (options && typeof options === 'object') ? options : (targetWindow && typeof targetWindow === 'object' ? targetWindow : {});
+    console.log('[Electron Main] Suppressed native message box sync:', opts.message || opts.title || opts);
+    return 0; // Return OK index without opening native OS dialog
+};
+
+dialog.showMessageBox = function(targetWindow, options) {
+    const opts = (options && typeof options === 'object') ? options : (targetWindow && typeof targetWindow === 'object' ? targetWindow : {});
+    console.log('[Electron Main] showMessageBox intercepted, awaiting in-tab user response:', opts.message || opts.title || opts);
+
+    return new Promise((resolve) => {
+        const dialogId = 'msgbox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const isConfirm = Array.isArray(opts.buttons) && opts.buttons.length > 1;
+        const dialogType = isConfirm ? 'confirm' : 'alert';
+
+        let hostname = '';
+        try {
+            if (latestActiveWebviewUrl) {
+                hostname = new URL(latestActiveWebviewUrl).hostname;
+            }
+        } catch (_) {}
+        if (!hostname) hostname = 'Website';
+
+        activeWebviewDialogs.set(dialogId, {
+            resolve,
+            type: dialogType
+        });
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('qbrowse-js-dialog-open', {
+                dialogId,
+                dialogType,
+                message: opts.message || opts.detail || '',
+                hostname,
+                origin: latestActiveWebviewUrl || '',
+                defaultValue: ''
+            });
+        } else {
+            resolve({ response: 0, checkboxChecked: false });
+        }
+    });
+};
+
 // Disable Blink automation features so navigator.webdriver is false and automation flags are suppressed
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests');
 
 // Register custom privileged scheme for streaming local media and wallpapers safely
 protocol.registerSchemesAsPrivileged([
@@ -27,6 +161,85 @@ ipcMain.handle('write-clipboard-text', (event, text) => {
         clipboard.writeText(text || '');
         return true;
     } catch {
+        return false;
+    }
+});
+
+// Runtime Firebase Configuration Provider (for production installations like .deb / .exe)
+function getStoredFirebaseConfig() {
+    try {
+        // 1. Process environment variables (e.g. launched via command line: VITE_FIREBASE_API_KEY="..." qbrowse)
+        const envKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
+        if (envKey && envKey !== 'placeholder_api_key' && !envKey.includes('placeholder')) {
+            return {
+                apiKey: envKey,
+                authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN,
+                projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID,
+                storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID,
+                appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID,
+                measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || process.env.FIREBASE_MEASUREMENT_ID
+            };
+        }
+
+        // 2. User data directory: ~/.config/QBrowse/firebase.json (or %APPDATA%/QBrowse/firebase.json)
+        const userConfigPath = path.join(app.getPath('userData'), 'firebase.json');
+        if (fsSync.existsSync(userConfigPath)) {
+            const raw = fsSync.readFileSync(userConfigPath, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.apiKey && !parsed.apiKey.includes('placeholder')) {
+                return parsed;
+            }
+        }
+
+        // 3. User data directory .env: ~/.config/QBrowse/.env
+        const userEnvPath = path.join(app.getPath('userData'), '.env');
+        if (fsSync.existsSync(userEnvPath)) {
+            const raw = fsSync.readFileSync(userEnvPath, 'utf8');
+            const parsed = {};
+            raw.split(/\r?\n/).forEach(line => {
+                const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+                if (match) {
+                    let val = (match[2] || '').trim();
+                    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                        val = val.slice(1, -1);
+                    }
+                    parsed[match[1]] = val;
+                }
+            });
+            const key = parsed.VITE_FIREBASE_API_KEY || parsed.FIREBASE_API_KEY;
+            if (key && key !== 'placeholder_api_key' && !key.includes('placeholder')) {
+                return {
+                    apiKey: key,
+                    authDomain: parsed.VITE_FIREBASE_AUTH_DOMAIN || parsed.FIREBASE_AUTH_DOMAIN,
+                    projectId: parsed.VITE_FIREBASE_PROJECT_ID || parsed.FIREBASE_PROJECT_ID,
+                    storageBucket: parsed.VITE_FIREBASE_STORAGE_BUCKET || parsed.FIREBASE_STORAGE_BUCKET,
+                    messagingSenderId: parsed.VITE_FIREBASE_MESSAGING_SENDER_ID || parsed.FIREBASE_MESSAGING_SENDER_ID,
+                    appId: parsed.VITE_FIREBASE_APP_ID || parsed.FIREBASE_APP_ID,
+                    measurementId: parsed.VITE_FIREBASE_MEASUREMENT_ID || parsed.FIREBASE_MEASUREMENT_ID
+                };
+            }
+        }
+    } catch (e) {
+        console.warn('[Main] Error reading stored Firebase config:', e);
+    }
+    return null;
+}
+
+ipcMain.handle('get-firebase-config', () => getStoredFirebaseConfig());
+ipcMain.on('get-firebase-config-sync', (event) => {
+    event.returnValue = getStoredFirebaseConfig();
+});
+
+ipcMain.handle('save-firebase-config', async (event, config) => {
+    try {
+        if (!config || typeof config !== 'object') return false;
+        const userConfigPath = path.join(app.getPath('userData'), 'firebase.json');
+        await fs.writeFile(userConfigPath, JSON.stringify(config, null, 2), 'utf8');
+        console.log('[Main] Saved Firebase config to:', userConfigPath);
+        return true;
+    } catch (e) {
+        console.error('[Main] Failed to save Firebase config:', e);
         return false;
     }
 });
@@ -467,6 +680,8 @@ function createWindow(options = {}) {
                         height: 820,
                         minWidth: 540,
                         minHeight: 680,
+                        frame: false,
+                        hasShadow: true,
                         autoHideMenuBar: true,
                         backgroundColor: '#121214',
                         webPreferences: {
@@ -535,6 +750,16 @@ function createWindow(options = {}) {
                 } else {
                     contents.setUserAgent(cleanChromeUA);
                 }
+            });
+        }
+
+        // Track active webview URL for accurate domain resolution in in-tab dialogs
+        if (contents.getType() === 'webview') {
+            contents.on('did-navigate', (event, url) => {
+                if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
+            });
+            contents.on('did-navigate-in-page', (event, url) => {
+                if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
             });
         }
 
@@ -690,6 +915,23 @@ function setupHeadersHandler(sess) {
         }
 
         callback({ cancel: false, requestHeaders: details.requestHeaders });
+    });
+
+    sess.webRequest.onHeadersReceived((details, callback) => {
+        const responseHeaders = { ...details.responseHeaders };
+        if (localDialogPort) {
+            for (const headerKey of Object.keys(responseHeaders)) {
+                if (headerKey.toLowerCase() === 'content-security-policy') {
+                    responseHeaders[headerKey] = responseHeaders[headerKey].map(val => {
+                        if (val.includes('connect-src')) {
+                            return val.replace(/connect-src\s+([^;]+)/i, `connect-src $1 http://127.0.0.1:${localDialogPort}`);
+                        }
+                        return val + `; connect-src * http://127.0.0.1:${localDialogPort}`;
+                    });
+                }
+            }
+        }
+        callback({ responseHeaders });
     });
 }
 
@@ -978,6 +1220,77 @@ app.on('window-all-closed', () => {
   }
 });
 
+// HTTP Basic & Proxy Authentication Handlers
+const pendingHttpAuthRequests = {};
+
+app.on('login', (event, webContents, authenticationResponseDetails, authInfo, callback) => {
+    event.preventDefault();
+    const requestId = `auth_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    pendingHttpAuthRequests[requestId] = callback;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('qbrowse-http-auth-request', {
+            requestId,
+            host: authInfo.host,
+            port: authInfo.port,
+            realm: authInfo.realm || 'Authentication required',
+            isProxy: authInfo.isProxy || false
+        });
+    } else {
+        callback();
+    }
+});
+
+ipcMain.on('qbrowse-http-auth-response', (event, { requestId, username, password, cancel }) => {
+    const callback = pendingHttpAuthRequests[requestId];
+    if (callback) {
+        delete pendingHttpAuthRequests[requestId];
+        if (cancel || (!username && !password)) {
+            callback();
+        } else {
+            callback(username, password);
+        }
+    }
+});
+
+// Webview In-Tab JS Dialogs (Alert, Confirm, Prompt) Close Handler
+ipcMain.on('qbrowse-js-dialog-close', (event, { dialogId, accept, promptText }) => {
+    console.log('[Electron Main] qbrowse-js-dialog-close received:', { dialogId, accept, promptText });
+
+    // 1. Resolve synchronous HTTP bridge dialogs
+    const pendingHttp = pendingPromptResponses.get(dialogId);
+    if (pendingHttp) {
+        pendingPromptResponses.delete(dialogId);
+        try {
+            pendingHttp.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            });
+            pendingHttp.end(JSON.stringify({
+                cancelled: !accept,
+                value: accept ? (promptText !== undefined ? String(promptText) : '') : null
+            }));
+            console.log('[Electron Main] Responded to synchronous HTTP dialog:', dialogId, { accept, promptText });
+        } catch (e) {
+            console.error('[Electron Main] Error responding to HTTP dialog:', e);
+        }
+        return;
+    }
+
+    // 2. Resolve Electron dialog.showMessageBox fallback
+    const dialog = activeWebviewDialogs.get(dialogId);
+    if (dialog) {
+        activeWebviewDialogs.delete(dialogId);
+        if (typeof dialog.resolve === 'function') {
+            dialog.resolve({ response: accept ? 0 : 1, checkboxChecked: false });
+            console.log('[Electron Main] Resolved showMessageBox fallback:', dialogId);
+        }
+        return;
+    }
+
+    console.warn('[Electron Main] No active dialog found for dialogId:', dialogId);
+});
+
 app.on('will-quit', () => {
   try {
     const ghostSess = session.fromPartition('ghost');
@@ -1107,13 +1420,13 @@ function requestWindowsHelloVerification(message = "Verify your identity for QBr
             const output = (stdout || '').trim();
             console.log('[Windows Hello] Result:', output);
             if (output.includes('Verified')) {
-                resolve({ verified: true, status: 'Verified' });
+                resolve({ verified: true, success: true, status: 'Verified' });
             } else if (output.includes('Canceled')) {
-                resolve({ verified: false, status: 'Canceled' });
+                resolve({ verified: false, success: false, status: 'Canceled' });
             } else if (output.includes('NotAvailable')) {
-                resolve({ verified: false, status: 'NotAvailable' });
+                resolve({ verified: false, success: false, status: 'NotAvailable' });
             } else {
-                resolve({ verified: false, status: output || 'Failed' });
+                resolve({ verified: false, success: false, status: output || 'Failed' });
             }
         });
     });
