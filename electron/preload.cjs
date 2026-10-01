@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
     setFullscreen: (value) => ipcRenderer.send('set-fullscreen', value),
+    setWebviewColorScheme: (webContentsId, colorScheme) => ipcRenderer.send('set-webview-color-scheme', { webContentsId, colorScheme }),
 
     onOpenNewTab: (callback) => {
         ipcRenderer.removeAllListeners('open-new-tab-url');

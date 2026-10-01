@@ -4,7 +4,7 @@ import {
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, 
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Monitor,
-    UploadCloud, Compass, ExternalLink, Plus, Leaf, Gauge, BatteryCharging, Activity,
+    UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare
 } from 'lucide-react';
 
@@ -17,6 +17,7 @@ import useTorStore from '../../store/useTorStore';
 import useVaultStore from '../../store/useVaultStore';
 import AIEngineSettings from '../settings/AIEngineSettings';
 import { getAllBangs } from '../../utils/searchBangs';
+import qbrowseLogo from '../../assets/icon.png';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
 const SettingCard = ({ icon: Icon, title, description, children }) => {
@@ -276,12 +277,13 @@ const SettingsModal = () => {
     };
 
     useEffect(() => {
-        refreshDefaultBrowserStatus();
-        const handleFocus = () => {
-            refreshDefaultBrowserStatus();
-        };
-        window.addEventListener('focus', handleFocus);
-        return () => window.removeEventListener('focus', handleFocus);
+        // Only query default browser if on the about or privacy tab, and defer past entrance animation
+        if (settingsTab === 'about' || settingsTab === 'privacy') {
+            const timer = setTimeout(() => {
+                refreshDefaultBrowserStatus();
+            }, 350);
+            return () => clearTimeout(timer);
+        }
     }, [settingsTab]);
 
     useEffect(() => {
@@ -338,24 +340,39 @@ const SettingsModal = () => {
     if (activeModal !== 'settings' && !isClosingThis) return null;
 
     return (
-        <div className={`absolute inset-0 z-[200] flex font-sans ${
-            isBright 
-                ? 'bg-black/25 backdrop-blur-xl text-zinc-900' 
-                : 'bg-black/60 backdrop-blur-3xl text-white'
-        } ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} onClick={closeModal}>
-            {/* LEFT NAVIGATION SIDEBAR */}
-            <div className={`w-64 border-r flex flex-col transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        <div 
+            className={`fixed inset-0 z-[200] flex items-center justify-center p-3 md:p-6 font-sans ${
                 isBright 
-                    ? 'bg-white/80 backdrop-blur-2xl border-black/10' 
-                    : 'bg-black/50 border-white/[0.06]'
-            } ${isModalClosing ? '-translate-x-6 opacity-0' : 'translate-x-0 opacity-100'}`} onClick={e => e.stopPropagation()}>
+                    ? 'bg-black/30 backdrop-blur-md text-zinc-900' 
+                    : 'bg-black/60 backdrop-blur-md text-white'
+            } ${isModalClosing ? 'animate-modal-backdrop-out' : 'animate-modal-backdrop'}`} 
+            onClick={closeModal}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+        >
+            {/* FLOATING LUXURY SETTINGS WINDOW */}
+            <div 
+                id="settings-modal"
+                onClick={e => e.stopPropagation()} 
+                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+                className={`w-full max-w-6xl h-[92vh] max-h-[920px] rounded-3xl overflow-hidden flex border shadow-[0_25px_80px_rgba(0,0,0,0.65)] ${
+                    isBright 
+                        ? 'bg-white/95 border-black/10' 
+                        : 'bg-[#0c0d14]/95 border-white/[0.08]'
+                } ${isModalClosing ? 'animate-settings-sheet-out' : 'animate-settings-sheet'}`}
+            >
+                {/* LEFT NAVIGATION SIDEBAR */}
+                <div className={`w-64 border-r flex flex-col flex-shrink-0 ${
+                    isBright 
+                        ? 'bg-black/[0.02] border-black/10' 
+                        : 'bg-white/[0.015] border-white/[0.06]'
+                }`}>
                 <div className="p-4 pb-2 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
                         <h2 className={`text-sm font-semibold tracking-tight flex items-center gap-2 ${
                             isBright ? 'text-zinc-900' : 'text-white'
                         }`}>
                             <img 
-                                src="/icon.png" 
+                                src={qbrowseLogo} 
                                 alt="QBrowse" 
                                 className="w-4 h-4 object-contain rounded drop-shadow" 
                                 onError={(e) => { e.currentTarget.style.display = 'none'; }} 
@@ -364,7 +381,7 @@ const SettingsModal = () => {
                         </h2>
                         <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
                             isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'
-                        }`}>v1.2.1</span>
+                        }`}>v1.3.0</span>
                     </div>
 
                     {/* Live Search Input */}
@@ -425,9 +442,9 @@ const SettingsModal = () => {
             </div>
 
             {/* RIGHT CONTENT PANEL */}
-            <div className={`flex-1 p-10 relative overflow-y-auto w-[600px] md:w-[800px] max-w-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                isBright ? 'bg-white/70 backdrop-blur-3xl text-zinc-900 settings-bright-mode' : 'bg-transparent text-white'
-            } ${isModalClosing ? 'translate-y-4 opacity-0' : 'translate-y-0 opacity-100'}`} onClick={e => e.stopPropagation()}>
+            <div className={`flex-1 p-8 md:p-10 relative overflow-y-auto ${
+                isBright ? 'bg-transparent text-zinc-900 settings-bright-mode' : 'bg-transparent text-white'
+            }`}>
                 <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className={`absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-xl border transition z-[999] cursor-pointer ${
                     isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600 hover:text-zinc-900' : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.06] text-zinc-400 hover:text-white'
                 }`}>
@@ -1433,7 +1450,7 @@ const SettingsModal = () => {
                                             id: 'eco',
                                             title: 'Eco / Low-End',
                                             desc: 'Aggressive 5-min tab sleep & clean flat dark styling (no GPU blur lag) for maximum battery & netbooks.',
-                                            icon: Leaf,
+                                            icon: Feather,
                                             color: 'text-emerald-400',
                                             selectedClass: 'bg-emerald-500/10 border-emerald-500/35 text-white shadow-[0_0_15px_rgba(16,185,129,0.08)]',
                                             dotClass: 'bg-emerald-400 shadow-[0_0_6px_#34d399]'
@@ -1442,7 +1459,7 @@ const SettingsModal = () => {
                                             id: 'balanced',
                                             title: 'Balanced',
                                             desc: 'Standard 15-min tab sleep with full glassmorphism and optimal responsiveness for everyday multitasking.',
-                                            icon: Gauge,
+                                            icon: GaugeCircle,
                                             color: 'text-sky-400',
                                             selectedClass: 'bg-sky-500/10 border-sky-500/35 text-white shadow-[0_0_15px_rgba(14,165,233,0.08)]',
                                             dotClass: 'bg-sky-400 shadow-[0_0_6px_#38bdf8]'
@@ -1451,7 +1468,7 @@ const SettingsModal = () => {
                                             id: 'ultra',
                                             title: 'Ultra Performance',
                                             desc: '30-min tab sleep, maximum frame rates and GPU pipeline throughput for high-end rigs.',
-                                            icon: Zap,
+                                            icon: Rocket,
                                             color: 'text-purple-400',
                                             selectedClass: 'bg-purple-500/10 border-purple-500/35 text-white shadow-[0_0_15px_rgba(168,85,247,0.08)]',
                                             dotClass: 'bg-purple-400 shadow-[0_0_6px_#c084fc]'
@@ -1509,7 +1526,7 @@ const SettingsModal = () => {
 
                             {/* Reduce Visual Blurs on Eco Mode */}
                             <SettingCard 
-                                icon={Sliders} 
+                                icon={Feather} 
                                 title="Optimize Visuals in Eco Mode" 
                                 description="Replace heavy GPU composite blur filters with solid dark translucent panels to ensure 60fps on integrated graphics."
                             >
@@ -1685,7 +1702,7 @@ const SettingsModal = () => {
                                                 : 'bg-accent-10 border-accent-30 shadow-sm'
                                         }`}>
                                             <img 
-                                                src="/icon.png" 
+                                                src={qbrowseLogo} 
                                                 alt="QBrowse" 
                                                 className="w-full h-full object-contain rounded-xl drop-shadow" 
                                                 onError={(e) => {
@@ -1760,7 +1777,7 @@ const SettingsModal = () => {
                                 <div className="flex items-center gap-3.5">
                                     <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm overflow-hidden">
                                         <img 
-                                            src="/icon.png" 
+                                            src={qbrowseLogo} 
                                             alt="QBrowse" 
                                             className="w-full h-full object-contain rounded-lg drop-shadow" 
                                             onError={(e) => {
@@ -1774,7 +1791,7 @@ const SettingsModal = () => {
                                         <h4 className="text-xs font-semibold text-white flex items-center gap-2">
                                             QBrowse
                                             <span className="text-[10px] font-mono font-medium bg-white/[0.06] text-zinc-300 px-2 py-0.5 rounded border border-white/[0.06]">
-                                                v1.2.1
+                                                v1.3.0
                                             </span>
                                         </h4>
                                         <p className="text-[11px] text-zinc-400 mt-0.5">Privacy-first multi-space desktop browser</p>
@@ -1786,7 +1803,7 @@ const SettingsModal = () => {
                                         setIsCheckingUpdates(true);
                                         setTimeout(() => {
                                             setIsCheckingUpdates(false);
-                                            showToast('QBrowse is up to date! (v1.2.1)');
+                                            showToast('QBrowse is up to date! (v1.3.0)');
                                         }, 1200);
                                     }}
                                     className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95"
@@ -1884,6 +1901,7 @@ const SettingsModal = () => {
                         </div>
                     )}
                 </div>
+            </div>
             </div>
         </div>
     );

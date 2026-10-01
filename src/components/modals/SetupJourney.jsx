@@ -7,6 +7,7 @@ import {
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
+import qbrowseLogo from '../../assets/icon.png';
 
 const ACCENT_PRESETS = [
     { name: 'Amber Gold', hex: '#d4bc94', rgb: '212, 188, 148' },
@@ -154,7 +155,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             <header className="relative z-10 flex items-center justify-between px-8 py-5 border-b border-white/[0.08]">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm">
-                        <img src="/icon.png" alt="QBrowse" className="w-full h-full object-contain drop-shadow" />
+                        <img src={qbrowseLogo} alt="QBrowse" className="w-full h-full object-contain drop-shadow" />
                     </div>
                     <span className="font-bold tracking-tight text-sm text-white">QBrowse Setup</span>
                 </div>

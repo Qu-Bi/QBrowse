@@ -223,6 +223,7 @@ export default function UserProfilePopover({ isClosing }) {
 
     return (
         <div 
+            id="user-profile-popover"
             className={`fixed top-[4.75rem] left-10 md:left-16 z-[70000] w-[420px] max-w-[calc(100vw-24px)] max-h-[85vh] flex flex-col overflow-hidden ${
                 isBright 
                     ? 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14)]' 
@@ -231,6 +232,7 @@ export default function UserProfilePopover({ isClosing }) {
                 isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
             }`} 
             onClick={e => e.stopPropagation()}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
         >
             {/* Minimal Header */}
             <div className={`flex items-center justify-between pb-3 mb-3 border-b ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>

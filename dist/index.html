@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QBrowse</title>
-    <script type="module" crossorigin src="./assets/index-CPPlzA54.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-tzs3Flhz.css">
+    <script type="module" crossorigin src="./assets/index-BQ6271Vc.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CwUEhHII.css">
   </head>
   <body>
     <div id="error-container" style="color: red; padding: 20px; font-family: monospace; z-index: 99999; position: absolute; background: black; display: none;"></div>
@@ -19,21 +19,20 @@
       };
     </script>
     <style>
-      @keyframes qPulse {
-        0% { transform: scale(0.92); opacity: 0.85; }
-        50% { transform: scale(1.03); opacity: 1; }
-        100% { transform: scale(0.98); opacity: 0.95; }
+      @keyframes qBreathe {
+        0%, 100% { transform: scale(0.97) translateZ(0); opacity: 0.92; }
+        50% { transform: scale(1.02) translateZ(0); opacity: 1; }
       }
-      @keyframes qAura {
-        0% { transform: scale(0.92); opacity: 0.45; }
-        50% { transform: scale(1.18); opacity: 0.8; }
-        100% { transform: scale(1.05); opacity: 0.55; }
+      @keyframes qAuraBreathe {
+        0%, 100% { transform: scale(0.95) translateZ(0); opacity: 0.6; }
+        50% { transform: scale(1.08) translateZ(0); opacity: 0.85; }
       }
     </style>
     <div id="root">
       <div id="initial-boot-splash" style="position: fixed; inset: 0; background: #07080a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999999; user-select: none;">
-        <div style="position: absolute; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle, rgba(212,188,148,0.22) 0%, rgba(212,188,148,0.06) 45%, transparent 70%); pointer-events: none; animation: qAura 1.4s ease-in-out infinite alternate;"></div>
-        <img src="./icon.png" alt="QBrowse" style="width: 104px; height: 104px; object-fit: contain; position: relative; z-index: 10; animation: qPulse 1.2s ease-in-out infinite alternate; will-change: transform, opacity;" />
+        <div style="position: absolute; width: 440px; height: 440px; border-radius: 50%; background: radial-gradient(circle, rgba(212,188,148,0.24) 0%, rgba(212,188,148,0.06) 45%, transparent 70%); pointer-events: none; animation: qAuraBreathe 2.4s ease-in-out infinite; transform: translateZ(0); will-change: transform, opacity;"></div>
+        <div style="position: absolute; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle, rgba(212,188,148,0.5) 0%, rgba(212,188,148,0.12) 50%, transparent 72%); filter: blur(12px); pointer-events: none; transform: translateZ(0); will-change: transform, opacity; animation: qBreathe 2.4s ease-in-out infinite;"></div>
+        <img src="./assets/icon-DvZc7Knj.png" onerror="this.src='icon.png'" alt="QBrowse" style="width: 104px; height: 104px; object-fit: contain; position: relative; z-index: 10; animation: qBreathe 2.4s ease-in-out infinite; transform: translateZ(0); will-change: transform, opacity;" />
       </div>
     </div>
   </body>

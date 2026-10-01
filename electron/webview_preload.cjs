@@ -8,9 +8,12 @@ ipcRenderer.sendToHost = function(channel, ...args) {
     } catch (_) {}
 };
 
+const isOAuthPopup = Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup');
+
 // Synchronously bridge window.alert, window.confirm, and window.prompt to QBrowse in-tab UI
-try {
-    const dialogPort = ipcRenderer.sendSync('get-dialog-port');
+if (!isOAuthPopup) {
+    try {
+        const dialogPort = ipcRenderer.sendSync('get-dialog-port');
     if (dialogPort) {
         const dialogBridgeScript = `
             (function() {
@@ -129,9 +132,10 @@ try {
                 }
             } catch (_) {}
         }, { once: true });
+        }
+    } catch (e) {
+        console.warn('[QBrowse Preload] Failed to inject dialog bridge:', e);
     }
-} catch (e) {
-    console.warn('[QBrowse Preload] Failed to inject dialog bridge:', e);
 }
 
 // Webdriver is natively suppressed by disable-blink-features=AutomationControlled in main.cjs
@@ -904,6 +908,7 @@ let currentSmartDarkConfig = { isForceDark: false, isExcluded: false };
 let smartDarkTimer = null;
 
 function runSmartDark() {
+    if (isOAuthPopup) return;
     const { isForceDark, isExcluded } = currentSmartDarkConfig;
     try {
         if (!isForceDark || isExcluded) {
@@ -914,6 +919,10 @@ function runSmartDark() {
             return;
         }
 
+        const docEl = document.documentElement;
+        const body = document.body;
+        if (!docEl) return;
+
         let styleEl = document.getElementById('qbrowse-smart-dark-style');
         if (!styleEl) {
             styleEl = document.createElement('style');
@@ -923,13 +932,11 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active {
                         filter: invert(1) hue-rotate(180deg) !important;
                         background-color: #121214 !important;
-                        color-scheme: dark !important;
                     }
                     html.qbrowse-smart-dark-active img,
                     html.qbrowse-smart-dark-active picture,
                     html.qbrowse-smart-dark-active video,
-                    html.qbrowse-smart-dark-active canvas,
-                    html.qbrowse-smart-dark-active svg {
+                    html.qbrowse-smart-dark-active canvas {
                         filter: invert(1) hue-rotate(180deg) !important;
                     }
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
@@ -942,13 +949,11 @@ function runSmartDark() {
                         filter: none !important;
                         background-color: #ffffff !important;
                         color: #000000 !important;
-                        color-scheme: light !important;
                     }
                     html.qbrowse-smart-dark-active img,
                     html.qbrowse-smart-dark-active picture,
                     html.qbrowse-smart-dark-active video,
-                    html.qbrowse-smart-dark-active canvas,
-                    html.qbrowse-smart-dark-active svg {
+                    html.qbrowse-smart-dark-active canvas {
                         filter: none !important;
                     }
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
@@ -957,7 +962,7 @@ function runSmartDark() {
                     }
                 }
             `;
-            (document.head || document.documentElement).appendChild(styleEl);
+            (document.head || docEl).appendChild(styleEl);
         }
 
         const parseRGB = (str) => {
@@ -973,91 +978,134 @@ function runSmartDark() {
             return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
         };
 
-        let isNativelyDark = false;
-        const docEl = document.documentElement;
-        const body = document.body;
-
         const isOurInjectedBg = (bg) => {
             if (!bg) return false;
             // Injected background #121214 is [18, 18, 20]
             return Math.abs(bg[0] - 18) <= 2 && Math.abs(bg[1] - 18) <= 2 && Math.abs(bg[2] - 20) <= 2;
         };
 
-        const darkClasses = [
-            'dark', 'dark-theme', 'theme-dark', 'night', 'theme-night', 'night-mode',
-            'skin-theme-clientpref-night', 'skin-night', 'vector-feature-night-mode-enabled',
-            'darkmode', 'dark-mode'
-        ];
-        const hasDarkClass = (el) => el && darkClasses.some(cls => el.classList.contains(cls));
-        const hasDarkAttr = (el) => el && (
-            el.getAttribute('data-theme') === 'dark' ||
-            el.getAttribute('data-color-mode') === 'dark' ||
-            el.getAttribute('data-bs-theme') === 'dark' ||
-            el.getAttribute('data-mode') === 'dark' ||
-            el.getAttribute('color-scheme') === 'dark'
-        );
+        let isNativelyDark = false;
 
-        if (hasDarkClass(docEl) || hasDarkAttr(docEl) || hasDarkClass(body) || hasDarkAttr(body)) {
+        // 1. Check attributes on html and body (e.g. data-theme="dark", data-duet-theme="vergeDark", theme="dark", etc.)
+        const checkDarkAttrs = (el) => {
+            if (!el || !el.attributes) return false;
+            for (let i = 0; i < el.attributes.length; i++) {
+                const attr = el.attributes[i];
+                const name = (attr.name || '').toLowerCase();
+                const val = (attr.value || '').toLowerCase();
+                if (val.includes('dark') || val.includes('night') || val.includes('black')) return true;
+                if ((name.includes('theme') || name.includes('color-mode') || name.includes('mode')) && val.includes('dark')) return true;
+            }
+            return false;
+        };
+
+        // 2. Check classes on html and body
+        const checkDarkClasses = (el) => {
+            if (!el || !el.classList) return false;
+            for (let i = 0; i < el.classList.length; i++) {
+                const cls = el.classList[i].toLowerCase();
+                if (cls.includes('dark') || cls.includes('night') || cls.includes('black') || cls === '_1nfixzc0') return true;
+            }
+            return false;
+        };
+
+        // 3. Check <meta name="color-scheme">
+        const metaScheme = document.querySelector('meta[name="color-scheme"]');
+        if (metaScheme && (metaScheme.content || '').toLowerCase().includes('dark')) {
             isNativelyDark = true;
-        } else {
+        }
+
+        if (checkDarkAttrs(docEl) || checkDarkAttrs(body) || checkDarkClasses(docEl) || checkDarkClasses(body)) {
+            isNativelyDark = true;
+        }
+
+        // 4. Check computed styles of structural root elements
+        if (!isNativelyDark) {
             const containers = [
-                body ? window.getComputedStyle(body) : null,
-                document.getElementById('content') ? window.getComputedStyle(document.getElementById('content')) : null,
-                document.getElementById('root') ? window.getComputedStyle(document.getElementById('root')) : null,
-                document.getElementById('app') ? window.getComputedStyle(document.getElementById('app')) : null,
-                document.querySelector('main') ? window.getComputedStyle(document.querySelector('main')) : null,
-                document.querySelector('.vector-body') ? window.getComputedStyle(document.querySelector('.vector-body')) : null,
-                docEl ? window.getComputedStyle(docEl) : null
+                docEl,
+                body,
+                document.getElementById('__next'),
+                document.getElementById('root'),
+                document.getElementById('app'),
+                document.getElementById('content'),
+                document.querySelector('main'),
+                document.querySelector('article'),
+                document.querySelector('.vector-body')
             ].filter(Boolean);
 
-            for (const st of containers) {
-                const bg = parseRGB(st.backgroundColor);
-                if (bg && !isOurInjectedBg(bg)) {
-                    if (getLuminance(bg) < 0.38) {
-                        isNativelyDark = true;
+            for (const el of containers) {
+                try {
+                    const st = window.getComputedStyle(el);
+                    const bg = parseRGB(st.backgroundColor);
+                    if (bg && !isOurInjectedBg(bg)) {
+                        const lum = getLuminance(bg);
+                        if (lum < 0.40) {
+                            isNativelyDark = true;
+                            break;
+                        }
                     }
-                    break;
-                }
+                    const fg = parseRGB(st.color);
+                    if (fg && getLuminance(fg) > 0.75) {
+                        const currentBg = parseRGB(st.backgroundColor);
+                        if (!currentBg || getLuminance(currentBg) < 0.5) {
+                            isNativelyDark = true;
+                            break;
+                        }
+                    }
+                } catch (_) {}
             }
         }
 
-        if (!isNativelyDark) {
-            if (!docEl.classList.contains('qbrowse-smart-dark-active')) {
-                docEl.classList.add('qbrowse-smart-dark-active');
-            }
-        } else {
+        // 5. Sample the center viewport if still undecided
+        if (!isNativelyDark && window.innerWidth > 0 && window.innerHeight > 0) {
+            try {
+                const sampleEl = document.elementFromPoint(window.innerWidth / 2, Math.min(300, window.innerHeight / 2));
+                if (sampleEl) {
+                    let cur = sampleEl;
+                    while (cur && cur !== docEl) {
+                        const st = window.getComputedStyle(cur);
+                        const bg = parseRGB(st.backgroundColor);
+                        if (bg && !isOurInjectedBg(bg)) {
+                            if (getLuminance(bg) < 0.40) {
+                                isNativelyDark = true;
+                            }
+                            break;
+                        }
+                        cur = cur.parentElement;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (isNativelyDark) {
             if (docEl.classList.contains('qbrowse-smart-dark-active')) {
                 docEl.classList.remove('qbrowse-smart-dark-active');
+            }
+        } else {
+            if (!docEl.classList.contains('qbrowse-smart-dark-active')) {
+                docEl.classList.add('qbrowse-smart-dark-active');
             }
         }
 
         if (!smartDarkObserver && (body || docEl)) {
-            smartDarkObserver = new MutationObserver((mutations) => {
-                let hasRelevantChange = false;
-                for (const m of mutations) {
-                    if (m.type === 'attributes') {
-                        // Skip if the only change was our own class
-                        if (m.attributeName === 'class' && (m.target === docEl || m.target === body)) {
-                            continue;
-                        }
-                        hasRelevantChange = true;
-                        break;
-                    } else if (m.type === 'childList') {
-                        hasRelevantChange = true;
-                        break;
-                    }
-                }
-                if (!hasRelevantChange) return;
-
+            smartDarkObserver = new MutationObserver(() => {
                 if (smartDarkTimer) clearTimeout(smartDarkTimer);
-                smartDarkTimer = setTimeout(runSmartDark, 300);
+                smartDarkTimer = setTimeout(runSmartDark, 250);
             });
-            smartDarkObserver.observe(body || docEl, {
-                childList: true,
-                subtree: false,
+            smartDarkObserver.observe(docEl, {
                 attributes: true,
-                attributeFilter: ['class', 'style', 'data-theme', 'data-color-mode', 'data-bs-theme']
+                attributeFilter: ['class', 'style', 'data-theme', 'data-duet-theme', 'data-color-mode', 'data-bs-theme', 'theme'],
+                childList: false,
+                subtree: false
             });
+            if (body) {
+                smartDarkObserver.observe(body, {
+                    attributes: true,
+                    attributeFilter: ['class', 'style', 'data-theme', 'data-duet-theme', 'data-color-mode', 'data-bs-theme', 'theme'],
+                    childList: false,
+                    subtree: false
+                });
+            }
         }
     } catch (e) {}
 }

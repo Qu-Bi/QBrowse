@@ -12,6 +12,14 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
   },
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'zustand',
+      'lucide-react'
+    ]
+  },
   // 2. tauri uses the VITE_ prefixed variables
   envPrefix: ['VITE_', 'TAURI_'],
   build: {

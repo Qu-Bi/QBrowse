@@ -134,18 +134,20 @@ export default function ResourceManagerModal() {
         // 1. Add Browser Tabs
         allTabs.forEach(tab => {
             const isTabActive = tab.active && tab.space === activeSpace;
-            // Estimation: live tab accounts for proportional share of renderer memory, sleeping tab is 0MB
-            const estMem = tab.suspended ? 0 : 135; 
+            const isBlank = !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://newtab');
+            // Sleeping tabs and blank dashboard tabs do not run background webviews (0MB).
+            // Active web tabs share the webview renderer process memory.
+            const estMem = (tab.suspended || isBlank) ? 0 : 85; 
             items.push({
                 id: `tab-${tab.id}`,
                 tabId: tab.id,
                 isTab: true,
                 title: tab.title || tab.url || 'Blank Tab',
-                subtitle: tab.url || 'about:blank',
+                subtitle: isBlank ? 'Zen New Tab Dashboard' : (tab.url || 'about:blank'),
                 space: tab.space,
                 active: isTabActive,
-                suspended: !!tab.suspended,
-                cpu: isTabActive ? 0.4 : (tab.suspended ? 0 : 0.1),
+                suspended: !!tab.suspended || isBlank,
+                cpu: isBlank ? 0 : (isTabActive ? 0.3 : (tab.suspended ? 0 : 0.05)),
                 memoryMB: estMem,
                 rawItem: tab
             });
@@ -311,8 +313,10 @@ export default function ResourceManagerModal() {
                 isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/75 backdrop-blur-3xl text-white'
             } ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`}
             onClick={closeModal}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
         >
             <div 
+                id="resource-manager-modal"
                 className={`w-full max-w-5xl h-[88vh] min-h-[580px] rounded-3xl flex flex-col overflow-hidden relative ${
                     isModalClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
                 } ${

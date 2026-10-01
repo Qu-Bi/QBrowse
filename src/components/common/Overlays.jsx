@@ -11,8 +11,10 @@ export default function Overlays() {
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
-    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const draggedItem = useTabStore(state => state.draggedItem);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const activePerformanceTier = useUIStore(state => state.activePerformanceTier);
+    const isEco = activePerformanceTier === 'eco';
 
     return (
         <>
@@ -21,8 +23,8 @@ export default function Overlays() {
                 <div
                     className={`fixed z-[40000] w-64 flex flex-col ${
                         isBright 
-                            ? 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.05)] text-zinc-900' 
-                            : 'bg-black/80 backdrop-blur-3xl border border-white/10 shadow-[0_30px_80px_rgba(0,0,0,0.7)] text-white'
+                            ? (isEco ? 'bg-white border border-black/15 shadow-xl text-zinc-900' : 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.15)] text-zinc-900')
+                            : (isEco ? 'bg-[#0f1015] border border-white/15 shadow-2xl text-white' : 'bg-black/80 backdrop-blur-3xl border border-white/10 shadow-[0_30px_80px_rgba(0,0,0,0.7)] text-white')
                     } rounded-2xl overflow-hidden pointer-events-none animate-pop-in`}
                     style={{ top: Math.min(hoverPreview.top, window.innerHeight - 200), left: hoverPreview.left }}
                 >
@@ -32,7 +34,14 @@ export default function Overlays() {
                         ) : (
                             <Globe size={14} className={isBright ? "text-zinc-400" : "text-white/50"} />
                         )}
-                        <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>{hoverPreview.tab.title}</span>
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>{hoverPreview.tab.title || 'Untitled'}</span>
+                            {hoverPreview.tab.suspended && (
+                                <span className="flex-shrink-0 px-1.5 py-0.2 rounded text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                    Sleeping
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <div className={`w-full h-32 ${isBright ? 'bg-zinc-100/90' : 'bg-[#121214]'} relative overflow-hidden flex flex-col items-center justify-center`}>
                         {hoverPreview.tab.thumbnail ? (

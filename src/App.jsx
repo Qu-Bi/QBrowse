@@ -5,7 +5,7 @@ import useAIStore from './store/useAIStore';
 import useProfileStore from './store/useProfileStore';
 import useGlobalShortcuts from './hooks/useGlobalShortcuts';
 import useDragAndDrop from './hooks/useDragAndDrop';
-import { listenToEvent, windowShow } from './services/electronIPC';
+import { listenToEvent } from './services/electronIPC';
 import { playBootWelcomeChime, playDownloadCompleteChime } from './utils/bootAudio';
 
 import Sidebar from './components/layout/Sidebar';
@@ -61,12 +61,29 @@ export default function App() {
     const [currentWallpaper, setCurrentWallpaper] = useState(activeWallpaper);
     const [prevWallpaper, setPrevWallpaper] = useState(null);
 
+    // Preload & GPU-decode wallpaper so it is fully rendered before boot curtain dissolves
+    useEffect(() => {
+        if (activeWallpaper) {
+            const img = new Image();
+            img.src = activeWallpaper;
+            if (img.decode) {
+                img.decode().catch(() => {});
+            }
+        }
+    }, [activeWallpaper]);
+
     useEffect(() => {
         document.documentElement.style.setProperty('--glass-blur', `${wallpaperBlur}px`);
     }, [wallpaperBlur]);
 
     useEffect(() => {
         if (activeWallpaper !== currentWallpaper) {
+            // While boot curtain is still active, immediately set wallpaper without a visible crossfade lag
+            if (isBooting) {
+                setCurrentWallpaper(activeWallpaper);
+                setPrevWallpaper(null);
+                return;
+            }
             setPrevWallpaper(currentWallpaper);
             setCurrentWallpaper(activeWallpaper);
             const timer = setTimeout(() => {
@@ -74,7 +91,7 @@ export default function App() {
             }, 750);
             return () => clearTimeout(timer);
         }
-    }, [activeWallpaper, currentWallpaper]);
+    }, [activeWallpaper, currentWallpaper, isBooting]);
 
 
     const { onDragOver, onDragLeave, onDropRoot } = useDragAndDrop();
@@ -298,9 +315,6 @@ export default function App() {
                     }
                 });
             }
-
-            // Initialize Hardware-Aware Performance Scaling Profile
-            useUIStore.getState().initPerformanceProfile();
         }
     }, []);
 
@@ -436,11 +450,6 @@ export default function App() {
             root.style.setProperty('--accent-40', `rgba(${rgb}, 0.4)`);
         }
 
-        // Handle startup visibility via custom Rust command
-        setTimeout(() => {
-            windowShow().catch(console.error);
-        }, 300); // Small delay to let React render first
-
         // Listen to global commands from Rust
         let unlistenCommand;
         listenToEvent('command_executed', (event) => {
@@ -464,8 +473,10 @@ export default function App() {
     };
 
     const handleContextMenu = (e) => {
+        // Prevent opening webpage context menu anywhere on application UI chrome, modals, and tool containers.
+        // Webpage context menus are exclusively handled by active webviews in WebViewContainer.
         e.preventDefault();
-        useUIStore.getState().setContextMenu({ x: e.clientX, y: e.clientY, openedAt: Date.now() });
+        e.stopPropagation();
     };
 
     return (

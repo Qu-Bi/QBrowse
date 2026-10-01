@@ -196,8 +196,29 @@ export default function Sidebar() {
                 if (draggedItem) return;
                 const rect = e.currentTarget.getBoundingClientRect();
                 hoverTimeout.current = setTimeout(() => {
-                    setHoverPreview({ tab, top: rect.top, left: rect.right + 12 });
-                }, 600);
+                    // Always read the latest tab state from useTabStore so the freshest thumbnail is shown
+                    const storeState = useTabStore.getState();
+                    const allTabs = spaceType === 'personal' ? storeState.privateTabs
+                        : spaceType === 'work' ? storeState.workTabs
+                        : spaceType === 'ghost' ? storeState.ghostTabs
+                        : storeState.torTabs;
+                    const latestTab = (allTabs || []).find(t => t.id === tab.id) || tab;
+                    setHoverPreview({ tab: latestTab, top: rect.top, left: rect.right + 12 });
+
+                    // On-demand live thumbnail capture if missing and webview is active
+                    if (!latestTab.thumbnail && window.qbrowseWebviews?.[tab.id]) {
+                        const wv = window.qbrowseWebviews[tab.id];
+                        if (wv && typeof wv.capturePage === 'function') {
+                            wv.capturePage().then(img => {
+                                if (img && !img.isEmpty()) {
+                                    const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
+                                    useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                                    setHoverPreview(prev => (prev && prev.tab.id === tab.id ? { ...prev, tab: { ...prev.tab, thumbnail } } : prev));
+                                }
+                            }).catch(() => {});
+                        }
+                    }
+                }, 400);
             }}
             onMouseLeave={() => {
                 clearTimeout(hoverTimeout.current);
@@ -293,19 +314,29 @@ export default function Sidebar() {
 
     return (
         <>
-        <aside className={`sidebar-container min-w-0 flex-shrink-0 flex flex-col rounded-[2rem] overflow-hidden relative z-10 ${
+        <aside 
+            id="qbrowse-sidebar"
+            onContextMenu={(e) => {
+                if (!e.target.closest('[data-tab-id], [data-folder-id]')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }}
+            className={`sidebar-container min-w-0 flex-shrink-0 flex flex-col rounded-[2rem] overflow-hidden relative z-10 ${
             isBright 
                 ? 'liquid-glass-bright text-zinc-900 sidebar-light' 
                 : 'liquid-glass-dark text-white/90 sidebar-dark'
         } ${
             isFullscreen || isSidebarHidden 
-                ? 'w-0 mr-0 opacity-0 pointer-events-none invisible' 
-                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100 visible' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100 visible'
+                ? 'w-0 mr-0 opacity-0 pointer-events-none' 
+                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100'
         }`}>
             {/* Fixed-Width Inner Container to prevent content squishing and text wrapping */}
-            <div className={`sidebar-inner w-full h-full flex flex-col flex-shrink-0 ${
+            <div className={`sidebar-inner h-full flex flex-col flex-shrink-0 ${
+                uiScale === 'compact' ? 'w-16 md:w-60 min-w-[4rem] md:min-w-[15rem]' : 'w-16 md:w-64 min-w-[4rem] md:min-w-[16rem]'
+            } ${
                 isFullscreen || isSidebarHidden
-                    ? '-translate-x-8 opacity-0'
+                    ? '-translate-x-12 opacity-0'
                     : 'translate-x-0 opacity-100'
             }`}>
 

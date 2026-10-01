@@ -185,6 +185,49 @@ body {
   transform-origin: center center;
 }
 
+/* Apple visionOS & macOS Fluid Settings Sheet Animation */
+@keyframes settingsSheetEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.93) translateY(24px) translateZ(0);
+    filter: blur(8px);
+  }
+  65% {
+    opacity: 1;
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0) translateZ(0);
+    filter: blur(0px);
+  }
+}
+
+@keyframes settingsSheetExit {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0) translateZ(0);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96) translateY(14px) translateZ(0);
+    filter: blur(4px);
+  }
+}
+
+.animate-settings-sheet {
+  animation: settingsSheetEnter 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  will-change: transform, opacity, filter;
+  transform: translateZ(0);
+}
+
+.animate-settings-sheet-out {
+  animation: settingsSheetExit 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  will-change: transform, opacity, filter;
+  transform: translateZ(0);
+}
+
 /* Tab Content Smooth Fade & Lift */
 @keyframes tabFadeIn {
   0% {
@@ -468,19 +511,17 @@ html.eco-mode .shadow-xl {
 
 /* Apple Arc & macOS Sonoma Fluid Sidebar System */
 .sidebar-container {
-  transition: width 0.32s cubic-bezier(0.2, 0.9, 0.3, 1),
-              margin-right 0.32s cubic-bezier(0.2, 0.9, 0.3, 1),
-              opacity 0.25s cubic-bezier(0.2, 0.9, 0.3, 1),
-              visibility 0.32s !important;
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
   will-change: width, margin-right, opacity;
   transform: translateZ(0);
   backface-visibility: hidden;
-  contain: layout paint;
 }
 
 .sidebar-inner {
-  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1),
-              opacity 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) !important;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
   will-change: transform, opacity;
   transform: translateZ(0);
   backface-visibility: hidden;
@@ -638,6 +679,11 @@ html.eco-mode .shadow-xl {
   -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28) !important;
+  transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .liquid-glass-bright {
@@ -646,6 +692,11 @@ html.eco-mode .shadow-xl {
   -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 16px 45px rgba(0, 0, 0, 0.05) !important;
+  transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 /* Floating Inner Liquid Glass Capsule / Pill Controls (Nested inside liquid-glass without secondary blur to prevent Chromium dark composite bug) */
@@ -675,12 +726,21 @@ html.eco-mode .shadow-xl {
   color: #09090b !important;
 }
 
-/* Glassmorphism Disabled & Eco Mode (eliminates expensive backdrop-filter on low-power devices) */
+/* =========================================================
+   Performance Scaling Tiers (Eco / Balanced / Ultra)
+   ========================================================= */
+
+/* Eco Mode: Zero blur, fast linear transitions, minimal shadow overhead */
+html.eco-mode {
+  --glass-blur: 0px !important;
+}
+
 html.no-glass .liquid-glass-dark,
 html.eco-mode .liquid-glass-dark {
   background-color: #0c0d14 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
 }
 
 html.no-glass .liquid-glass-bright,
@@ -688,12 +748,37 @@ html.eco-mode .liquid-glass-bright {
   background-color: #f4f4f5 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
 }
 
 html.no-glass [class*="backdrop-blur"],
 html.eco-mode [class*="backdrop-blur"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* Snappy instant transitions on eco mode to avoid frame drops */
+html.eco-mode button,
+html.eco-mode .liquid-pill-dark,
+html.eco-mode .liquid-pill-bright {
+  transition-duration: 0.12s !important;
+}
+
+/* Ultra Mode: Maximum GPU visual fidelity & deep liquid refraction */
+html.ultra-mode {
+  --glass-blur: 28px;
+}
+
+html.ultra-mode .liquid-glass-dark {
+  backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38), 0 0 1px 1px rgba(255, 255, 255, 0.08) inset !important;
+}
+
+html.ultra-mode .liquid-glass-bright {
+  backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(255, 255, 255, 0.6) inset !important;
 }
 
 

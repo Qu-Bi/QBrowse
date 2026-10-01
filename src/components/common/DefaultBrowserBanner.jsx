@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Compass, X, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import qbrowseLogo from '../../assets/icon.png';
 
 export default function DefaultBrowserBanner() {
     const showToast = useUIStore(state => state.showToast);
@@ -124,7 +125,7 @@ export default function DefaultBrowserBanner() {
                     {/* App icon badge */}
                     <div className="w-8 h-8 rounded-xl bg-accent-10 border border-accent-30 flex items-center justify-center flex-shrink-0 shadow-sm shadow-accent/10 p-1 mt-0.5">
                         <img 
-                            src="/icon.png" 
+                            src={qbrowseLogo} 
                             alt="QBrowse" 
                             className="w-full h-full object-contain rounded-md drop-shadow" 
                             onError={(e) => {

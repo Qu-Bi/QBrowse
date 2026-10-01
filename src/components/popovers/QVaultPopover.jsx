@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     Lock, Unlock, KeyRound, Eye, EyeOff, Copy, Plus, Search, 
     ShieldCheck, Check, X, RefreshCw, Globe, Fingerprint, 
     Zap, Settings, ArrowLeft, Shield, Sparkles, Pencil, Trash2,
-    CreditCard, MapPin, Building2, Phone, Mail, Calendar, Hash
+    CreditCard, MapPin, Building2, Phone, Mail, Calendar, Hash,
+    ChevronLeft, ChevronRight
 } from 'lucide-react';
 import useVaultStore from '../../store/useVaultStore';
 import useUIStore from '../../store/useUIStore';
@@ -77,6 +78,39 @@ export default function QVaultPopover({ isClosing }) {
     const [useNumbers, setUseNumbers] = useState(true);
     const [useSymbols, setUseSymbols] = useState(true);
     const [generatedResult, setGeneratedResult] = useState('');
+    const categoryScrollRef = useRef(null);
+    const [isDraggingTabs, setIsDraggingTabs] = useState(false);
+    const [dragStartX, setDragStartX] = useState(0);
+    const [dragScrollLeft, setDragScrollLeft] = useState(0);
+
+    const scrollCategories = (offset) => {
+        if (categoryScrollRef.current) {
+            categoryScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+        }
+    };
+
+    const handleCategoryMouseDown = (e) => {
+        if (!categoryScrollRef.current) return;
+        setIsDraggingTabs(true);
+        setDragStartX(e.pageX - categoryScrollRef.current.offsetLeft);
+        setDragScrollLeft(categoryScrollRef.current.scrollLeft);
+    };
+
+    const handleCategoryMouseLeave = () => {
+        setIsDraggingTabs(false);
+    };
+
+    const handleCategoryMouseUp = () => {
+        setIsDraggingTabs(false);
+    };
+
+    const handleCategoryMouseMove = (e) => {
+        if (!isDraggingTabs || !categoryScrollRef.current) return;
+        e.preventDefault();
+        const x = e.pageX - categoryScrollRef.current.offsetLeft;
+        const walk = (x - dragStartX) * 1.5;
+        categoryScrollRef.current.scrollLeft = dragScrollLeft - walk;
+    };
 
     useEffect(() => {
         if (isUnlocked) {
@@ -638,9 +672,10 @@ export default function QVaultPopover({ isClosing }) {
 
     return (
         <div 
-            id="popover-vault-container"
+            id="qvault-popover"
             onClick={e => e.stopPropagation()} 
-            className={`absolute top-4 right-4 z-[70000] w-[420px] rounded-2xl backdrop-blur-3xl overflow-hidden p-4 transition-all duration-200 border ${
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+            className={`absolute top-4 right-4 z-[70000] w-[440px] max-w-[calc(100vw-32px)] rounded-2xl backdrop-blur-3xl overflow-hidden p-4 transition-all duration-200 border ${
                 isBright
                     ? 'bg-white/60 border-black/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.12)] text-zinc-900'
                     : 'bg-[#0c0d14]/78 border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-zinc-200'
@@ -1122,51 +1157,87 @@ export default function QVaultPopover({ isClosing }) {
             ) : (
                 /* UNLOCKED MAIN VAULT VIEW */
                 <div className="flex flex-col gap-3">
-                    {/* Category Filter Pills */}
-                    <div className={`flex items-center gap-0.5 p-0.5 rounded-lg border overflow-x-auto hide-scroll ${
-                        isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.06]'
-                    }`}>
-                        <button onClick={() => setCategoryFilter('all')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition cursor-pointer ${
-                            categoryFilter === 'all' 
-                                ? (isBright ? 'bg-accent/20 text-zinc-900 border border-accent/40 font-bold shadow-xs' : 'bg-accent/15 text-accent border border-accent/30 shadow-xs font-semibold') 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                        }`}>
-                            All ({parsedItems.length})
+                    {/* Category Filter Pills with Side Scrolling, Wheel & Drag Support */}
+                    <div className="relative flex items-center gap-1">
+                        <button 
+                            type="button"
+                            onClick={() => scrollCategories(-100)} 
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${
+                                isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
+                            }`}
+                            title="Scroll left"
+                        >
+                            <ChevronLeft size={13} />
                         </button>
-                        <button onClick={() => setCategoryFilter('logins')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
-                            categoryFilter === 'logins' 
-                                ? (isBright ? 'bg-sky-500/20 text-sky-900 border border-sky-500/35 font-bold shadow-xs' : 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-xs font-semibold') 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                        }`}>
-                            <Globe size={11} className={categoryFilter === 'logins' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-sky-600' : 'text-sky-400')} /> Logins ({parsedItems.filter(p => p.itemType === 'login').length})
-                        </button>
-                        <button onClick={() => setCategoryFilter('cards')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
-                            categoryFilter === 'cards' 
-                                ? (isBright ? 'bg-blue-500/20 text-blue-900 border border-blue-500/35 font-bold shadow-xs' : 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-xs font-semibold') 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                        }`}>
-                            <CreditCard size={11} className={categoryFilter === 'cards' ? (isBright ? 'text-blue-700' : 'text-blue-300') : (isBright ? 'text-blue-600' : 'text-blue-400')} /> Cards ({parsedItems.filter(p => p.itemType === 'card').length})
-                        </button>
-                        <button onClick={() => setCategoryFilter('addresses')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
-                            categoryFilter === 'addresses' 
-                                ? (isBright ? 'bg-amber-500/20 text-amber-900 border border-amber-500/35 font-bold shadow-xs' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-xs font-semibold') 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                        }`}>
-                            <MapPin size={11} className={categoryFilter === 'addresses' ? (isBright ? 'text-amber-700' : 'text-amber-300') : (isBright ? 'text-amber-600' : 'text-amber-400')} /> Addresses ({parsedItems.filter(p => p.itemType === 'address').length})
-                        </button>
-                        <button onClick={() => setCategoryFilter('passkeys')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
-                            categoryFilter === 'passkeys' 
-                                ? (isBright ? 'bg-purple-500/20 text-purple-900 border border-purple-500/35 font-bold shadow-xs' : 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs font-semibold') 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                        }`}>
-                            <Fingerprint size={11} className={categoryFilter === 'passkeys' ? (isBright ? 'text-purple-700' : 'text-purple-300') : (isBright ? 'text-purple-600' : 'text-purple-400')} /> Passkeys ({parsedItems.filter(p => p.itemType === 'passkey').length})
-                        </button>
-                        <button onClick={() => setCategoryFilter('generator')} className={`px-2 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer ${
-                            categoryFilter === 'generator' 
-                                ? (isBright ? 'bg-emerald-500/20 text-emerald-900 border border-emerald-500/35 font-bold shadow-xs' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-xs font-semibold') 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                        }`}>
-                            <Sparkles size={11} className={categoryFilter === 'generator' ? (isBright ? 'text-emerald-700' : 'text-emerald-300') : (isBright ? 'text-emerald-600' : 'text-emerald-400')} /> Gen
+
+                        <div 
+                            ref={categoryScrollRef}
+                            onMouseDown={handleCategoryMouseDown}
+                            onMouseLeave={handleCategoryMouseLeave}
+                            onMouseUp={handleCategoryMouseUp}
+                            onMouseMove={handleCategoryMouseMove}
+                            onWheel={(e) => {
+                                if (e.deltaY !== 0) {
+                                    e.currentTarget.scrollLeft += e.deltaY;
+                                }
+                            }}
+                            className={`flex-1 flex items-center gap-1 p-0.5 rounded-lg border overflow-x-auto hide-scroll scroll-smooth select-none cursor-grab active:cursor-grabbing ${
+                                isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.06]'
+                            }`}
+                        >
+                            <button onClick={() => setCategoryFilter('all')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition cursor-pointer flex-shrink-0 ${
+                                categoryFilter === 'all' 
+                                    ? (isBright ? 'bg-accent/20 text-zinc-900 border border-accent/40 font-bold shadow-xs' : 'bg-accent/15 text-accent border border-accent/30 shadow-xs font-semibold') 
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
+                            }`}>
+                                All ({parsedItems.length})
+                            </button>
+                            <button onClick={() => setCategoryFilter('logins')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                categoryFilter === 'logins' 
+                                    ? (isBright ? 'bg-sky-500/20 text-sky-900 border border-sky-500/35 font-bold shadow-xs' : 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-xs font-semibold') 
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
+                            }`}>
+                                <Globe size={11} className={categoryFilter === 'logins' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-sky-600' : 'text-sky-400')} /> Logins ({parsedItems.filter(p => p.itemType === 'login').length})
+                            </button>
+                            <button onClick={() => setCategoryFilter('cards')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                categoryFilter === 'cards' 
+                                    ? (isBright ? 'bg-blue-500/20 text-blue-900 border border-blue-500/35 font-bold shadow-xs' : 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-xs font-semibold') 
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
+                            }`}>
+                                <CreditCard size={11} className={categoryFilter === 'cards' ? (isBright ? 'text-blue-700' : 'text-blue-300') : (isBright ? 'text-blue-600' : 'text-blue-400')} /> Cards ({parsedItems.filter(p => p.itemType === 'card').length})
+                            </button>
+                            <button onClick={() => setCategoryFilter('addresses')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                categoryFilter === 'addresses' 
+                                    ? (isBright ? 'bg-amber-500/20 text-amber-900 border border-amber-500/35 font-bold shadow-xs' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-xs font-semibold') 
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
+                            }`}>
+                                <MapPin size={11} className={categoryFilter === 'addresses' ? (isBright ? 'text-amber-700' : 'text-amber-300') : (isBright ? 'text-amber-600' : 'text-amber-400')} /> Addresses ({parsedItems.filter(p => p.itemType === 'address').length})
+                            </button>
+                            <button onClick={() => setCategoryFilter('passkeys')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                categoryFilter === 'passkeys' 
+                                    ? (isBright ? 'bg-purple-500/20 text-purple-900 border border-purple-500/35 font-bold shadow-xs' : 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs font-semibold') 
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
+                            }`}>
+                                <Fingerprint size={11} className={categoryFilter === 'passkeys' ? (isBright ? 'text-purple-700' : 'text-purple-300') : (isBright ? 'text-purple-600' : 'text-purple-400')} /> Passkeys ({parsedItems.filter(p => p.itemType === 'passkey').length})
+                            </button>
+                            <button onClick={() => setCategoryFilter('generator')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                categoryFilter === 'generator' 
+                                    ? (isBright ? 'bg-emerald-500/20 text-emerald-900 border border-emerald-500/35 font-bold shadow-xs' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-xs font-semibold') 
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
+                            }`}>
+                                <Sparkles size={11} className={categoryFilter === 'generator' ? (isBright ? 'text-emerald-700' : 'text-emerald-300') : (isBright ? 'text-emerald-600' : 'text-emerald-400')} /> Gen
+                            </button>
+                        </div>
+
+                        <button 
+                            type="button"
+                            onClick={() => scrollCategories(100)} 
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${
+                                isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
+                            }`}
+                            title="Scroll right"
+                        >
+                            <ChevronRight size={13} />
                         </button>
                     </div>
 

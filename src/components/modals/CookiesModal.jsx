@@ -82,8 +82,13 @@ export default function CookiesModal() {
     });
 
     return (
-        <div className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/70 backdrop-blur-3xl text-white'} font-sans ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} onClick={closeModal}>
+        <div 
+            className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/70 backdrop-blur-3xl text-white'} font-sans ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} 
+            onClick={closeModal}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+        >
             <div 
+                id="cookies-modal"
                 className={`w-[750px] max-w-[92vw] h-[600px] max-h-[85vh] rounded-3xl overflow-hidden flex flex-col relative ${
                     isModalClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
                 } ${
@@ -92,6 +97,7 @@ export default function CookiesModal() {
                         : 'bg-[#0c0d10] border border-white/15 shadow-[0_40px_100px_rgba(0,0,0,0.8)] text-white'
                 }`} 
                 onClick={e => e.stopPropagation()}
+                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
             >
                 
                 {/* Header */}

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import qbrowseLogo from '../../assets/icon.png';
 
 const TOUR_STEPS = [
     {
@@ -358,7 +359,7 @@ export default function LivingTour({ onExit }) {
                     {/* Brand Icon & Welcome */}
                     <div className="flex flex-col items-center space-y-2 relative z-10">
                         <div className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/15 p-2 shadow-lg backdrop-blur-xl flex items-center justify-center">
-                            <img src="/icon.png" alt="QBrowse" className="w-full h-full object-contain drop-shadow" />
+                            <img src={qbrowseLogo} alt="QBrowse" className="w-full h-full object-contain drop-shadow" />
                         </div>
                         <h2 className="text-2xl font-black text-white tracking-tight mt-2">
                             Welcome to QBrowse

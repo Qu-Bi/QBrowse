@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PanelLeft, Lock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User, BookOpen, Leaf, Gauge, Zap, Cpu } from 'lucide-react';
+import { PanelLeft, Lock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User, BookOpen, Cpu, Feather, GaugeCircle, Rocket } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
@@ -197,7 +197,10 @@ export default function TopBar() {
         <>
             <div className={`relative z-[60] transition-[margin,opacity] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${isFullscreen ? '-mt-[60px] opacity-0' : 'mt-0 opacity-100'}`}>
                 {/* SINGLE BUBBLE TOPBAR */}
-                <div className={`drag-region flex mt-0 mx-0 mb-2 ${uiScale === 'compact' ? 'h-[44px]' : 'h-[50px]'} z-50 items-center justify-between px-3 rounded-full transition-all ${
+                <div 
+                    id="qbrowse-topbar"
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+                    className={`drag-region flex mt-0 mx-0 mb-2 ${uiScale === 'compact' ? 'h-[44px]' : 'h-[50px]'} z-50 items-center justify-between px-3 rounded-full transition-all ${
                     isBright ? 'liquid-glass-bright text-zinc-900' : 'liquid-glass-dark text-white'
                 }`}>
 
@@ -512,6 +515,47 @@ export default function TopBar() {
                                 <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                 </svg>
+                            </button>
+
+                            <div className={`w-px h-4 mx-0.5 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`}></div>
+
+                            {/* Performance Mode Quick Switcher with morphing transition */}
+                            <button
+                                onClick={() => cyclePerformanceMode()}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    useUIStore.getState().openSettings('performance');
+                                }}
+                                className={`p-1.5 rounded-full transition-all duration-300 ease-out group relative flex items-center justify-center cursor-pointer ${
+                                    performanceMode === 'auto'
+                                        ? (isBright
+                                            ? 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.15)]'
+                                            : 'bg-accent/15 text-accent hover:bg-accent/25 border border-accent/30 shadow-[0_0_10px_rgba(212,188,148,0.2)]')
+                                        : performanceMode === 'eco'
+                                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/35 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
+                                            : performanceMode === 'ultra'
+                                                ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/35 shadow-[0_0_14px_rgba(168,85,247,0.3)]'
+                                                : (isBright 
+                                                    ? 'bg-sky-500/15 text-sky-600 hover:bg-sky-500/25 border border-sky-500/30 shadow-[0_0_8px_rgba(14,165,233,0.15)]' 
+                                                    : 'bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border border-sky-500/30 shadow-[0_0_10px_rgba(14,165,233,0.2)]')
+                                }`}
+                                title={`Performance: ${performanceMode.toUpperCase()}${performanceMode === 'auto' ? ` (Adapting: ${activePerformanceTier.toUpperCase()})` : ''}\nClick to cycle mode, right-click for settings`}
+                            >
+                                <span 
+                                    key={performanceMode} 
+                                    className="inline-flex items-center justify-center transition-all duration-300 animate-pop-in group-hover:scale-110"
+                                >
+                                    {performanceMode === 'auto' ? (
+                                        <Cpu size={14} className="stroke-[2.2]" />
+                                    ) : performanceMode === 'eco' ? (
+                                        <Feather size={14} className="stroke-[2.2]" />
+                                    ) : performanceMode === 'ultra' ? (
+                                        <Rocket size={14} className="stroke-[2.2]" />
+                                    ) : (
+                                        <GaugeCircle size={14} className="stroke-[2.2]" />
+                                    )}
+                                </span>
                             </button>
                         </div>
                     </div>

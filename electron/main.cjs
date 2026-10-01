@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -7,6 +7,17 @@ const os = require('os');
 const http = require('http');
 const { pathToFileURL, fileURLToPath } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
+
+// Set application identity for Windows Task Manager, Taskbar, and OS shell
+app.name = 'QBrowse';
+app.setName('QBrowse');
+if (process.platform === 'win32') {
+    app.setAppUserModelId('com.qbrowse.app');
+}
+process.title = 'QBrowse';
+try {
+    nativeTheme.themeSource = 'dark';
+} catch (_) {}
 
 // In-Tab JavaScript Dialog state collections
 const activeWebviewDialogs = new Map();
@@ -584,7 +595,7 @@ crashReporter.start({
 });
 
 let mainWindow;
-const isDev = !app.isPackaged;
+const isDev = !app.isPackaged && (process.env.NODE_ENV === 'development' || !fsSync.existsSync(path.join(__dirname, '../dist/index.html')));
 app.setName('QBrowse');
 if (process.platform === 'win32') {
     app.setAppUserModelId('com.qbrowse.app');
@@ -650,7 +661,9 @@ app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('canvas-oop-rasterization');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('enable-picture-in-picture');
-app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs,ParallelDownloading,CanvasOopRasterization');
+app.commandLine.appendSwitch('enable-fast-unload');
+app.commandLine.appendSwitch('enable-tcp-fastopen');
+app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs,ParallelDownloading,CanvasOopRasterization,AutomaticLazyImageLoading');
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
@@ -681,7 +694,7 @@ if (isFlagOn('enable-webgpu', false)) app.commandLine.appendSwitch('enable-unsaf
 if (isFlagOn('force-dark-contents', false)) app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark');
 if (isFlagOn('enable-encrypted-client-hello', true)) app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello');
 if (isFlagOn('enable-tls13-kyber', true)) app.commandLine.appendSwitch('enable-features', 'PostQuantumKyber');
-if (isFlagOn('strict-origin-isolation', true)) app.commandLine.appendSwitch('site-per-process');
+if (isFlagOn('strict-origin-isolation', false)) app.commandLine.appendSwitch('site-per-process');
 if (isFlagOn('canvas-oop-rasterization', false)) app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization');
 if (isFlagOn('parallel-download-engine', true)) app.commandLine.appendSwitch('enable-features', 'ParallelDownloading');
 if (isFlagOn('overlay-scrollbars', false)) app.commandLine.appendSwitch('enable-features', 'OverlayScrollbar');
@@ -758,6 +771,10 @@ function createWindow(options = {}) {
   ensureVault();
 
   const win = new BrowserWindow({
+    title: 'QBrowse',
+    appDetails: {
+      appId: 'com.qbrowse.app'
+    },
     width: 1580,
     height: 1000,
     minWidth: 1280,
@@ -862,13 +879,25 @@ function createWindow(options = {}) {
       if (!sess || !sess.webRequest) return;
       try {
           sess.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-              if (!isNativeAdblockActive) return callback({ cancel: false });
-              
               const url = details.url;
               if (!url) return callback({ cancel: false });
+
+              // 1. HTTPS Upgrade
+              if (settingsStore.httpsOnly !== false && url.startsWith('http://')) {
+                  try {
+                      const parsed = new URL(url);
+                      if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1' && !parsed.hostname.endsWith('.onion')) {
+                          const secureUrl = url.replace(/^http:\/\//i, 'https://');
+                          return callback({ redirectURL: secureUrl });
+                      }
+                  } catch (_) {}
+              }
+
+              if (!isNativeAdblockActive) return callback({ cancel: false });
+
               const u = url.toLowerCase();
 
-              // HYBRID BYPASS: Instantly allow media streams before Ghostery serialization to prevent IPC crash
+              // 2. HYBRID BYPASS: Instantly allow media streams before Ghostery serialization to prevent IPC crash
               if (
                   u.includes('googlevideo.com/videoplayback') ||
                   u.includes('manifest.googlevideo.com') ||
@@ -877,17 +906,28 @@ function createWindow(options = {}) {
                   return callback({ cancel: false });
               }
 
-              // Google Auth & BotGuard attestation bypass: never block Google login and attestation telemetry
+              // 3. Auth & Identity bypass: NEVER block authentication, OAuth, or Firebase identity endpoints!
               if (
                   u.includes('accounts.google.com') ||
                   u.includes('accounts.youtube.com') ||
                   u.includes('play.google.com/log') ||
-                  u.includes('ssl.gstatic.com/accounts')
+                  u.includes('ssl.gstatic.com/accounts') ||
+                  u.includes('firebaseapp.com') ||
+                  u.includes('identitytoolkit.googleapis.com') ||
+                  u.includes('securetoken.googleapis.com') ||
+                  u.includes('firebaseinstallations.googleapis.com') ||
+                  u.includes('apis.google.com') ||
+                  u.includes('appleid.apple.com') ||
+                  u.includes('theverge.com/auth') ||
+                  u.includes('/oauth') ||
+                  u.includes('/auth') ||
+                  u.includes('/login') ||
+                  u.includes('/signin')
               ) {
                   return callback({ cancel: false });
               }
 
-              // Social Tracking Check
+              // 4. Social Tracking Check (only if not an auth endpoint)
               const isSocialBlocked = settingsStore.social !== false;
               if (isSocialBlocked) {
                   if (
@@ -905,7 +945,7 @@ function createWindow(options = {}) {
                   return callback({ cancel: false });
               }
 
-              // Feed to Ghostery manually
+              // 5. Feed to Ghostery manually
               try {
                   const requestObj = fromElectronDetails(details);
                   const match = globalBlocker.match(requestObj);
@@ -978,11 +1018,13 @@ function createWindow(options = {}) {
                     action: 'allow',
                     overrideBrowserWindowOptions: {
                         icon: path.join(__dirname, '../icon.png'),
-                        width: 680,
-                        height: 820,
-                        minWidth: 540,
-                        minHeight: 680,
+                        width: 620,
+                        height: 760,
+                        minWidth: 460,
+                        minHeight: 580,
                         frame: false,
+                        titleBarStyle: 'hidden',
+                        titleBarOverlay: false,
                         hasShadow: true,
                         autoHideMenuBar: true,
                         backgroundColor: '#121214',
@@ -1044,29 +1086,35 @@ function createWindow(options = {}) {
         // Throttle inactive background webviews to prevent CPU/GPU drains and battery drain,
         // but automatically unthrottle whenever media (YouTube, Spotify, etc.) starts playing.
         if (contents.getType() === 'webview') {
-            contents.setBackgroundThrottling(true);
+            try {
+                contents.setEmulatedMedia({ colorScheme: 'dark' });
+            } catch (_) {}
 
-            contents.on('media-started-playing', () => {
+            const currentMode = performanceEngine.getSettings().mode;
+            if (currentMode === 'ultra') {
                 contents.setBackgroundThrottling(false);
-            });
-
-            contents.on('media-paused', () => {
+            } else {
                 contents.setBackgroundThrottling(true);
-            });
+                contents.on('media-started-playing', () => {
+                    contents.setBackgroundThrottling(false);
+                });
+                contents.on('media-paused', () => {
+                    const latestMode = performanceEngine.getSettings().mode;
+                    if (latestMode !== 'ultra') {
+                        contents.setBackgroundThrottling(true);
+                    }
+                });
+            }
         } else {
             // Main application window stays unthrottled for UI responsiveness
             contents.setBackgroundThrottling(false);
         }
 
-        // Apply Google vs Chrome User-Agent for webviews and popup windows
+        // Apply clean Chrome User-Agent for webviews and popup windows
         if (contents.getType() === 'webview' || (contents.getType() === 'window' && contents !== mainWindow?.webContents)) {
             contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
                 if (!isMainFrame) return;
-                if (isGoogleDomain(url)) {
-                    contents.setUserAgent(genuineElectronUA);
-                } else {
-                    contents.setUserAgent(cleanChromeUA);
-                }
+                contents.setUserAgent(cleanChromeUA);
             });
         }
 
@@ -1208,21 +1256,69 @@ app.on('browser-window-created', (event, win) => {
     }
 });
 
-function isGoogleDomain(url) {
-    if (!url) return false;
-    const u = String(url).toLowerCase();
-    return u.includes('google.com') || 
-           u.includes('youtube.com') || 
-           u.includes('gstatic.com') || 
-           u.includes('googleapis.com') || 
-           u.includes('googleusercontent.com') ||
-           u.includes('firebaseapp.com');
+function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl) {
+    if (!requestUrl) return false;
+    try {
+        const reqHost = new URL(requestUrl).hostname.toLowerCase();
+        
+        // Critical Auth, Identity & Platform domains - NEVER block cookies or tokens for authentication flows!
+        if (
+            reqHost.includes('google.com') ||
+            reqHost.includes('gstatic.com') ||
+            reqHost.includes('googleapis.com') ||
+            reqHost.includes('firebaseapp.com') ||
+            reqHost.includes('firebaseinstallations.googleapis.com') ||
+            reqHost.includes('appleid.apple.com') ||
+            reqHost.includes('facebook.com') ||
+            reqHost.includes('github.com') ||
+            reqHost.includes('twitter.com') ||
+            reqHost.includes('x.com') ||
+            reqHost.includes('microsoft.com') ||
+            reqHost.includes('live.com') ||
+            reqHost.includes('voxmedia.com')
+        ) {
+            return false;
+        }
+
+        const getBaseDomain = (host) => {
+            if (!host) return '';
+            const parts = host.split('.');
+            if (parts.length <= 2) return host;
+            const tld2 = parts.slice(-2).join('.');
+            if (['co.uk', 'com.au', 'co.nz', 'co.jp', 'com.br'].includes(tld2)) {
+                return parts.slice(-3).join('.');
+            }
+            return parts.slice(-2).join('.');
+        };
+
+        const targetBase = getBaseDomain(reqHost);
+
+        // Check against referrer
+        if (referrerUrl) {
+            try {
+                const refHost = new URL(referrerUrl).hostname.toLowerCase();
+                const refBase = getBaseDomain(refHost);
+                if (targetBase === refBase) return false; // First-party request
+            } catch (_) {}
+        }
+
+        // Check against active webview / main frame URL
+        if (mainFrameUrl) {
+            try {
+                const mfHost = new URL(mainFrameUrl).hostname.toLowerCase();
+                const mfBase = getBaseDomain(mfHost);
+                if (targetBase === mfBase) return false; // First-party request
+            } catch (_) {}
+        }
+
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 // Clean Google Chrome desktop User-Agent matching underlying Chromium version
 const cleanChromeUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
-// Authentic Electron Chromium User-Agent for Google Authentication (activates WebLiteSignIn)
-const genuineElectronUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Electron/${process.versions.electron} Safari/537.36`;
 app.userAgentFallback = cleanChromeUA;
 
 app.setName('QBrowse');
@@ -1233,37 +1329,22 @@ const configuredSessions = new WeakSet();
 function setupHeadersHandler(sess) {
     if (!sess || !sess.webRequest) return;
 
-    sess.webRequest.onBeforeRequest((details, callback) => {
-        if (settingsStore.httpsOnly !== false && details.url && details.url.startsWith('http://')) {
-            try {
-                const parsed = new URL(details.url);
-                if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1' && !parsed.hostname.endsWith('.onion')) {
-                    const secureUrl = details.url.replace(/^http:\/\//i, 'https://');
-                    return callback({ redirectURL: secureUrl });
-                }
-            } catch (_) {}
-        }
-        callback({ cancel: false });
-    });
-
     sess.webRequest.onBeforeSendHeaders((details, callback) => {
         delete details.requestHeaders['X-Electron-Version'];
 
-        if (isGoogleDomain(details.url)) {
-            // Google routes to official WebLiteSignIn flow when receiving honest Electron/Chromium identity
-            details.requestHeaders['User-Agent'] = genuineElectronUA;
-        } else {
-            // Provide clean Chrome desktop identity for standard web browsing
-            details.requestHeaders['User-Agent'] = cleanChromeUA;
-        }
+        // Provide clean Chrome desktop identity for standard web browsing and authentication
+        details.requestHeaders['User-Agent'] = cleanChromeUA;
 
         if (settingsStore.dnt !== false) {
             details.requestHeaders['DNT'] = '1';
         }
 
-        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame') {
-            delete details.requestHeaders['Cookie'];
-            delete details.requestHeaders['cookie'];
+        if (settingsStore.block3rdParty) {
+            const is3rd = isThirdPartyCookieRequest(details.url, details.referrer, latestActiveWebviewUrl);
+            if (is3rd) {
+                delete details.requestHeaders['Cookie'];
+                delete details.requestHeaders['cookie'];
+            }
         }
 
         callback({ cancel: false, requestHeaders: details.requestHeaders });
@@ -1272,9 +1353,12 @@ function setupHeadersHandler(sess) {
     sess.webRequest.onHeadersReceived((details, callback) => {
         const responseHeaders = { ...details.responseHeaders };
 
-        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame') {
-            delete responseHeaders['set-cookie'];
-            delete responseHeaders['Set-Cookie'];
+        if (settingsStore.block3rdParty) {
+            const is3rd = isThirdPartyCookieRequest(details.url, details.referrer, latestActiveWebviewUrl);
+            if (is3rd) {
+                delete responseHeaders['set-cookie'];
+                delete responseHeaders['Set-Cookie'];
+            }
         }
 
         if (localDialogPort) {
@@ -1292,6 +1376,17 @@ function setupHeadersHandler(sess) {
         callback({ responseHeaders });
     });
 }
+
+// IPC handler to dynamically emulate colorScheme on webviews (e.g. for Smart Dark Mode)
+ipcMain.on('set-webview-color-scheme', (event, { webContentsId, colorScheme }) => {
+    try {
+        if (!webContentsId) return;
+        const targetContents = webContents.fromId(webContentsId);
+        if (targetContents && !targetContents.isDestroyed()) {
+            targetContents.setEmulatedMedia({ colorScheme: colorScheme || 'dark' });
+        }
+    } catch (_) {}
+});
 
 function setupDownloadHandler(sess) {
     if (!sess) return;
@@ -1477,8 +1572,31 @@ try {
     console.warn('[PerformanceEngine] Error setting Chromium flags:', e.message);
 }
 
+function applyPerformanceTierToContents(activeTier) {
+    try {
+        const allWc = webContents.getAllWebContents();
+        for (const wc of allWc) {
+            if (wc.getType() === 'webview') {
+                if (activeTier === 'ultra') {
+                    wc.setBackgroundThrottling(false);
+                } else {
+                    wc.setBackgroundThrottling(true);
+                }
+            }
+        }
+        if (activeTier === 'eco') {
+            session.defaultSession.clearCache().catch(() => {});
+        }
+    } catch (e) {
+        console.warn('[PerformanceEngine] Error applying tier to webContents:', e.message);
+    }
+}
+
 app.whenReady().then(async () => {
-  // Register local media streaming protocol for wallpapers and assets
+  // 1. Immediately create the main browser window so UI rendering starts instantly
+  createWindow();
+
+  // 2. Register local media streaming protocol for wallpapers and assets
   try {
       protocol.handle('qbrowse-media', async (request) => {
           try {
@@ -1510,103 +1628,90 @@ app.whenReady().then(async () => {
       console.warn('[Protocol] Failed to register qbrowse-media handler:', e.message);
   }
 
+  // 3. Initialize performance settings and permissions
   try {
       performanceEngine.initSettings(app.getPath('userData'));
-      if (powerMonitor) {
-          powerMonitor.on('on-battery', async () => {
-              let gpuInfo = null;
-              try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
-              const profile = performanceEngine.detectHardwareProfile(gpuInfo, true);
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.send('performance-profile-changed', profile);
-              }
-          });
-          powerMonitor.on('on-ac', async () => {
-              let gpuInfo = null;
-              try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
-              const profile = performanceEngine.detectHardwareProfile(gpuInfo, false);
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.send('performance-profile-changed', profile);
-              }
-          });
-      }
-  } catch (e) {
-      console.warn('[PerformanceEngine] Power monitor setup warning:', e.message);
-  }
-
-  try {
-      if (components && typeof components.whenReady === 'function') {
-          await components.whenReady();
-          console.log('Widevine and components loaded successfully.');
-      }
-  } catch(e) {
-      console.error('Components failed to load:', e);
-  }
-
-  // Fix YouTube and Google login stuck/rejected state by wiping service workers and caches on boot
-  const sessionsToClean = [
-      session.defaultSession,
-      session.fromPartition('persist:profile_default')
-  ];
-  for (const s of sessionsToClean) {
-      s.clearStorageData({
-          origin: 'https://www.youtube.com',
-          storages: ['serviceworkers', 'cachestorage']
-      }).catch(() => {});
-      s.clearStorageData({
-          origin: 'https://accounts.google.com',
-          storages: ['serviceworkers', 'cachestorage']
-      }).catch(() => {});
-  }
-
-  ensurePermissionsFile();
-
-  // Configure default session (Personal and Work spaces)
-  setupWebviewSession(session.defaultSession);
-
-  // Proactively configure active profile partition (Personal and Work webviews)
-  const defaultProfileSession = session.fromPartition('persist:profile_default');
-  setupWebviewSession(defaultProfileSession);
-
-  // Proactively configure in-memory ghost partition (Incognito space)
-  const ghostSession = session.fromPartition('ghost');
-  setupWebviewSession(ghostSession);
-  if (ghostSession && typeof ghostSession.setWebRTCIPHandlingPolicy === 'function') {
-      ghostSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
-  }
-
-  // Proactively configure in-memory tor partition (Tor Onion space)
-  const torSession = session.fromPartition('tor');
-  setupWebviewSession(torSession);
-  if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
-      torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
-  }
-
-  // Ensure ghost and tor sessions start completely fresh with no remnants
-  try {
-      ghostSession.clearStorageData().catch(() => {});
-      ghostSession.clearCache().catch(() => {});
-      torSession.clearStorageData().catch(() => {});
-      torSession.clearCache().catch(() => {});
+      ensurePermissionsFile();
   } catch (_) {}
 
-  // Auto-configure any dynamic sessions created by webviews
-  app.on('session-created', (sess) => {
-      setupWebviewSession(sess);
-  });
-
-  createWindow();
-
-  // Proactively ensure OS browser registry/desktop entries exist in background
-  setTimeout(() => {
-    try {
-      if (process.platform === 'win32') {
-        registerWindowsBrowser();
-      } else if (process.platform === 'linux') {
-        ensureLinuxDesktopEntry();
+  // 4. Configure webview sessions
+  try {
+      setupWebviewSession(session.defaultSession);
+      const defaultProfileSession = session.fromPartition('persist:profile_default');
+      setupWebviewSession(defaultProfileSession);
+      const ghostSession = session.fromPartition('ghost');
+      setupWebviewSession(ghostSession);
+      if (ghostSession && typeof ghostSession.setWebRTCIPHandlingPolicy === 'function') {
+          ghostSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
       }
-    } catch (_) {}
-  }, 1500);
+      const torSession = session.fromPartition('tor');
+      setupWebviewSession(torSession);
+      if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
+          torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+      }
+
+      app.on('session-created', (sess) => {
+          setupWebviewSession(sess);
+      });
+  } catch (_) {}
+
+  // 5. Non-blocking asynchronous background initialization (Power monitor, Widevine DRM, YouTube/Google cleaner, OS registry)
+  setTimeout(async () => {
+      try {
+          if (powerMonitor) {
+              powerMonitor.on('on-battery', async () => {
+                  let gpuInfo = null;
+                  try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
+                  const profile = performanceEngine.detectHardwareProfile(gpuInfo, true);
+                  applyPerformanceTierToContents(profile.activeTier);
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                      mainWindow.webContents.send('performance-profile-changed', profile);
+                  }
+              });
+              powerMonitor.on('on-ac', async () => {
+                  let gpuInfo = null;
+                  try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
+                  const profile = performanceEngine.detectHardwareProfile(gpuInfo, false);
+                  applyPerformanceTierToContents(profile.activeTier);
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                      mainWindow.webContents.send('performance-profile-changed', profile);
+                  }
+              });
+          }
+      } catch (e) {
+          console.warn('[PerformanceEngine] Power monitor setup warning:', e.message);
+      }
+
+      try {
+          if (components && typeof components.whenReady === 'function') {
+              await components.whenReady();
+              console.log('Widevine and components loaded successfully.');
+          }
+      } catch(e) {
+          console.error('Components failed to load:', e);
+      }
+
+      // Clean YouTube and Google login stuck/rejected state asynchronously
+      try {
+          const sessionsToClean = [
+              session.defaultSession,
+              session.fromPartition('persist:profile_default')
+          ];
+          for (const s of sessionsToClean) {
+              s.clearStorageData({ origin: 'https://www.youtube.com', storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
+              s.clearStorageData({ origin: 'https://accounts.google.com', storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
+          }
+      } catch (_) {}
+
+      try {
+          if (process.platform === 'win32') {
+              registerWindowsBrowser();
+          } else if (process.platform === 'linux') {
+              ensureLinuxDesktopEntry();
+          }
+      } catch (_) {}
+  }, 100);
+});
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1629,7 +1734,6 @@ app.whenReady().then(async () => {
           return { success: false, error: e.message };
       }
   });
-});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -2381,14 +2485,20 @@ ipcMain.handle('clear-all-data', async (event, options = {}) => {
 ipcMain.handle('get-app-metrics', async () => {
     try {
         const metrics = app.getAppMetrics();
-        const procList = metrics.map(m => ({
-            pid: m.pid,
-            type: m.type,
-            cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10,
-            memoryMB: Math.round((m.memory?.workingSetSize || 0) / 1024),
-            peakMemoryMB: Math.round((m.memory?.peakWorkingSetSize || 0) / 1024),
-            isMain: m.pid === process.pid
-        }));
+        const procList = metrics.map(m => {
+            const privateKB = m.memory?.privateBytes || 0;
+            const workingSetKB = m.memory?.workingSetSize || 0;
+            const memMB = privateKB > 0 ? Math.round(privateKB / 1024) : Math.round(workingSetKB / 1024);
+            return {
+                pid: m.pid,
+                type: m.type,
+                cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10,
+                memoryMB: memMB,
+                workingSetMB: Math.round(workingSetKB / 1024),
+                peakMemoryMB: Math.round((m.memory?.peakWorkingSetSize || 0) / 1024),
+                isMain: m.pid === process.pid
+            };
+        });
 
         try {
             const totalSysMemMB = Math.round(os.totalmem() / (1024 * 1024));
@@ -2954,6 +3064,7 @@ ipcMain.handle('system-set-performance-settings', async (event, settings) => {
     try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
     const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
     const profile = performanceEngine.detectHardwareProfile(gpuInfo, isOnBattery);
+    applyPerformanceTierToContents(profile.activeTier);
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('performance-profile-changed', profile);
     }
@@ -3183,55 +3294,74 @@ Exec=${execCmd} --incognito %U
     }
 }
 
-function checkIsDefaultBrowser() {
-    try {
-        if (process.platform === 'win32') {
-            const { execSync } = require('child_process');
-            try {
-                const out = execSync('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice" /v "ProgId"', {
-                    encoding: 'utf8',
-                    stdio: ['ignore', 'pipe', 'ignore']
-                });
-                const match = out.match(/ProgId\s+REG_SZ\s+(\S+)/i);
-                if (match && match[1]) {
-                    const progId = match[1].trim();
-                    // On Windows 10/11, UserChoice ProgId is the definitive authority.
-                    return /qbrowse/i.test(progId);
-                }
-            } catch (_) {}
+let _cachedDefaultBrowserStatus = null;
+let _cachedDefaultBrowserTimestamp = 0;
 
-            return false;
-        } else if (process.platform === 'linux') {
-            const { execSync } = require('child_process');
-            try {
-                const out1 = execSync('xdg-settings get default-web-browser', {
-                    encoding: 'utf8',
-                    stdio: ['ignore', 'pipe', 'ignore']
-                }).trim();
-                if (out1) return /qbrowse/i.test(out1);
-
-                const out2 = execSync('xdg-mime query default x-scheme-handler/http', {
-                    encoding: 'utf8',
-                    stdio: ['ignore', 'pipe', 'ignore']
-                }).trim();
-                if (out2) return /qbrowse/i.test(out2);
-            } catch (_) {}
-
-            return false;
-        } else {
-            const isHttp = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('http');
-            const isHttps = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('https');
-            return Boolean(isHttp && isHttps);
-        }
-    } catch (_) {
-        return false;
+function checkIsDefaultBrowserAsync() {
+    const now = Date.now();
+    if (_cachedDefaultBrowserStatus !== null && (now - _cachedDefaultBrowserTimestamp < 15000)) {
+        return Promise.resolve(_cachedDefaultBrowserStatus);
     }
+
+    return new Promise((resolve) => {
+        try {
+            if (process.platform === 'win32') {
+                const { exec } = require('child_process');
+                exec('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice" /v "ProgId"', {
+                    encoding: 'utf8',
+                    timeout: 2000
+                }, (err, stdout) => {
+                    if (err || !stdout) {
+                        _cachedDefaultBrowserStatus = false;
+                        _cachedDefaultBrowserTimestamp = Date.now();
+                        return resolve(false);
+                    }
+                    const match = stdout.match(/ProgId\s+REG_SZ\s+(\S+)/i);
+                    const isDefault = match && match[1] ? /qbrowse/i.test(match[1].trim()) : false;
+                    _cachedDefaultBrowserStatus = isDefault;
+                    _cachedDefaultBrowserTimestamp = Date.now();
+                    resolve(isDefault);
+                });
+            } else if (process.platform === 'linux') {
+                const { exec } = require('child_process');
+                exec('xdg-settings get default-web-browser', {
+                    encoding: 'utf8',
+                    timeout: 2000
+                }, (err, stdout) => {
+                    const isDefault = !err && stdout ? /qbrowse/i.test(stdout.trim()) : false;
+                    _cachedDefaultBrowserStatus = isDefault;
+                    _cachedDefaultBrowserTimestamp = Date.now();
+                    resolve(isDefault);
+                });
+            } else {
+                const isHttp = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('http');
+                const isHttps = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('https');
+                const isDefault = Boolean(isHttp && isHttps);
+                _cachedDefaultBrowserStatus = isDefault;
+                _cachedDefaultBrowserTimestamp = Date.now();
+                resolve(isDefault);
+            }
+        } catch (_) {
+            _cachedDefaultBrowserStatus = false;
+            _cachedDefaultBrowserTimestamp = Date.now();
+            resolve(false);
+        }
+    });
+}
+
+function checkIsDefaultBrowser() {
+    if (_cachedDefaultBrowserStatus !== null && (Date.now() - _cachedDefaultBrowserTimestamp < 15000)) {
+        return _cachedDefaultBrowserStatus;
+    }
+    const isHttp = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('http');
+    const isHttps = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('https');
+    return Boolean(isHttp && isHttps);
 }
 
 // Default Browser Handlers
 ipcMain.handle('system-check-default-browser', async () => {
     try {
-        const isDefault = checkIsDefaultBrowser();
+        const isDefault = await checkIsDefaultBrowserAsync();
         return { isDefault };
     } catch (e) {
         return { isDefault: false, error: e.message };

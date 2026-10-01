@@ -40,8 +40,13 @@ const HistoryModal = () => {
     };
 
     return (
-        <div className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-md text-zinc-900' : 'bg-black/35 backdrop-blur-md text-white'} font-sans ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} onClick={closeModal}>
+        <div 
+            className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-md text-zinc-900' : 'bg-black/35 backdrop-blur-md text-white'} font-sans ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} 
+            onClick={closeModal}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+        >
             <div 
+                id="history-modal"
                 className={`w-full max-w-3xl h-[80vh] min-h-[500px] rounded-3xl overflow-hidden flex flex-col ${
                     isModalClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
                 } ${
@@ -50,6 +55,7 @@ const HistoryModal = () => {
                         : 'bg-[#0c0d14]/78 backdrop-blur-3xl border border-white/12 shadow-[0_35px_90px_rgba(0,0,0,0.85),inset_0_1px_1px_rgba(255,255,255,0.18)] ring-1 ring-white/[0.06] text-white'
                 }`} 
                 onClick={e => e.stopPropagation()}
+                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
             >
                 <div className={`p-5 px-6 border-b flex justify-between items-center ${isBright ? 'border-black/[0.06] bg-black/[0.015]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
                     <div className="flex items-center gap-3">

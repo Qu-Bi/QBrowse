@@ -78,6 +78,22 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         }
     }, [showSwitcher, isActive, isSpaceActive, setSpaceTabs, tab.id, tab.isClosing, tab.url]);
 
+    // Snapshot thumbnail upon tab deactivation so hover previews & tab switcher are always fresh
+    const prevActiveForSnapshotRef = useRef(isActive);
+    useEffect(() => {
+        if (prevActiveForSnapshotRef.current && !isActive && wvRef.current && isDomReadyRef.current && tab.url && tab.url !== 'about:blank' && !tab.isClosing) {
+            try {
+                wvRef.current.capturePage().then(img => {
+                    if (!img || img.isEmpty()) return;
+                    const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
+                    setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
+                    useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                }).catch(() => {});
+            } catch (_) {}
+        }
+        prevActiveForSnapshotRef.current = isActive;
+    }, [isActive, tab.id, tab.url, tab.isClosing, setSpaceTabs]);
+
     // Push matching credentials to webview when vault unlocks or URL/space changes
     useEffect(() => {
         const wv = wvRef.current;
@@ -387,6 +403,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                         if (!img || tab.isClosing) return;
                         const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
                         setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
+                        useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
                     }).catch(()=>{});
                 } catch(e) {}
 
@@ -1105,6 +1122,14 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     wv.send('apply-smart-dark', { isForceDark, isExcluded });
                 } catch(e) {}
             }
+            if (wv && typeof wv.getWebContentsId === 'function') {
+                try {
+                    const wId = wv.getWebContentsId();
+                    if (wId && window.electronAPI && typeof window.electronAPI.setWebviewColorScheme === 'function') {
+                        window.electronAPI.setWebviewColorScheme(wId, isForceDark && !isExcluded ? 'dark' : 'light');
+                    }
+                } catch (_) {}
+            }
         };
 
         if (isDomReadyRef.current) {
@@ -1536,6 +1561,11 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
       {spaceTabs.map(tab => {
           if (tab.url === undefined || tab.suspended) return null;
           
+          // Optimization: Do not spawn heavy Chromium webview renderers for blank / new tab pages.
+          // Blank tabs use the lightweight React Zen Dashboard instead.
+          const isBlankTab = !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://newtab');
+          if (isBlankTab) return null;
+
           // If this is the left container in split view, don't render the right split tab
           if (!isSplitPane && isSplitView && splitRightTabId && tab.id === splitRightTabId) {
               return null;

@@ -1425,10 +1425,25 @@ const useUIStore = create((set, get) => ({
     try {
       const applyDom = (tier, reduce) => {
         if (typeof document === 'undefined') return;
-        if (tier === 'eco' && reduce !== false) {
-          document.documentElement.classList.add('eco-mode');
+        const root = document.documentElement;
+        root.dataset.performanceTier = tier;
+
+        if (tier === 'eco') {
+          root.classList.add('eco-mode');
+          root.classList.remove('ultra-mode');
+          root.style.setProperty('--glass-blur', '0px');
+          root.style.setProperty('--animation-speed', '0.12s');
+        } else if (tier === 'ultra') {
+          root.classList.remove('eco-mode');
+          root.classList.add('ultra-mode');
+          root.style.setProperty('--glass-blur', '28px');
+          root.style.setProperty('--animation-speed', '0.32s');
         } else {
-          document.documentElement.classList.remove('eco-mode');
+          // balanced
+          root.classList.remove('eco-mode');
+          root.classList.remove('ultra-mode');
+          root.style.setProperty('--glass-blur', '18px');
+          root.style.setProperty('--animation-speed', '0.24s');
         }
       };
 
@@ -1472,7 +1487,7 @@ const useUIStore = create((set, get) => ({
         updatedProfile = await window.electronAPI.setPerformanceSettings({ mode });
       }
       const activeTier = updatedProfile?.activeTier || (mode === 'auto' ? (get().hardwareProfile?.detectedTier || 'balanced') : mode);
-      const sleepTimeout = updatedProfile?.tabSleepTimeoutMinutes || (activeTier === 'eco' ? 5 : (activeTier === 'ultra' ? 30 : 15));
+      const sleepTimeout = updatedProfile?.tabSleepTimeoutMinutes || (activeTier === 'eco' ? 5 : (activeTier === 'ultra' ? 60 : 15));
       const reduceVisuals = get().reduceVisualsOnEco;
 
       set({
@@ -1483,10 +1498,23 @@ const useUIStore = create((set, get) => ({
       });
 
       if (typeof document !== 'undefined') {
-        if (activeTier === 'eco' && reduceVisuals !== false) {
-          document.documentElement.classList.add('eco-mode');
+        const root = document.documentElement;
+        root.dataset.performanceTier = activeTier;
+        if (activeTier === 'eco') {
+          root.classList.add('eco-mode');
+          root.classList.remove('ultra-mode');
+          root.style.setProperty('--glass-blur', '0px');
+          root.style.setProperty('--animation-speed', '0.12s');
+        } else if (activeTier === 'ultra') {
+          root.classList.remove('eco-mode');
+          root.classList.add('ultra-mode');
+          root.style.setProperty('--glass-blur', '28px');
+          root.style.setProperty('--animation-speed', '0.32s');
         } else {
-          document.documentElement.classList.remove('eco-mode');
+          root.classList.remove('eco-mode');
+          root.classList.remove('ultra-mode');
+          root.style.setProperty('--glass-blur', '18px');
+          root.style.setProperty('--animation-speed', '0.24s');
         }
       }
       return activeTier;

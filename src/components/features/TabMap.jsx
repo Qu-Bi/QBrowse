@@ -146,7 +146,10 @@ export default function TabMap() {
     };
 
     return (
-        <div className={`fixed inset-0 z-[80000] flex flex-col ${
+        <div 
+            id="tabmap-container"
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+            className={`fixed inset-0 z-[80000] flex flex-col ${
             isBright ? 'bg-zinc-100/90 backdrop-blur-3xl text-zinc-900' : 'bg-[#050508]/85 backdrop-blur-3xl text-white'
         } overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isTabMapClosing ? 'opacity-0 scale-[1.02]' : 'opacity-100 scale-100'}`} onClick={handleCloseTabMap}>
         

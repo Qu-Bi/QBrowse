@@ -663,7 +663,7 @@ const useSyncStore = create((set, get) => ({
 
             // 2. Gather browser state (with safe bounds on history)
             const payload = {
-                version: "1.2.1",
+                version: "1.3.0",
                 createdAt: new Date().toISOString(),
                 label: customLabel.trim() || `Manual Backup (${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
                 settings: cleanSettings,
@@ -983,7 +983,7 @@ const useSyncStore = create((set, get) => ({
 
             const payload = {
                 app: "QBrowse",
-                version: "1.2.1",
+                version: "1.3.0",
                 exportedAt: new Date().toISOString(),
                 settings: cleanSettings,
                 vault: await (async () => {
