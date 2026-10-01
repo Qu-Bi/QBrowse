@@ -15,9 +15,8 @@ import DrmHandOffBanner from '../features/DrmHandOffBanner';
 
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
-const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions }) => {
+const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions }) => {
     const wvRef = useRef(null);
-    const isInternalNavigation = useRef(false);
     const isDomReadyRef = useRef(false);
     const pendingScrollAnnotationRef = useRef(null);
     const torSecurityLevel = useTorStore(state => state.securityLevel);
@@ -71,7 +70,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             try {
                 wvRef.current.capturePage().then(img => {
                     if (!img) return;
-                    const thumbnail = img.toDataURL();
+                    const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
                     setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
                     useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
                 }).catch(() => {});
@@ -141,13 +140,13 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         const wv = wvRef.current;
         if (!wv) return;
 
-        if (isInternalNavigation.current) {
-            isInternalNavigation.current = false;
+        // If the tab is an empty new tab or about:blank, do not perform any web navigation
+        if (!tab.url || tab.url === '' || tab.url === 'about:blank') {
             return;
         }
 
-        // If the tab is an empty new tab or about:blank, do not perform any web navigation
-        if (!tab.url || tab.url === '' || tab.url === 'about:blank') {
+        // Internal pages (Flags, local file viewer) are handled by React components
+        if (tab.url.startsWith('qbrowse://flags') || tab.url.startsWith('file://')) {
             return;
         }
 
@@ -166,22 +165,24 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             actualLoadUrl = actualLoadUrl.replace('qbrowse://ai', 'http://127.0.0.1:8080');
         }
 
-        // If we already requested this URL, do not trigger a duplicate loadURL call
-        if (currentRequestedUrlRef.current === actualLoadUrl) {
+        // Check if the webview is already displaying or loading this exact URL
+        let currentWvUrl = '';
+        try {
+            if (typeof wv.getURL === 'function') {
+                currentWvUrl = wv.getURL();
+            }
+        } catch (_) {}
+
+        if (currentWvUrl && (currentWvUrl === actualLoadUrl || currentWvUrl === actualLoadUrl + '/')) {
+            currentRequestedUrlRef.current = actualLoadUrl;
             return;
         }
 
         currentRequestedUrlRef.current = actualLoadUrl;
 
         const doLoad = () => {
-            if (!wv || !isDomReadyRef.current) return;
+            if (!wv) return;
             try {
-                if (typeof wv.getURL === 'function') {
-                    const currentWvUrl = wv.getURL();
-                    if (currentWvUrl === actualLoadUrl || currentWvUrl === actualLoadUrl + '/') {
-                        return;
-                    }
-                }
                 if (typeof wv.loadURL === 'function') {
                     wv.loadURL(actualLoadUrl).catch(() => {});
                 }
@@ -206,7 +207,6 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
 
         const handleNavigate = (e) => {
             if (!e.url || e.url === 'about:blank') return;
-            isInternalNavigation.current = true;
             currentRequestedUrlRef.current = e.url;
             setSpaceTabs(prev => {
                 const currentTab = prev.find(t => t.id === tab.id);
@@ -380,27 +380,12 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             useUIStore.getState().setIsFullscreen(false);
         };
 
-        let captureInterval;
-        if (isActive && isSpaceActive && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
-            captureInterval = setInterval(() => {
-                if (!wv || !isDomReadyRef.current || wv.hasCrashed || tab.isClosing) return;
-                try {
-                    if (typeof wv.isLoading === 'function' && wv.isLoading()) return;
-                    wv.capturePage().then(img => {
-                        if (!img || tab.isClosing) return;
-                        const thumbnail = img.toDataURL();
-                        setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
-                    }).catch(()=>{});
-                } catch(e) {}
-            }, 10000);
-        }
-
         const handleStopLoading = () => {
             if (isActive && isSpaceActive && !wv.hasCrashed && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
                 try {
                     wv.capturePage().then(img => {
                         if (!img || tab.isClosing) return;
-                        const thumbnail = img.toDataURL();
+                        const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
                         setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
                     }).catch(()=>{});
                 } catch(e) {}
@@ -866,7 +851,6 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
         wv.addEventListener('did-create-window', handleNewWindow);
 
         return () => {
-            if (captureInterval) clearInterval(captureInterval);
             wv.removeEventListener('context-menu', handleContextMenu);
             wv.removeEventListener('did-start-loading', handleDidStartLoading);
             wv.removeEventListener('did-navigate', handleNavigateSafe);
@@ -1263,7 +1247,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
 
     return (
         <div 
-            className={`w-full absolute bg-transparent transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`w-full absolute bg-transparent transition-opacity duration-200 ${
                 tab.isClosing ? 'webview-closing-anim' : ''
             }`} 
             style={{ 
@@ -1340,7 +1324,7 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
                 src={initialUrl}
                 partition={space === 'ghost' ? 'ghost' : (space === 'tor' ? 'tor' : `persist:profile_${activeProfileId || 'default'}`)}
                 className="w-full h-full"
-                style={{ display: 'flex', visibility: isFlagsPage || isLocalResource ? 'hidden' : 'visible' }}
+                style={{ display: 'flex', visibility: shouldShow && !isFlagsPage && !isLocalResource ? 'visible' : 'hidden' }}
                 allowpopups="true"
                 plugins="true"
                 webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}
@@ -1492,7 +1476,8 @@ const WebViewItem = ({ tab, space, activeProfileId, isVisible, isActive, isSpace
             )}
         </div>
     );
-};
+});
+WebViewItem.displayName = 'WebViewItem';
 
 export default function WebViewContainer({ space, targetTabId, isSplitPane = false }) {
   const { 
@@ -1500,7 +1485,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
     setPrivateTabs, setWorkTabs, setGhostTabs, setTorTabs
   } = useTabStore();
   const { 
-    isSidebarHidden, isRightPanelOpen, isFullscreen, isSplitView, 
+    isRightPanelOpen, isFullscreen, isSplitView, 
     splitRightTabId, zoomLevel, showSwitcherUI, currentUrl, 
     isForceDark, darkExclusions,
     activePopover, activeModal, isOmniboxOpen, activePinnedStack, theme,
@@ -1526,9 +1511,17 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
     setSpaceTabs = setTorTabs;
   }
 
-  const activeTab = targetTabId 
-    ? spaceTabs.find(t => t.id === targetTabId) 
-    : spaceTabs.find(t => t.active);
+  let activeTab;
+  if (isSplitPane && targetTabId) {
+    activeTab = spaceTabs.find(t => t.id === targetTabId);
+  } else if (isSplitView && splitRightTabId) {
+    // In split view, left container must show an active tab distinct from right split tab
+    activeTab = spaceTabs.find(t => t.active && t.id !== splitRightTabId) || 
+                spaceTabs.find(t => t.id !== splitRightTabId) || 
+                spaceTabs[0];
+  } else {
+    activeTab = spaceTabs.find(t => t.active) || spaceTabs[0];
+  }
 
   const containerRef = useRef(null);
 
@@ -1538,11 +1531,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
   return (
     <div 
       ref={containerRef} 
-      className={`absolute inset-0 w-full h-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-        isWebviewBlurred 
-          ? 'filter blur-[5px] scale-[0.996] pointer-events-none' 
-          : 'filter-none scale-100'
-      }`}
+      className="absolute inset-0 w-full h-full"
     >
       {spaceTabs.map(tab => {
           if (tab.url === undefined || tab.suspended) return null;
@@ -1578,9 +1567,9 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
 
       {/* Depth Focus Scrim Overlay to pop dialogs and popovers into sharp focus */}
       <div 
-        className={`absolute inset-0 z-20 pointer-events-none transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`absolute inset-0 z-20 pointer-events-none transition-opacity duration-200 ease-out ${
           isWebviewBlurred 
-            ? (isBright ? 'bg-black/[0.04] backdrop-blur-[1px] opacity-100' : 'bg-black/25 backdrop-blur-[1px] opacity-100')
+            ? (isBright ? 'bg-black/[0.05] backdrop-blur-[2px] opacity-100' : 'bg-black/30 backdrop-blur-[2px] opacity-100')
             : 'opacity-0'
         }`}
       />

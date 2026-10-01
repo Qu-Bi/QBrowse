@@ -173,7 +173,20 @@ const useHistoryStore = create((set, get) => ({
     clearHistory: () => {
         set({ history: [] });
         try {
-            localStorage.removeItem(getActiveHistoryKey());
+            // Remove all profile history entries from localStorage to guarantee total clean wipe
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('qbrowse_history')) {
+                    localStorage.removeItem(key);
+                }
+            });
+        } catch (e) {}
+
+        // Push empty history to Cloud Sync immediately so it doesn't resurrect from cloud
+        try {
+            const syncStore = typeof window !== 'undefined' ? window.__syncStore : null;
+            if (syncStore?.getState()?.user && typeof syncStore?.getState()?.syncDataToCloud === 'function') {
+                syncStore.getState().syncDataToCloud('history', []);
+            }
         } catch (e) {}
     }
 }));

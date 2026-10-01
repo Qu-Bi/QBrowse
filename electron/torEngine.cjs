@@ -19,25 +19,33 @@ function getTorMirrorUrls() {
     if (process.platform === 'win32') {
         return [
             'https://archive.torproject.org/tor-package-archive/torbrowser/14.0.7/tor-expert-bundle-windows-x86_64-14.0.7.tar.gz',
-            'https://dist.torproject.org/torbrowser/14.0.7/tor-expert-bundle-windows-x86_64-14.0.7.tar.gz'
+            'https://archive.torproject.org/tor-package-archive/torbrowser/14.0.6/tor-expert-bundle-windows-x86_64-14.0.6.tar.gz'
         ];
     } else if (process.platform === 'darwin') {
         return [
             'https://archive.torproject.org/tor-package-archive/torbrowser/14.0.7/tor-expert-bundle-macos-x86_64-14.0.7.tar.gz',
-            'https://dist.torproject.org/torbrowser/14.0.7/tor-expert-bundle-macos-x86_64-14.0.7.tar.gz'
+            'https://archive.torproject.org/tor-package-archive/torbrowser/14.0.6/tor-expert-bundle-macos-x86_64-14.0.6.tar.gz'
         ];
     } else {
         // Linux (x86_64)
         return [
             'https://archive.torproject.org/tor-package-archive/torbrowser/14.0.7/tor-expert-bundle-linux-x86_64-14.0.7.tar.gz',
-            'https://dist.torproject.org/torbrowser/14.0.7/tor-expert-bundle-linux-x86_64-14.0.7.tar.gz'
+            'https://archive.torproject.org/tor-package-archive/torbrowser/14.0.6/tor-expert-bundle-linux-x86_64-14.0.6.tar.gz'
         ];
     }
 }
 
 function getAppDataDir() {
-    const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(process.env.HOME, 'Library', 'Preferences') : path.join(process.env.HOME, '.config'));
-    const dir = path.join(appData, 'QBrowse');
+    let baseDir;
+    if (process.platform === 'win32') {
+        baseDir = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\', 'AppData', 'Roaming');
+    } else if (process.platform === 'darwin') {
+        baseDir = path.join(process.env.HOME || '/tmp', 'Library', 'Preferences');
+    } else {
+        // Respect XDG_CONFIG_HOME on Linux, fallback to ~/.config
+        baseDir = process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '/root', '.config');
+    }
+    const dir = path.join(baseDir, 'QBrowse');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return dir;
 }
@@ -51,6 +59,12 @@ function getTorBinDir() {
 function getTorDataDir() {
     const dir = path.join(getAppDataDir(), 'tor_data');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // Tor strictly enforces 0700 permissions on its DataDirectory on Unix/Linux systems
+    if (process.platform !== 'win32') {
+        try {
+            fs.chmodSync(dir, 0o700);
+        } catch (_) {}
+    }
     return dir;
 }
 
@@ -85,9 +99,10 @@ function findTorExecutable() {
             '/usr/local/bin/tor',
             '/usr/sbin/tor',
             '/bin/tor',
+            '/snap/bin/tor',
+            path.join(homeDir, '.local/bin/tor'),
             path.join(homeDir, '.local/share/torbrowser/tbb/x86_64/tor-browser/Browser/TorBrowser/Tor/tor'),
-            path.join(homeDir, 'tor-browser/Browser/TorBrowser/Tor/tor'),
-            path.join(homeDir, '.local/bin/tor')
+            path.join(homeDir, 'tor-browser/Browser/TorBrowser/Tor/tor')
         ];
         for (const p of possibleLinuxPaths) {
             if (fs.existsSync(p)) return p;
@@ -106,8 +121,8 @@ function findTorExecutable() {
 
     // 3. Check system PATH
     try {
-        const cmd = isWin ? 'where tor.exe' : 'which tor';
-        const out = execSync(cmd, { stdio: 'pipe', encoding: 'utf8' }).trim();
+        const cmd = isWin ? 'where tor.exe' : (process.platform === 'linux' ? 'command -v tor || which tor' : 'which tor');
+        const out = execSync(cmd, { stdio: 'pipe', encoding: 'utf8', shell: process.platform === 'win32' ? undefined : '/bin/sh' }).trim();
         const first = out.split(/\r?\n/)[0];
         if (first && fs.existsSync(first)) return first;
     } catch (_) {}
@@ -138,15 +153,56 @@ function checkPortOpen(port, host = '127.0.0.1', timeoutMs = 700) {
     });
 }
 
+function isSocks5Proxy(port, host = '127.0.0.1', timeoutMs = 800) {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(timeoutMs);
+        socket.on('connect', () => {
+            // SOCKS5 Greeting: VER=5, NMETHODS=1, METHODS=[0 (No auth)]
+            socket.write(Buffer.from([0x05, 0x01, 0x00]));
+        });
+        socket.on('data', (data) => {
+            // SOCKS5 Server Choice: VER=5, METHOD=0
+            if (data.length >= 2 && data[0] === 0x05 && data[1] === 0x00) {
+                socket.destroy();
+                resolve(true);
+            } else {
+                socket.destroy();
+                resolve(false);
+            }
+        });
+        socket.on('timeout', () => { socket.destroy(); resolve(false); });
+        socket.on('error', () => { socket.destroy(); resolve(false); });
+        socket.connect(port, host);
+    });
+}
+
+function findAvailablePort(startPort, maxAttempts = 10) {
+    return new Promise((resolve) => {
+        const tryPort = (port, attemptsLeft) => {
+            if (attemptsLeft <= 0) return resolve(port);
+            const server = net.createServer();
+            server.unref();
+            server.on('error', () => {
+                tryPort(port + 2, attemptsLeft - 1);
+            });
+            server.listen(port, '127.0.0.1', () => {
+                server.close(() => resolve(port));
+            });
+        };
+        tryPort(startPort, maxAttempts);
+    });
+}
+
 async function detectExistingTor() {
-    // Check port 9050 (Standard system Tor)
-    if (await checkPortOpen(9050)) {
+    // Check port 9050 (Standard system Tor on Linux/Windows)
+    if (await isSocks5Proxy(9050)) {
         activeSocksPort = 9050;
         activeControlPort = 9051;
         return { running: true, socksPort: 9050, controlPort: 9051, type: 'system' };
     }
     // Check port 9150 (Tor Browser default)
-    if (await checkPortOpen(9150)) {
+    if (await isSocks5Proxy(9150)) {
         activeSocksPort = 9150;
         activeControlPort = 9151;
         return { running: true, socksPort: 9150, controlPort: 9151, type: 'tor-browser' };
@@ -230,18 +286,33 @@ async function downloadAndInstallTor(onProgress) {
         execSync(`tar -xf "${tempArchive}" -C "${binDir}"`, { stdio: 'pipe' });
         try { fs.unlinkSync(tempArchive); } catch (_) {}
 
+        if (process.platform !== 'win32') {
+            try {
+                const makeExecutableRecursive = (dir) => {
+                    if (!fs.existsSync(dir)) return;
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const fullPath = path.join(dir, entry.name);
+                        try {
+                            if (entry.isDirectory()) {
+                                fs.chmodSync(fullPath, 0o755);
+                                makeExecutableRecursive(fullPath);
+                            } else {
+                                fs.chmodSync(fullPath, 0o755);
+                            }
+                        } catch (_) {}
+                    }
+                };
+                makeExecutableRecursive(binDir);
+            } catch (e) {
+                console.warn('[TorEngine] Failed to chmod extracted bundle:', e.message);
+            }
+        }
+
         const torExe = findTorExecutable();
         if (!torExe) {
             const torBinName = process.platform === 'win32' ? 'tor.exe' : 'tor';
-            throw new Error(`${torBinName} was not found after extraction.`);
-        }
-
-        if (process.platform !== 'win32') {
-            try {
-                fs.chmodSync(torExe, 0o755);
-            } catch (e) {
-                console.warn('[TorEngine] Failed to chmod tor binary:', e.message);
-            }
+            throw new Error(`${torBinName} was not found after extraction. If on Linux, you can also install it via: sudo apt install tor or sudo pacman -S tor`);
         }
 
         torStatus = 'stopped';
@@ -463,8 +534,10 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
     torStatus = 'starting';
     bootstrapProgress = 0;
     lastError = null;
-    activeSocksPort = 9050;
-    activeControlPort = 9051;
+
+    // Allocate open ports dynamically if default ports (9050/9051) are occupied
+    activeSocksPort = await findAvailablePort(9050);
+    activeControlPort = await findAvailablePort(9051);
 
     if (typeof onStatusChange === 'function') onStatusChange(torStatus);
 
@@ -473,29 +546,43 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
         '--SocksPort', String(activeSocksPort),
         '--ControlPort', String(activeControlPort),
         '--DataDirectory', dataDir,
-        '--CookieAuthentication', '0'
+        '--CookieAuthentication', '0',
+        '--Log', 'notice stdout'
     ];
 
     const torDir = path.dirname(torExe);
-    let geoipPath = path.join(torDir, 'geoip');
-    let geoip6Path = path.join(torDir, 'geoip6');
-    if (!fs.existsSync(geoipPath) && process.platform === 'linux') {
-        if (fs.existsSync('/usr/share/tor/geoip')) geoipPath = '/usr/share/tor/geoip';
+    const possibleGeoIpPaths = [
+        path.join(torDir, 'geoip'),
+        path.join(path.dirname(torDir), 'data', 'geoip'),
+        path.join(getTorBinDir(), 'data', 'geoip'),
+        '/usr/share/tor/geoip',
+        '/var/lib/tor/geoip'
+    ];
+    const possibleGeoIp6Paths = [
+        path.join(torDir, 'geoip6'),
+        path.join(path.dirname(torDir), 'data', 'geoip6'),
+        path.join(getTorBinDir(), 'data', 'geoip6'),
+        '/usr/share/tor/geoip6',
+        '/var/lib/tor/geoip6'
+    ];
+    for (const p of possibleGeoIpPaths) {
+        if (fs.existsSync(p)) {
+            args.push('--GeoIPFile', p);
+            break;
+        }
     }
-    if (!fs.existsSync(geoip6Path) && process.platform === 'linux') {
-        if (fs.existsSync('/usr/share/tor/geoip6')) geoip6Path = '/usr/share/tor/geoip6';
-    }
-    if (fs.existsSync(geoipPath)) {
-        args.push('--GeoIPFile', geoipPath);
-    }
-    if (fs.existsSync(geoip6Path)) {
-        args.push('--GeoIPv6File', geoip6Path);
+    for (const p of possibleGeoIp6Paths) {
+        if (fs.existsSync(p)) {
+            args.push('--GeoIPv6File', p);
+            break;
+        }
     }
 
-    console.log(`[TorEngine] Spawning ${torExe} with SocksPort ${activeSocksPort}...`);
+    console.log(`[TorEngine] Spawning ${torExe} with SocksPort ${activeSocksPort} and ControlPort ${activeControlPort}...`);
 
     return new Promise((resolve, reject) => {
         let isStarted = false;
+        let lastStderrText = '';
 
         try {
             const env = { ...process.env };
@@ -509,10 +596,13 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
                 stdio: ['ignore', 'pipe', 'pipe']
             });
 
-            torProcess.stdout.on('data', (chunk) => {
+            const handleTorOutput = (chunk, isStderr = false) => {
                 const text = chunk.toString();
-                if (text.includes('Bootstrapped') || text.includes('Opening Socks') || text.includes('Opened Socks')) {
-                    console.log(`[Tor stdout] ${text.trim().replace(/\r?\n/g, ' ')}`);
+                if (isStderr) {
+                    lastStderrText = text.trim();
+                }
+                if (text.includes('Bootstrapped') || text.includes('Opening Socks') || text.includes('Opened Socks') || text.includes('warn') || text.includes('err')) {
+                    console.log(`[Tor ${isStderr ? 'stderr' : 'stdout'}] ${text.trim().replace(/\r?\n/g, ' ')}`);
                 }
                 if (typeof onLog === 'function') onLog(text);
 
@@ -532,13 +622,10 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
                         }
                     }
                 }
-            });
+            };
 
-            torProcess.stderr.on('data', (chunk) => {
-                const text = chunk.toString();
-                console.warn('[TorEngine STDERR]', text);
-                if (typeof onLog === 'function') onLog(text);
-            });
+            torProcess.stdout.on('data', (chunk) => handleTorOutput(chunk, false));
+            torProcess.stderr.on('data', (chunk) => handleTorOutput(chunk, true));
 
             torProcess.on('error', (err) => {
                 console.error('[TorEngine Process Error]', err);
@@ -554,6 +641,14 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
             torProcess.on('exit', (code) => {
                 console.log(`[TorEngine] Tor process exited with code ${code}`);
                 torProcess = null;
+                if (!isStarted && code !== 0) {
+                    isStarted = true;
+                    torStatus = 'error';
+                    lastError = lastStderrText || `Tor process exited with error code ${code}`;
+                    if (typeof onStatusChange === 'function') onStatusChange(torStatus);
+                    reject(new Error(lastError));
+                    return;
+                }
                 torStatus = 'stopped';
                 bootstrapProgress = 0;
                 if (typeof onStatusChange === 'function') onStatusChange(torStatus);

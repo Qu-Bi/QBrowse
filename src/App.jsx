@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import useUIStore from './store/useUIStore';
+import useUIStore, { syncInitialSettingsToElectron } from './store/useUIStore';
 import useTabStore from './store/useTabStore';
 import useAIStore from './store/useAIStore';
 import useProfileStore from './store/useProfileStore';
 import useGlobalShortcuts from './hooks/useGlobalShortcuts';
 import useDragAndDrop from './hooks/useDragAndDrop';
 import { listenToEvent, windowShow } from './services/electronIPC';
+import { playBootWelcomeChime, playDownloadCompleteChime } from './utils/bootAudio';
 
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
@@ -19,8 +20,9 @@ import SettingsModal from './components/modals/SettingsModal';
 import HistoryModal from './components/modals/HistoryModal';
 import CookiesModal from './components/modals/CookiesModal';
 import ResourceManagerModal from './components/modals/ResourceManagerModal';
-import OnboardingWizard from './components/modals/OnboardingWizard';
-import TutorialWizard from './components/modals/TutorialWizard';
+import BootCurtain from './components/common/BootCurtain';
+import SetupJourney from './components/modals/SetupJourney';
+import LivingTour from './components/modals/LivingTour';
 import AddPinModal from './components/modals/AddPinModal';
 import PasskeyVerificationModal from './components/modals/PasskeyVerificationModal';
 import Overlays from './components/common/Overlays';
@@ -35,7 +37,6 @@ export default function App() {
     const theme = useUIStore(state => state.theme);
     const themeTransition = useUIStore(state => state.themeTransition);
     const isFullscreen = useUIStore(state => state.isFullscreen);
-    const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
     const accentColor = useUIStore(state => state.accentColor);
     const uiScale = useUIStore(state => state.settings?.uiScale);
@@ -48,13 +49,21 @@ export default function App() {
     const activeSpace = useTabStore(state => state.activeSpace);
     const customWallpaper = useUIStore(state => state.settings?.customWallpaper);
     const wallpaperDimming = useUIStore(state => state.settings?.wallpaperDimming ?? 25);
+    const wallpaperBlur = useUIStore(state => state.settings?.wallpaperBlur ?? 24);
     const loadStoredWallpaper = useUIStore(state => state.loadStoredWallpaper);
+    const isBooting = useUIStore(state => state.isBooting);
+    const finishBoot = useUIStore(state => state.finishBoot);
+    const activeModal = useUIStore(state => state.activeModal);
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
     const [currentWallpaper, setCurrentWallpaper] = useState(activeWallpaper);
     const [prevWallpaper, setPrevWallpaper] = useState(null);
+
+    useEffect(() => {
+        document.documentElement.style.setProperty('--glass-blur', `${wallpaperBlur}px`);
+    }, [wallpaperBlur]);
 
     useEffect(() => {
         if (activeWallpaper !== currentWallpaper) {
@@ -89,11 +98,24 @@ export default function App() {
         } catch(e) {}
 
         // Listen for URLs opened externally from other apps when QBrowse is default browser
+        let lastExternalUrl = null;
+        let lastExternalTime = 0;
+        const handleExternalNavigation = (targetUrl) => {
+            if (!targetUrl || targetUrl === 'about:blank') return;
+            const now = Date.now();
+            if (lastExternalUrl === targetUrl && (now - lastExternalTime < 2000)) return;
+            lastExternalUrl = targetUrl;
+            lastExternalTime = now;
+            useTabStore.getState().handleNewTab(targetUrl);
+        };
+
+        if (window.electronAPI && window.electronAPI.getInitialLaunchUrl) {
+            window.electronAPI.getInitialLaunchUrl().then(handleExternalNavigation).catch(() => {});
+        }
+
         if (window.electronAPI && window.electronAPI.onOpenUrl) {
             const unlisten = window.electronAPI.onOpenUrl(({ url }) => {
-                if (url && url !== 'about:blank') {
-                    useTabStore.getState().handleNewTab(url);
-                }
+                handleExternalNavigation(url);
             });
             return () => {
                 if (typeof unlisten === 'function') unlisten();
@@ -101,19 +123,24 @@ export default function App() {
         }
     }, []);
 
-    // Memory Saver Engine: Auto-suspend inactive background tabs
+    // Memory Saver Engine: Auto-suspend inactive background tabs based on hardware profile & user settings
     useEffect(() => {
         const interval = setInterval(() => {
             const memorySaverEnabled = useUIStore.getState().settings?.memory !== false;
             if (!memorySaverEnabled) return;
 
+            const sleepTimeoutMinutes = useUIStore.getState().tabSleepTimeoutMinutes;
+            if (!sleepTimeoutMinutes || sleepTimeoutMinutes <= 0) return; // 0 or negative = never suspend
+
             const now = Date.now();
-            const maxInactiveMs = 15 * 60 * 1000; // 15 mins
+            const maxInactiveMs = sleepTimeoutMinutes * 60 * 1000;
 
             const checkAndSuspend = (tabs, setTabs) => {
                 let updated = false;
                 const next = tabs.map(t => {
-                    if (!t.active && !t.suspended && t.url && t.url !== 'about:blank' && t.lastActiveAt && (now - t.lastActiveAt > maxInactiveMs)) {
+                    // Do not suspend active, already suspended, blank, pinned, or media-playing tabs
+                    const isProtected = t.active || t.suspended || t.pinned || t.isAudioPlaying || t.mediaPlaying || !t.url || t.url === 'about:blank';
+                    if (!isProtected && t.lastActiveAt && (now - t.lastActiveAt > maxInactiveMs)) {
                         updated = true;
                         return { ...t, suspended: true };
                     }
@@ -121,7 +148,7 @@ export default function App() {
                 });
                 if (updated) {
                     setTabs(next);
-                    useUIStore.getState().showToast('Memory Saver: Suspended inactive tabs');
+                    useUIStore.getState().showToast(`Memory Saver: Suspended inactive tabs (${sleepTimeoutMinutes}m)`);
                 }
             };
 
@@ -137,6 +164,17 @@ export default function App() {
     // Listen to backend events
     useEffect(() => {
         if (window.electronAPI) {
+            // Sync all persisted frontend settings to Electron on startup
+            syncInitialSettingsToElectron();
+
+            // Initialize hardware profile and dynamic performance tier
+            useUIStore.getState().initPerformanceProfile();
+
+            const startupSettings = useUIStore.getState().settings;
+            if (startupSettings?.playStartupSound) {
+                playBootWelcomeChime();
+            }
+
             if (window.electronAPI.onTrackerBlocked) {
                 window.electronAPI.onTrackerBlocked((url) => {
                     useUIStore.getState().addBlockedTracker(url);
@@ -170,6 +208,10 @@ export default function App() {
                     useUIStore.getState().updateDownload(data.id, { state: data.state, savePath: data.savePath });
                     useUIStore.getState().setActiveDownloadPopup(data.id);
                     if (data.state === 'completed') {
+                        const s = useUIStore.getState().settings;
+                        if (s?.downloadSound !== false) {
+                            playDownloadCompleteChime();
+                        }
                         // Keep popup open for a bit
                         setTimeout(() => {
                             if (useUIStore.getState().activeDownloadPopup === data.id) {
@@ -188,6 +230,7 @@ export default function App() {
                         metrics: metrics
                     });
                 });
+                useAIStore.getState().fetchEngineStatus();
             }
             if (window.electronAPI.onPasskeyPrompt) {
                 window.electronAPI.onPasskeyPrompt((promptData) => {
@@ -406,15 +449,19 @@ export default function App() {
             }
         }).then(u => unlistenCommand = u);
 
-        // Show onboarding if setup is incomplete
-        if (!useUIStore.getState().setupComplete) {
-            useUIStore.getState().openModal('onboarding');
-        }
-
         return () => {
             if (unlistenCommand) unlistenCommand();
         };
     }, [accentColor, activeSpace, theme, isBright]);
+
+    const handleBootFinish = () => {
+        finishBoot();
+        if (!useUIStore.getState().setupComplete) {
+            useUIStore.getState().openModal('onboarding');
+        } else if (!useUIStore.getState().tutorialDone) {
+            useUIStore.getState().openModal('tutorial');
+        }
+    };
 
     const handleContextMenu = (e) => {
         e.preventDefault();
@@ -437,27 +484,33 @@ export default function App() {
                     {prevWallpaper && (
                         <div 
                             className="absolute inset-0 bg-cover bg-center"
-                            style={{ backgroundImage: `url('${prevWallpaper}')` }}
+                            style={{ 
+                                backgroundImage: `url('${prevWallpaper}')`,
+                                filter: 'saturate(1.1)'
+                            }}
                         />
                     )}
                     {/* Active Wallpaper Layer (fades in smoothly with subtle Apple Sonoma scale settlement) */}
                     <div 
                         key={currentWallpaper}
                         className="absolute inset-0 bg-cover bg-center animate-wallpaper-fade will-change-transform"
-                        style={{ backgroundImage: `url('${currentWallpaper}')` }}
+                        style={{ 
+                            backgroundImage: `url('${currentWallpaper}')`,
+                            filter: 'saturate(1.1)'
+                        }}
                     />
                     {/* Dimming / Frosted overlay layer to ensure UI readability without bleaching */}
                     <div 
-                        className="absolute inset-0 pointer-events-none z-0" 
+                        className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-300" 
                         style={{ 
                             backgroundColor: isBright
-                                ? `rgba(255, 255, 255, ${(wallpaperDimming / 100) * 0.12})` 
+                                ? `rgba(255, 255, 255, ${(wallpaperDimming / 100) * 0.15})` 
                                 : `rgba(0, 0, 0, ${wallpaperDimming / 100})` 
                         }} 
                     />
                 </div>
                 <Sidebar />
-                <div className="flex-1 flex flex-col h-full relative z-10 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.4,1)]">
+                <div className="flex-1 flex flex-col h-full relative z-20 min-w-0">
                     <MainFrame />
                 </div>
 
@@ -469,8 +522,31 @@ export default function App() {
                 <CookiesModal />
                 <HistoryModal />
                 <ResourceManagerModal />
-                <OnboardingWizard />
-                <TutorialWizard />
+                {/* Full-Screen Setup Journey */}
+                {(activeModal === 'onboarding' || activeModal === 'setup') && (
+                    <SetupJourney 
+                        onFinish={() => {
+                            useUIStore.getState().closeModal();
+                            useUIStore.getState().setSetupComplete(true);
+                        }}
+                        onStartTour={() => {
+                            useUIStore.getState().openModal('tutorial');
+                        }}
+                    />
+                )}
+
+                {/* Interactive Living Spotlight Tour */}
+                {(activeModal === 'tutorial' || activeModal === 'tour') && (
+                    <LivingTour 
+                        onExit={() => {
+                            useUIStore.getState().closeModal();
+                            useUIStore.getState().setTutorialDone(true);
+                        }}
+                    />
+                )}
+
+                {/* Minimalist Monogram Fast-Boot Curtain */}
+                {isBooting && <BootCurtain onFinish={handleBootFinish} />}
                 <AddPinModal />
                 <PasskeyVerificationModal />
 
@@ -482,7 +558,9 @@ export default function App() {
                 {((activePopover === 'user' || activePopover === 'userProfile') || (isPopoverClosing && (activePopover === 'user' || activePopover === 'userProfile'))) && (
                     <>
                         <div 
-                            className="fixed inset-0 z-[69990] bg-transparent"
+                            className={`fixed inset-0 z-[69990] bg-black/35 backdrop-blur-[3px] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                isPopoverClosing ? 'opacity-0 pointer-events-none' : 'animate-fade-in'
+                            }`}
                             onClick={closePopover} 
                         />
                         <UserProfilePopover isClosing={isPopoverClosing} />

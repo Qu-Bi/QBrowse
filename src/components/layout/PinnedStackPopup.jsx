@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Volume2, Globe, Trash2, PinOff } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -58,11 +58,32 @@ export default function PinnedStackPopup() {
         return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [activePinnedStack, closePinnedStack]);
 
-    if (!activePinnedStack || !activePinnedStack.pin) {
+    const [displayedStack, setDisplayedStack] = useState(null);
+    const [isClosing, setIsClosing] = useState(false);
+    const closeTimerRef = useRef(null);
+
+    useEffect(() => {
+        if (activePinnedStack?.pin) {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+            setDisplayedStack(activePinnedStack);
+            setIsClosing(false);
+        } else if (displayedStack && !isClosing) {
+            setIsClosing(true);
+            closeTimerRef.current = setTimeout(() => {
+                setDisplayedStack(null);
+                setIsClosing(false);
+            }, 200);
+        }
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
+    }, [activePinnedStack]);
+
+    if (!displayedStack || !displayedStack.pin) {
         return null;
     }
 
-    const { pin, rect } = activePinnedStack;
+    const { pin, rect } = displayedStack;
 
     // Get current space tabs
     const currentTabs = activeSpace === 'personal' ? privateTabs : 
@@ -131,14 +152,18 @@ export default function PinnedStackPopup() {
         <>
             {/* Backdrop click-catcher */}
             <div 
-                className="fixed inset-0 z-[64990] bg-black/20 backdrop-blur-[2px] transition-opacity"
+                className={`fixed inset-0 z-[64990] bg-black/20 backdrop-blur-[2px] transition-opacity duration-200 ${
+                    isClosing ? 'opacity-0' : 'opacity-100'
+                }`}
                 onClick={closePinnedStack}
             />
 
             {/* Floating Stack Popup Picker */}
             <div 
                 ref={popupRef}
-                className={`fixed z-[65000] w-[320px] max-h-[calc(100vh-32px)] overflow-hidden backdrop-blur-3xl rounded-2xl flex flex-col p-3 gap-2.5 animate-pop-in select-none transition-all duration-300 ${
+                className={`fixed z-[65000] w-[320px] max-h-[calc(100vh-32px)] overflow-hidden backdrop-blur-3xl rounded-2xl flex flex-col p-3 gap-2.5 ${
+                    isClosing ? 'animate-pop-out' : 'animate-pop-in'
+                } select-none transition-all duration-300 ${
                     isBright
                         ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900'
                         : 'bg-[#121217]/95 border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_20px_rgba(0,0,0,0.4)] text-white'

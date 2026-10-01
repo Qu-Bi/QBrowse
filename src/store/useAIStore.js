@@ -115,16 +115,29 @@ const useAIStore = create((set, get) => ({
 
     // llama.cpp Process Controller Actions
     startEngine: async () => {
-        set({ status: 'starting' });
-        const { activeModelId, customModelPath, customMmprojPath, threads, contextSize, gpuLayers, temperature, port } = get();
+        set({ status: 'starting', lastError: null });
+        const { activeModelId, customModelPath, customMmprojPath, threads, contextSize, gpuLayers, temperature, port, downloadedModels } = get();
         let modelPath = customModelPath;
         let mmprojPath = customMmprojPath;
 
         if (!modelPath) {
             const preset = MODEL_PRESETS.find(m => m.id === activeModelId) || MODEL_PRESETS[0];
-            modelPath = preset.filename;
-            if (!mmprojPath && preset.mmprojFilename) {
-                mmprojPath = preset.mmprojFilename;
+            const matchingModel = (downloadedModels || []).find(m => m.filename === preset.filename || m.path?.includes(preset.filename));
+
+            if (matchingModel) {
+                modelPath = matchingModel.filename;
+            } else if ((downloadedModels || []).length > 0) {
+                const anyModel = downloadedModels.find(m => !m.filename.startsWith('mmproj-')) || downloadedModels[0];
+                modelPath = anyModel.filename;
+            } else {
+                modelPath = '';
+            }
+
+            if (!mmprojPath) {
+                const matchingMmproj = (downloadedModels || []).find(m => m.filename.startsWith('mmproj-'));
+                if (matchingMmproj) {
+                    mmprojPath = matchingMmproj.filename;
+                }
             }
         }
 
@@ -140,14 +153,21 @@ const useAIStore = create((set, get) => ({
             });
             if (res && res.success) {
                 set({ isRunning: true, status: 'running' });
+                return res;
             } else {
-                set({ isRunning: false, status: 'error' });
+                set({ 
+                    isRunning: false, 
+                    status: 'error', 
+                    lastError: res?.message || res?.error || 'Failed to start AI server'
+                });
+                return res;
             }
         } else {
             // Web fallback simulation
             setTimeout(() => {
                 set({ isRunning: true, status: 'running', metrics: { tokensPerSecond: 38.4 } });
             }, 800);
+            return { success: true };
         }
     },
 
@@ -517,4 +537,14 @@ const useAIStore = create((set, get) => ({
     clearHistory: () => set({ chatHistory: [] }),
 }));
 
+// Auto-fetch engine status and downloaded models on app boot
+if (typeof window !== 'undefined') {
+    setTimeout(() => {
+        try {
+            useAIStore.getState().fetchEngineStatus();
+        } catch (_) {}
+    }, 400);
+}
+
 export default useAIStore;
+

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { 
     Cpu, Zap, Terminal, RefreshCw, Play, Square, Download, 
-    FolderOpen, HardDrive, Sliders, CheckCircle, AlertCircle, Copy, Trash2, Sparkles, FileText
+    FolderOpen, HardDrive, Sliders, CheckCircle, AlertCircle, Copy, Trash2, Sparkles, FileText, Loader2
 } from 'lucide-react';
 import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useUIStore from '../../store/useUIStore';
@@ -22,6 +22,10 @@ export default function AIEngineSettings() {
 
     const showToast = useUIStore(state => state.showToast);
     const terminalRef = useRef(null);
+
+    const hasDownloadedModel = (downloadedModels && downloadedModels.length > 0) || Boolean(customModelPath);
+    const activePreset = MODEL_PRESETS.find(m => m.id === activeModelId) || MODEL_PRESETS[0];
+    const isDownloading = status === 'downloading';
 
     // Auto-scroll terminal log
     useEffect(() => {
@@ -98,7 +102,7 @@ export default function AIEngineSettings() {
     };
 
     return (
-        <div className={`space-y-6 animate-pop-in select-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+        <div className={`space-y-6 animate-tab-fade select-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
             {/* Ambient Background Glow */}
             <div className={`relative p-6 border rounded-3xl backdrop-blur-2xl shadow-xl overflow-hidden ${
                 isBright ? 'bg-white/80 border-white/70 shadow-[0_15px_40px_rgba(0,0,0,0.06)]' : 'bg-[#0e0f13]/90 border-white/10'
@@ -118,9 +122,11 @@ export default function AIEngineSettings() {
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                                     isRunning 
                                         ? (isBright ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30')
-                                        : (isBright ? 'bg-black/5 text-zinc-500 border border-black/10' : 'bg-white/10 text-white/40')
+                                        : (status === 'loading' || status === 'starting' || status === 'downloading_engine')
+                                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
+                                            : (isBright ? 'bg-black/5 text-zinc-500 border border-black/10' : 'bg-white/10 text-white/40')
                                 }`}>
-                                    {isRunning ? 'Online (llama-server)' : 'Stopped'}
+                                    {isRunning ? 'Online (llama-server)' : (status === 'loading' || status === 'starting' || status === 'downloading_engine') ? 'Starting...' : 'Stopped'}
                                 </span>
                             </div>
                             <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>High-speed, zero-knowledge local LLM runner based on Gemma 4 / Llama 3.2 GGUF architecture.</p>
@@ -130,13 +136,18 @@ export default function AIEngineSettings() {
                     {/* Quick Access Launcher Button */}
                     <button
                         onClick={toggleEngine}
+                        disabled={status === 'loading' || status === 'starting' || status === 'downloading_engine'}
                         className={`px-6 py-3 rounded-2xl font-bold text-xs tracking-wide transition-all shadow-lg flex items-center gap-2 cursor-pointer ${
-                            isRunning
-                                ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30'
-                                : 'bg-accent text-black hover:scale-105 shadow-[0_10px_25px_var(--accent-30)]'
+                            status === 'loading' || status === 'starting' || status === 'downloading_engine'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait'
+                                : isRunning
+                                    ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30'
+                                    : 'bg-accent text-black hover:scale-105 shadow-[0_10px_25px_var(--accent-30)]'
                         }`}
                     >
-                        {isRunning ? (
+                        {status === 'loading' || status === 'starting' || status === 'downloading_engine' ? (
+                            <> <Loader2 size={14} className="animate-spin text-amber-400" /> Starting llama-server... </>
+                        ) : isRunning ? (
                             <> <Square size={14} fill="currentColor" /> Stop llama-server </>
                         ) : (
                             <> <Play size={14} fill="currentColor" /> Start llama-server Engine </>

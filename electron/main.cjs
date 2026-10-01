@@ -596,7 +596,26 @@ let initialUrlToOpen = null;
 
 const extractUrlFromArgs = (argv) => {
     if (!Array.isArray(argv)) return null;
-    return argv.find(arg => arg && typeof arg === 'string' && (arg.startsWith('http://') || arg.startsWith('https://')));
+    for (const rawArg of argv) {
+        if (!rawArg || typeof rawArg !== 'string') continue;
+        const arg = rawArg.trim().replace(/^["']|["']$/g, '');
+        if (arg.startsWith('--') || arg.startsWith('-')) continue;
+        if (arg === '.' || arg.endsWith('main.cjs') || /electron(\.exe)?$/i.test(arg) || /qbrowse(\.exe)?$/i.test(arg)) continue;
+
+        if (arg.startsWith('http://') || arg.startsWith('https://') || arg.startsWith('qbrowse://') || arg.startsWith('file://')) {
+            return arg;
+        }
+
+        if (/\.(html?|xhtml|shtml|xml|pdf|svg)$/i.test(arg)) {
+            try {
+                if (fsSync.existsSync(arg)) {
+                    const { pathToFileURL } = require('url');
+                    return pathToFileURL(path.resolve(arg)).href;
+                }
+            } catch (_) {}
+        }
+    }
+    return null;
 };
 
 if (!gotTheLock) {
@@ -684,6 +703,18 @@ process.on('unhandledRejection', (reason) => {
 let settingsStore = {};
 const appDataPath = app.getPath('userData');
 const vaultPath = path.join(appDataPath, 'vault.json');
+const settingsPath = path.join(appDataPath, 'settings.json');
+try {
+    if (fsSync.existsSync(settingsPath)) {
+        settingsStore = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8')) || {};
+    }
+} catch (_) {}
+if (settingsStore.hardware === false) {
+    try { app.disableHardwareAcceleration(); } catch (_) {}
+}
+if (settingsStore.isolation === true) {
+    try { app.commandLine.appendSwitch('site-per-process'); } catch (_) {}
+}
 let masterKey = null;
 
 // Ensure vault exists
@@ -1009,8 +1040,23 @@ function createWindow(options = {}) {
             }
         };
 
-        // CRITICAL: Disable background throttling so YouTube media plays perfectly in the background
-        contents.setBackgroundThrottling(false);
+        // Intelligent Background Throttling:
+        // Throttle inactive background webviews to prevent CPU/GPU drains and battery drain,
+        // but automatically unthrottle whenever media (YouTube, Spotify, etc.) starts playing.
+        if (contents.getType() === 'webview') {
+            contents.setBackgroundThrottling(true);
+
+            contents.on('media-started-playing', () => {
+                contents.setBackgroundThrottling(false);
+            });
+
+            contents.on('media-paused', () => {
+                contents.setBackgroundThrottling(true);
+            });
+        } else {
+            // Main application window stays unthrottled for UI responsiveness
+            contents.setBackgroundThrottling(false);
+        }
 
         // Apply Google vs Chrome User-Agent for webviews and popup windows
         if (contents.getType() === 'webview' || (contents.getType() === 'window' && contents !== mainWindow?.webContents)) {
@@ -1031,6 +1077,23 @@ function createWindow(options = {}) {
             });
             contents.on('did-navigate-in-page', (event, url) => {
                 if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
+            });
+            contents.on('dom-ready', () => {
+                if (settingsStore.cosmetic !== false) {
+                    const cosmeticCSS = `
+                        .ad, .ads, .ad-banner, .advertisement, [id*="google_ads"], [class*="google_ads"],
+                        .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder {
+                            display: none !important;
+                            visibility: hidden !important;
+                            height: 0 !important;
+                            min-height: 0 !important;
+                        }
+                    `;
+                    try { contents.insertCSS(cosmeticCSS).catch(() => {}); } catch (_) {}
+                }
+                if (settingsStore.smooth !== false) {
+                    try { contents.insertCSS('html, body { scroll-behavior: smooth !important; }').catch(() => {}); } catch (_) {}
+                }
             });
         }
 
@@ -1170,6 +1233,19 @@ const configuredSessions = new WeakSet();
 function setupHeadersHandler(sess) {
     if (!sess || !sess.webRequest) return;
 
+    sess.webRequest.onBeforeRequest((details, callback) => {
+        if (settingsStore.httpsOnly !== false && details.url && details.url.startsWith('http://')) {
+            try {
+                const parsed = new URL(details.url);
+                if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1' && !parsed.hostname.endsWith('.onion')) {
+                    const secureUrl = details.url.replace(/^http:\/\//i, 'https://');
+                    return callback({ redirectURL: secureUrl });
+                }
+            } catch (_) {}
+        }
+        callback({ cancel: false });
+    });
+
     sess.webRequest.onBeforeSendHeaders((details, callback) => {
         delete details.requestHeaders['X-Electron-Version'];
 
@@ -1185,11 +1261,22 @@ function setupHeadersHandler(sess) {
             details.requestHeaders['DNT'] = '1';
         }
 
+        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame') {
+            delete details.requestHeaders['Cookie'];
+            delete details.requestHeaders['cookie'];
+        }
+
         callback({ cancel: false, requestHeaders: details.requestHeaders });
     });
 
     sess.webRequest.onHeadersReceived((details, callback) => {
         const responseHeaders = { ...details.responseHeaders };
+
+        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame') {
+            delete responseHeaders['set-cookie'];
+            delete responseHeaders['Set-Cookie'];
+        }
+
         if (localDialogPort) {
             for (const headerKey of Object.keys(responseHeaders)) {
                 if (headerKey.toLowerCase() === 'content-security-policy') {
@@ -1214,17 +1301,42 @@ function setupDownloadHandler(sess) {
         const totalBytes = item.getTotalBytes();
         const url = item.getURL();
 
-        const askSave = settingsStore.askSave === true;
-        const downloadsPath = settingsStore.downloadsPath;
+        let defaultDownloads = '';
+        try {
+            defaultDownloads = app.getPath('downloads');
+        } catch (_) {
+            defaultDownloads = path.join(os.homedir(), 'Downloads');
+        }
+        let targetDir = settingsStore.downloadsPath || defaultDownloads;
 
-        if (!askSave && downloadsPath) {
+        if (settingsStore.groupDownloads !== false) {
+            const ext = path.extname(fileName).toLowerCase().replace('.', '');
+            let sub = '';
+            if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico', 'avif'].includes(ext)) sub = 'Images';
+            else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) sub = 'Documents';
+            else if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'iso', 'xz', '7zip'].includes(ext)) sub = 'Archives';
+            else if (['exe', 'msi', 'dmg', 'pkg', 'deb', 'rpm', 'apk'].includes(ext)) sub = 'Programs';
+            else if (['mp4', 'mkv', 'avi', 'mov', 'webm', 'mp3', 'wav', 'flac', 'ogg', 'm4a'].includes(ext)) sub = 'Media';
+
+            if (sub) {
+                targetDir = path.join(targetDir, sub);
+                try {
+                    if (!fsSync.existsSync(targetDir)) fsSync.mkdirSync(targetDir, { recursive: true });
+                } catch (_) {}
+            }
+        }
+
+        const askSave = settingsStore.askSave === true;
+        const targetFilePath = path.join(targetDir, fileName);
+
+        if (!askSave) {
             try {
-                item.setSavePath(path.join(downloadsPath, fileName));
+                item.setSavePath(targetFilePath);
             } catch(e) {}
         } else {
             item.setSaveDialogOptions({
                 title: `Save ${fileName} - QBrowse`,
-                defaultPath: downloadsPath ? path.join(downloadsPath, fileName) : fileName
+                defaultPath: targetFilePath
             });
         }
 
@@ -1340,6 +1452,29 @@ function setupWebviewSession(sess) {
     }
 
     setupDownloadHandler(sess);
+}
+
+// Hardware-Aware Chromium Performance Flags
+try {
+    const cpuCores = os.cpus()?.length || 4;
+    const totalMemGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+
+    // Enable GPU rasterization, zero-copy buffers, and smooth compositor scrolling
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+    app.commandLine.appendSwitch('enable-zero-copy');
+    app.commandLine.appendSwitch('enable-smooth-scrolling');
+    app.commandLine.appendSwitch('num-raster-threads', String(Math.min(4, Math.max(1, Math.floor(cpuCores / 2)))));
+
+    // Adaptive renderer process limit to keep RAM consumption bounded on lower-spec machines
+    if (totalMemGB <= 6) {
+        app.commandLine.appendSwitch('renderer-process-limit', '6');
+    } else if (totalMemGB <= 12) {
+        app.commandLine.appendSwitch('renderer-process-limit', '12');
+    } else {
+        app.commandLine.appendSwitch('renderer-process-limit', '20');
+    }
+} catch (e) {
+    console.warn('[PerformanceEngine] Error setting Chromium flags:', e.message);
 }
 
 app.whenReady().then(async () => {
@@ -1462,6 +1597,17 @@ app.whenReady().then(async () => {
 
   createWindow();
 
+  // Proactively ensure OS browser registry/desktop entries exist in background
+  setTimeout(() => {
+    try {
+      if (process.platform === 'win32') {
+        registerWindowsBrowser();
+      } else if (process.platform === 'linux') {
+        ensureLinuxDesktopEntry();
+      }
+    } catch (_) {}
+  }, 1500);
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -1580,6 +1726,11 @@ app.on('will-quit', () => {
   try {
     torEngine.stopTor();
   } catch (_) {}
+  if (settingsStore.clearOnExit) {
+    try {
+      session.defaultSession.clearStorageData({ storages: ['cookies'] }).catch(() => {});
+    } catch (_) {}
+  }
 });
 
 // IPC Handlers
@@ -2391,6 +2542,9 @@ ipcMain.handle('set-doh', async (event, provider) => {
 ipcMain.handle('save-setting', (event, data) => {
     if (data && data.key) {
         settingsStore[data.key] = data.value;
+        try {
+            fsSync.writeFileSync(settingsPath, JSON.stringify(settingsStore, null, 2), 'utf8');
+        } catch (_) {}
     }
     return true;
 });
@@ -2407,6 +2561,115 @@ ipcMain.handle('set-webrtc', async (event, enabled) => {
         return true;
     } catch {
         return false;
+    }
+});
+
+// Browser Data & Bookmarks Migration
+function getBrowserBookmarksPath(browserId) {
+    const isWin = process.platform === 'win32';
+    const local = process.env.LOCALAPPDATA || (isWin ? path.join(os.homedir(), 'AppData', 'Local') : '');
+    const home = os.homedir();
+
+    if (browserId === 'chrome') {
+        return isWin 
+            ? path.join(local, 'Google', 'Chrome', 'User Data', 'Default', 'Bookmarks')
+            : path.join(home, '.config', 'google-chrome', 'Default', 'Bookmarks');
+    } else if (browserId === 'edge') {
+        return isWin 
+            ? path.join(local, 'Microsoft', 'Edge', 'User Data', 'Default', 'Bookmarks')
+            : path.join(home, '.config', 'microsoft-edge', 'Default', 'Bookmarks');
+    } else if (browserId === 'brave') {
+        return isWin 
+            ? path.join(local, 'BraveSoftware', 'Brave-Browser', 'User Data', 'Default', 'Bookmarks')
+            : path.join(home, '.config', 'BraveSoftware', 'Brave-Browser', 'Default', 'Bookmarks');
+    }
+    return null;
+}
+
+function extractChromiumBookmarks(node, list = []) {
+    if (!node) return list;
+    if (node.type === 'url' && node.url && !node.url.startsWith('javascript:')) {
+        list.push({ title: node.name || node.url, url: node.url });
+    }
+    if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+            extractChromiumBookmarks(child, list);
+        }
+    }
+    return list;
+}
+
+ipcMain.handle('import-detect-browsers', async () => {
+    const browsers = [
+        { id: 'edge', name: 'Microsoft Edge', icon: 'edge' },
+        { id: 'chrome', name: 'Google Chrome', icon: 'chrome' },
+        { id: 'brave', name: 'Brave Browser', icon: 'brave' }
+    ];
+
+    const results = [];
+    for (const b of browsers) {
+        const p = getBrowserBookmarksPath(b.id);
+        let found = false;
+        let count = 0;
+        if (p && fsSync.existsSync(p)) {
+            try {
+                const raw = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+                const list = [];
+                for (const k of Object.keys(raw.roots || {})) {
+                    extractChromiumBookmarks(raw.roots[k], list);
+                }
+                found = true;
+                count = list.length;
+            } catch (_) {}
+        }
+        results.push({ ...b, found, count });
+    }
+    return results;
+});
+
+ipcMain.handle('import-browser-bookmarks', async (event, browserId) => {
+    const p = getBrowserBookmarksPath(browserId);
+    if (!p || !fsSync.existsSync(p)) {
+        return { success: false, error: 'Bookmarks not found for this browser.' };
+    }
+    try {
+        const raw = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+        const bookmarks = [];
+        for (const k of Object.keys(raw.roots || {})) {
+            extractChromiumBookmarks(raw.roots[k], bookmarks);
+        }
+        return { success: true, count: bookmarks.length, bookmarks };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('import-pick-html-bookmarks', async () => {
+    const res = await dialog.showOpenDialog({
+        title: 'Select HTML Bookmarks File',
+        properties: ['openFile'],
+        filters: [{ name: 'Bookmarks HTML', extensions: ['html', 'htm'] }]
+    });
+
+    if (res.canceled || !res.filePaths.length) {
+        return { success: false, canceled: true };
+    }
+
+    try {
+        const content = fsSync.readFileSync(res.filePaths[0], 'utf8');
+        const bookmarks = [];
+        const regex = /<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>(.*?)<\/a>/gi;
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            const url = match[1];
+            const title = match[2].replace(/<[^>]+>/g, '').trim();
+            if (url && !url.startsWith('javascript:')) {
+                bookmarks.push({ title: title || url, url });
+            }
+        }
+        return { success: true, count: bookmarks.length, bookmarks, filename: path.basename(res.filePaths[0]) };
+    } catch (e) {
+        return { success: false, error: e.message };
     }
 });
 
@@ -2570,7 +2833,7 @@ ipcMain.handle('tor-start', async () => {
         const torSession = session.fromPartition('tor');
         const socksPort = torEngine.getStatus().socksPort || 9050;
         await torSession.setProxy({
-            proxyRules: `socks5://127.0.0.1:${socksPort}`,
+            proxyRules: `socks5h://127.0.0.1:${socksPort}`,
             proxyBypassRules: '<local>'
         });
         if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
@@ -2697,12 +2960,279 @@ ipcMain.handle('system-set-performance-settings', async (event, settings) => {
     return profile;
 });
 
+// ==========================================
+// Native Default Browser Integration Engine
+// ==========================================
+
+function ensureAppIco() {
+    try {
+        const userData = app.getPath('userData');
+        const targetIco = path.join(userData, 'app.ico');
+
+        if (fsSync.existsSync(targetIco) && fsSync.statSync(targetIco).size > 1000) {
+            return targetIco;
+        }
+
+        const possiblePngs = [
+            path.join(__dirname, '..', 'public', 'icon.png'),
+            path.join(__dirname, '..', 'icon.png'),
+            path.join(process.resourcesPath || '', 'icon.png'),
+            path.join(process.resourcesPath || '', 'app.asar.unpacked', 'icon.png')
+        ];
+
+        let pngBuffer = null;
+        for (const p of possiblePngs) {
+            try {
+                if (fsSync.existsSync(p)) {
+                    pngBuffer = fsSync.readFileSync(p);
+                    break;
+                }
+            } catch (_) {}
+        }
+
+        if (pngBuffer) {
+            const header = Buffer.alloc(6);
+            header.writeUInt16LE(0, 0); // reserved
+            header.writeUInt16LE(1, 2); // ICO type
+            header.writeUInt16LE(1, 4); // 1 image
+
+            const entry = Buffer.alloc(16);
+            entry.writeUInt8(0, 0); // width: 256px
+            entry.writeUInt8(0, 1); // height: 256px
+            entry.writeUInt8(0, 2); // color count
+            entry.writeUInt8(0, 3); // reserved
+            entry.writeUInt16LE(1, 4); // color planes
+            entry.writeUInt16LE(32, 6); // bits per pixel
+            entry.writeUInt32LE(pngBuffer.length, 8); // PNG size
+            entry.writeUInt32LE(22, 12); // image offset
+
+            const icoBuffer = Buffer.concat([header, entry, pngBuffer]);
+            fsSync.writeFileSync(targetIco, icoBuffer);
+            return targetIco;
+        }
+    } catch (err) {
+        console.warn('[DefaultBrowser] Failed to create app.ico:', err);
+    }
+    return null;
+}
+
+function registerWindowsBrowser() {
+    if (process.platform !== 'win32') return false;
+    try {
+        const isPackaged = app.isPackaged;
+        const exePath = process.execPath;
+        const mainScript = path.resolve(__dirname, 'main.cjs');
+
+        const openCmd = isPackaged 
+            ? `"${exePath}" "%1"` 
+            : `"${exePath}" "${mainScript}" "%1"`;
+        const startCmd = isPackaged 
+            ? `"${exePath}"` 
+            : `"${exePath}" "${mainScript}"`;
+
+        const icoFile = ensureAppIco();
+        const iconCmd = icoFile || `${exePath},0`;
+
+        const formatReg = (val) => `"${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+        const regContent = `Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML]
+@="QBrowse HTML Document"
+"AppUserModelId"="com.qbrowse.app"
+
+[HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML\\Application]
+"AppUserModelId"="com.qbrowse.app"
+"ApplicationIcon"=${formatReg(iconCmd)}
+"ApplicationName"="QBrowse"
+"ApplicationDescription"="QBrowse - Intelligent Next-Gen Web Browser"
+"ApplicationCompany"="QuBI"
+
+[HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML\\DefaultIcon]
+@=${formatReg(iconCmd)}
+
+[HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML\\shell]
+
+[HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML\\shell\\open]
+
+[HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML\\shell\\open\\command]
+@=${formatReg(openCmd)}
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse]
+@="QBrowse"
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\DefaultIcon]
+@=${formatReg(iconCmd)}
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\InstallInfo]
+"ReinstallCommand"=${formatReg(`"${exePath}" --make-default-browser`)}
+"HideIconsCommand"=${formatReg(`"${exePath}" --hide-icons`)}
+"ShowIconsCommand"=${formatReg(`"${exePath}" --show-icons`)}
+"IconsVisible"=dword:00000001
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\shell]
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\shell\\open]
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\shell\\open\\command]
+@=${formatReg(startCmd)}
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\Capabilities]
+"ApplicationName"="QBrowse"
+"ApplicationIcon"=${formatReg(iconCmd)}
+"ApplicationDescription"="QBrowse - Fast, private, intelligent web browser"
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\Capabilities\\Startmenu]
+"StartMenuInternet"="QBrowse"
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\Capabilities\\FileAssociations]
+".htm"="QBrowseHTML"
+".html"="QBrowseHTML"
+".shtml"="QBrowseHTML"
+".xht"="QBrowseHTML"
+".xhtml"="QBrowseHTML"
+".svg"="QBrowseHTML"
+".webp"="QBrowseHTML"
+
+[HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\Capabilities\\URLAssociations]
+"http"="QBrowseHTML"
+"https"="QBrowseHTML"
+
+[HKEY_CURRENT_USER\\Software\\RegisteredApplications]
+"QBrowse"="Software\\\\Clients\\\\StartMenuInternet\\\\QBrowse\\\\Capabilities"
+`;
+
+        const tempFile = path.join(app.getPath('temp'), `qbrowse_reg_${Date.now()}.reg`);
+        fsSync.writeFileSync(tempFile, regContent, 'utf8');
+        try {
+            const { execSync } = require('child_process');
+            execSync(`reg.exe import "${tempFile}"`, { stdio: ['ignore', 'pipe', 'ignore'] });
+        } finally {
+            try { fsSync.unlinkSync(tempFile); } catch (_) {}
+        }
+        return true;
+    } catch (err) {
+        console.warn('[DefaultBrowser] Failed to register Windows browser capabilities:', err);
+        return false;
+    }
+}
+
+function ensureLinuxDesktopEntry() {
+    if (process.platform !== 'linux') return false;
+    try {
+        const os = require('os');
+        const appsDir = path.join(os.homedir(), '.local', 'share', 'applications');
+        fsSync.mkdirSync(appsDir, { recursive: true });
+
+        const desktopFile = path.join(appsDir, 'qbrowse.desktop');
+
+        const execCmd = process.env.APPIMAGE 
+            ? `"${process.env.APPIMAGE}"`
+            : app.isPackaged
+                ? `"${process.execPath}"`
+                : `"${process.execPath}" "${path.resolve(__dirname, 'main.cjs')}"`;
+
+        let iconPath = 'qbrowse';
+        const projectIcon = path.join(__dirname, '..', 'icon.png');
+        const userIconPath = path.join(appsDir, 'qbrowse.png');
+        try {
+            if (fsSync.existsSync(projectIcon) && !fsSync.existsSync(userIconPath)) {
+                fsSync.copyFileSync(projectIcon, userIconPath);
+                iconPath = userIconPath;
+            } else if (fsSync.existsSync(userIconPath)) {
+                iconPath = userIconPath;
+            }
+        } catch (_) {}
+
+        const desktopContent = `[Desktop Entry]
+Version=1.0
+Type=Application
+Name=QBrowse
+GenericName=Web Browser
+Comment=Next-generation privacy-first browser with Tor, AI & Cloud Sync
+Exec=${execCmd} %U
+Icon=${iconPath}
+Terminal=false
+StartupNotify=true
+StartupWMClass=qbrowse
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/qbrowse;
+Actions=new-window;new-private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=${execCmd} --new-window %U
+
+[Desktop Action new-private-window]
+Name=New Incognito Window
+Exec=${execCmd} --incognito %U
+`;
+
+        fsSync.writeFileSync(desktopFile, desktopContent, 'utf8');
+        try { fsSync.chmodSync(desktopFile, 0o755); } catch (_) {}
+
+        try {
+            const { execSync } = require('child_process');
+            execSync(`update-desktop-database "${appsDir}"`, { stdio: ['ignore', 'pipe', 'ignore'] });
+        } catch (_) {}
+
+        return true;
+    } catch (err) {
+        console.warn('[DefaultBrowser] Failed to write Linux desktop entry:', err);
+        return false;
+    }
+}
+
+function checkIsDefaultBrowser() {
+    try {
+        if (process.platform === 'win32') {
+            const { execSync } = require('child_process');
+            try {
+                const out = execSync('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice" /v "ProgId"', {
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'ignore']
+                });
+                const match = out.match(/ProgId\s+REG_SZ\s+(\S+)/i);
+                if (match && match[1]) {
+                    const progId = match[1].trim();
+                    // On Windows 10/11, UserChoice ProgId is the definitive authority.
+                    return /qbrowse/i.test(progId);
+                }
+            } catch (_) {}
+
+            return false;
+        } else if (process.platform === 'linux') {
+            const { execSync } = require('child_process');
+            try {
+                const out1 = execSync('xdg-settings get default-web-browser', {
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'ignore']
+                }).trim();
+                if (out1) return /qbrowse/i.test(out1);
+
+                const out2 = execSync('xdg-mime query default x-scheme-handler/http', {
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'ignore']
+                }).trim();
+                if (out2) return /qbrowse/i.test(out2);
+            } catch (_) {}
+
+            return false;
+        } else {
+            const isHttp = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('http');
+            const isHttps = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('https');
+            return Boolean(isHttp && isHttps);
+        }
+    } catch (_) {
+        return false;
+    }
+}
+
 // Default Browser Handlers
 ipcMain.handle('system-check-default-browser', async () => {
     try {
-        const isHttp = app.isDefaultProtocolClient('http');
-        const isHttps = app.isDefaultProtocolClient('https');
-        return { isDefault: Boolean(isHttp && isHttps) };
+        const isDefault = checkIsDefaultBrowser();
+        return { isDefault };
     } catch (e) {
         return { isDefault: false, error: e.message };
     }
@@ -2710,26 +3240,32 @@ ipcMain.handle('system-check-default-browser', async () => {
 
 ipcMain.handle('system-set-default-browser', async () => {
     try {
-        let setHttp = false;
-        let setHttps = false;
-
         if (typeof app.setAsDefaultProtocolClient === 'function') {
-            setHttp = app.setAsDefaultProtocolClient('http');
-            setHttps = app.setAsDefaultProtocolClient('https');
+            try { app.setAsDefaultProtocolClient('http'); } catch (_) {}
+            try { app.setAsDefaultProtocolClient('https'); } catch (_) {}
         }
 
-        if (process.platform === 'linux') {
+        if (process.platform === 'win32') {
+            registerWindowsBrowser();
+            if (!checkIsDefaultBrowser()) {
+                try {
+                    await shell.openExternal('ms-settings:defaultapps?registeredAppMachine=QBrowse');
+                } catch (_) {
+                    try {
+                        await shell.openExternal('ms-settings:defaultapps');
+                    } catch (_) {}
+                }
+            }
+        } else if (process.platform === 'linux') {
+            ensureLinuxDesktopEntry();
             try {
-                const { exec } = require('child_process');
-                exec('xdg-settings set default-web-browser qbrowse.desktop || xdg-mime default qbrowse.desktop x-scheme-handler/http x-scheme-handler/https text/html');
-            } catch (_) {}
-        } else if (process.platform === 'win32') {
-            try {
-                shell.openExternal('ms-settings:defaultapps');
+                const { execSync } = require('child_process');
+                execSync('xdg-settings set default-web-browser qbrowse.desktop', { stdio: ['ignore', 'pipe', 'ignore'] });
+                execSync('xdg-mime default qbrowse.desktop x-scheme-handler/http x-scheme-handler/https text/html application/xhtml+xml', { stdio: ['ignore', 'pipe', 'ignore'] });
             } catch (_) {}
         }
 
-        const isDefault = Boolean(app.isDefaultProtocolClient('http') && app.isDefaultProtocolClient('https'));
+        const isDefault = checkIsDefaultBrowser();
         return { success: true, isDefault };
     } catch (e) {
         return { success: false, error: e.message };
@@ -2739,11 +3275,20 @@ ipcMain.handle('system-set-default-browser', async () => {
 ipcMain.handle('system-open-default-apps-settings', async () => {
     try {
         if (process.platform === 'win32') {
-            await shell.openExternal('ms-settings:defaultapps');
+            registerWindowsBrowser();
+            try {
+                await shell.openExternal('ms-settings:defaultapps?registeredAppMachine=QBrowse');
+            } catch (_) {
+                await shell.openExternal('ms-settings:defaultapps');
+            }
             return { success: true };
         } else if (process.platform === 'linux') {
+            ensureLinuxDesktopEntry();
             const { exec } = require('child_process');
-            exec('gnome-control-center default-apps || xfce4-mime-settings || kcmshell5 componentchooser');
+            exec('gnome-control-center default-apps || xfce4-mime-settings || kcmshell5 componentchooser || systemsettings5');
+            return { success: true };
+        } else if (process.platform === 'darwin') {
+            await shell.openExternal('x-apple.systempreferences:com.apple.preference.general');
             return { success: true };
         }
         return { success: false };

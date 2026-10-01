@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -21,8 +21,15 @@ export default function FindInPageBar() {
 
     const inputRef = useRef(null);
 
+    const [displayedOpen, setDisplayedOpen] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
+    const closeTimerRef = useRef(null);
+
     useEffect(() => {
         if (isFindOpen) {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+            setDisplayedOpen(true);
+            setIsClosing(false);
             // Auto focus and select existing query on open
             const timer = setTimeout(() => {
                 if (inputRef.current) {
@@ -31,10 +38,19 @@ export default function FindInPageBar() {
                 }
             }, 50);
             return () => clearTimeout(timer);
+        } else if (displayedOpen && !isClosing) {
+            setIsClosing(true);
+            closeTimerRef.current = setTimeout(() => {
+                setDisplayedOpen(false);
+                setIsClosing(false);
+            }, 200);
         }
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
     }, [isFindOpen]);
 
-    if (!isFindOpen) return null;
+    if (!displayedOpen) return null;
 
     const handleKeyDown = (e) => {
         if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
@@ -64,7 +80,9 @@ export default function FindInPageBar() {
 
     return (
         <div 
-            className={`absolute top-4 right-6 z-[60] flex items-center gap-1.5 backdrop-blur-3xl rounded-2xl p-1.5 pl-3 pr-2 animate-slide-down-fade select-none transition-all duration-200 ${
+            className={`absolute top-4 right-6 z-[60] flex items-center gap-1.5 backdrop-blur-3xl rounded-2xl p-1.5 pl-3 pr-2 ${
+                isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
+            } origin-top-right select-none transition-all duration-200 ${
                 isBright
                     ? 'bg-white/55 border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.12)] text-zinc-900'
                     : 'bg-[#0e1015]/92 border border-white/20 shadow-[0_20px_60px_rgba(0,0,0,0.85)] text-white'

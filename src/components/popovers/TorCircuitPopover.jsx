@@ -105,6 +105,7 @@ export default function TorCircuitPopover({ isClosing }) {
 
     return (
         <div 
+            id="popover-tor-container"
             onClick={e => e.stopPropagation()}
             style={{ backgroundColor: '#0c0a1a', color: '#ffffff' }}
             className={`absolute top-2 right-4 w-[390px] max-h-[calc(100vh-70px)] overflow-y-auto hide-scroll rounded-2xl bg-[#0c0a1a]/95 backdrop-blur-3xl border border-purple-500/30 shadow-[0_25px_80px_rgba(0,0,0,0.95),0_0_30px_rgba(147,51,234,0.18)] z-[70000] p-4 text-white origin-top-right transition-all duration-200 ${

@@ -13,7 +13,7 @@ export default function Sidebar() {
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const uiScale = useUIStore(state => state.settings?.uiScale);
-    const currentUrl = useUIStore(state => state.currentUrl);
+    const isHomeActive = useUIStore(state => !state.currentUrl || state.currentUrl === 'about:blank');
     const setHoverPreview = useUIStore(state => state.setHoverPreview);
     const showToast = useUIStore(state => state.showToast);
     const setPipWindow = useUIStore(state => state.setPipWindow);
@@ -160,11 +160,15 @@ export default function Sidebar() {
                 if (ui.isReaderOpen) {
                     ui.closeReaderMode();
                 }
-                const { isSplitView, focusedPane, setSplitRightTabId } = ui;
+                const { isSplitView, focusedPane, setSplitRightTabId, splitRightTabId } = ui;
                 if (isSplitView && focusedPane === 'right') {
                     setSplitRightTabId(tab.id);
                     ui.setCurrentUrl(tab.url || '');
                 } else {
+                    if (isSplitView && splitRightTabId === tab.id) {
+                        const otherTab = spaceTabs.find(t => t.id !== tab.id);
+                        setSplitRightTabId(otherTab ? otherTab.id : null);
+                    }
                     const list = spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs));
                     const setList = spaceType === 'personal' ? setPrivateTabs : (spaceType === 'work' ? setWorkTabs : (spaceType === 'ghost' ? setGhostTabs : setTorTabs));
                     setList(list.map(t => ({ 
@@ -242,7 +246,7 @@ export default function Sidebar() {
                 </div>
             )}
 
-            <div className={`hidden md:flex opacity-0 group-hover:opacity-100 transition absolute right-2 gap-0.5 ${isBright ? 'bg-black/[0.06] border border-black/[0.08] text-zinc-700 backdrop-blur-md' : 'bg-[#1a1a1c]/90 border border-white/10 text-white shadow-[0_4px_12px_rgba(0,0,0,0.6)]'} p-1 rounded-xl z-20`}>
+            <div className={`hidden md:flex opacity-0 group-hover:opacity-100 transition absolute right-2 gap-0.5 ${isBright ? 'bg-white/90 border border-black/[0.08] text-zinc-700 shadow-sm' : 'bg-[#1a1a1c]/95 border border-white/10 text-white shadow-sm'} p-1 rounded-xl z-20`}>
                 <button 
                     onClick={(e) => { e.stopPropagation(); handleToggleMute(tab.id, spaceType); }} 
                     className={`p-1 transition rounded ${tab.isMuted ? 'text-red-500 hover:bg-red-500/20' : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10')}`} 
@@ -289,21 +293,21 @@ export default function Sidebar() {
 
     return (
         <>
-        <aside className={`sidebar-container flex-shrink-0 flex flex-col backdrop-blur-3xl rounded-[2rem] shadow-2xl overflow-hidden relative z-50 ${
+        <aside className={`sidebar-container min-w-0 flex-shrink-0 flex flex-col rounded-[2rem] overflow-hidden relative z-10 ${
             isBright 
-                ? 'bg-white/45 border border-white/25 text-zinc-900 sidebar-light shadow-[0_20px_50px_rgba(0,0,0,0.04)]' 
-                : 'bg-black/50 border border-white/10 text-white/90 sidebar-dark'
+                ? 'liquid-glass-bright text-zinc-900 sidebar-light' 
+                : 'liquid-glass-dark text-white/90 sidebar-dark'
         } ${
             isFullscreen || isSidebarHidden 
-                ? 'w-0 mr-0 opacity-0 pointer-events-none -translate-x-4' 
-                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100 translate-x-0' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100 translate-x-0'
+                ? 'w-0 mr-0 opacity-0 pointer-events-none invisible' 
+                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100 visible' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100 visible'
         }`}>
             {/* Fixed-Width Inner Container to prevent content squishing and text wrapping */}
-            <div className={`sidebar-inner h-full flex flex-col flex-shrink-0 ${
+            <div className={`sidebar-inner w-full h-full flex flex-col flex-shrink-0 ${
                 isFullscreen || isSidebarHidden
-                    ? '-translate-x-12 opacity-0 scale-[0.98]'
-                    : 'translate-x-0 opacity-100 scale-100'
-            } ${uiScale === 'compact' ? 'w-16 md:w-60 min-w-[15rem]' : 'w-16 md:w-64 min-w-[16rem]'}`}>
+                    ? '-translate-x-8 opacity-0'
+                    : 'translate-x-0 opacity-100'
+            }`}>
 
             <div className="drag-region flex gap-2 p-5 border-b border-[color:var(--sidebar-border)] items-center justify-between">
                 <div className="flex gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -339,7 +343,7 @@ export default function Sidebar() {
                     </button>
                     <button onClick={() => setActiveModal('history')} className="hover:text-accent transition" title="History"><Clock size={14} /></button>
                     <button onClick={() => setActiveModal('settings')} className="hover:text-accent transition" title="Settings"><Settings size={14} /></button>
-                    <button onClick={handleGoHome} className={`transition ${currentUrl === '' || currentUrl === 'about:blank' ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-110' : 'hover:text-accent'}`} title="Zen Dashboard"><Home size={14} /></button>
+                    <button onClick={handleGoHome} className={`transition ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-110' : 'hover:text-accent'}`} title="Zen Dashboard"><Home size={14} /></button>
                 </div>
             </div>
 
@@ -374,7 +378,7 @@ export default function Sidebar() {
 
                             {/* Speaker badge if any tab in this service stack is playing audio */}
                             {isAudible && (
-                                <div className="absolute top-0.5 left-0.5 p-0.5 rounded-full bg-black/70 backdrop-blur-sm text-emerald-400 animate-pulse shadow">
+                                <div className="absolute top-0.5 left-0.5 p-0.5 rounded-full bg-black/80 text-emerald-400 animate-pulse shadow-sm">
                                     <Volume2 size={8} />
                                 </div>
                             )}
@@ -576,10 +580,12 @@ export default function Sidebar() {
             </div>
 
             <div className="p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-2">
-                <div className={`relative flex-1 flex p-1 rounded-full border shadow-xs backdrop-blur-2xl ${
+                <div 
+                    id="tour-spaces-container"
+                    className={`relative flex-1 flex p-1 rounded-full border shadow-xs ${
                     isBright 
                         ? 'bg-black/[0.03] border-black/[0.05]' 
-                        : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
+                        : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                 }`}>
                     <div 
                         className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${

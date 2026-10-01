@@ -309,11 +309,13 @@ export default function ResourceManagerModal() {
         <div 
             className={`absolute inset-0 z-[200] flex items-center justify-center p-4 select-none font-sans ${
                 isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/75 backdrop-blur-3xl text-white'
-            } ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`}
+            } ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`}
             onClick={closeModal}
         >
             <div 
-                className={`w-full max-w-5xl h-[88vh] min-h-[580px] rounded-3xl flex flex-col overflow-hidden relative transition-all duration-300 ${
+                className={`w-full max-w-5xl h-[88vh] min-h-[580px] rounded-3xl flex flex-col overflow-hidden relative ${
+                    isModalClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
+                } ${
                     isBright 
                         ? 'bg-white/60 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.12)] text-zinc-900' 
                         : 'bg-[#0d0e12]/95 backdrop-blur-2xl border border-white/[0.06] shadow-[0_40px_100px_rgba(0,0,0,0.85)] text-white'

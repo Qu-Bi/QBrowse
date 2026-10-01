@@ -22,6 +22,12 @@ const HistoryModal = () => {
     const isClosingThis = isModalClosing && useUIStore.getState().closingModal === 'history';
     if (activeModal !== 'history' && !isClosingThis) return null;
 
+    const handleClearHistory = () => {
+        clearHistory();
+        setHistorySearchQuery('');
+        useUIStore.getState().showToast('Browsing history cleared');
+    };
+
     const handleOpenUrl = (url) => {
         if (!url) return;
         const activeTab = useTabStore.getState().getActiveTab();
@@ -34,43 +40,90 @@ const HistoryModal = () => {
     };
 
     return (
-        <div className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/60 backdrop-blur-3xl text-white'} font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
+        <div className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-md text-zinc-900' : 'bg-black/35 backdrop-blur-md text-white'} font-sans ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} onClick={closeModal}>
             <div 
-                className={`w-full max-w-3xl h-[80vh] min-h-[500px] rounded-3xl overflow-hidden flex flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                className={`w-full max-w-3xl h-[80vh] min-h-[500px] rounded-3xl overflow-hidden flex flex-col ${
+                    isModalClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
+                } ${
                     isBright 
-                        ? 'bg-white/60 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.12)] text-zinc-900' 
-                        : 'bg-[#121214]/80 backdrop-blur-md border border-white/10 shadow-[0_40px_100px_rgba(0,0,0,0.8)] text-white'
+                        ? 'bg-white/80 backdrop-blur-3xl border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] ring-1 ring-black/[0.04] text-zinc-900' 
+                        : 'bg-[#0c0d14]/78 backdrop-blur-3xl border border-white/12 shadow-[0_35px_90px_rgba(0,0,0,0.85),inset_0_1px_1px_rgba(255,255,255,0.18)] ring-1 ring-white/[0.06] text-white'
                 }`} 
                 onClick={e => e.stopPropagation()}
             >
-                <div className={`p-6 border-b flex justify-between items-center ${isBright ? 'border-black/10 bg-black/[0.02]' : 'border-white/10 bg-black/20'}`}>
-                    <div>
-                        <h2 className={`text-xl font-bold tracking-tight flex items-center gap-3 ${isBright ? 'text-zinc-900' : 'text-white'}`}><Clock className="text-accent" /> Archive (History)</h2>
-                        <p className={`text-xs mt-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Local SQLite database (Securely synced)</p>
-                    </div>
+                <div className={`p-5 px-6 border-b flex justify-between items-center ${isBright ? 'border-black/[0.06] bg-black/[0.015]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
                     <div className="flex items-center gap-3">
-                        <button onClick={clearHistory} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${isBright ? 'bg-black/5 hover:bg-red-500/15 text-zinc-700 hover:text-red-600' : 'bg-white/5 hover:bg-red-500/20 text-white hover:text-red-400'}`}>Clear</button>
+                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-xs ${
+                            isBright ? 'bg-accent/15 border-accent/30 text-zinc-900' : 'bg-accent/10 border-accent/25 text-accent'
+                        }`}>
+                            <Clock size={20} />
+                        </div>
+                        <div>
+                            <h2 className={`text-lg font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                Archive
+                            </h2>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <span className={`text-[11px] font-medium ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
+                                    {history.length} {history.length === 1 ? 'entry' : 'entries'} saved
+                                </span>
+                                <span className={`w-1 h-1 rounded-full ${isBright ? 'bg-zinc-300' : 'bg-white/20'}`} />
+                                <span className="text-[10px] font-mono text-emerald-500 flex items-center gap-1 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Synced
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2.5">
                         <div className="relative">
-                            <Search size={14} className={`absolute left-3 top-2.5 ${isBright ? 'text-zinc-400' : 'text-white/30'}`} />
+                            <Search size={13} className={`absolute left-3.5 top-2.5 ${isBright ? 'text-zinc-400' : 'text-white/35'}`} />
                             <input
                                 type="text"
                                 value={historySearchQuery}
                                 onChange={(e) => setHistorySearchQuery(e.target.value)}
                                 placeholder="Search history..."
-                                className={`border rounded-xl py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-accent-30 transition-colors w-64 ${
+                                className={`border rounded-full py-1.5 pl-9 pr-7 text-xs focus:outline-none transition-all w-56 md:w-64 ${
                                     isBright 
-                                        ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' 
-                                        : 'bg-white/5 border-white/10 text-white placeholder-white/30'
+                                        ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white' 
+                                        : 'bg-white/[0.04] border-white/10 text-white placeholder-white/30 focus:border-accent/50 focus:bg-white/[0.07]'
                                 }`}
                             />
+                            {historySearchQuery && (
+                                <button 
+                                    onClick={() => setHistorySearchQuery('')} 
+                                    className={`absolute right-2.5 top-2 text-xs ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white'}`}
+                                >
+                                    ✕
+                                </button>
+                            )}
                         </div>
-                        <button onClick={closeModal} className={`w-8 h-8 flex items-center justify-center rounded-full transition cursor-pointer ${isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600' : 'bg-white/5 hover:bg-white/10 text-white'}`}><X size={16} /></button>
+                        {history.length > 0 && (
+                            <button 
+                                onClick={handleClearHistory} 
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors cursor-pointer border ${
+                                    isBright 
+                                        ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200' 
+                                        : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'
+                                }`}
+                            >
+                                Clear
+                            </button>
+                        )}
+                        <button 
+                            onClick={closeModal} 
+                            className={`w-8 h-8 flex items-center justify-center rounded-full transition cursor-pointer border ${
+                                isBright 
+                                    ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600' 
+                                    : 'bg-white/[0.05] hover:bg-white/10 border-white/10 text-white/70 hover:text-white'
+                            }`}
+                        >
+                            <X size={15} />
+                        </button>
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto hide-scroll p-6 space-y-6">
 
                     {historySearchQuery ? (
-                        <div className="animate-pop-in">
+                        <div className="animate-tab-fade">
                             <h3 className="text-xs font-bold uppercase text-accent tracking-widest mb-3 pl-1">Search Results</h3>
                             <div className="flex flex-col gap-2">
                                 {history.filter(item => item.title.toLowerCase().includes(historySearchQuery.toLowerCase()) || item.url.toLowerCase().includes(historySearchQuery.toLowerCase())).length > 0 ? (
@@ -78,10 +131,10 @@ const HistoryModal = () => {
                                         <div 
                                             key={item.url} 
                                             onClick={() => handleOpenUrl(item.url)}
-                                            className={`flex items-center gap-4 p-3 rounded-xl transition group cursor-pointer border animate-pop-in ${
+                                            className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-200 group cursor-pointer border animate-tab-fade ${
                                                 isBright 
-                                                    ? 'hover:bg-black/[0.04] border-transparent hover:border-black/5' 
-                                                    : 'hover:bg-white/5 border-transparent hover:border-white/5'
+                                                    ? 'hover:bg-black/[0.03] border-transparent hover:border-black/[0.06] hover:shadow-xs' 
+                                                    : 'hover:bg-white/[0.04] border-transparent hover:border-white/[0.08] hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
                                             }`} 
                                             style={{ animationFillMode: 'both', animationDelay: `${i * 0.04}s` }}
                                         >
@@ -106,7 +159,7 @@ const HistoryModal = () => {
                                         </div>
                                     ))
                                 ) : (
-                                    <div className={`p-8 text-center font-medium animate-pop-in ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>No results for "{historySearchQuery}"</div>
+                                    <div className={`p-8 text-center font-medium animate-tab-fade ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>No results for "{historySearchQuery}"</div>
                                 )}
                             </div>
                         </div>
@@ -142,14 +195,24 @@ const HistoryModal = () => {
 
                         if (groupedHistory.length === 0) {
                             return (
-                                <div className={`p-12 text-center font-medium animate-pop-in ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                    No browsing history recorded yet.
+                                <div className="flex-1 flex flex-col items-center justify-center text-center p-16 animate-tab-fade">
+                                    <div className={`w-16 h-16 rounded-3xl flex items-center justify-center mb-4 border shadow-xs ${
+                                        isBright ? 'bg-black/[0.03] border-black/[0.06] text-zinc-400' : 'bg-white/[0.03] border-white/[0.06] text-white/30'
+                                    }`}>
+                                        <Clock size={30} />
+                                    </div>
+                                    <p className={`text-sm font-semibold ${isBright ? 'text-zinc-800' : 'text-white/90'} mb-1`}>
+                                        No Browsing History Yet
+                                    </p>
+                                    <p className={`text-xs max-w-sm leading-relaxed ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                        Pages you visit in standard and work spaces will be archived here with fast instant search.
+                                    </p>
                                 </div>
                             );
                         }
 
                         return (
-                            <div className="animate-pop-in space-y-6">
+                            <div className="animate-tab-fade space-y-6">
                                 {groupedHistory.map(group => (
                                     <div key={group.name}>
                                         <h3 className={`text-xs font-bold uppercase tracking-widest mb-3 pl-1 ${isBright ? 'text-zinc-500' : 'text-white/30'}`}>{group.name}</h3>
@@ -160,10 +223,10 @@ const HistoryModal = () => {
                                                 <div 
                                                     key={item.url + i} 
                                                     onClick={() => handleOpenUrl(item.url)}
-                                                    className={`flex items-center gap-4 p-3 rounded-xl transition group cursor-pointer border animate-pop-in ${
+                                                    className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-200 group cursor-pointer border animate-tab-fade ${
                                                         isBright 
-                                                            ? 'hover:bg-black/[0.04] border-transparent hover:border-black/5' 
-                                                            : 'hover:bg-white/5 border-transparent hover:border-white/5'
+                                                            ? 'hover:bg-black/[0.03] border-transparent hover:border-black/[0.06] hover:shadow-xs' 
+                                                            : 'hover:bg-white/[0.04] border-transparent hover:border-white/[0.08] hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
                                                     }`} 
                                                     style={{ animationFillMode: 'both', animationDelay: `${i * 0.03}s` }}
                                                 >

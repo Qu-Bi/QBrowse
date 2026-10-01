@@ -17,36 +17,50 @@ export default function BrowserDialogOverlay() {
     const inputRef = useRef(null);
     const usernameRef = useRef(null);
 
-    useEffect(() => {
-        if (!activeDialog) {
-            setInputValue('');
-            setAuthUsername('');
-            setAuthPassword('');
-            setShowPassword(false);
-            setSuppressDialogs(false);
-            return;
-        }
+    const [displayedDialog, setDisplayedDialog] = useState(null);
+    const [isClosing, setIsClosing] = useState(false);
+    const closeTimerRef = useRef(null);
 
-        if (activeDialog.type === 'prompt') {
-            setInputValue(activeDialog.defaultValue || '');
-            setTimeout(() => {
-                if (inputRef.current) {
-                    inputRef.current.focus();
-                    inputRef.current.select();
-                }
-            }, 60);
-        } else if (activeDialog.type === 'auth') {
-            setTimeout(() => {
-                if (usernameRef.current) {
-                    usernameRef.current.focus();
-                }
-            }, 60);
+    useEffect(() => {
+        if (activeDialog) {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+            setDisplayedDialog(activeDialog);
+            setIsClosing(false);
+            if (activeDialog.type === 'prompt') {
+                setInputValue(activeDialog.defaultValue || '');
+                setTimeout(() => {
+                    if (inputRef.current) {
+                        inputRef.current.focus();
+                        inputRef.current.select();
+                    }
+                }, 60);
+            } else if (activeDialog.type === 'auth') {
+                setTimeout(() => {
+                    if (usernameRef.current) {
+                        usernameRef.current.focus();
+                    }
+                }, 60);
+            }
+        } else if (displayedDialog && !isClosing) {
+            setIsClosing(true);
+            closeTimerRef.current = setTimeout(() => {
+                setDisplayedDialog(null);
+                setIsClosing(false);
+                setInputValue('');
+                setAuthUsername('');
+                setAuthPassword('');
+                setShowPassword(false);
+                setSuppressDialogs(false);
+            }, 200);
         }
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
     }, [activeDialog]);
 
     // Handle Escape and Enter keyboard navigation
     useEffect(() => {
-        if (!activeDialog) return;
+        if (!displayedDialog) return;
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
@@ -60,11 +74,11 @@ export default function BrowserDialogOverlay() {
         };
         window.addEventListener('keydown', handleKeyDown, true);
         return () => window.removeEventListener('keydown', handleKeyDown, true);
-    }, [activeDialog, inputValue, authUsername, authPassword, suppressDialogs]);
+    }, [displayedDialog, inputValue, authUsername, authPassword, suppressDialogs]);
 
-    if (!activeDialog) return null;
+    if (!displayedDialog) return null;
 
-    const { type, message, hostname, origin, realm, hasRepeatSpam, onConfirm, onCancel } = activeDialog;
+    const { type, message, hostname, origin, realm, hasRepeatSpam, onConfirm, onCancel } = displayedDialog;
 
     const handleConfirm = () => {
         if (suppressDialogs && origin) {
@@ -121,7 +135,9 @@ export default function BrowserDialogOverlay() {
 
     return (
         <div 
-            className="absolute inset-0 z-[80] flex justify-center items-start pt-16 pb-8 px-4 pointer-events-auto bg-black/20 backdrop-blur-[2px] animate-fade-in"
+            className={`absolute inset-0 z-[80] flex justify-center items-start pt-16 pb-8 px-4 pointer-events-auto bg-black/20 backdrop-blur-[2px] transition-opacity duration-200 ${
+                isClosing ? 'opacity-0' : 'animate-fade-in'
+            }`}
             onClick={(e) => {
                 if (e.target === e.currentTarget) {
                     if (type === 'alert') handleConfirm();
@@ -130,7 +146,9 @@ export default function BrowserDialogOverlay() {
             }}
         >
             <div 
-                className={`relative w-full max-w-md rounded-2xl overflow-hidden border transition-all duration-300 animate-pop-in p-5 flex flex-col gap-4 ${
+                className={`relative w-full max-w-md rounded-2xl overflow-hidden border transition-all duration-300 ${
+                    isClosing ? 'animate-pop-out' : 'animate-pop-in'
+                } p-5 flex flex-col gap-4 ${
                     isBright 
                         ? 'bg-white/75 backdrop-blur-3xl border-black/[0.08] text-zinc-900 shadow-[0_24px_70px_rgba(0,0,0,0.12),0_0_1px_1px_rgba(0,0,0,0.04),inset_0_1px_0_0_rgba(255,255,255,0.9)]' 
                         : 'bg-[#0c0d14]/78 backdrop-blur-3xl border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.7),0_0_1px_1px_rgba(255,255,255,0.06),inset_0_1px_0_0_rgba(255,255,255,0.12)]'

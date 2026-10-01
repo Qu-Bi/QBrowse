@@ -110,7 +110,9 @@ export default function TopBar() {
     const isBright = theme === 'light' && !isIncognito && !isTor;
 
     const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
-    const leftTab = spaceTabs.find(t => t.active);
+    const leftTab = isSplitView && splitRightTabId 
+        ? (spaceTabs.find(t => t.active && t.id !== splitRightTabId) || spaceTabs.find(t => t.id !== splitRightTabId) || spaceTabs[0])
+        : (spaceTabs.find(t => t.active) || spaceTabs[0]);
     const rightTab = isSplitView && splitRightTabId ? spaceTabs.find(t => t.id === splitRightTabId) : null;
     
     const focusedTab = (isSplitView && focusedPane === 'right' && rightTab) ? rightTab : leftTab;
@@ -195,10 +197,8 @@ export default function TopBar() {
         <>
             <div className={`relative z-[60] transition-[margin,opacity] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${isFullscreen ? '-mt-[60px] opacity-0' : 'mt-0 opacity-100'}`}>
                 {/* SINGLE BUBBLE TOPBAR */}
-                <div className={`drag-region flex mt-0 mx-0 mb-2 ${uiScale === 'compact' ? 'h-[44px]' : 'h-[50px]'} z-50 items-center justify-between px-3 rounded-full shadow-lg border backdrop-blur-2xl ${
-                    isBright 
-                        ? 'bg-white/40 border border-black/[0.08] text-zinc-900 shadow-[0_8px_30px_rgba(0,0,0,0.04)]' 
-                        : 'bg-[#0c0d14]/78 border border-white/10 text-white shadow-[0_12px_40px_rgba(0,0,0,0.5)]'
+                <div className={`drag-region flex mt-0 mx-0 mb-2 ${uiScale === 'compact' ? 'h-[44px]' : 'h-[50px]'} z-50 items-center justify-between px-3 rounded-full transition-all ${
+                    isBright ? 'liquid-glass-bright text-zinc-900' : 'liquid-glass-dark text-white'
                 }`}>
 
                     {/* LEFT BLOCK: Zen Mode, Navigation */}
@@ -210,10 +210,10 @@ export default function TopBar() {
                                 setIsSidebarHidden(nextState);
                                 showToast(nextState ? 'Zen Mode active' : 'Sidebar visible'); 
                             }}
-                            className={`h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-full transition-all duration-300 active:scale-95 group cursor-pointer border shadow-xs backdrop-blur-2xl ${
+                            className={`h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-full transition-all duration-300 active:scale-95 group cursor-pointer ${
                                 isBright 
-                                    ? (isSidebarHidden ? 'bg-accent/15 border border-[color:var(--accent)] text-zinc-950 font-semibold' : 'bg-black/[0.04] hover:bg-black/[0.08] border border-black/[0.06] text-zinc-700 hover:text-zinc-950') 
-                                    : (isSidebarHidden ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-[#0c0d14]/78 hover:bg-[#0c0d14]/95 border-white/[0.08] text-white/90 hover:text-white shadow-[0_4px_16px_rgba(0,0,0,0.4)]')
+                                    ? (isSidebarHidden ? 'bg-accent/25 border border-accent text-zinc-950 font-bold shadow-xs' : 'liquid-pill-bright') 
+                                    : (isSidebarHidden ? 'bg-accent/20 border border-accent/40 text-accent shadow-xs' : 'liquid-pill-dark')
                             }`}
                             title="Zen Mode (CMD+B)"
                         >
@@ -221,10 +221,8 @@ export default function TopBar() {
                         </button>
 
                         {/* Compact Segmented Navigation Pill */}
-                        <div className={`flex items-center p-0.5 px-1 h-9 rounded-full shadow-xs border transition-all flex-shrink-0 backdrop-blur-2xl ${
-                            isBright
-                                ? 'bg-black/[0.04] border border-black/[0.06]'
-                                : 'bg-[#0c0d14]/78 border-white/[0.08] shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
+                        <div className={`flex items-center p-0.5 px-1 h-9 rounded-full transition-all flex-shrink-0 ${
+                            isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                         }`}>
                             <button 
                                 onClick={handleBack} 
@@ -259,6 +257,7 @@ export default function TopBar() {
                     {/* CENTER BLOCK: Multi-stage Centered to Fluid URL Bar */}
                     <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-shrink flex-grow-0 w-full max-w-xl min-w-[140px] z-10 mx-2 flex items-center justify-center">
                         <button
+                            id="tour-omnibox-trigger"
                             onClick={() => openOmnibox(rawUrl)}
                             onContextMenu={(e) => {
                                 e.preventDefault();
@@ -267,10 +266,8 @@ export default function TopBar() {
                                 const y = e.clientY + 200 > window.innerHeight ? window.innerHeight - 220 : e.clientY;
                                 useUIStore.getState().setTopBarContextMenu({ x, y, url: rawUrl, tabId: activeTab?.id });
                             }}
-                            className={`relative w-full flex items-center justify-between px-3.5 h-[38px] rounded-full transition-all duration-300 group cursor-pointer border min-w-0 gap-2.5 backdrop-blur-2xl ${
-                                isBright 
-                                    ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.05] hover:border-accent/50 hover:shadow-[0_0_24px_var(--accent-30),0_2px_8px_var(--accent-20)] text-zinc-800 shadow-xs' 
-                                    : 'bg-[#0c0d14]/78 hover:bg-[#0c0d14]/92 border-white/[0.06] hover:border-accent/50 hover:shadow-[0_0_28px_var(--accent-40),0_4px_16px_var(--accent-20)] text-white/90 shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
+                            className={`relative w-full flex items-center justify-between px-3.5 h-9 rounded-full transition-all duration-300 group cursor-pointer min-w-0 gap-2.5 ${
+                                isBright ? 'liquid-pill-bright hover:border-accent/60' : 'liquid-pill-dark hover:border-accent/50'
                             }`}
                             title={rawUrl || 'Search or enter address'}
                         >
@@ -401,23 +398,24 @@ export default function TopBar() {
 
                     {/* RIGHT BLOCK: Extensions & Toggles */}
                     <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center justify-end min-w-max z-20 transition-opacity duration-300 ${isRightPanelOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                        <div className={`flex items-center gap-1 flex-shrink-0 min-w-max h-9 rounded-full shadow-xs border px-2 backdrop-blur-2xl ${
-                            isBright 
-                                ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.05] text-zinc-800' 
-                                : 'bg-[#0c0d14]/78 hover:bg-[#0c0d14]/92 border-white/[0.06] text-white/90 shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
+                        <div className={`flex items-center gap-1 flex-shrink-0 min-w-max h-9 rounded-full px-2 transition-all ${
+                            isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                         }`}>
                             <button 
+                                id="tour-splitview-trigger"
                                 onClick={() => toggleSplitView()} 
-                                className={`p-1.5 rounded-full transition group border-r pr-3 mr-1 ${
+                                className={`p-1.5 rounded-full transition group ${
                                     isBright 
-                                        ? (isSplitView ? 'border-gray-200/60 text-accent bg-accent/10' : 'border-gray-200/60 text-zinc-600 hover:bg-black/5 hover:text-zinc-900') 
-                                        : (isSplitView ? 'border-white/15 text-accent bg-accent/10' : 'border-white/10 text-white/60 hover:text-white')
+                                        ? (isSplitView ? 'text-accent bg-accent/10' : 'text-zinc-600 hover:bg-black/5 hover:text-zinc-900') 
+                                        : (isSplitView ? 'text-accent bg-accent/10' : 'text-white/60 hover:text-white')
                                 }`} 
                                 title="Split View (Ctrl+\ or Ctrl+Shift+D)"
                             >
                                 <SplitSquareHorizontal size={14} className="group-hover:scale-110 transition-transform" />
                             </button>
+                            <div className={`w-px h-3.5 mx-0.5 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`} />
                             <button 
+                                id="tour-darkmode-trigger"
                                 onClick={() => togglePopover('darkmode')} 
                                 onContextMenu={(e) => {
                                     e.preventDefault();
@@ -438,10 +436,9 @@ export default function TopBar() {
                                 )}
                             </button>
                             <button 
+                                id="tour-shield-trigger"
                                 onClick={() => togglePopover('adblock')} 
-                                className={`flex items-center gap-1.5 p-1.5 rounded-full transition group border-x px-3 mx-1 ${
-                                    isBright ? 'border-gray-200/60' : 'border-white/10'
-                                } ${
+                                className={`flex items-center gap-1.5 p-1.5 rounded-full transition group px-2.5 ${
                                     activePopover === 'adblock' 
                                         ? 'bg-emerald-500/20 text-emerald-400' 
                                         : (isAdblockActive 
@@ -483,6 +480,7 @@ export default function TopBar() {
                             <div className={`w-px h-4 mx-1 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`}></div>
 
                             <button 
+                                id="tour-tor-trigger"
                                 onClick={() => togglePopover('tor')} 
                                 className={`p-1.5 rounded-full transition group relative ${
                                     activePopover === 'tor' || isTor 
@@ -502,6 +500,7 @@ export default function TopBar() {
                             </button>
 
                             <button 
+                                id="tour-vault-trigger"
                                 onClick={() => togglePopover('vault')} 
                                 className={`p-1.5 rounded-full transition group ${
                                     activePopover === 'vault' 

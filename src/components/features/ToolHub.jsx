@@ -33,7 +33,8 @@ export default function ToolHub() {
         chatHistory, chatInput, setChatInput, attachedFiles, addAttachment, 
         removeAttachment, clearAttachments, aiContextEnabled, setAiContextEnabled, 
         ttsEnabled, setTtsEnabled, webSearchEnabled, setWebSearchEnabled, parsePdfAsImage,
-        isGenerating, isRunning, status, toggleEngine, sendChatMessage, stopChatMessage, activeModelId
+        isGenerating, isRunning, status, toggleEngine, sendChatMessage, stopChatMessage, activeModelId,
+        downloadedModels, downloadProgress, downloadModel
     } = useAIStore();
 
     const [isRecording, setIsRecording] = useState(false);
@@ -72,6 +73,10 @@ export default function ToolHub() {
     const [collapsedDomains, setCollapsedDomains] = useState({});
     const [editingNoteId, setEditingNoteId] = useState(null);
     const [editingNoteText, setEditingNoteText] = useState('');
+
+    useEffect(() => {
+        useAIStore.getState().fetchEngineStatus();
+    }, []);
 
     const annotations = useAnnotationStore(state => state.annotations);
     const removeAnnotation = useAnnotationStore(state => state.removeAnnotation);
@@ -406,31 +411,34 @@ export default function ToolHub() {
 
     return (
         <>
-            {/* Click-outside backdrop */}
-            {isRightPanelOpen && (
-                <div 
-                    className="fixed inset-0 z-[44999] bg-transparent" 
-                    onClick={() => setIsRightPanelOpen(false)}
-                    onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsRightPanelOpen(false);
-                    }}
-                />
-            )}
+            {/* Click-outside backdrop with smooth depth animation */}
+            <div 
+                className={`fixed inset-0 z-[44999] bg-black/35 backdrop-blur-[3px] transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                    isRightPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                }`}
+                onClick={() => setIsRightPanelOpen(false)}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsRightPanelOpen(false);
+                }}
+            />
             
             <div
+                id="tour-toolhub-trigger"
                 className="fixed right-0 top-1/2 -translate-y-1/2 w-4 h-40 z-[40000] cursor-pointer group flex items-center justify-end pr-1"
                 onClick={() => setIsRightPanelOpen(true)}
             >
                 <div className={`w-1 h-12 rounded-full transition-all duration-300 ease-out group-hover:h-24 ${isRightPanelOpen ? 'bg-transparent' : 'bg-white/10 group-hover:bg-accent/60 group-hover:shadow-[0_0_15px_var(--accent-30)]'}`}></div>
             </div>
 
-            <div className={`fixed top-4 bottom-4 right-4 w-96 md:w-[460px] ${
+            <div 
+                id="toolhub-drawer-panel"
+                className={`fixed top-2 bottom-2 md:top-2 md:bottom-2 right-2 md:right-3 w-96 md:w-[460px] ${
                 isBright 
-                    ? 'bg-white/55 backdrop-blur-3xl border-black/[0.06] text-zinc-900 shadow-[0_25px_80px_rgba(0,0,0,0.12)]' 
-                    : 'bg-[#0c0d14]/78 backdrop-blur-3xl border-white/[0.06] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
-            } border rounded-2xl flex flex-col overflow-hidden z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRightPanelOpen ? 'translate-x-0 opacity-100' : 'translate-x-[110%] opacity-0'}`} 
+                    ? 'bg-white/90 backdrop-blur-3xl border border-black/[0.08] text-zinc-900 shadow-[0_30px_90px_-10px_rgba(0,0,0,0.18),0_12px_35px_-5px_rgba(0,0,0,0.08),inset_0_1px_2px_0_rgba(255,255,255,0.9)] ring-1 ring-black/[0.05]' 
+                    : 'bg-[#0c0d14]/94 backdrop-blur-3xl border border-white/[0.08] text-white shadow-[0_35px_100px_-15px_rgba(0,0,0,0.95),0_15px_45px_-5px_rgba(0,0,0,0.75),0_2px_10px_rgba(0,0,0,0.6),inset_0_1px_1px_0_rgba(255,255,255,0.15)] ring-1 ring-white/[0.06]'
+            } rounded-3xl flex flex-col overflow-hidden z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRightPanelOpen ? 'translate-x-0 opacity-100 scale-100' : 'translate-x-[110%] opacity-0 scale-[0.98]'}`} 
                 onClick={e => e.stopPropagation()}
                 onContextMenu={e => e.stopPropagation()}
             >
@@ -457,7 +465,7 @@ export default function ToolHub() {
                                 setIsRightPanelOpen(false);
                                 setTimeout(() => useUIStore.getState().setIsSnippingMode(true), 150);
                             }}
-                            className={`px-2.5 py-1 rounded-lg ${
+                            className={`px-3 py-1 rounded-full ${
                                 isBright 
                                     ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/50 shadow-xs' 
                                     : 'bg-accent/15 hover:bg-accent/25 text-accent border-accent/40 hover:border-accent/60 shadow-[0_0_12px_var(--accent-15)]'
@@ -472,7 +480,7 @@ export default function ToolHub() {
                                 setIsRightPanelOpen(false);
                                 useUIStore.getState().captureVisibleViewport();
                             }}
-                            className={`p-1.5 rounded-lg ${
+                            className={`w-7 h-7 flex items-center justify-center rounded-full ${
                                 isBright 
                                     ? 'bg-accent/10 hover:bg-accent/20 text-zinc-800 border-accent/40 shadow-xs' 
                                     : 'bg-accent/10 hover:bg-accent/20 text-accent/80 hover:text-accent border-accent/30 hover:border-accent/50 shadow-[0_0_8px_var(--accent-10)]'
@@ -486,7 +494,7 @@ export default function ToolHub() {
                                 setIsRightPanelOpen(false);
                                 useUIStore.getState().captureFullPage();
                             }}
-                            className={`p-1.5 rounded-lg ${
+                            className={`w-7 h-7 flex items-center justify-center rounded-full ${
                                 isBright 
                                     ? 'bg-accent/10 hover:bg-accent/20 text-zinc-800 border-accent/40 shadow-xs' 
                                     : 'bg-accent/10 hover:bg-accent/20 text-accent/80 hover:text-accent border-accent/30 hover:border-accent/50 shadow-[0_0_8px_var(--accent-10)]'
@@ -498,7 +506,7 @@ export default function ToolHub() {
                         <div className={`w-px h-3.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} mx-0.5`} />
                         <button 
                             onClick={() => setIsRightPanelOpen(false)} 
-                            className={`p-1.5 rounded-lg ${isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-zinc-400 hover:text-white hover:bg-white/10'} transition cursor-pointer`}
+                            className={`w-7 h-7 flex items-center justify-center rounded-full ${isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-zinc-400 hover:text-white hover:bg-white/10'} transition cursor-pointer`}
                         >
                             <X size={13} />
                         </button>
@@ -506,44 +514,77 @@ export default function ToolHub() {
                 </div>
 
                 <div className="px-4 pt-3 pb-1">
-                    <div className={`grid grid-cols-4 ${isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.025] border-white/[0.05]'} border p-0.5 rounded-lg font-mono text-[11px]`}>
-                        {[
+                    {(() => {
+                        const tabs = [
                             { id: 'notes', label: 'Notes', icon: PenTool, iconColor: isBright ? 'text-amber-600' : 'text-amber-400' },
                             { id: 'clipboard', label: 'Clipboard', icon: ClipboardList, iconColor: isBright ? 'text-cyan-600' : 'text-cyan-400' },
                             { id: 'ai', label: 'Local AI', icon: Cpu, iconColor: isBright ? 'text-purple-600' : 'text-purple-400' },
                             { id: 'downloads', label: 'Downloads', icon: Download, iconColor: isBright ? 'text-emerald-600' : 'text-emerald-400' }
-                        ].map(tab => {
-                            const Icon = tab.icon;
-                            const isActive = rightPanelTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setRightPanelTab(tab.id)}
-                                    className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-colors ${
-                                        isActive 
-                                            ? (isBright ? 'bg-black/[0.07] text-zinc-950 font-bold shadow-xs border border-black/[0.08]' : 'bg-white/10 text-white font-medium shadow-xs border border-white/10')
-                                            : (isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/[0.03]' : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]')
-                                    }`}
-                                >
-                                    <Icon size={12} className={tab.iconColor} />
-                                    <span>{tab.label}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                        ];
+                        const activeTabIdx = Math.max(0, tabs.findIndex(t => t.id === rightPanelTab));
+
+                        return (
+                            <div className={`relative flex p-1 rounded-full border shadow-xs ${
+                                isBright 
+                                    ? 'bg-black/[0.03] border-black/[0.06]' 
+                                    : 'bg-white/[0.03] border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                            } font-mono text-[11px]`}>
+                                {/* Animated Sliding Pill Indicator */}
+                                <div 
+                                    className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                        isBright
+                                            ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                            : 'border border-white/10 bg-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)]'
+                                    }`} 
+                                    style={{ 
+                                        transform: `translateX(${activeTabIdx * 100}%)`,
+                                        left: '2px'
+                                    }}
+                                />
+                                {tabs.map(tab => {
+                                    const Icon = tab.icon;
+                                    const isActive = rightPanelTab === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setRightPanelTab(tab.id)}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full transition-colors duration-300 cursor-pointer ${
+                                                isActive 
+                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-medium')
+                                                    : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
+                                            }`}
+                                        >
+                                            <Icon size={12} className={tab.iconColor} />
+                                            <span>{tab.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })()}
                 </div>
 
                 <div className="flex-1 overflow-hidden relative">
                     {/* NOTES TAB */}
-                    <div className={`absolute inset-0 p-4 pb-2 flex flex-col transition-all duration-300 ${rightPanelTab === 'notes' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 -translate-x-4 pointer-events-none z-0'}`}>
+                    <div className={`absolute inset-0 p-4 pb-2 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'notes' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 -translate-x-4 pointer-events-none z-0'}`}>
                         {/* Segmented Subtab Header */}
-                        <div className={`flex ${isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'} border p-1 rounded-xl mb-3 flex-shrink-0`}>
+                        <div className={`relative flex p-1 rounded-full border shadow-xs mb-3 flex-shrink-0 ${
+                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
+                        }`}>
+                            {/* Animated Sliding Indicator Pill */}
+                            <div 
+                                className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] bg-accent shadow-[0_2px_12px_rgba(212,188,148,0.35)] pointer-events-none"
+                                style={{
+                                    transform: notesSubTab === 'scratchpad' ? 'translateX(100%)' : 'translateX(0)',
+                                    left: '2px'
+                                }}
+                            />
                             <button
                                 onClick={() => setNotesSubTab('web')}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-semibold transition-colors duration-300 cursor-pointer ${
                                     notesSubTab === 'web'
-                                        ? 'bg-accent text-black shadow-[0_2px_10px_rgba(212,188,148,0.35)] font-bold'
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.03]' : 'text-white/60 hover:text-white hover:bg-white/[0.05]')
+                                        ? 'text-black font-bold'
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                 }`}
                             >
                                 <Globe size={13} />
@@ -551,10 +592,10 @@ export default function ToolHub() {
                             </button>
                             <button
                                 onClick={() => setNotesSubTab('scratchpad')}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-semibold transition-colors duration-300 cursor-pointer ${
                                     notesSubTab === 'scratchpad'
-                                        ? 'bg-accent text-black shadow-[0_2px_10px_rgba(212,188,148,0.35)] font-bold'
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.03]' : 'text-white/60 hover:text-white hover:bg-white/[0.05]')
+                                        ? 'text-black font-bold'
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                 }`}
                             >
                                 <PenTool size={13} />
@@ -576,7 +617,7 @@ export default function ToolHub() {
                             <div className="flex-1 flex flex-col min-h-0">
                                 {/* Search & Space Filter Bar */}
                                 <div className="flex flex-col gap-2 mb-3 flex-shrink-0">
-                                    <div className={`flex items-center gap-2 ${isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-white/[0.03] border-white/[0.06]'} border rounded-xl px-3 py-2 focus-within:border-accent transition`}>
+                                    <div className={`flex items-center gap-2 ${isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-white/[0.03] border-white/[0.06]'} border rounded-full px-3.5 py-1.5 focus-within:border-accent transition`}>
                                         <Search size={13} className={isBright ? "text-zinc-400 flex-shrink-0" : "text-white/40 flex-shrink-0"} />
                                         <input
                                             type="text"
@@ -591,12 +632,26 @@ export default function ToolHub() {
                                     </div>
 
                                     <div className="flex items-center justify-between gap-2">
-                                        <div className={`flex items-center gap-1 ${isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} p-0.5 rounded-lg border`}>
+                                        <div className={`relative flex items-center p-0.5 rounded-full border shadow-xs min-w-[210px] ${
+                                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.025] border-white/[0.05]'
+                                        }`}>
+                                            {/* Animated Sliding Indicator Pill */}
+                                            <div 
+                                                className={`absolute top-0.5 bottom-0.5 w-[calc(50%-1px)] rounded-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                                    webNotesSpaceFilter === 'current'
+                                                        ? 'bg-accent/25 border border-accent/40 shadow-xs'
+                                                        : (isBright ? 'bg-white border border-black/[0.08] shadow-xs' : 'bg-white/15 border border-white/10 shadow-xs')
+                                                }`}
+                                                style={{
+                                                    transform: webNotesSpaceFilter === 'current' ? 'translateX(100%)' : 'translateX(0)',
+                                                    left: '1px'
+                                                }}
+                                            />
                                             <button
                                                 onClick={() => setWebNotesSpaceFilter('all')}
-                                                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
+                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-colors duration-300 cursor-pointer ${
                                                     webNotesSpaceFilter === 'all' 
-                                                        ? (isBright ? 'bg-white text-zinc-950 shadow-xs' : 'bg-white/15 text-white shadow-xs') 
+                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold') 
                                                         : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
                                                 }`}
                                             >
@@ -604,20 +659,20 @@ export default function ToolHub() {
                                             </button>
                                             <button
                                                 onClick={() => setWebNotesSpaceFilter('current')}
-                                                className={`px-2 py-0.5 rounded text-[10px] font-semibold transition flex items-center gap-1 ${
+                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-colors duration-300 cursor-pointer ${
                                                     webNotesSpaceFilter === 'current' 
-                                                        ? 'bg-accent/20 text-accent font-bold border border-accent/25' 
+                                                        ? 'text-accent font-bold' 
                                                         : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
                                                 }`}
                                             >
-                                                <span className="capitalize">{activeSpace}</span> Space
+                                                <span className="capitalize">{activeSpace}</span>&nbsp;Space
                                             </button>
                                         </div>
 
                                         <button
                                             onClick={handleExportMarkdown}
                                             disabled={annotations.length === 0}
-                                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg ${
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${
                                                 isBright 
                                                     ? 'bg-black/[0.03] hover:bg-black/[0.06] text-zinc-700 hover:text-zinc-950 border-black/10' 
                                                     : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white border-white/[0.08]'
@@ -858,7 +913,7 @@ export default function ToolHub() {
                     </div>
 
                     {/* CLIPBOARD TAB */}
-                    <div className={`absolute inset-0 p-5 flex flex-col transition-all duration-300 ${rightPanelTab === 'clipboard' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
+                    <div className={`absolute inset-0 p-5 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'clipboard' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
                         <div className="flex items-center justify-between mb-3">
                             <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>System Clipboard History</span>
                             <button 
@@ -925,57 +980,74 @@ export default function ToolHub() {
                     </div>
 
                     {/* QU-AI TAB */}
-                    <div className={`absolute inset-0 p-5 pb-4 flex flex-col transition-all duration-300 ${rightPanelTab === 'ai' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
+                    <div className={`absolute inset-0 p-5 pb-4 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'ai' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
                         {/* Header Bar: Status & Engine Launcher */}
-                        <div className={`p-2.5 ${isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/40 border-white/10'} border rounded-2xl mb-3 flex items-center justify-between`}>
-                            <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${status === 'loading' || status === 'downloading_engine' ? 'bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]' : isRunning ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]' : (isBright ? 'bg-zinc-400' : 'bg-white/30')}`} />
-                                <div>
-                                    <span className={`text-[11px] font-bold ${isBright ? 'text-zinc-900' : 'text-white'} block leading-none`}>{activePresetName}</span>
-                                    <span className={`text-[9px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{status === 'downloading_engine' ? 'Downloading llama.cpp Engine...' : status === 'loading' ? 'Loading Model to RAM/VRAM...' : isRunning ? 'llama-server Active (Port 8080)' : 'Offline (Click to Start)'}</span>
-                                </div>
-                            </div>
+                        {(() => {
+                            const isStarting = status === 'loading' || status === 'starting' || status === 'downloading_engine';
+                            return (
+                                <div className={`p-2.5 ${isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/40 border-white/10'} border rounded-2xl mb-3 flex items-center justify-between`}>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full ${isStarting ? 'bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]' : isRunning ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]' : (isBright ? 'bg-zinc-400' : 'bg-white/30')}`} />
+                                        <div>
+                                            <span className={`text-[11px] font-bold ${isBright ? 'text-zinc-900' : 'text-white'} block leading-none`}>{activePresetName}</span>
+                                            <span className={`text-[9px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                                {isRunning ? 'llama-server Active (Port 8080)' : isStarting ? 'Starting engine...' : 'Offline'}
+                                            </span>
+                                        </div>
+                                    </div>
 
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    onClick={toggleEngine}
-                                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                        isRunning ? 'bg-red-500/20 text-red-500 border border-red-500/30' : 'bg-accent text-black hover:scale-105'
-                                    }`}
-                                >
-                                    {isRunning ? <Square size={10} fill="currentColor" /> : <Play size={10} fill="currentColor" />}
-                                    {isRunning ? 'Stop' : 'Start'}
-                                </button>
-                                {isRunning && status !== 'loading' && (
-                                    <button
-                                        onClick={() => {
-                                            const tabStore = useTabStore.getState();
-                                            const activeTabId = tabStore.activeTabId;
-                                            if (activeTabId) {
-                                                tabStore.handleNavigate(activeTabId, 'qbrowse://ai');
-                                            } else {
-                                                tabStore.handleNewTab('qbrowse://ai');
-                                            }
-                                            setIsRightPanelOpen(false);
-                                        }}
-                                        className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
-                                        title="Open llama.cpp Web UI"
-                                    >
-                                        <Globe size={12} />
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => {
-                                        setSettingsTab('ai');
-                                        openModal('settings');
-                                    }}
-                                    className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
-                                    title="llama.cpp Console & Advanced Settings"
-                                >
-                                    <Sliders size={12} />
-                                </button>
-                            </div>
-                        </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            onClick={toggleEngine}
+                                            disabled={isStarting}
+                                            className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                                isStarting
+                                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait'
+                                                    : isRunning 
+                                                        ? 'bg-red-500/20 text-red-500 border border-red-500/30 hover:bg-red-500/30' 
+                                                        : 'bg-accent text-black hover:scale-105'
+                                            }`}
+                                        >
+                                            {isStarting ? (
+                                                <> <Loader2 size={10} className="animate-spin" /> Starting... </>
+                                            ) : isRunning ? (
+                                                <> <Square size={10} fill="currentColor" /> Stop </>
+                                            ) : (
+                                                <> <Play size={10} fill="currentColor" /> Start </>
+                                            )}
+                                        </button>
+                                        {isRunning && status !== 'loading' && (
+                                            <button
+                                                onClick={() => {
+                                                    const tabStore = useTabStore.getState();
+                                                    const activeTabId = tabStore.activeTabId;
+                                                    if (activeTabId) {
+                                                        tabStore.handleNavigate(activeTabId, 'qbrowse://ai');
+                                                    } else {
+                                                        tabStore.handleNewTab('qbrowse://ai');
+                                                    }
+                                                    setIsRightPanelOpen(false);
+                                                }}
+                                                className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
+                                                title="Open llama.cpp Web UI"
+                                            >
+                                                <Globe size={12} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => {
+                                                setSettingsTab('ai');
+                                                openModal('settings');
+                                            }}
+                                            className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
+                                            title="llama.cpp Console & Advanced Settings"
+                                        >
+                                            <Sliders size={12} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
                         {/* Chat Messages */}
                         <div className="flex-1 overflow-y-auto hide-scroll flex flex-col gap-3.5 pr-1 animate-pop-in">
@@ -1204,7 +1276,7 @@ export default function ToolHub() {
                     </div>
 
                     {/* DOWNLOADS TAB */}
-                    <div className={`absolute inset-0 p-5 overflow-y-auto hide-scroll transition-all duration-300 ${rightPanelTab === 'downloads' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
+                    <div className={`absolute inset-0 p-5 overflow-y-auto hide-scroll transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'downloads' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
                         <div className="flex items-center justify-between mb-4">
                             <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Active & Recent Downloads</span>
                             <span className="text-[10px] font-mono text-accent font-bold">{downloads.length} Items</span>

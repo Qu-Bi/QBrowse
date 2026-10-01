@@ -326,20 +326,27 @@ const useTabStore = create((set, get) => ({
     const safeTitle = (typeof tabObj.title === 'string' && tabObj.title.trim()) ? tabObj.title : defaultTitle;
     const safeUrl = (typeof tabObj.url === 'string') ? tabObj.url : '';
     const setList = get().getActiveSetList();
+    const shouldBeActive = tabObj.active !== undefined ? tabObj.active : true;
     const newTab = {
       ...tabObj,
       title: safeTitle,
       url: safeUrl,
+      active: shouldBeActive,
       lastActiveAt: Date.now(),
       suspended: false
     };
-    setList(prev => [...prev.map(t => ({ ...t, active: false })), newTab]);
-    const ui = useUIStore.getState();
-    ui.setCurrentUrl(safeUrl);
-    ui.setIsReaderAvailable(false);
-    if (ui.isReaderOpen || ui.isReaderClosing) {
-        ui.closeReaderMode(true);
+    if (shouldBeActive) {
+      setList(prev => [...prev.map(t => ({ ...t, active: false })), newTab]);
+      const ui = useUIStore.getState();
+      ui.setCurrentUrl(safeUrl);
+      ui.setIsReaderAvailable(false);
+      if (ui.isReaderOpen || ui.isReaderClosing) {
+          ui.closeReaderMode(true);
+      }
+    } else {
+      setList(prev => [...prev, newTab]);
     }
+    const ui = useUIStore.getState();
     ui.showToast(isTor ? 'New Tor tab created' : (isGhost ? 'New incognito tab created' : 'New tab created'));
     return newTab;
   },
@@ -417,6 +424,32 @@ const useTabStore = create((set, get) => ({
       if (updateList(workTabs, setWorkTabs)) return;
       if (updateList(ghostTabs, setGhostTabs)) return;
       if (updateList(torTabs, setTorTabs)) return;
+  },
+
+  handleSwitchToTab: (tabId, targetSpace = null) => {
+    const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs, activeSpace, setActiveSpace } = get();
+    let space = targetSpace || activeSpace;
+    let list, setList;
+    if (privateTabs.some(t => t.id === tabId)) { space = 'personal'; list = privateTabs; setList = setPrivateTabs; }
+    else if (workTabs.some(t => t.id === tabId)) { space = 'work'; list = workTabs; setList = setWorkTabs; }
+    else if (ghostTabs.some(t => t.id === tabId)) { space = 'ghost'; list = ghostTabs; setList = setGhostTabs; }
+    else if (torTabs.some(t => t.id === tabId)) { space = 'tor'; list = torTabs; setList = setTorTabs; }
+    
+    if (list && setList) {
+      if (activeSpace !== space) {
+        setActiveSpace(space);
+      }
+      setList(list.map(t => ({
+        ...t,
+        active: t.id === tabId,
+        suspended: t.id === tabId ? false : t.suspended,
+        lastActiveAt: t.id === tabId ? Date.now() : t.lastActiveAt
+      })));
+      const target = list.find(t => t.id === tabId);
+      if (target) {
+        useUIStore.getState().setCurrentUrl(target.url || '');
+      }
+    }
   },
 
   closeTabById: (tabId) => {
@@ -966,14 +999,41 @@ const useTabStore = create((set, get) => ({
   },
 
   handleNavigateTab: (tabId, url, title) => {
-    const update = (list) => list.map(t => t.id === tabId ? { ...t, url, title: title || (url === 'qbrowse://flags' ? 'QBrowse Flags' : t.title), suspended: false, lastActiveAt: Date.now() } : t);
+    let targetUrl = url || '';
+    if (targetUrl && !targetUrl.includes('://') && !targetUrl.startsWith('about:')) {
+      targetUrl = `https://${targetUrl}`;
+    }
+
+    const update = (list) => list.map(t => t.id === tabId ? { 
+      ...t, 
+      url: targetUrl, 
+      title: title || (targetUrl === 'qbrowse://flags' ? 'QBrowse Flags' : (t.url === targetUrl ? t.title : targetUrl)), 
+      suspended: false, 
+      lastActiveAt: Date.now() 
+    } : t);
+
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));
     get().setTorTabs(update(get().torTabs));
+
     const activeTab = get().getActiveTab();
     if (activeTab && activeTab.id === tabId) {
-      useUIStore.getState().setCurrentUrl(url);
+      useUIStore.getState().setCurrentUrl(targetUrl);
+    }
+
+    // Directly command the underlying Electron <webview> if available in DOM
+    if (typeof window !== 'undefined' && targetUrl && !targetUrl.startsWith('qbrowse://flags') && !targetUrl.startsWith('file://')) {
+      let actualLoadUrl = targetUrl;
+      if (actualLoadUrl.startsWith('qbrowse://ai')) {
+        actualLoadUrl = actualLoadUrl.replace('qbrowse://ai', 'http://127.0.0.1:8080');
+      }
+      const wv = window.qbrowseWebviews?.[tabId] || document.getElementById(`webview-${tabId}`);
+      if (wv && typeof wv.loadURL === 'function') {
+        try {
+          wv.loadURL(actualLoadUrl).catch(() => {});
+        } catch (_) {}
+      }
     }
   },
 

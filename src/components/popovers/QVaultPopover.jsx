@@ -638,6 +638,7 @@ export default function QVaultPopover({ isClosing }) {
 
     return (
         <div 
+            id="popover-vault-container"
             onClick={e => e.stopPropagation()} 
             className={`absolute top-4 right-4 z-[70000] w-[420px] rounded-2xl backdrop-blur-3xl overflow-hidden p-4 transition-all duration-200 border ${
                 isBright

@@ -9,6 +9,8 @@ const defaultSettings = {
     isolation: false,
     webrtc: true,
     dnt: true,
+    block3rdParty: false,
+    clearOnExit: false,
     hardware: true,
     memory: true,
     suspendTimeout: '30m',
@@ -38,7 +40,9 @@ const defaultSettings = {
     customWallpaperSource: 'default',
     customWallpaperOriginalUrl: null,
     wallpaperDimming: 25,
-    closeWindowOnLastTab: true
+    wallpaperBlur: 24,
+    closeWindowOnLastTab: true,
+    playStartupSound: false
 };
 
 const loadSettings = () => {
@@ -48,6 +52,9 @@ const loadSettings = () => {
             const parsed = JSON.parse(stored);
             if (parsed.wallpaperDimming === 40 || parsed.wallpaperDimming === 30 || parsed.wallpaperDimming === undefined) {
                 parsed.wallpaperDimming = 25;
+            }
+            if (parsed.wallpaperBlur === undefined) {
+                parsed.wallpaperBlur = 24;
             }
             return { ...defaultSettings, ...parsed };
         }
@@ -80,7 +87,28 @@ const useUIStore = create((set, get) => ({
   focusedPane: 'left', // 'left' | 'right'
   splitRatio: 50, // 50% width
   setIsSplitView: (val) => set({ isSplitView: val }),
-  setSplitRightTabId: (id) => set({ splitRightTabId: id }),
+  setSplitRightTabId: (id) => {
+    set({ splitRightTabId: id });
+    if (id && typeof window !== 'undefined' && window.__tabStore) {
+      try {
+        const tabStore = window.__tabStore.getState();
+        const currentActive = tabStore.getActiveTab();
+        if (currentActive && currentActive.id === id) {
+          const list = tabStore.getActiveList();
+          const setList = tabStore.getActiveSetList();
+          const candidate = list.find(t => t.id !== id);
+          if (candidate) {
+            setList(list.map(t => ({
+              ...t,
+              active: t.id === candidate.id,
+              suspended: t.id === candidate.id ? false : t.suspended,
+              lastActiveAt: t.id === candidate.id ? Date.now() : t.lastActiveAt
+            })));
+          }
+        }
+      } catch (_) {}
+    }
+  },
   setFocusedPane: (pane) => set({ focusedPane: pane }),
   setSplitRatio: (ratio) => set({ splitRatio: ratio }),
   toggleSplitView: (targetRightId = null) => {
@@ -100,7 +128,7 @@ const useUIStore = create((set, get) => ({
       const tabStore = window.__tabStore?.getState();
       if (tabStore) {
         const space = tabStore.activeSpace;
-        spaceTabs = space === 'personal' ? tabStore.privateTabs : (space === 'work' ? tabStore.workTabs : tabStore.ghostTabs);
+        spaceTabs = space === 'personal' ? tabStore.privateTabs : (space === 'work' ? tabStore.workTabs : (space === 'tor' ? (tabStore.torTabs || []) : tabStore.ghostTabs));
         activeTab = spaceTabs.find(t => t.active);
       }
     } catch (_) {}
@@ -550,7 +578,7 @@ const useUIStore = create((set, get) => ({
 
   captureVisibleViewport: async () => {
     try {
-      set({ toast: null }); // Ensure no toast overlays the capture
+      set({ toast: null, isToastClosing: false }); // Ensure no toast overlays the capture
       const wv = get().getActiveWebView();
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
@@ -598,7 +626,7 @@ const useUIStore = create((set, get) => ({
 
   captureFullPage: async () => {
     try {
-      set({ toast: null }); // Clear any toast immediately
+      set({ toast: null, isToastClosing: false }); // Clear any toast immediately
       const wv = get().getActiveWebView();
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
@@ -728,7 +756,7 @@ const useUIStore = create((set, get) => ({
 
   captureSelectedArea: async (rect) => {
     try {
-      set({ toast: null });
+      set({ toast: null, isToastClosing: false });
       const wv = get().getActiveWebView();
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
@@ -781,11 +809,21 @@ const useUIStore = create((set, get) => ({
 
   // Notifications
   toast: null,
+  isToastClosing: false,
   showToast: (message) => {
     const toastText = typeof message === 'object' && message !== null ? (message.message || message.text || '') : (message ? String(message) : '');
-    set({ toast: toastText });
     if (globalToastTimeout) clearTimeout(globalToastTimeout);
-    globalToastTimeout = setTimeout(() => set({ toast: null }), 2500);
+    set({ toast: toastText, isToastClosing: false });
+    globalToastTimeout = setTimeout(() => {
+      set({ isToastClosing: true });
+      globalToastTimeout = setTimeout(() => {
+        set({ toast: null, isToastClosing: false });
+      }, 220);
+    }, 2500);
+  },
+  clearToast: () => {
+    if (globalToastTimeout) clearTimeout(globalToastTimeout);
+    set({ toast: null, isToastClosing: false });
   },
 
   // Tab Map
@@ -906,12 +944,23 @@ const useUIStore = create((set, get) => ({
   // Browser In-Tab Dialogs (Alerts, Confirms, Prompts, HTTP Auth)
   activeDialog: null,
   setActiveDialog: (dialog) => set({ activeDialog: dialog }),
-  closeActiveDialog: () => set({ activeDialog: null }),
+  // Bootup State
+  isBooting: true,
+  isFirstBoot: typeof window !== 'undefined' ? localStorage.getItem('qbrowse_first_boot_completed') !== 'true' : false,
+  finishBoot: () => {
+    const isFirst = localStorage.getItem('qbrowse_first_boot_completed') !== 'true';
+    if (isFirst) {
+      localStorage.setItem('qbrowse_first_boot_completed', 'true');
+    }
+    set({ isBooting: false, isFirstBoot: false });
+  },
+  completeFirstBoot: () => {
+    localStorage.setItem('qbrowse_first_boot_completed', 'true');
+    set({ isFirstBoot: false });
+  },
 
   // Modals & Settings
-  activeModal: localStorage.getItem('qbrowse_setup_complete') !== 'true' 
-    ? 'onboarding' 
-    : (localStorage.getItem('qbrowse_tutorial_done') !== 'true' ? 'tutorial' : null),
+  activeModal: null,
   isModalClosing: false,
   closingModal: null,
   openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null }),
@@ -978,13 +1027,15 @@ const useUIStore = create((set, get) => ({
   toggleSetting: (key) => {
       set((state) => {
           const newSettings = { ...state.settings, [key]: !state.settings[key] };
-          localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+          try {
+              localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+          } catch(e) {}
           
           if (['hardware', 'isolation'].includes(key)) {
               useUIStore.getState().showToast('Restart required for engine changes.');
           }
-          if (window.electronAPI && window.electronAPI.invoke) {
-              window.electronAPI.invoke('save-setting', { key, value: newSettings[key] });
+          if (window.electronAPI && window.electronAPI.saveSetting) {
+              window.electronAPI.saveSetting(key, newSettings[key]);
           }
           return { settings: newSettings };
       });
@@ -1046,6 +1097,12 @@ const useUIStore = create((set, get) => ({
       const raw = Math.max(0, Math.min(80, Number(dimming) || 0));
       const val = Math.round(raw / 5) * 5;
       get().setSettingValue('wallpaperDimming', val);
+  },
+  setWallpaperBlur: (blur) => {
+      const raw = Math.max(0, Math.min(50, Number(blur) ?? 24));
+      const val = Math.round(raw);
+      get().setSettingValue('wallpaperBlur', val);
+      document.documentElement.style.setProperty('--glass-blur', `${val}px`);
   },
   resetCustomWallpaper: async () => {
       if (window.electronAPI && window.electronAPI.resetWallpaper) {
@@ -1111,10 +1168,35 @@ const useUIStore = create((set, get) => ({
     if (globalZoomTimeout) clearTimeout(globalZoomTimeout);
     set({ isZoomHUDVisible: false });
   },
-  isGlassEnabled: true,
-  setIsGlassEnabled: (val) => set({ isGlassEnabled: val }),
-  isSwipeEnabled: true,
-  setIsSwipeEnabled: (val) => set({ isSwipeEnabled: val }),
+  isGlassEnabled: (() => {
+    try {
+      const stored = localStorage.getItem('qbrowse_isGlassEnabled');
+      if (stored !== null) return JSON.parse(stored);
+    } catch (_) {}
+    return true;
+  })(),
+  setIsGlassEnabled: (val) => {
+    set({ isGlassEnabled: val });
+    try {
+      localStorage.setItem('qbrowse_isGlassEnabled', JSON.stringify(val));
+    } catch (_) {}
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('no-glass', !val);
+    }
+  },
+  isSwipeEnabled: (() => {
+    try {
+      const stored = localStorage.getItem('qbrowse_isSwipeEnabled');
+      if (stored !== null) return JSON.parse(stored);
+    } catch (_) {}
+    return true;
+  })(),
+  setIsSwipeEnabled: (val) => {
+    set({ isSwipeEnabled: val });
+    try {
+      localStorage.setItem('qbrowse_isSwipeEnabled', JSON.stringify(val));
+    } catch (_) {}
+  },
   // Webview Fullscreen
   isWebviewFullscreen: false,
   setIsWebviewFullscreen: (val) => set({ isWebviewFullscreen: val }),
@@ -1474,8 +1556,24 @@ try {
       document.documentElement.classList.add('theme-dark');
       document.documentElement.classList.remove('theme-light', 'bright-mode');
     }
+
+    const initialGlass = localStorage.getItem('qbrowse_isGlassEnabled');
+    if (initialGlass !== null && JSON.parse(initialGlass) === false) {
+      document.documentElement.classList.add('no-glass');
+    }
   }
 } catch (_) {}
+
+export const syncInitialSettingsToElectron = () => {
+  if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
+    try {
+      const currentSettings = useUIStore.getState().settings || {};
+      Object.entries(currentSettings).forEach(([key, val]) => {
+        window.electronAPI.saveSetting(key, val);
+      });
+    } catch (_) {}
+  }
+};
 
 if (typeof window !== 'undefined') {
   window.__uiStore = useUIStore;

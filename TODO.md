@@ -67,7 +67,38 @@ This document tracks our point-by-point execution of flagship browser features a
        - Retained freeform scratchpad notepad.
     6. **Reader Mode Synchronization**: Highlights and sticky notes created on a webpage immediately reflect inside Reader Mode for that article, and annotations created in Reader Mode automatically propagate to the underlying webpage.
 
+- [x] **Task 8: Native Default Web Browser Integration (Windows & Linux)**
+  - *Status*: ✅ COMPLETED
+  - *Outcome*: Fixed the "Set as default browser" functionality across the entire desktop application:
+    1. **Windows Capabilities & App Registration**: Implemented `registerWindowsBrowser()` which dynamically generates and applies standard `HKCU` registry entries without requiring administrator elevation:
+       - `HKCU\Software\Clients\StartMenuInternet\QBrowse` with full `Capabilities` (`URLAssociations` for `http`/`https` and `FileAssociations` for `.htm`, `.html`, `.shtml`, `.xht`, `.xhtml`, `.svg`, `.webp`).
+       - `HKCU\Software\RegisteredApplications` linking `QBrowse` to its capabilities so Windows 10/11 Default Apps recognizes QBrowse as a legitimate web browser.
+       - `HKCU\Software\Classes\QBrowseHTML` ProgID defining application metadata, app icon, and execution command lines for both packaged and dev environments.
+    2. **Direct Windows Settings Deep-Linking**: When clicking "Set as Default", launches `ms-settings:defaultapps?registeredAppMachine=QBrowse` directly navigating the user to QBrowse's default configuration page in Windows Settings with the top-level "Set default" button.
+    3. **Linux XDG Desktop & MIME Registration**: Implemented `ensureLinuxDesktopEntry()` creating a fully-featured `~/.local/share/applications/qbrowse.desktop` file with MimeTypes and application icons, and executing `xdg-settings set default-web-browser qbrowse.desktop` and `xdg-mime default qbrowse.desktop x-scheme-handler/http x-scheme-handler/https text/html application/xhtml+xml`.
+    4. **Accurate Default Detection**: Replaced unreliable checks with direct queries of `HKCU\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice\ProgId` on Windows and `xdg-settings get default-web-browser` on Linux.
+    5. **External URL & File Launching**: Improved `extractUrlFromArgs` to support HTTP/HTTPS, `qbrowse://`, `file://`, and local HTML documents with path normalization. Added cold-start initial URL retrieval in `App.jsx` and window focus auto-refresh in `SettingsModal.jsx` and `DefaultBrowserBanner.jsx`.
+
+- [x] **Task 9: Cinematic Bootup Animation, Setup Journey & Interactive Living Tour**
+  - *Status*: ✅ COMPLETED
+  - *Outcome*: Delivered a complete first-run and startup experience for QBrowse:
+    1. **Minimalist Monogram Fast-Boot Curtain**:
+       - Daily startup: snappy ~750ms silent boot sequence with ambient radial glow and outward expansion.
+       - First startup post-install: cinematic ~1.8s sequence accompanied by a Web Audio synthesized D Major 9th warm welcome chord (`bootAudio.js`), requiring zero external audio assets.
+    2. **Full-Screen 5-Step Setup Journey (`SetupJourney.jsx`)**:
+       - Step 1 (Appearance): Live preview and instant switching between Dark/Light themes and 5 curated neon accents.
+       - Step 2 (Data Migration): Automatic 1-click detection and import of bookmarks from Chrome, Microsoft Edge, and Brave, alongside Netscape HTML bookmark file import.
+       - Step 3 (Privacy Defaults): One-click toggles for HTTPS-Only, native ad blocking, WebRTC IP leakage protection, and Tor Onion Routing.
+       - Step 4 (Default Browser): 1-click system default browser integration with Windows 10/11 deep-linking.
+       - Step 5 (Profile Selection): Prominent "Continue with Local Profile (No Account Needed)" high-contrast primary path, alongside optional zero-knowledge encrypted Cloud Sync.
+    3. **Interactive Living Spotlight Tour (`LivingTour.jsx`)**:
+       - Non-blocking floating spotlight cards with live DOM element tracking, targeting Spaces, Tor, QVault, ToolHub, and the Omnibox.
+       - 1-click exit and keyboard navigation support (`Esc`, arrows).
+    4. **Settings & Discovery Integration**:
+       - Added "Experience & Discovery" section in Settings -> About tab allowing users to toggle startup chime sound and relaunch the Setup Journey or Living Tour anytime.
+       - Configured NSIS installer settings (`package.json`) for seamless desktop installation.
+
 ---
 
-*Last Updated*: 2026-09-19
+*Last Updated*: 2026-09-30
 

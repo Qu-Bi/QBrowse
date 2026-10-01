@@ -237,6 +237,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showInFolder: (path) => ipcRenderer.invoke('show-in-folder', path),
     openPath: (path) => ipcRenderer.invoke('open-path', path),
 
+    // Browser Data & Bookmarks Migration
+    detectBrowsersForImport: () => ipcRenderer.invoke('import-detect-browsers'),
+    importBrowserBookmarks: (browserId) => ipcRenderer.invoke('import-browser-bookmarks', browserId),
+    pickAndParseHtmlBookmarks: () => ipcRenderer.invoke('import-pick-html-bookmarks'),
+
     invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });
 

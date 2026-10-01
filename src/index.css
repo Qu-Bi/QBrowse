@@ -62,6 +62,7 @@
 }
 
 :root {
+  --glass-blur: 24px;
   --accent: #d4bc94;
   --accent-rgb: 212, 188, 148;
   --accent-10: rgba(212, 188, 148, 0.1);
@@ -84,22 +85,27 @@ body {
 }
 
 @keyframes slideUpFade {
-  0% { opacity: 0; transform: translateY(10px) translateX(-50%) scale(0.96); }
+  0% { opacity: 0; transform: translateY(12px) translateX(-50%) scale(0.96); }
   100% { opacity: 1; transform: translateY(0) translateX(-50%) scale(1); }
+}
+
+@keyframes slideDownFadeOut {
+  0% { opacity: 1; transform: translateY(0) translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateY(12px) translateX(-50%) scale(0.96); }
 }
 
 .animate-toast {
   animation: slideUpFade 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+.animate-toast-out {
+  animation: slideDownFadeOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
 @keyframes popInSpring {
   0% {
     opacity: 0;
-    transform: scale(0.9) translateY(-12px);
-  }
-  70% {
-    opacity: 1;
-    transform: scale(1.02) translateY(2px);
+    transform: scale(0.96) translateY(-6px);
   }
   100% {
     opacity: 1;
@@ -114,18 +120,85 @@ body {
   }
   100% {
     opacity: 0;
-    transform: scale(0.92) translateY(-12px);
+    transform: scale(0.96) translateY(-6px);
   }
 }
 
 .animate-pop-in, .animate-slide-down-fade {
-  animation: popInSpring 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-  transform-origin: top left;
+  animation: popInSpring 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-pop-out, .animate-slide-up-fade-out {
-  animation: popOutSpring 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
-  transform-origin: top left;
+  animation: popOutSpring 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+/* Apple visionOS & macOS Fluid Modal System */
+@keyframes modalBackdropEnter {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes modalBackdropExit {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes modalDialogEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalDialogExit {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+}
+
+.animate-modal,
+.animate-modal-backdrop {
+  animation: modalBackdropEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+.animate-modal-out,
+.animate-modal-backdrop-out {
+  animation: modalBackdropExit 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+.animate-modal-dialog {
+  animation: modalDialogEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  transform-origin: center center;
+}
+
+.animate-modal-dialog-out {
+  animation: modalDialogExit 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  transform-origin: center center;
+}
+
+/* Tab Content Smooth Fade & Lift */
+@keyframes tabFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-tab-fade {
+  animation: tabFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes readerFadeInScale {
@@ -391,26 +464,41 @@ html.eco-mode .shadow-xl {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
-/* Shorten transition durations to avoid frame drops on low-frequency CPUs, excluding structural layout panels */
-html.eco-mode *:not(.sidebar-container):not(.sidebar-container *):not(.sidebar-inner):not(.sidebar-inner *) {
-  animation-duration: 0.22s !important;
-  transition-duration: 0.2s !important;
-}
+
 
 /* Apple Arc & macOS Sonoma Fluid Sidebar System */
 .sidebar-container {
-  transition: width 0.5s cubic-bezier(0.25, 1, 0.4, 1),
-              margin-right 0.5s cubic-bezier(0.25, 1, 0.4, 1),
-              opacity 0.45s cubic-bezier(0.25, 1, 0.4, 1),
-              transform 0.5s cubic-bezier(0.25, 1, 0.4, 1) !important;
-  will-change: width, margin-right, opacity, transform;
+  transition: width 0.32s cubic-bezier(0.2, 0.9, 0.3, 1),
+              margin-right 0.32s cubic-bezier(0.2, 0.9, 0.3, 1),
+              opacity 0.25s cubic-bezier(0.2, 0.9, 0.3, 1),
+              visibility 0.32s !important;
+  will-change: width, margin-right, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  contain: layout paint;
 }
 
 .sidebar-inner {
-  transition: transform 0.5s cubic-bezier(0.25, 1, 0.4, 1),
-              opacity 0.45s cubic-bezier(0.25, 1, 0.4, 1),
-              filter 0.45s cubic-bezier(0.25, 1, 0.4, 1) !important;
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1),
+              opacity 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) !important;
   will-change: transform, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.sidebar-container,
+.sidebar-container *,
+.sidebar-inner,
+.sidebar-inner * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.sidebar-container ::-webkit-scrollbar,
+.sidebar-inner ::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
 /* Apple Sonoma Style Wallpaper Crossfade */
@@ -539,6 +627,76 @@ html.eco-mode *:not(.sidebar-container):not(.sidebar-container *):not(.sidebar-i
   transform: translateZ(0);
   animation: themeDissolve 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* =========================================================
+   Apple visionOS & macOS Sonoma Liquid Glass Architecture
+   True optical refraction, 190% vibrancy saturation, and specular rim reflection
+   ========================================================= */
+.liquid-glass-dark {
+  background-color: rgba(12, 13, 20, 0.48) !important;
+  backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28) !important;
+}
+
+.liquid-glass-bright {
+  background-color: rgba(255, 255, 255, 0.44) !important;
+  backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Floating Inner Liquid Glass Capsule / Pill Controls (Nested inside liquid-glass without secondary blur to prevent Chromium dark composite bug) */
+.liquid-pill-dark {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.90) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.liquid-pill-dark:hover {
+  background-color: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+.liquid-pill-bright {
+  background-color: rgba(255, 255, 255, 0.55) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+  color: #18181b !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.liquid-pill-bright:hover {
+  background-color: rgba(255, 255, 255, 0.80) !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
+  color: #09090b !important;
+}
+
+/* Glassmorphism Disabled & Eco Mode (eliminates expensive backdrop-filter on low-power devices) */
+html.no-glass .liquid-glass-dark,
+html.eco-mode .liquid-glass-dark {
+  background-color: #0c0d14 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.no-glass .liquid-glass-bright,
+html.eco-mode .liquid-glass-bright {
+  background-color: #f4f4f5 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.no-glass [class*="backdrop-blur"],
+html.eco-mode [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+
 
 
 

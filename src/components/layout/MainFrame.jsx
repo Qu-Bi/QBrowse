@@ -58,6 +58,8 @@ function getToastIcon(message, isBright = false) {
 }
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import useHistoryStore from '../../store/useHistoryStore';
+import { topSites } from '../../utils/topSites';
 import TopBar from './TopBar';
 import WebViewContainer from './WebViewContainer';
 import QVaultPopover from '../popovers/QVaultPopover';
@@ -187,6 +189,7 @@ export default function MainFrame() {
     const setDarkExclusions = useUIStore(state => state.setDarkExclusions);
     const setIsForceDark = useUIStore(state => state.setIsForceDark);
     const toast = useUIStore(state => state.toast);
+    const isToastClosing = useUIStore(state => state.isToastClosing);
     const activePopover = useUIStore(state => state.activePopover);
     const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
     const closePopover = useUIStore(state => state.closePopover);
@@ -195,6 +198,13 @@ export default function MainFrame() {
     const isZoomHUDVisible = useUIStore(state => state.isZoomHUDVisible);
     const setZoomLevel = useUIStore(state => state.setZoomLevel);
     const isSplitView = useUIStore(state => state.isSplitView);
+    const splitRightTabId = useUIStore(state => state.splitRightTabId);
+    const setSplitRightTabId = useUIStore(state => state.setSplitRightTabId);
+    const focusedPane = useUIStore(state => state.focusedPane);
+    const setFocusedPane = useUIStore(state => state.setFocusedPane);
+    const splitRatio = useUIStore(state => state.splitRatio);
+    const setSplitRatio = useUIStore(state => state.setSplitRatio);
+    const toggleSplitView = useUIStore(state => state.toggleSplitView);
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const refresh = useUIStore(state => state.refresh);
     const openOmnibox = useUIStore(state => state.openOmnibox);
@@ -221,10 +231,22 @@ export default function MainFrame() {
     const isTor = activeSpace === 'tor';
     const isBright = theme === 'light' && !isIncognito && !isTor;
 
-    const isPrywatneEmpty = privateTabs.find(t => t.active)?.url === '' || privateTabs.find(t => t.active)?.url === 'about:blank';
-    const isPracaEmpty = workTabs.find(t => t.active)?.url === '' || workTabs.find(t => t.active)?.url === 'about:blank';
-    const isGhostEmpty = ghostTabs.find(t => t.active)?.url === '' || ghostTabs.find(t => t.active)?.url === 'about:blank';
-    const isTorEmpty = torTabs.find(t => t.active)?.url === '' || torTabs.find(t => t.active)?.url === 'about:blank';
+    const getEffectiveLeftTab = (tabs) => {
+        if (isSplitView && splitRightTabId) {
+            return tabs.find(t => t.active && t.id !== splitRightTabId) || tabs.find(t => t.id !== splitRightTabId);
+        }
+        return tabs.find(t => t.active) || tabs[0];
+    };
+
+    const effPrivateTab = getEffectiveLeftTab(privateTabs);
+    const effWorkTab = getEffectiveLeftTab(workTabs);
+    const effGhostTab = getEffectiveLeftTab(ghostTabs);
+    const effTorTab = getEffectiveLeftTab(torTabs);
+
+    const isPrywatneEmpty = !effPrivateTab || effPrivateTab.url === '' || effPrivateTab.url === 'about:blank';
+    const isPracaEmpty = !effWorkTab || effWorkTab.url === '' || effWorkTab.url === 'about:blank';
+    const isGhostEmpty = !effGhostTab || effGhostTab.url === '' || effGhostTab.url === 'about:blank';
+    const isTorEmpty = !effTorTab || effTorTab.url === '' || effTorTab.url === 'about:blank';
     
     const isAdblockActive = useUIStore(state => state.isAdblockActive);
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive);
@@ -269,19 +291,19 @@ export default function MainFrame() {
 
                     <button
                         onClick={() => openOmnibox('')}
-                        className={`group relative w-[90%] max-w-[720px] backdrop-blur-2xl border rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 hover:scale-[1.015] ${
+                        className={`group relative w-[90%] max-w-[720px] rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 hover:scale-[1.015] ${
                             isTor 
-                                ? 'bg-purple-950/40 border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_0_35px_rgba(168,85,247,0.4),0_20px_80px_rgba(168,85,247,0.35)]' 
+                                ? 'bg-purple-950/40 border border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_0_35px_rgba(168,85,247,0.4),0_20px_80px_rgba(168,85,247,0.35)] backdrop-blur-3xl' 
                                 : (isDark 
-                                    ? 'bg-black/40 border-white/10 hover:border-accent/60 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_0_35px_var(--accent-40),0_15px_50px_var(--accent-20)]' 
-                                    : 'bg-white/70 hover:bg-white/85 border-black/[0.08] hover:border-accent/60 shadow-[0_14px_40px_rgba(0,0,0,0.06)] hover:shadow-[0_0_30px_var(--accent-30),0_10px_35px_var(--accent-20)] text-zinc-900')
+                                    ? 'liquid-pill-dark hover:border-accent/60 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_0_35px_var(--accent-40),0_15px_50px_var(--accent-20)]' 
+                                    : 'liquid-pill-bright hover:border-accent/60 shadow-[0_12px_36px_rgba(0,0,0,0.06)] hover:shadow-[0_0_30px_var(--accent-30),0_10px_35px_var(--accent-20)] text-zinc-900')
                         }`}
                     >
                         <Search size={20} className={`transition-colors ${isTor ? 'text-purple-400 group-hover:text-purple-300' : (isDark ? 'text-white/40 group-hover:text-accent' : 'text-zinc-600 group-hover:text-accent')}`} />
                         <span className={`text-base md:text-lg font-medium transition-colors flex-1 text-left ${isTor ? 'text-purple-200/70 group-hover:text-purple-100' : (isDark ? 'text-white/40 group-hover:text-white/85' : 'text-zinc-700 group-hover:text-zinc-950')}`}>
                             {isTor ? 'Search the web via Tor, enter .onion address...' : 'Search the web, or type a command...'}
                         </span>
-                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-colors duration-300 ${isTor ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' : (isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30 text-white/60' : 'bg-white/70 border border-black/[0.08] group-hover:bg-white/90 text-zinc-700 group-hover:text-zinc-950 shadow-2xs')}`}>
+                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-colors duration-300 ${isTor ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' : (isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30 text-white/60' : 'bg-zinc-100 border border-black/10 group-hover:bg-white text-zinc-700 group-hover:text-zinc-950 shadow-2xs')}`}>
                             <Command size={11} className={`transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-zinc-600 group-hover:text-zinc-900')}`} />
                             <span className={`text-xs font-semibold transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-zinc-700 group-hover:text-zinc-950')}`}>K</span>
                         </div>
@@ -292,15 +314,12 @@ export default function MainFrame() {
         );
     };
 
-    const splitRightTabId = useUIStore(state => state.splitRightTabId);
-    const setSplitRightTabId = useUIStore(state => state.setSplitRightTabId);
-    const focusedPane = useUIStore(state => state.focusedPane);
-    const setFocusedPane = useUIStore(state => state.setFocusedPane);
-    const splitRatio = useUIStore(state => state.splitRatio);
-    const setSplitRatio = useUIStore(state => state.setSplitRatio);
-    const toggleSplitView = useUIStore(state => state.toggleSplitView);
-
     const [splitSearchUrl, setSplitSearchUrl] = useState('');
+    const [splitLiveSuggestions, setSplitLiveSuggestions] = useState([]);
+    const [splitSelectedSuggestion, setSplitSelectedSuggestion] = useState(-1);
+    const splitSuggestDebounceRef = useRef(null);
+    const historyStoreData = useHistoryStore(state => state.history) || [];
+
     const [isDraggingSplit, setIsDraggingSplit] = useState(false);
     const mainContainerRef = useRef(null);
     const leftPaneRef = useRef(null);
@@ -308,9 +327,102 @@ export default function MainFrame() {
     const currentRatioRef = useRef(splitRatio);
 
     const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
-    const activeLeftTab = spaceTabs.find(t => t.active);
+    const activeLeftTab = isSplitView && splitRightTabId
+        ? (spaceTabs.find(t => t.active && t.id !== splitRightTabId) || spaceTabs.find(t => t.id !== splitRightTabId) || spaceTabs[0])
+        : (spaceTabs.find(t => t.active) || spaceTabs[0]);
     const rightTab = isSplitView && splitRightTabId ? spaceTabs.find(t => t.id === splitRightTabId) : null;
     const availableRightTabs = spaceTabs.filter(t => t.id !== activeLeftTab?.id);
+
+    // Live search & autocomplete for split screen input
+    useEffect(() => {
+        setSplitSelectedSuggestion(-1);
+        const q = splitSearchUrl.trim();
+        if (!q) {
+            setSplitLiveSuggestions([]);
+            return;
+        }
+
+        const lowerQ = q.toLowerCase();
+        const siteMatches = topSites
+            .filter(site => site.toLowerCase().includes(lowerQ))
+            .slice(0, 3)
+            .map(site => ({
+                title: site,
+                url: site.startsWith('http') ? site : `https://${site}`,
+                isSite: true
+            }));
+
+        const historyMatches = (isTor || isIncognito) ? [] : historyStoreData
+            .filter(h => (h.title && h.title.toLowerCase().includes(lowerQ)) || (h.url && h.url.toLowerCase().includes(lowerQ)))
+            .slice(0, 3)
+            .map(h => ({
+                title: h.title || h.url,
+                url: h.url,
+                isHistory: true
+            }));
+
+        const localItems = [...siteMatches, ...historyMatches];
+
+        if (splitSuggestDebounceRef.current) clearTimeout(splitSuggestDebounceRef.current);
+        splitSuggestDebounceRef.current = setTimeout(() => {
+            const domainRegex = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (domainRegex.test(q)) {
+                setSplitLiveSuggestions(localItems);
+                return;
+            }
+
+            const callbackName = 'splitSuggestCb_' + Math.round(100000 * Math.random());
+            window[callbackName] = (data) => {
+                if (data && data[1]) {
+                    const searchItems = data[1].slice(0, 6).map(s => ({
+                        title: s,
+                        url: `https://www.google.com/search?q=${encodeURIComponent(s)}`,
+                        isSearch: true
+                    }));
+                    const combined = [...localItems];
+                    searchItems.forEach(item => {
+                        if (!combined.some(c => c.title.toLowerCase() === item.title.toLowerCase())) {
+                            combined.push(item);
+                        }
+                    });
+                    setSplitLiveSuggestions(combined);
+                } else {
+                    setSplitLiveSuggestions(localItems);
+                }
+                delete window[callbackName];
+                const scriptEl = document.getElementById(callbackName);
+                if (scriptEl) scriptEl.remove();
+            };
+
+            const script = document.createElement('script');
+            script.id = callbackName;
+            script.src = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(q)}&callback=${callbackName}`;
+            document.body.appendChild(script);
+        }, 120);
+
+        return () => {
+            if (splitSuggestDebounceRef.current) clearTimeout(splitSuggestDebounceRef.current);
+        };
+    }, [splitSearchUrl, isTor, isIncognito]);
+
+    const handleSplitKeyDown = (e) => {
+        if (!splitLiveSuggestions.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSplitSelectedSuggestion(prev => (prev + 1) % splitLiveSuggestions.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSplitSelectedSuggestion(prev => (prev - 1 + splitLiveSuggestions.length) % splitLiveSuggestions.length);
+        } else if (e.key === 'Escape') {
+            setSplitLiveSuggestions([]);
+        } else if (e.key === 'Enter') {
+            if (splitSelectedSuggestion >= 0 && splitSelectedSuggestion < splitLiveSuggestions.length) {
+                e.preventDefault();
+                const chosen = splitLiveSuggestions[splitSelectedSuggestion];
+                handleOpenSplitUrl(chosen.url || chosen.title);
+            }
+        }
+    };
 
     const handleSplitMouseDown = (e) => {
         e.preventDefault();
@@ -364,10 +476,13 @@ export default function MainFrame() {
         }
     };
 
-    const handleOpenSplitUrl = (e) => {
-        e.preventDefault();
-        if (!splitSearchUrl.trim()) return;
-        let url = splitSearchUrl.trim();
+    const handleOpenSplitUrl = (eOrUrl) => {
+        if (eOrUrl && typeof eOrUrl.preventDefault === 'function') {
+            eOrUrl.preventDefault();
+        }
+        const raw = (typeof eOrUrl === 'string' ? eOrUrl : splitSearchUrl).trim();
+        if (!raw) return;
+        let url = raw;
         if (!url.includes('://') && !url.startsWith('about:')) {
             if (url.includes('.') && !url.includes(' ')) {
                 url = 'https://' + url;
@@ -383,11 +498,13 @@ export default function MainFrame() {
             folderId: null
         });
         setSplitRightTabId(newTab.id);
+        setFocusedPane('right');
         setSplitSearchUrl('');
+        setSplitLiveSuggestions([]);
     };
 
     return (
-        <main className={`flex-1 min-w-0 relative z-10 flex flex-col overflow-hidden transform-gpu`}>
+        <main className={`flex-1 min-w-0 relative z-20 flex flex-col`}>
             
             <TopBar />
 
@@ -398,6 +515,7 @@ export default function MainFrame() {
 
             {(activePopover === 'darkmode' || (isPopoverClosing && activePopover === 'darkmode')) && (
                 <div 
+                    id="popover-darkmode-container"
                     onClick={e => e.stopPropagation()} 
                     className={`absolute top-16 right-32 z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-all border ${
                         isBright 
@@ -502,6 +620,7 @@ export default function MainFrame() {
 
             {(activePopover === 'adblock' || (isPopoverClosing && activePopover === 'adblock')) && (
                 <div 
+                    id="popover-adblock-container"
                     onClick={e => e.stopPropagation()} 
                     className={`absolute top-16 right-12 z-[60] w-72 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
                         isBright 
@@ -604,8 +723,16 @@ export default function MainFrame() {
                 </div>
             )}
 
-            <div ref={mainContainerRef} className={`flex-1 min-w-0 relative overflow-hidden transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? '' : 'pb-0 pt-2'}`}>
-                <div className={`relative w-full h-full overflow-hidden transition-[background-color,border-color] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem] border'} ${isBright ? ((isPrywatneEmpty && activeSpace === 'personal') || (isPracaEmpty && activeSpace === 'work') || (isGhostEmpty && activeSpace === 'ghost') ? 'bg-white/40 border-white/25 backdrop-blur-3xl shadow-[0_20px_60px_rgba(0,0,0,0.04)]' : 'bg-white/65 border-white/25 backdrop-blur-3xl shadow-[0_20px_60px_rgba(0,0,0,0.04)]') : 'bg-black/60 border-white/10 backdrop-blur-3xl shadow-[0_10px_35px_rgba(0,0,0,0.4)]'}`}>
+            {(() => {
+                const isZenActive = (isPrywatneEmpty && activeSpace === 'personal') || 
+                                    (isPracaEmpty && activeSpace === 'work') || 
+                                    (isGhostEmpty && activeSpace === 'ghost') ||
+                                    (isTorEmpty && activeSpace === 'tor');
+                return (
+                    <div ref={mainContainerRef} className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? '' : 'pt-2'}`}>
+                        <div className={`relative w-full h-full overflow-hidden transition-[border-radius] duration-200 ease-out flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem]'} ${
+                            isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'
+                        }`}>
                     <DownloadPopup />
                     <SavePasswordBanner />
                     <FindInPageBar />
@@ -630,7 +757,7 @@ export default function MainFrame() {
                         className={`relative h-full overflow-hidden ${
                             isDraggingSplit ? 'pointer-events-none select-none' : 'transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
                         }`}
-                        style={{ width: isSplitView ? `${splitRatio}%` : '100%' }}
+                        style={{ width: isSplitView ? `${splitRatio}%` : '100%', contain: 'layout paint' }}
                     >
                         <div className={`absolute inset-y-0 left-0 w-[400%] flex ${isSwipeEnabled !== false ? 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : 'transition-none'}`}
                             style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-25%)' : activeSpace === 'ghost' ? 'translateX(-50%)' : 'translateX(-75%)' }}>
@@ -689,21 +816,21 @@ export default function MainFrame() {
                             <div className={`absolute top-0 bottom-0 w-[1px] pointer-events-none transition-colors ${
                                 isDraggingSplit 
                                     ? 'bg-accent shadow-[0_0_10px_var(--accent)]' 
-                                    : (!isBright ? 'bg-white/10 group-hover:bg-accent' : 'bg-black/10 group-hover:bg-accent')
+                                    : (!isBright ? 'bg-white/[0.08] group-hover:bg-accent' : 'bg-black/[0.08] group-hover:bg-accent')
                             }`} />
 
                             {/* Floating Grab Pill Handle */}
-                            <div className={`absolute w-4 h-10 rounded-full border flex items-center justify-center transition-all duration-200 shadow-xl cursor-col-resize ${
+                            <div className={`absolute w-3.5 h-9 rounded-full flex items-center justify-center transition-all duration-200 cursor-col-resize shadow-md ${
                                 isDraggingSplit 
-                                    ? 'bg-accent border-accent text-white scale-110 shadow-[0_0_20px_var(--accent)]' 
-                                    : (!isBright
-                                        ? 'bg-[#18181b] border-white/20 text-white/50 group-hover:text-white group-hover:border-accent group-hover:bg-accent/20 group-hover:scale-105'
-                                        : 'bg-white border-black/10 text-gray-500 group-hover:text-accent group-hover:border-accent group-hover:bg-white group-hover:scale-105')
+                                    ? 'bg-accent border border-accent text-zinc-950 scale-110 shadow-[0_0_15px_var(--accent)]' 
+                                    : (isBright
+                                        ? 'liquid-pill-bright hover:scale-105'
+                                        : 'liquid-pill-dark hover:scale-105')
                             }`}>
                                 <div className="flex flex-col gap-0.5 items-center pointer-events-none">
-                                    <div className="w-1 h-1 rounded-full bg-current opacity-80" />
-                                    <div className="w-1 h-1 rounded-full bg-current opacity-80" />
-                                    <div className="w-1 h-1 rounded-full bg-current opacity-80" />
+                                    <div className="w-1 h-1 rounded-full bg-current opacity-60" />
+                                    <div className="w-1 h-1 rounded-full bg-current opacity-60" />
+                                    <div className="w-1 h-1 rounded-full bg-current opacity-60" />
                                 </div>
                             </div>
                         </div>
@@ -711,41 +838,40 @@ export default function MainFrame() {
 
                     {/* RIGHT PANE CONTAINER */}
                     <div 
+                        id="tour-splitview-rightpane"
                         ref={rightPaneRef}
                         onClick={() => setFocusedPane('right')}
-                        className={`relative h-full overflow-hidden flex flex-col ${
+                        className={`relative h-full overflow-hidden flex flex-col bg-transparent ${
                             isDraggingSplit 
                                 ? 'pointer-events-none select-none' 
                                 : 'transition-[width,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
-                        } ${isSplitView ? 'opacity-100' : 'w-0 opacity-0 pointer-events-none'} ${
-                            !isBright ? 'bg-[#0a0a0c]' : 'bg-[#f4f5f8]'
-                        }`}
-                        style={{ width: isSplitView ? `${100 - splitRatio}%` : '0%' }}
+                        } ${isSplitView ? 'opacity-100' : 'w-0 opacity-0 pointer-events-none'}`}
+                        style={{ width: isSplitView ? `${100 - splitRatio}%` : '0%', contain: 'layout paint' }}
                     >
                             {rightTab ? (
                                 <div className="relative w-full h-full flex flex-col">
                                     {/* Right Pane Overlay Controls */}
-                                    <div className={`h-8 border-b px-3 flex items-center justify-between text-xs z-30 shrink-0 backdrop-blur-md ${
-                                        isBright ? 'bg-white/80 border-black/10 text-zinc-900' : 'bg-black/40 border-white/10 text-white'
+                                    <div className={`h-9 border-b px-3 flex items-center justify-between text-xs z-30 shrink-0 ${
+                                        isBright ? 'bg-white/40 border-black/[0.08] text-zinc-900' : 'bg-black/20 border-white/[0.08] text-white'
                                     }`}>
                                         <div className="flex items-center gap-2 truncate max-w-[60%]">
                                             {rightTab.url ? (
                                                 <img src={`https://www.google.com/s2/favicons?sz=32&domain=${rightTab.url}`} className="w-3.5 h-3.5 rounded-sm flex-shrink-0" onError={e=>e.target.style.display='none'} />
                                             ) : (
-                                                <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/50'} />
+                                                <Globe size={13} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
                                             )}
                                             <span className="font-semibold truncate text-[11px]">{rightTab.title}</span>
                                         </div>
 
                                         <div className="flex items-center gap-1">
-                                            <button onClick={handleSwapPanes} className={`p-1 rounded-md transition ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Swap Left/Right Panes">
-                                                <ArrowLeftRight size={12} />
+                                            <button onClick={handleSwapPanes} className={`p-1.5 rounded-full transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Swap Left/Right Panes">
+                                                <ArrowLeftRight size={13} />
                                             </button>
-                                            <button onClick={() => setSplitRightTabId(null)} className={`p-1 rounded-md transition ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Change Right Tab">
-                                                <Search size={12} />
+                                            <button onClick={() => setSplitRightTabId(null)} className={`p-1.5 rounded-full transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Change Right Tab">
+                                                <Search size={13} />
                                             </button>
-                                            <button onClick={() => toggleSplitView()} className="p-1 hover:bg-red-500/20 text-white/70 hover:text-red-400 rounded-md transition" title="Close Split View">
-                                                <X size={12} />
+                                            <button onClick={() => toggleSplitView()} className="p-1.5 hover:bg-red-500/20 text-white/70 hover:text-red-400 rounded-full transition cursor-pointer" title="Close Split View">
+                                                <X size={13} />
                                             </button>
                                         </div>
                                     </div>
@@ -758,34 +884,75 @@ export default function MainFrame() {
                             ) : (
                                 /* Split Screen Launcher / Picker */
                                 <div className="w-full h-full p-6 flex flex-col items-center justify-center text-center overflow-y-auto relative z-10">
-                                    <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.06)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px' }}></div>
+                                    <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px' }}></div>
                                     
                                     <div className="relative z-10 flex flex-col items-center max-w-md w-full animate-pop-in">
-                                        <div className="w-14 h-14 rounded-2xl bg-accent/20 border border-accent/30 flex items-center justify-center text-accent mb-4 shadow-lg shadow-accent/10">
-                                            <MonitorPlay size={28} strokeWidth={2} />
+                                        <div className="w-12 h-12 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent mb-4 shadow-[0_0_20px_var(--accent-20)]">
+                                            <MonitorPlay size={24} strokeWidth={2} />
                                         </div>
                                         <h2 className={`text-xl font-bold tracking-tight mb-1 ${!isBright ? 'text-white' : 'text-zinc-900'}`}>Split Screen View</h2>
                                         <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/50'} mb-6`}>Select an open tab or enter a URL to view side-by-side</p>
 
-                                        {/* URL Input Form */}
-                                        <form onSubmit={handleOpenSplitUrl} className="w-full mb-6 relative">
-                                            <input 
-                                                type="text"
-                                                placeholder="Search or enter URL for Right Pane..."
-                                                value={splitSearchUrl}
-                                                onChange={e => setSplitSearchUrl(e.target.value)}
-                                                className={`w-full h-10 pl-4 pr-10 border rounded-xl text-xs outline-none focus:border-accent transition-colors shadow-inner ${isBright ? 'bg-white/90 border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-black/40 border-white/10 text-white placeholder-white/30'}`}
-                                            />
-                                            <button type="submit" className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 bg-accent text-white rounded-lg hover:brightness-110 transition shadow-sm">
-                                                <Search size={12} />
-                                            </button>
+                                        {/* URL Input Form with Live Autocomplete */}
+                                        <form onSubmit={handleOpenSplitUrl} className="w-full mb-6 relative z-50">
+                                            <div className="relative w-full">
+                                                <input 
+                                                    type="text"
+                                                    placeholder="Search or enter URL for Right Pane..."
+                                                    value={splitSearchUrl}
+                                                    onChange={e => setSplitSearchUrl(e.target.value)}
+                                                    onKeyDown={handleSplitKeyDown}
+                                                    className={`w-full h-10 pl-4 pr-11 rounded-2xl text-xs outline-none transition-all duration-200 ${
+                                                        isBright 
+                                                            ? 'liquid-pill-bright focus:border-accent/60 placeholder-zinc-500' 
+                                                            : 'liquid-pill-dark focus:border-accent/60 placeholder-white/40'
+                                                    }`}
+                                                />
+                                                <button type="submit" className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-accent text-zinc-950 font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer">
+                                                    <Search size={12} />
+                                                </button>
+                                            </div>
+
+                                            {/* Live Autocomplete Dropdown */}
+                                            {splitLiveSuggestions.length > 0 && (
+                                                <div className={`absolute top-full left-0 right-0 mt-2 py-1.5 rounded-2xl border backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.5)] z-[100] max-h-60 overflow-y-auto hide-scroll text-left animate-pop-in ${
+                                                    isBright 
+                                                        ? 'bg-white/95 border-black/10 text-zinc-900' 
+                                                        : 'bg-[#12131a]/95 border-white/10 text-white'
+                                                }`}>
+                                                    {splitLiveSuggestions.map((item, idx) => (
+                                                        <div
+                                                            key={idx}
+                                                            onClick={() => handleOpenSplitUrl(item.url || item.title)}
+                                                            onMouseEnter={() => setSplitSelectedSuggestion(idx)}
+                                                            className={`flex items-center justify-between px-3.5 py-2 cursor-pointer transition-colors duration-150 ${
+                                                                splitSelectedSuggestion === idx
+                                                                    ? (isBright ? 'bg-black/5 text-accent' : 'bg-white/10 text-accent')
+                                                                    : (isBright ? 'hover:bg-black/5' : 'hover:bg-white/5')
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2.5 truncate min-w-0">
+                                                                {item.isSite || item.isHistory ? (
+                                                                    <Globe size={13} className={splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')} />
+                                                                ) : (
+                                                                    <Search size={13} className={splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')} />
+                                                                )}
+                                                                <span className="text-xs truncate font-medium">{item.title}</span>
+                                                            </div>
+                                                            <span className={`text-[10px] font-mono shrink-0 ml-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
+                                                                {item.isSite ? 'Website' : (item.isHistory ? 'History' : 'Google')}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </form>
 
                                         {/* Available Tabs List */}
                                         <div className="w-full flex flex-col gap-2 max-h-60 overflow-y-auto hide-scroll pr-1">
                                             <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'} text-left mb-1`}>Open Tabs in this Space</span>
                                             {availableRightTabs.length === 0 ? (
-                                                <div className={`text-center text-xs italic py-4 rounded-xl border ${isBright ? 'bg-black/[0.03] text-zinc-500 border-black/[0.06]' : 'text-white/30 bg-white/5 border-white/5'}`}>
+                                                <div className={`text-center text-xs italic py-4 rounded-2xl border ${isBright ? 'bg-black/[0.02] text-zinc-500 border-black/[0.06]' : 'text-white/30 bg-white/[0.02] border-white/[0.06]'}`}>
                                                     No other open tabs. Type a URL above to open a split tab!
                                                 </div>
                                             ) : (
@@ -793,10 +960,10 @@ export default function MainFrame() {
                                                     <div 
                                                         key={t.id} 
                                                         onClick={() => setSplitRightTabId(t.id)}
-                                                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all group ${
+                                                        className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 group ${
                                                             isBright 
-                                                                ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.06] hover:border-accent/50 text-zinc-900' 
-                                                                : 'bg-white/5 hover:bg-white/10 border-white/10 hover:border-accent/40 text-white'
+                                                                ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.06] hover:border-accent/50 text-zinc-900' 
+                                                                : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/[0.06] hover:border-accent/40 text-white'
                                                         }`}
                                                     >
                                                         <div className="flex items-center gap-3 truncate min-w-0">
@@ -810,7 +977,7 @@ export default function MainFrame() {
                                                                 {t.url && <span className={`text-[10px] font-mono truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t.url}</span>}
                                                             </div>
                                                         </div>
-                                                        <button className="px-2.5 py-1 rounded-lg bg-accent/20 border border-accent/30 text-accent group-hover:bg-accent group-hover:text-white text-[10px] font-bold transition">
+                                                        <button className="px-3 py-1 rounded-xl bg-accent/15 border border-accent/30 text-accent group-hover:bg-accent group-hover:text-zinc-950 text-[10px] font-bold transition-all duration-200 cursor-pointer">
                                                             Open Side
                                                         </button>
                                                     </div>
@@ -823,6 +990,8 @@ export default function MainFrame() {
                     </div>
                 </div>
             </div>
+            );
+            })()}
 
             {/* PEEK WINDOW */}
             {(peekWindow || isPeekClosing) && (
@@ -887,11 +1056,13 @@ export default function MainFrame() {
             </div>
 
             {/* TOAST POPUP (Minimalist Linear / Raycast Floating Bottom-Center Capsule) */}
-            {toast && (
+            {(toast || isToastClosing) && (
                 <div 
                     role="status" 
                     aria-live="polite"
-                    className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 rounded-full backdrop-blur-2xl border text-xs font-medium animate-toast flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide ${
+                    className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 rounded-full backdrop-blur-2xl border text-xs font-medium ${
+                        isToastClosing ? 'animate-toast-out' : 'animate-toast'
+                    } flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide ${
                         isBright 
                             ? 'bg-white/95 border-black/10 text-zinc-900 shadow-[0_12px_36px_rgba(0,0,0,0.15)]' 
                             : 'bg-[#0c0d12]/95 border-white/12 text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.65)]'

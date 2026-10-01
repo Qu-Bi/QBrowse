@@ -120,6 +120,7 @@ const SettingsModal = () => {
         setReduceVisualsOnEco,
         setCustomWallpaper,
         setWallpaperDimming,
+        setWallpaperBlur,
         resetCustomWallpaper
     } = useUIStore();
 
@@ -154,6 +155,7 @@ const SettingsModal = () => {
     const customWallpaperSource = settings?.customWallpaperSource;
     const customWallpaperOriginalUrl = settings?.customWallpaperOriginalUrl;
     const wallpaperDimming = settings?.wallpaperDimming ?? 25;
+    const wallpaperBlur = settings?.wallpaperBlur ?? 24;
 
     const [wallpaperUrlInput, setWallpaperUrlInput] = useState('');
     const [isImportingUrl, setIsImportingUrl] = useState(false);
@@ -246,7 +248,7 @@ const SettingsModal = () => {
                 if (res.isDefault) {
                     showToast('QBrowse set as default browser!');
                 } else {
-                    showToast('Default browser settings opened.');
+                    showToast('System settings opened. Click "Set default" for QBrowse.');
                 }
             } catch (_) {
                 showToast('Failed to set default browser.');
@@ -275,6 +277,11 @@ const SettingsModal = () => {
 
     useEffect(() => {
         refreshDefaultBrowserStatus();
+        const handleFocus = () => {
+            refreshDefaultBrowserStatus();
+        };
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
     }, [settingsTab]);
 
     useEffect(() => {
@@ -335,19 +342,25 @@ const SettingsModal = () => {
             isBright 
                 ? 'bg-black/25 backdrop-blur-xl text-zinc-900' 
                 : 'bg-black/60 backdrop-blur-3xl text-white'
-        } ${isModalClosing ? 'animate-pop-out' : 'animate-modal'}`} onClick={closeModal}>
+        } ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} onClick={closeModal}>
             {/* LEFT NAVIGATION SIDEBAR */}
-            <div className={`w-64 border-r flex flex-col ${
+            <div className={`w-64 border-r flex flex-col transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                 isBright 
                     ? 'bg-white/80 backdrop-blur-2xl border-black/10' 
                     : 'bg-black/50 border-white/[0.06]'
-            }`} onClick={e => e.stopPropagation()}>
+            } ${isModalClosing ? '-translate-x-6 opacity-0' : 'translate-x-0 opacity-100'}`} onClick={e => e.stopPropagation()}>
                 <div className="p-4 pb-2 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
                         <h2 className={`text-sm font-semibold tracking-tight flex items-center gap-2 ${
                             isBright ? 'text-zinc-900' : 'text-white'
                         }`}>
-                            <Sliders size={14} className="text-accent" /> Settings
+                            <img 
+                                src="/icon.png" 
+                                alt="QBrowse" 
+                                className="w-4 h-4 object-contain rounded drop-shadow" 
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+                            />
+                            Settings
                         </h2>
                         <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
                             isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'
@@ -412,9 +425,9 @@ const SettingsModal = () => {
             </div>
 
             {/* RIGHT CONTENT PANEL */}
-            <div className={`flex-1 p-10 relative overflow-y-auto w-[600px] md:w-[800px] max-w-full ${
+            <div className={`flex-1 p-10 relative overflow-y-auto w-[600px] md:w-[800px] max-w-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                 isBright ? 'bg-white/70 backdrop-blur-3xl text-zinc-900 settings-bright-mode' : 'bg-transparent text-white'
-            }`} onClick={e => e.stopPropagation()}>
+            } ${isModalClosing ? 'translate-y-4 opacity-0' : 'translate-y-0 opacity-100'}`} onClick={e => e.stopPropagation()}>
                 <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className={`absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-xl border transition z-[999] cursor-pointer ${
                     isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600 hover:text-zinc-900' : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.06] text-zinc-400 hover:text-white'
                 }`}>
@@ -424,7 +437,7 @@ const SettingsModal = () => {
                 <div className="w-full">
                     {/* TAB 1: APPEARANCE & UX */}
                     {settingsTab === 'appearance' && (
-                        <div className="animate-pop-in space-y-6">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Appearance & UX</h3>
                                 <p className="text-xs text-white/40">Customize theme colors, UI scale, and physical glassmorphism effects.</p>
@@ -610,12 +623,12 @@ const SettingsModal = () => {
                                 {/* Dimming & Contrast Slider */}
                                 <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
                                     <div className="flex items-center gap-3 min-w-0 pr-4">
-                                        <div className="w-8 h-8 rounded-lg bg-white/[0.03] text-accent/80 border border-white/[0.05] flex items-center justify-center flex-shrink-0">
+                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
                                             <Sliders size={15} />
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="font-medium text-xs text-zinc-200">Backdrop Contrast Dimming</p>
-                                            <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">Adjust dark overlay to ensure text and tab readability over bright wallpapers.</p>
+                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Backdrop Contrast Dimming</p>
+                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust dark overlay to ensure text and tab readability over bright wallpapers.</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3 flex-shrink-0">
@@ -626,9 +639,34 @@ const SettingsModal = () => {
                                             step={5}
                                             value={wallpaperDimming}
                                             onChange={(e) => setWallpaperDimming(Number(e.target.value))}
-                                            className="w-32 sm:w-44 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent"
+                                            className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
                                         />
-                                        <span className="text-xs font-mono font-semibold text-accent w-8 text-right select-none">{wallpaperDimming}%</span>
+                                        <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperDimming}%</span>
+                                    </div>
+                                </div>
+
+                                {/* Liquid Glass Frosted Blur Slider */}
+                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                            <Sparkles size={15} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Liquid Glass Frosted Blur</p>
+                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust backdrop blur diffusion (lower for crisp wallpaper contours, higher for smooth frosted abstraction).</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={48}
+                                            step={2}
+                                            value={wallpaperBlur}
+                                            onChange={(e) => setWallpaperBlur(Number(e.target.value))}
+                                            className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
+                                        />
+                                        <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperBlur}px</span>
                                     </div>
                                 </div>
                             </div>
@@ -767,7 +805,7 @@ const SettingsModal = () => {
 
                     {/* TAB 2: PRIVACY & SECURITY */}
                     {settingsTab === 'privacy' && (
-                        <div className="animate-pop-in space-y-4">
+                        <div className="animate-tab-fade space-y-4">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Privacy & Security</h3>
                                 <p className="text-xs text-white/40">Manage network encryption, DNS security, and process isolation.</p>
@@ -945,7 +983,7 @@ const SettingsModal = () => {
 
                     {/* TAB 3: COOKIES & PERMISSIONS */}
                     {settingsTab === 'cookies' && (
-                        <div className="animate-pop-in space-y-6">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Cookies & Site Permissions</h3>
                                 <p className="text-xs text-white/40">Control storage access, cross-site tracking cookies, and site rules.</p>
@@ -1029,7 +1067,7 @@ const SettingsModal = () => {
 
                     {/* TAB 4: SEARCH & OMNIBOX */}
                     {settingsTab === 'search' && (
-                        <div className="animate-pop-in space-y-5">
+                        <div className="animate-tab-fade space-y-5">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Search & Omnibox</h3>
                                 <p className="text-xs text-white/40">Configure default search engines, live suggestions, and smart search bangs.</p>
@@ -1277,7 +1315,7 @@ const SettingsModal = () => {
 
                     {/* TAB 5: DOWNLOADS & MEDIA */}
                     {settingsTab === 'downloads' && (
-                        <div className="animate-pop-in space-y-4">
+                        <div className="animate-tab-fade space-y-4">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Downloads & Media</h3>
                                 <p className="text-xs text-white/40">Manage file storage paths, organization, and background media policies.</p>
@@ -1320,7 +1358,7 @@ const SettingsModal = () => {
 
                     {/* TAB 6: ENGINE & PERFORMANCE */}
                     {settingsTab === 'engine' && (
-                        <div className="animate-pop-in space-y-5">
+                        <div className="animate-tab-fade space-y-5">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
                                     <Cpu className="text-accent" size={24} /> Engine & Performance
@@ -1520,7 +1558,7 @@ const SettingsModal = () => {
 
                     {/* TAB 7: NATIVE ADBLOCKER */}
                     {settingsTab === 'adblock' && (
-                        <div className="animate-pop-in space-y-4">
+                        <div className="animate-tab-fade space-y-4">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Native AdBlocker</h3>
                                 <p className="text-xs text-white/40">Configure EasyList ad blocking, cosmetic element hiding, and tracking rules.</p>
@@ -1573,7 +1611,7 @@ const SettingsModal = () => {
                     )}
 
                     {settingsTab === 'about' && (
-                        <div className="animate-pop-in space-y-6">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">About & System Info</h3>
                                 <p className="text-xs text-white/40">System architecture, runtime specifications, and app updates.</p>
@@ -1641,12 +1679,21 @@ const SettingsModal = () => {
                             <div className="p-6 bg-white/[0.025] border border-white/[0.05] rounded-3xl space-y-4 hover:border-accent-30 transition-all duration-300">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border ${
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border p-2 ${
                                             isDefaultBrowser 
-                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-emerald-500/10 shadow-lg' 
-                                                : 'bg-accent-10 text-accent border-accent-30 shadow-sm'
+                                                ? 'bg-emerald-500/10 border-emerald-500/30 shadow-emerald-500/10 shadow-lg' 
+                                                : 'bg-accent-10 border-accent-30 shadow-sm'
                                         }`}>
-                                            <Compass size={24} />
+                                            <img 
+                                                src="/icon.png" 
+                                                alt="QBrowse" 
+                                                className="w-full h-full object-contain rounded-xl drop-shadow" 
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
+                                                }}
+                                            />
+                                            <Compass size={24} className="hidden text-accent" />
                                         </div>
                                         <div>
                                             <h4 className="font-bold text-base text-white flex items-center gap-2">
@@ -1711,8 +1758,17 @@ const SettingsModal = () => {
                             {/* App Banner */}
                             <div className="p-4 px-5 bg-white/[0.025] border border-white/[0.05] rounded-xl flex items-center justify-between">
                                 <div className="flex items-center gap-3.5">
-                                    <div className="w-10 h-10 rounded-xl bg-white/10 text-white font-bold text-base flex items-center justify-center border border-white/15">
-                                        QB
+                                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm overflow-hidden">
+                                        <img 
+                                            src="/icon.png" 
+                                            alt="QBrowse" 
+                                            className="w-full h-full object-contain rounded-lg drop-shadow" 
+                                            onError={(e) => {
+                                                e.currentTarget.style.display = 'none';
+                                                if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
+                                            }}
+                                        />
+                                        <span className="hidden text-white font-bold text-sm">QB</span>
                                     </div>
                                     <div>
                                         <h4 className="text-xs font-semibold text-white flex items-center gap-2">
@@ -1779,6 +1835,49 @@ const SettingsModal = () => {
                                     <div>
                                         <p className="font-semibold text-xs text-accent">Zen Workspace Engine</p>
                                         <p className="text-[11px] text-white/40 mt-0.5">Personal, Work & Incognito spaces</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Experience & Onboarding Controls */}
+                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl flex flex-col gap-3.5">
+                                <p className="font-semibold text-sm text-white/80">Experience & Discovery</p>
+                                <div className="flex flex-col gap-2.5">
+                                    <div className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-xl">
+                                        <div className="flex items-center gap-3">
+                                            <Volume2 size={16} className="text-accent" />
+                                            <div>
+                                                <p className="text-xs text-white/80 font-medium">Play startup welcome chime</p>
+                                                <p className="text-[10px] text-white/40">Synthesized acoustic chord when launching the browser</p>
+                                            </div>
+                                        </div>
+                                        <SettingToggle 
+                                            isChecked={!!settings?.playStartupSound} 
+                                            onToggle={() => toggleSetting('playStartupSound')} 
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 mt-1">
+                                        <button
+                                            onClick={() => {
+                                                closeModal();
+                                                setTimeout(() => openModal('setup'), 220);
+                                            }}
+                                            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-accent/40 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            <RotateCcw size={13} className="text-accent" />
+                                            <span>Relaunch Setup Journey</span>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                closeModal();
+                                                setTimeout(() => openModal('tour'), 220);
+                                            }}
+                                            className="px-4 py-2.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            <Compass size={13} />
+                                            <span>Interactive Living Tour</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>

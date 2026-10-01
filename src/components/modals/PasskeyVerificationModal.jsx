@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Globe, Check } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -51,31 +51,50 @@ const PasskeyVerificationModal = () => {
     const [authStatus, setAuthStatus] = useState('idle'); // 'idle' | 'scanning' | 'checking-pass' | 'success'
     const [errorMessage, setErrorMessage] = useState('');
 
+    const [displayedPrompt, setDisplayedPrompt] = useState(null);
+    const [isClosing, setIsClosing] = useState(false);
+    const closeTimerRef = useRef(null);
+
     useEffect(() => {
-        if (!passkeyPrompt) {
+        if (passkeyPrompt) {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+            setDisplayedPrompt(passkeyPrompt);
+            setIsClosing(false);
             setPasswordInput('');
             setErrorMessage('');
             setAuthStatus('idle');
+        } else if (displayedPrompt && !isClosing) {
+            setIsClosing(true);
+            closeTimerRef.current = setTimeout(() => {
+                setDisplayedPrompt(null);
+                setIsClosing(false);
+                setPasswordInput('');
+                setErrorMessage('');
+                setAuthStatus('idle');
+            }, 200);
         }
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
     }, [passkeyPrompt]);
 
     // Handle Escape key to cancel
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.key === 'Escape' && passkeyPrompt && authStatus !== 'success') {
+            if (e.key === 'Escape' && displayedPrompt && authStatus !== 'success') {
                 handleCancel();
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [passkeyPrompt, authStatus]);
+    }, [displayedPrompt, authStatus]);
 
-    if (!passkeyPrompt) return null;
+    if (!displayedPrompt) return null;
 
     const handleCancel = async () => {
         if (authStatus === 'success') return;
         if (window.electronAPI && window.electronAPI.respondPasskeyVerification) {
-            await window.electronAPI.respondPasskeyVerification(passkeyPrompt.requestId, false);
+            await window.electronAPI.respondPasskeyVerification(displayedPrompt.requestId, false);
         }
         setPasskeyPrompt(null);
     };
@@ -151,7 +170,7 @@ const PasskeyVerificationModal = () => {
         <div 
             className={`fixed inset-0 z-[300] flex items-center justify-center p-6 ${
                 isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/80 backdrop-blur-2xl text-white'
-            } font-sans animate-pop-in`}
+            } font-sans ${isClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
             onClick={handleCancel}
         >
             <div 

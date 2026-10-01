@@ -28,11 +28,17 @@ export default function SavePasswordBanner() {
     const [masterPassInput, setMasterPassInput] = useState('');
     const [unlockError, setUnlockError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [displayedPrompt, setDisplayedPrompt] = useState(null);
+    const [isClosing, setIsClosing] = useState(false);
 
     const pinInputRef = useRef(null);
+    const closeTimerRef = useRef(null);
 
     useEffect(() => {
         if (pendingSavePrompt) {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+            setDisplayedPrompt(pendingSavePrompt);
+            setIsClosing(false);
             setUsernameInput(pendingSavePrompt.username || '');
             setPasswordInput(pendingSavePrompt.password || '');
             setShowPassword(false);
@@ -41,12 +47,21 @@ export default function SavePasswordBanner() {
             setMasterPassInput('');
             setUnlockError('');
             setUnlockMode(pinCode ? 'pin' : 'password');
+        } else if (displayedPrompt && !isClosing) {
+            setIsClosing(true);
+            closeTimerRef.current = setTimeout(() => {
+                setDisplayedPrompt(null);
+                setIsClosing(false);
+            }, 220);
         }
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
     }, [pendingSavePrompt, pinCode]);
 
-    if (!pendingSavePrompt) return null;
+    if (!displayedPrompt) return null;
 
-    const { domain, url, isUpdate, existingId } = pendingSavePrompt;
+    const { domain, url, isUpdate, existingId } = displayedPrompt;
 
     const handleSaveDirect = async () => {
         if (!passwordInput.trim()) {
@@ -158,7 +173,9 @@ export default function SavePasswordBanner() {
 
     return (
         <div 
-            className={`fixed top-14 right-6 z-[70000] w-[350px] rounded-2xl backdrop-blur-3xl p-4 animate-slide-down-fade overflow-hidden select-none transition-all duration-300 ${
+            className={`fixed top-14 right-6 z-[70000] w-[350px] rounded-2xl backdrop-blur-3xl p-4 ${
+                isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
+            } origin-top-right overflow-hidden select-none transition-all duration-300 ${
                 isBright 
                     ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900' 
                     : 'bg-[#0c0d14]/78 border border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-white'

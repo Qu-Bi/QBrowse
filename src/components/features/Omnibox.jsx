@@ -212,6 +212,8 @@ export default function Omnibox() {
     const isIncognito = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
     const liveSearch = useUIStore(state => state.settings?.liveSearch);
+    const smartCalc = useUIStore(state => state.settings?.smartCalc);
+    const searchInNewTab = useUIStore(state => state.settings?.searchInNewTab);
     const searchEngine = useUIStore(state => state.settings?.searchEngine) || 'google';
     const activeBang = useUIStore(state => state.activeBang);
     const setActiveBang = useUIStore(state => state.setActiveBang);
@@ -249,14 +251,15 @@ export default function Omnibox() {
     useEffect(() => {
         setSelectedIndex(0);
         setSelectedOptionText(null);
-        if (isTor || isIncognito || !searchQuery || searchQuery.startsWith('>') || isBangSuggestionMode) {
-            setLiveSuggestions([]);
-            setLocalSuggestions([]);
-            return;
-        }
 
-        const trimmedQ = searchQuery.trim();
+        const trimmedQ = (searchQuery || '').trim();
         const isLocalPath = /^file:\/\//i.test(trimmedQ) || /^[a-zA-Z]:[\\/]/.test(trimmedQ) || /^(\/|~\/)/.test(trimmedQ);
+
+        if (isTor || isIncognito || !trimmedQ || trimmedQ.startsWith('>') || isBangSuggestionMode || liveSearch === false) {
+            setLiveSuggestions([]);
+            if (!isLocalPath) setLocalSuggestions([]);
+            if (liveSearch === false && !isLocalPath) return;
+        }
 
         // Live Local Path Autocomplete
         if (isLocalPath && window.electronAPI?.autocompleteLocalPath) {
@@ -295,7 +298,7 @@ export default function Omnibox() {
             document.body.appendChild(script);
         }, 150);
         return () => clearTimeout(timer);
-    }, [searchQuery, isBangSuggestionMode, isTor, isIncognito]);
+    }, [searchQuery, isBangSuggestionMode, isTor, isIncognito, liveSearch]);
 
     useEffect(() => {
         if (!omniboxContainerRef.current) return;
@@ -347,6 +350,7 @@ export default function Omnibox() {
     };
 
     const mathPrediction = (() => {
+        if (smartCalc === false) return null;
         const q = searchQuery.trim();
         if (/^[-+]?[0-9.()]+(?:[\s+\-*/]+[0-9.()]+)+$/.test(q)) {
             try {
@@ -722,18 +726,35 @@ export default function Omnibox() {
             useTabStore.getState().openLocalFiles([pred.url]);
             handleCloseOmnibox(true);
         } else {
-            setCurrentUrl(pred.url);
-            const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: pred.url, title: pred.title } : t));
-            if (activeSpace === 'personal') updateTab(privateTabs, setPrivateTabs);
-            else if (activeSpace === 'work') updateTab(workTabs, setWorkTabs);
-            else if (activeSpace === 'tor') {
-                updateTab(torTabs, setTorTabs);
+            const targetUrl = pred.url;
+            setCurrentUrl(targetUrl);
+
+            const isSplit = useUIStore.getState().isSplitView;
+            const focusedPane = useUIStore.getState().focusedPane;
+            const splitRightTabId = useUIStore.getState().splitRightTabId;
+
+            const currentTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'tor' ? torTabs : ghostTabs));
+            let targetTab = null;
+
+            if (isSplit && focusedPane === 'right' && splitRightTabId) {
+                targetTab = currentTabs.find(t => t.id === splitRightTabId);
+            }
+            if (!targetTab) {
+                targetTab = currentTabs.find(t => t.active);
+            }
+
+            if (targetTab && !searchInNewTab) {
+                useTabStore.getState().handleNavigateTab(targetTab.id, targetUrl, pred.title);
+            } else {
+                useTabStore.getState().handleNewTab(targetUrl);
+            }
+
+            if (activeSpace === 'tor') {
                 const torStatus = useTorStore.getState().status;
                 if (torStatus !== 'connected') {
                     useUIStore.getState().showToast('Tor is offline. Click "Connect to Tor Network" to browse.');
                 }
             }
-            else updateTab(ghostTabs, setGhostTabs);
             handleCloseOmnibox(true);
         }
     };
@@ -914,7 +935,12 @@ export default function Omnibox() {
 
     return (
         <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] ${isBright ? 'bg-black/25 backdrop-blur-md' : 'bg-black/50 backdrop-blur-md'} transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
-            <div className={`w-full max-w-[720px] mx-4 flex flex-col relative ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} onClick={e => { e.stopPropagation(); searchInputRef.current?.focus(); }} onKeyDown={handleOmniboxKeyDown}>
+            <div 
+                id="omnibox-palette"
+                className={`w-full max-w-[720px] mx-4 flex flex-col relative ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} 
+                onClick={e => { e.stopPropagation(); searchInputRef.current?.focus(); }} 
+                onKeyDown={handleOmniboxKeyDown}
+            >
 
                 <div 
                     onMouseEnter={() => setIsCardHovered(true)}
