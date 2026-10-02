@@ -1,19 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
     Lock, Unlock, KeyRound, Eye, EyeOff, Copy, Plus, Search, 
     ShieldCheck, Check, X, RefreshCw, Globe, Fingerprint, 
     Zap, Settings, ArrowLeft, Shield, Sparkles, Pencil, Trash2,
     CreditCard, MapPin, Building2, Phone, Mail, Calendar, Hash,
-    ChevronLeft, ChevronRight
+    ChevronLeft, ChevronRight, UploadCloud, Download
 } from 'lucide-react';
 import useVaultStore from '../../store/useVaultStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { parseVaultContent } from '../../utils/vaultImporter';
 
 export default function QVaultPopover({ isClosing }) {
     const { 
         isUnlocked, masterPassword, pinCode, unlock, unlockWithPin, 
-        setPin, lock, passwords, fetchPasswords, addNewItem, deleteItem, updateItem, isLoading, error 
+        setPin, lock, passwords, fetchPasswords, addNewItem, deleteItem, updateItem, 
+        importBatchItems, exportVaultData, isLoading, error 
     } = useVaultStore();
 
     const showToast = useUIStore(state => state.showToast);
@@ -79,9 +81,66 @@ export default function QVaultPopover({ isClosing }) {
     const [useSymbols, setUseSymbols] = useState(true);
     const [generatedResult, setGeneratedResult] = useState('');
     const categoryScrollRef = useRef(null);
+    const categoryTabRefs = useRef({});
+    const [categoryPillStyle, setCategoryPillStyle] = useState({ left: 4, width: 0, opacity: 0 });
     const [isDraggingTabs, setIsDraggingTabs] = useState(false);
     const [dragStartX, setDragStartX] = useState(0);
     const [dragScrollLeft, setDragScrollLeft] = useState(0);
+
+    const fileInputRef = useRef(null);
+    const [isImporting, setIsImporting] = useState(false);
+
+    const handleImportFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsImporting(true);
+        try {
+            const text = await file.text();
+            const { parsed, sourceName } = parseVaultContent(text, file.name);
+
+            if (parsed.length === 0) {
+                showToast('No credentials found in file', 'error');
+                setIsImporting(false);
+                return;
+            }
+
+            const res = await importBatchItems(parsed);
+            showToast(`Imported ${res.total} items from ${sourceName}!`);
+            setViewMode('vault');
+        } catch (err) {
+            console.error("Import failed:", err);
+            showToast(`Import failed: ${err.message}`, 'error');
+        } finally {
+            setIsImporting(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const updateCategoryPill = useCallback(() => {
+        const el = categoryTabRefs.current[categoryFilter];
+        if (el) {
+            setCategoryPillStyle({
+                left: el.offsetLeft,
+                width: el.offsetWidth,
+                opacity: 1
+            });
+        }
+    }, [categoryFilter]);
+
+    useEffect(() => {
+        updateCategoryPill();
+        const t1 = setTimeout(updateCategoryPill, 30);
+        const t2 = setTimeout(updateCategoryPill, 150);
+        return () => {
+            clearTimeout(t1);
+            clearTimeout(t2);
+        };
+    }, [updateCategoryPill, passwords.length, viewMode, isUnlocked]);
+
+    useEffect(() => {
+        window.addEventListener('resize', updateCategoryPill);
+        return () => window.removeEventListener('resize', updateCategoryPill);
+    }, [updateCategoryPill]);
 
     const scrollCategories = (offset) => {
         if (categoryScrollRef.current) {
@@ -729,19 +788,45 @@ export default function QVaultPopover({ isClosing }) {
                 <div className="flex flex-col gap-3.5 py-1">
                     {/* Unlock Mode Selector */}
                     {pinCode && (
-                        <div className={`flex p-0.5 rounded-lg border gap-0.5 ${isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.06]'}`}>
-                            <button onClick={() => setUnlockMode('pin')} className={`flex-1 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${
-                                unlockMode === 'pin' 
-                                    ? (isBright ? 'bg-white text-zinc-900 border border-black/[0.08] shadow-xs font-bold' : 'bg-accent/15 text-accent border border-accent/25 shadow-xs') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                        <div className={`relative flex p-1 rounded-full border shadow-xs ${
+                            isBright 
+                                ? 'bg-black/[0.03] border-black/[0.05]' 
+                                : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                        }`}>
+                            <div 
+                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                    isBright
+                                        ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                        : 'border shadow-xs'
+                                }`} 
+                                style={{ 
+                                    transform: unlockMode === 'password' ? 'translateX(100%)' : 'translateX(0)',
+                                    ...(!isBright ? {
+                                        borderColor: 'var(--accent-30)',
+                                        backgroundColor: 'var(--accent-15)'
+                                    } : {})
+                                }}
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setUnlockMode('pin')} 
+                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                    unlockMode === 'pin' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                        : (isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 Quick PIN
                             </button>
-                            <button onClick={() => setUnlockMode('password')} className={`flex-1 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${
-                                unlockMode === 'password' 
-                                    ? (isBright ? 'bg-white text-zinc-900 border border-black/[0.08] shadow-xs font-bold' : 'bg-accent/15 text-accent border border-accent/25 shadow-xs') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                            <button 
+                                type="button"
+                                onClick={() => setUnlockMode('password')} 
+                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                    unlockMode === 'password' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                        : (isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 Master Password
                             </button>
                         </div>
@@ -869,6 +954,79 @@ export default function QVaultPopover({ isClosing }) {
                             {isChangingPass ? 'Updating...' : 'Update Master Password'}
                         </button>
                     </form>
+
+                    {/* Vault Migration & Backups */}
+                    <div className={`p-3 rounded-xl flex flex-col gap-2.5 border ${
+                        isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'
+                    }`}>
+                        <div className="flex items-center justify-between">
+                            <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-zinc-200'}`}>
+                                <UploadCloud size={13} className="text-accent" /> Vault Migration & Backups
+                            </span>
+                            <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                                Bitwarden • Proton Pass • Chrome
+                            </span>
+                        </div>
+                        <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                            Transition from external password managers by importing your CSV or JSON vault export directly into QVault.
+                        </p>
+
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            onChange={handleImportFile} 
+                            accept=".csv,.json,text/csv,application/json" 
+                            className="hidden" 
+                        />
+
+                        <div className="grid grid-cols-2 gap-2 mt-0.5">
+                            <button
+                                type="button"
+                                disabled={isImporting}
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`h-8 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-40 border ${
+                                    isBright 
+                                        ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/40 shadow-xs' 
+                                        : 'bg-accent/15 hover:bg-accent/25 border-accent/30 text-accent'
+                                }`}
+                            >
+                                {isImporting ? <RefreshCw size={12} className="animate-spin" /> : <UploadCloud size={12} />}
+                                <span>{isImporting ? 'Importing...' : 'Import Vault'}</span>
+                            </button>
+                            <div className="flex gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        exportVaultData('json');
+                                        showToast('Exported QVault backup (.JSON)');
+                                    }}
+                                    className={`flex-1 h-8 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer border ${
+                                        isBright 
+                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10' 
+                                            : 'bg-white/5 hover:bg-white/10 text-zinc-200 border-white/10'
+                                    }`}
+                                    title="Export backup as JSON"
+                                >
+                                    <Download size={11} /> .JSON
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        exportVaultData('csv');
+                                        showToast('Exported QVault backup (.CSV)');
+                                    }}
+                                    className={`flex-1 h-8 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer border ${
+                                        isBright 
+                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10' 
+                                            : 'bg-white/5 hover:bg-white/10 text-zinc-200 border-white/10'
+                                    }`}
+                                    title="Export backup as CSV"
+                                >
+                                    <Download size={11} /> .CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             ) : viewMode === 'add' ? (
                 /* ADD / EDIT ITEM VIEW */
@@ -881,18 +1039,39 @@ export default function QVaultPopover({ isClosing }) {
                     </div>
 
                     {/* Type Selector (4 Types) */}
-                    <div className="grid grid-cols-4 gap-1 p-0.5 bg-white/[0.02] rounded-lg border border-white/[0.06]">
-                        <button type="button" onClick={() => setNewItemType('login')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'login' ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                            <Globe size={11} className={newItemType === 'login' ? 'text-sky-300' : 'text-sky-400'} /> Login
+                    <div className={`relative grid grid-cols-4 p-1 rounded-full border shadow-xs ${
+                        isBright 
+                            ? 'bg-black/[0.03] border-black/[0.05]' 
+                            : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                    }`}>
+                        <div 
+                            className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                isBright
+                                    ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                    : 'border shadow-xs'
+                            }`} 
+                            style={{ 
+                                transform: newItemType === 'login' ? 'translateX(0)' :
+                                           newItemType === 'card' ? 'translateX(100%)' :
+                                           newItemType === 'address' ? 'translateX(200%)' :
+                                           'translateX(300%)',
+                                ...(!isBright ? {
+                                    borderColor: 'var(--accent-30)',
+                                    backgroundColor: 'var(--accent-15)'
+                                } : {})
+                            }}
+                        />
+                        <button type="button" onClick={() => setNewItemType('login')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-300 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'login' ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <Globe size={11} className={newItemType === 'login' ? (isBright ? 'text-sky-600' : 'text-sky-300') : 'text-zinc-500'} /> Login
                         </button>
-                        <button type="button" onClick={() => setNewItemType('card')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'card' ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                            <CreditCard size={11} className={newItemType === 'card' ? 'text-blue-300' : 'text-blue-400'} /> Card
+                        <button type="button" onClick={() => setNewItemType('card')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-300 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'card' ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <CreditCard size={11} className={newItemType === 'card' ? (isBright ? 'text-blue-600' : 'text-blue-300') : 'text-zinc-500'} /> Card
                         </button>
-                        <button type="button" onClick={() => setNewItemType('address')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'address' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                            <MapPin size={11} className={newItemType === 'address' ? 'text-amber-300' : 'text-amber-400'} /> Address
+                        <button type="button" onClick={() => setNewItemType('address')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-300 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'address' ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <MapPin size={11} className={newItemType === 'address' ? (isBright ? 'text-amber-600' : 'text-amber-300') : 'text-zinc-500'} /> Address
                         </button>
-                        <button type="button" onClick={() => setNewItemType('passkey')} className={`py-1.5 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'passkey' ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                            <Fingerprint size={11} className={newItemType === 'passkey' ? 'text-purple-300' : 'text-purple-400'} /> Passkey
+                        <button type="button" onClick={() => setNewItemType('passkey')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-300 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'passkey' ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') : 'text-zinc-500 hover:text-zinc-300'}`}>
+                            <Fingerprint size={11} className={newItemType === 'passkey' ? (isBright ? 'text-purple-600' : 'text-purple-300') : 'text-zinc-500'} /> Passkey
                         </button>
                     </div>
 
@@ -1181,50 +1360,112 @@ export default function QVaultPopover({ isClosing }) {
                                     e.currentTarget.scrollLeft += e.deltaY;
                                 }
                             }}
-                            className={`flex-1 flex items-center gap-1 p-0.5 rounded-lg border overflow-x-auto hide-scroll scroll-smooth select-none cursor-grab active:cursor-grabbing ${
-                                isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.06]'
+                            className={`relative flex-1 flex items-center gap-1 p-1 rounded-full border overflow-x-auto hide-scroll scroll-smooth select-none cursor-grab active:cursor-grabbing ${
+                                isBright 
+                                    ? 'bg-black/[0.03] border-black/[0.05]' 
+                                    : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                             }`}
                         >
-                            <button onClick={() => setCategoryFilter('all')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition cursor-pointer flex-shrink-0 ${
-                                categoryFilter === 'all' 
-                                    ? (isBright ? 'bg-accent/20 text-zinc-900 border border-accent/40 font-bold shadow-xs' : 'bg-accent/15 text-accent border border-accent/30 shadow-xs font-semibold') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                            {/* Sliding Indicator Pill matching Spaces Switcher */}
+                            <div 
+                                className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                    isBright
+                                        ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                        : 'border shadow-xs'
+                                }`} 
+                                style={{ 
+                                    left: `${categoryPillStyle.left}px`,
+                                    width: `${categoryPillStyle.width}px`,
+                                    opacity: categoryPillStyle.opacity,
+                                    ...(!isBright ? {
+                                        borderColor: 'var(--accent-30)',
+                                        backgroundColor: 'var(--accent-15)'
+                                    } : {})
+                                }}
+                            />
+
+                            <button 
+                                ref={el => { categoryTabRefs.current['all'] = el; }}
+                                onClick={() => {
+                                    setCategoryFilter('all');
+                                    categoryTabRefs.current['all']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                                }} 
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 cursor-pointer flex-shrink-0 ${
+                                    categoryFilter === 'all' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 All ({parsedItems.length})
                             </button>
-                            <button onClick={() => setCategoryFilter('logins')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                categoryFilter === 'logins' 
-                                    ? (isBright ? 'bg-sky-500/20 text-sky-900 border border-sky-500/35 font-bold shadow-xs' : 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-xs font-semibold') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                            <button 
+                                ref={el => { categoryTabRefs.current['logins'] = el; }}
+                                onClick={() => {
+                                    setCategoryFilter('logins');
+                                    categoryTabRefs.current['logins']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                                }} 
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                    categoryFilter === 'logins' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') 
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 <Globe size={11} className={categoryFilter === 'logins' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-sky-600' : 'text-sky-400')} /> Logins ({parsedItems.filter(p => p.itemType === 'login').length})
                             </button>
-                            <button onClick={() => setCategoryFilter('cards')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                categoryFilter === 'cards' 
-                                    ? (isBright ? 'bg-blue-500/20 text-blue-900 border border-blue-500/35 font-bold shadow-xs' : 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-xs font-semibold') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                            <button 
+                                ref={el => { categoryTabRefs.current['cards'] = el; }}
+                                onClick={() => {
+                                    setCategoryFilter('cards');
+                                    categoryTabRefs.current['cards']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                                }} 
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                    categoryFilter === 'cards' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') 
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 <CreditCard size={11} className={categoryFilter === 'cards' ? (isBright ? 'text-blue-700' : 'text-blue-300') : (isBright ? 'text-blue-600' : 'text-blue-400')} /> Cards ({parsedItems.filter(p => p.itemType === 'card').length})
                             </button>
-                            <button onClick={() => setCategoryFilter('addresses')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                categoryFilter === 'addresses' 
-                                    ? (isBright ? 'bg-amber-500/20 text-amber-900 border border-amber-500/35 font-bold shadow-xs' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-xs font-semibold') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                            <button 
+                                ref={el => { categoryTabRefs.current['addresses'] = el; }}
+                                onClick={() => {
+                                    setCategoryFilter('addresses');
+                                    categoryTabRefs.current['addresses']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                                }} 
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                    categoryFilter === 'addresses' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') 
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 <MapPin size={11} className={categoryFilter === 'addresses' ? (isBright ? 'text-amber-700' : 'text-amber-300') : (isBright ? 'text-amber-600' : 'text-amber-400')} /> Addresses ({parsedItems.filter(p => p.itemType === 'address').length})
                             </button>
-                            <button onClick={() => setCategoryFilter('passkeys')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                categoryFilter === 'passkeys' 
-                                    ? (isBright ? 'bg-purple-500/20 text-purple-900 border border-purple-500/35 font-bold shadow-xs' : 'bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-xs font-semibold') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                            <button 
+                                ref={el => { categoryTabRefs.current['passkeys'] = el; }}
+                                onClick={() => {
+                                    setCategoryFilter('passkeys');
+                                    categoryTabRefs.current['passkeys']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                                }} 
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                    categoryFilter === 'passkeys' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') 
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 <Fingerprint size={11} className={categoryFilter === 'passkeys' ? (isBright ? 'text-purple-700' : 'text-purple-300') : (isBright ? 'text-purple-600' : 'text-purple-400')} /> Passkeys ({parsedItems.filter(p => p.itemType === 'passkey').length})
                             </button>
-                            <button onClick={() => setCategoryFilter('generator')} className={`px-2.5 py-1 rounded-md text-[11px] font-mono whitespace-nowrap transition flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                categoryFilter === 'generator' 
-                                    ? (isBright ? 'bg-emerald-500/20 text-emerald-900 border border-emerald-500/35 font-bold shadow-xs' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-xs font-semibold') 
-                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.04]' : 'text-zinc-500 hover:text-zinc-300')
-                            }`}>
+                            <button 
+                                ref={el => { categoryTabRefs.current['generator'] = el; }}
+                                onClick={() => {
+                                    setCategoryFilter('generator');
+                                    categoryTabRefs.current['generator']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                                }} 
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
+                                    categoryFilter === 'generator' 
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold') 
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
+                                }`}
+                            >
                                 <Sparkles size={11} className={categoryFilter === 'generator' ? (isBright ? 'text-emerald-700' : 'text-emerald-300') : (isBright ? 'text-emerald-600' : 'text-emerald-400')} /> Gen
                             </button>
                         </div>
@@ -1332,8 +1573,20 @@ export default function QVaultPopover({ isClosing }) {
                             {/* Items List */}
                             <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto hide-scroll pr-0.5">
                                 {filteredItems.length === 0 ? (
-                                    <div className="text-center text-zinc-500 text-xs py-8 font-mono">
-                                        {searchQuery ? 'No matching vault items.' : 'Category is empty. Click + Add to store credentials.'}
+                                    <div className="text-center text-zinc-500 text-xs py-8 font-mono flex flex-col items-center gap-2.5">
+                                        <span>{searchQuery ? 'No matching vault items.' : (passwords.length === 0 ? 'Your vault is currently empty.' : 'Category is empty. Click + Add to store credentials.')}</span>
+                                        {!searchQuery && passwords.length === 0 && (
+                                            <button 
+                                                onClick={() => setViewMode('settings')} 
+                                                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer active:scale-95 ${
+                                                    isBright 
+                                                        ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/40 shadow-xs font-bold' 
+                                                        : 'bg-accent/15 hover:bg-accent/25 border-accent/30 text-accent font-semibold'
+                                                }`}
+                                            >
+                                                <UploadCloud size={12} /> Import from Bitwarden or Proton Pass
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
                                     filteredItems.map((item) => {

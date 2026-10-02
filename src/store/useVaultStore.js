@@ -326,6 +326,105 @@ const useVaultStore = create((set, get) => ({
         }
     },
 
+    importBatchItems: async (itemsList) => {
+        const { masterPassword, passwords } = get();
+        set({ isLoading: true, error: null });
+        let importedCount = 0;
+        let updatedCount = 0;
+
+        try {
+            for (const item of itemsList) {
+                const payload = {
+                    type: item.type || 'login',
+                    notes: item.notes || '',
+                    passkeyData: item.passkeyData || null,
+                    cardData: item.cardData || null,
+                    addressData: item.addressData || null
+                };
+                const jsonPayload = JSON.stringify(payload);
+                const title = item.title || item.url || item.username || 'Imported Account';
+                const combinedTitle = `${title}|||${jsonPayload}`;
+
+                // Check if matching credential exists to update rather than duplicate
+                const existing = passwords.find(p => 
+                    p.username && item.username && 
+                    p.username.toLowerCase() === item.username.toLowerCase() &&
+                    ((p.url && item.url && matchDomains(p.url, item.url)) || p.title === title)
+                );
+
+                if (existing) {
+                    await updatePassword(existing.id, combinedTitle, item.username || '', item.password || '', item.url || '');
+                    updatedCount++;
+                } else {
+                    await addPassword(combinedTitle, item.username || '', item.password || '', item.url || '', masterPassword);
+                    importedCount++;
+                }
+            }
+
+            await get().fetchPasswords();
+            triggerVaultSync();
+            set({ isLoading: false });
+            return { importedCount, updatedCount, total: importedCount + updatedCount };
+        } catch (err) {
+            console.error('[VaultStore] importBatchItems error:', err);
+            await get().fetchPasswords();
+            set({ isLoading: false, error: err.message });
+            throw err;
+        }
+    },
+
+    exportVaultData: (format = 'json') => {
+        const { passwords } = get();
+        const exportable = (passwords || []).map(p => {
+            let meta = {};
+            let rawTitle = p.title || '';
+            if (rawTitle.includes('|||')) {
+                const parts = rawTitle.split('|||');
+                rawTitle = parts[0];
+                try { meta = JSON.parse(parts[1]); } catch (_) {}
+            }
+            return {
+                title: rawTitle,
+                type: meta.type || 'login',
+                username: p.username || '',
+                password: p.password || '',
+                url: p.url || '',
+                notes: meta.notes || '',
+                cardData: meta.cardData || null,
+                addressData: meta.addressData || null
+            };
+        });
+
+        if (format === 'json') {
+            const dataStr = JSON.stringify({ qvault_version: '1.3.0', exported_at: new Date().toISOString(), items: exportable }, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `qvault-export-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            const headers = ['title', 'type', 'username', 'password', 'url', 'notes'];
+            const rows = exportable.map(i => [
+                `"${(i.title || '').replace(/"/g, '""')}"`,
+                `"${(i.type || 'login').replace(/"/g, '""')}"`,
+                `"${(i.username || '').replace(/"/g, '""')}"`,
+                `"${(i.password || '').replace(/"/g, '""')}"`,
+                `"${(i.url || '').replace(/"/g, '""')}"`,
+                `"${(i.notes || '').replace(/"/g, '""')}"`
+            ]);
+            const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `qvault-export-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    },
+
     // --- SMART CREDENTIAL PROMPTS & AUTOFILL ---
     pendingSavePrompt: null,
     neverSaveDomains: (() => {

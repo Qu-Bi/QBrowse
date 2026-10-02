@@ -341,31 +341,20 @@ const SettingsModal = () => {
 
     return (
         <div 
-            className={`fixed inset-0 z-[200] flex items-center justify-center p-3 md:p-6 font-sans ${
+            id="settings-modal"
+            className={`fixed inset-0 z-[200] flex font-sans w-full h-full overflow-hidden ${
                 isBright 
-                    ? 'bg-black/30 backdrop-blur-md text-zinc-900' 
-                    : 'bg-black/60 backdrop-blur-md text-white'
-            } ${isModalClosing ? 'animate-modal-backdrop-out' : 'animate-modal-backdrop'}`} 
-            onClick={closeModal}
+                    ? 'bg-zinc-100/95 text-zinc-900' 
+                    : 'bg-[#090a0f]/95 text-white'
+            } backdrop-blur-3xl ${isModalClosing ? 'animate-settings-sheet-out' : 'animate-settings-sheet'}`} 
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
         >
-            {/* FLOATING LUXURY SETTINGS WINDOW */}
-            <div 
-                id="settings-modal"
-                onClick={e => e.stopPropagation()} 
-                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
-                className={`w-full max-w-6xl h-[92vh] max-h-[920px] rounded-3xl overflow-hidden flex border shadow-[0_25px_80px_rgba(0,0,0,0.65)] ${
-                    isBright 
-                        ? 'bg-white/95 border-black/10' 
-                        : 'bg-[#0c0d14]/95 border-white/[0.08]'
-                } ${isModalClosing ? 'animate-settings-sheet-out' : 'animate-settings-sheet'}`}
-            >
-                {/* LEFT NAVIGATION SIDEBAR */}
-                <div className={`w-64 border-r flex flex-col flex-shrink-0 ${
-                    isBright 
-                        ? 'bg-black/[0.02] border-black/10' 
-                        : 'bg-white/[0.015] border-white/[0.06]'
-                }`}>
+            {/* LEFT NAVIGATION SIDEBAR */}
+            <div className={`w-64 border-r flex flex-col flex-shrink-0 h-full ${
+                isBright 
+                    ? 'bg-black/[0.02] border-black/10' 
+                    : 'bg-white/[0.015] border-white/[0.06]'
+            }`}>
                 <div className="p-4 pb-2 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
                         <h2 className={`text-sm font-semibold tracking-tight flex items-center gap-2 ${
@@ -442,16 +431,20 @@ const SettingsModal = () => {
             </div>
 
             {/* RIGHT CONTENT PANEL */}
-            <div className={`flex-1 p-8 md:p-10 relative overflow-y-auto ${
+            <div className={`flex-1 p-6 md:p-10 lg:px-12 relative overflow-y-auto h-full ${
                 isBright ? 'bg-transparent text-zinc-900 settings-bright-mode' : 'bg-transparent text-white'
             }`}>
-                <button onClick={(e) => { e.stopPropagation(); closeModal(); }} className={`absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-xl border transition z-[999] cursor-pointer ${
-                    isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600 hover:text-zinc-900' : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.06] text-zinc-400 hover:text-white'
-                }`}>
-                    <X size={15} className="pointer-events-none" />
+                <button 
+                    onClick={(e) => { e.stopPropagation(); closeModal(); }} 
+                    className={`absolute top-6 right-8 w-9 h-9 flex items-center justify-center rounded-xl border transition z-[999] cursor-pointer ${
+                        isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600 hover:text-zinc-900 shadow-xs' : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.06] text-zinc-400 hover:text-white shadow-xs'
+                    }`}
+                    title="Close Settings (Esc)"
+                >
+                    <X size={16} className="pointer-events-none" />
                 </button>
 
-                <div className="w-full">
+                <div className="w-full max-w-6xl xl:max-w-7xl mx-auto pb-16">
                     {/* TAB 1: APPEARANCE & UX */}
                     {settingsTab === 'appearance' && (
                         <div className="animate-tab-fade space-y-6">
@@ -1901,7 +1894,6 @@ const SettingsModal = () => {
                         </div>
                     )}
                 </div>
-            </div>
             </div>
         </div>
     );

@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     Globe, Moon, Sun, ShieldCheck, ArrowRight, Check, X, 
     Download, Compass, Lock, User, Sparkles, Layers,
-    CheckCircle2, FolderInput, FileCode, Sliders, ChevronRight
+    CheckCircle2, FolderInput, FileCode, Sliders, ChevronRight,
+    KeyRound, UploadCloud, Shield, RefreshCw
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
+import useVaultStore from '../../store/useVaultStore';
+import { parseVaultContent } from '../../utils/vaultImporter';
 import qbrowseLogo from '../../assets/icon.png';
 
 const ACCENT_PRESETS = [
@@ -24,6 +27,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     } = useUIStore();
 
     const [currentStep, setCurrentStep] = useState(0);
+    const [importTab, setImportTab] = useState('bookmarks'); // 'bookmarks' | 'passwords'
     const [detectedBrowsers, setDetectedBrowsers] = useState([]);
     const [importingId, setImportingId] = useState(null);
     const [importedStats, setImportedStats] = useState({});
@@ -33,6 +37,15 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     const [syncPassword, setSyncPassword] = useState('');
     const [showSyncForm, setShowSyncForm] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+
+    // Vault migration state
+    const vaultFileInputRef = useRef(null);
+    const [isImportingVault, setIsImportingVault] = useState(false);
+    const [vaultImportStats, setVaultImportStats] = useState(null);
+    const [showVaultPassModal, setShowVaultPassModal] = useState(false);
+    const [vaultMasterPass, setVaultMasterPass] = useState('');
+    const [vaultMasterPassConfirm, setVaultMasterPassConfirm] = useState('');
+    const [pendingVaultData, setPendingVaultData] = useState(null);
 
     const isBright = theme === 'light';
 
@@ -103,6 +116,78 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         }
     };
 
+    const handleVaultFileSelected = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsImportingVault(true);
+        try {
+            const text = await file.text();
+            const { parsed, sourceName } = parseVaultContent(text, file.name);
+
+            if (!parsed || parsed.length === 0) {
+                showToast('No credentials found in file', 'error');
+                setIsImportingVault(false);
+                return;
+            }
+
+            const vaultStore = useVaultStore.getState();
+            if (vaultStore.isUnlocked) {
+                const res = await vaultStore.importBatchItems(parsed);
+                setVaultImportStats({ count: res.total, source: sourceName });
+                showToast(`Imported ${res.total} passwords from ${sourceName}!`);
+                setIsImportingVault(false);
+            } else {
+                setPendingVaultData({ parsed, sourceName });
+                setShowVaultPassModal(true);
+                setIsImportingVault(false);
+            }
+        } catch (err) {
+            console.error('Vault import error:', err);
+            showToast(`Import failed: ${err.message}`, 'error');
+            setIsImportingVault(false);
+        } finally {
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleConfirmVaultPass = async (e) => {
+        e?.preventDefault();
+        if (!vaultMasterPass || vaultMasterPass.length < 4) {
+            showToast('Password must be at least 4 characters', 'error');
+            return;
+        }
+        if (vaultMasterPassConfirm && vaultMasterPass !== vaultMasterPassConfirm) {
+            showToast('Passwords do not match', 'error');
+            return;
+        }
+
+        setIsImportingVault(true);
+        try {
+            const vaultStore = useVaultStore.getState();
+            const unlocked = await vaultStore.unlock(vaultMasterPass);
+            if (!unlocked) {
+                showToast('Incorrect master password for existing vault', 'error');
+                setIsImportingVault(false);
+                return;
+            }
+
+            if (pendingVaultData && pendingVaultData.parsed) {
+                const res = await vaultStore.importBatchItems(pendingVaultData.parsed);
+                setVaultImportStats({ count: res.total, source: pendingVaultData.sourceName });
+                showToast(`Imported ${res.total} passwords from ${pendingVaultData.sourceName}!`);
+            }
+            setShowVaultPassModal(false);
+            setPendingVaultData(null);
+            setVaultMasterPass('');
+            setVaultMasterPassConfirm('');
+        } catch (err) {
+            console.error('Failed to unlock and import:', err);
+            showToast(`Import error: ${err.message}`, 'error');
+        } finally {
+            setIsImportingVault(false);
+        }
+    };
+
     const handleSetDefault = async () => {
         if (!window.electronAPI || !window.electronAPI.setDefaultBrowser) return;
         setIsSettingDefault(true);
@@ -135,7 +220,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
     const steps = [
         { label: 'Appearance', desc: 'Theme & Accent' },
-        { label: 'Import', desc: 'Bookmarks & Data' },
+        { label: 'Import', desc: 'Bookmarks & Passwords' },
         { label: 'Privacy', desc: 'Shields & Tor' },
         { label: 'Default', desc: 'System Integration' },
         { label: 'Ready', desc: 'Profile Setup' }
@@ -277,76 +362,205 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                     {/* SLIDE 1: DATA MIGRATION */}
                     {currentStep === 1 && (
-                        <div className="animate-pop-in space-y-8">
+                        <div className="animate-pop-in space-y-6">
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 2 of 5</span>
-                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Bring Your Bookmarks</h2>
+                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Bring Your Data & Vault</h2>
                                 <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                    Import bookmarks directly from your existing browsers in one click, or upload an exported HTML file.
+                                    Import your bookmarks and transition your passwords from Bitwarden, Proton Pass, Chrome, or Firefox.
                                 </p>
                             </div>
 
-                            {/* Detected Browsers Grid */}
-                            <div className="space-y-3">
-                                {detectedBrowsers.length > 0 ? (
-                                    detectedBrowsers.map((b) => (
-                                        <div 
-                                            key={b.id}
-                                            className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between hover:bg-white/[0.06] transition"
-                                        >
+                            {/* Sliding Pill Selector Switcher */}
+                            <div className="relative flex p-1 rounded-full border border-white/10 bg-white/[0.03] shadow-inner max-w-sm mx-auto">
+                                <div 
+                                    className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] bg-accent/20 border border-accent/40 shadow-xs"
+                                    style={{ 
+                                        transform: importTab === 'passwords' ? 'translateX(100%)' : 'translateX(0)'
+                                    }}
+                                />
+                                <button 
+                                    type="button" 
+                                    onClick={() => setImportTab('bookmarks')}
+                                    className={`relative z-10 flex-1 py-1.5 text-center text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
+                                        importTab === 'bookmarks' ? 'text-accent font-bold' : 'text-white/60 hover:text-white'
+                                    }`}
+                                >
+                                    <Globe size={13} />
+                                    <span>Bookmarks</span>
+                                    {Object.keys(importedStats).length > 0 && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    )}
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setImportTab('passwords')}
+                                    className={`relative z-10 flex-1 py-1.5 text-center text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
+                                        importTab === 'passwords' ? 'text-accent font-bold' : 'text-white/60 hover:text-white'
+                                    }`}
+                                >
+                                    <KeyRound size={13} />
+                                    <span>Password Vault</span>
+                                    {vaultImportStats && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* TAB 1: BOOKMARKS */}
+                            {importTab === 'bookmarks' && (
+                                <div className="space-y-3 animate-tab-fade">
+                                    {detectedBrowsers.length > 0 ? (
+                                        detectedBrowsers.map((b) => (
+                                            <div 
+                                                key={b.id}
+                                                className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between hover:bg-white/[0.06] transition"
+                                            >
+                                                <div className="flex items-center gap-3.5">
+                                                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-accent">
+                                                        <Globe size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-white">{b.name}</h4>
+                                                        <p className="text-xs text-white/40">
+                                                            {b.found ? `${b.count} bookmarks found` : 'Not detected on this machine'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {b.found && (
+                                                    <button
+                                                        onClick={() => handleImportBrowser(b.id)}
+                                                        disabled={importingId === b.id || importedStats[b.id]}
+                                                        className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                                                            importedStats[b.id]
+                                                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                                                : 'bg-accent text-black hover:scale-105 active:scale-95 shadow-sm'
+                                                        }`}
+                                                    >
+                                                        {importedStats[b.id] ? (
+                                                            <>
+                                                                <Check size={13} strokeWidth={3} />
+                                                                <span>Imported</span>
+                                                            </>
+                                                        ) : importingId === b.id ? (
+                                                            <span>Importing...</span>
+                                                        ) : (
+                                                            <span>Import Bookmarks</span>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-center text-white/50 text-xs">
+                                            Scanning for existing browsers...
+                                        </div>
+                                    )}
+
+                                    {/* HTML Bookmarks Picker */}
+                                    <div 
+                                        onClick={handleImportHtmlFile}
+                                        className="p-4 rounded-2xl border border-dashed border-white/20 hover:border-accent/40 bg-white/[0.02] hover:bg-white/[0.05] transition flex items-center justify-center gap-3 cursor-pointer text-white/70 hover:text-white"
+                                    >
+                                        <FolderInput size={18} className="text-accent" />
+                                        <span className="text-xs font-semibold">
+                                            {importedStats.html ? `HTML file imported (${importedStats.html} items)` : 'Upload Bookmarks HTML File (.html)'}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAB 2: PASSWORD VAULT */}
+                            {importTab === 'passwords' && (
+                                <div className="space-y-3 animate-tab-fade">
+                                    <input 
+                                        type="file"
+                                        ref={vaultFileInputRef}
+                                        onChange={handleVaultFileSelected}
+                                        accept=".csv,.json,text/csv,application/json"
+                                        className="hidden"
+                                    />
+
+                                    {vaultImportStats ? (
+                                        <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between">
                                             <div className="flex items-center gap-3.5">
-                                                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-accent">
-                                                    <Globe size={20} />
+                                                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                                    <Check size={20} strokeWidth={3} />
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-sm font-bold text-white">{b.name}</h4>
-                                                    <p className="text-xs text-white/40">
-                                                        {b.found ? `${b.count} bookmarks found` : 'Not detected on this machine'}
+                                                    <h4 className="text-sm font-bold text-emerald-300">Vault Migration Complete</h4>
+                                                    <p className="text-xs text-emerald-400/80">
+                                                        Successfully imported {vaultImportStats.count} items from {vaultImportStats.source} into QVault!
                                                     </p>
                                                 </div>
                                             </div>
-
-                                            {b.found && (
-                                                <button
-                                                    onClick={() => handleImportBrowser(b.id)}
-                                                    disabled={importingId === b.id || importedStats[b.id]}
-                                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                                                        importedStats[b.id]
-                                                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                                            : 'bg-accent text-black hover:scale-105 active:scale-95 shadow-sm'
-                                                    }`}
-                                                >
-                                                    {importedStats[b.id] ? (
-                                                        <>
-                                                            <Check size={13} strokeWidth={3} />
-                                                            <span>Imported</span>
-                                                        </>
-                                                    ) : importingId === b.id ? (
-                                                        <span>Importing...</span>
-                                                    ) : (
-                                                        <span>Import Bookmarks</span>
-                                                    )}
-                                                </button>
-                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => vaultFileInputRef.current?.click()}
+                                                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/15 border border-white/10 text-white transition cursor-pointer"
+                                            >
+                                                Import Another
+                                            </button>
                                         </div>
-                                    ))
-                                ) : (
-                                    <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-center text-white/50 text-xs">
-                                        Scanning for existing browsers...
-                                    </div>
-                                )}
+                                    ) : (
+                                        <>
+                                            {/* Quick Brand Presets */}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div 
+                                                    onClick={() => vaultFileInputRef.current?.click()}
+                                                    className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-accent/40 hover:bg-white/[0.07] transition cursor-pointer flex items-center justify-between group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 flex items-center justify-center font-bold text-xs">
+                                                            BW
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-xs font-bold text-white group-hover:text-accent transition-colors">Bitwarden</h4>
+                                                            <p className="text-[11px] text-white/40">Export as .CSV or .JSON</p>
+                                                        </div>
+                                                    </div>
+                                                    <UploadCloud size={15} className="text-white/40 group-hover:text-accent transition-colors" />
+                                                </div>
 
-                                {/* HTML Bookmarks Picker */}
-                                <div 
-                                    onClick={handleImportHtmlFile}
-                                    className="p-4 rounded-2xl border border-dashed border-white/20 hover:border-accent/40 bg-white/[0.02] hover:bg-white/[0.05] transition flex items-center justify-center gap-3 cursor-pointer text-white/70 hover:text-white"
-                                >
-                                    <FolderInput size={18} className="text-accent" />
-                                    <span className="text-xs font-semibold">
-                                        {importedStats.html ? `HTML file imported (${importedStats.html} items)` : 'Upload Bookmarks HTML File (.html)'}
-                                    </span>
+                                                <div 
+                                                    onClick={() => vaultFileInputRef.current?.click()}
+                                                    className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-accent/40 hover:bg-white/[0.07] transition cursor-pointer flex items-center justify-between group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 flex items-center justify-center font-bold text-xs">
+                                                            PP
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-xs font-bold text-white group-hover:text-accent transition-colors">Proton Pass</h4>
+                                                            <p className="text-[11px] text-white/40">Export as .CSV or .JSON</p>
+                                                        </div>
+                                                    </div>
+                                                    <UploadCloud size={15} className="text-white/40 group-hover:text-accent transition-colors" />
+                                                </div>
+                                            </div>
+
+                                            {/* Primary Upload Area */}
+                                            <div 
+                                                onClick={() => vaultFileInputRef.current?.click()}
+                                                className="p-5 rounded-2xl border border-dashed border-white/20 hover:border-accent/50 bg-white/[0.02] hover:bg-white/[0.05] transition flex flex-col items-center justify-center gap-2 cursor-pointer text-center group"
+                                            >
+                                                <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 text-accent flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                    {isImportingVault ? <RefreshCw size={20} className="animate-spin" /> : <KeyRound size={20} />}
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs font-bold text-white group-hover:text-accent transition-colors block">
+                                                        {isImportingVault ? 'Parsing Vault File...' : 'Upload Vault Export (.csv or .json)'}
+                                                    </span>
+                                                    <span className="text-[11px] text-white/40 mt-0.5 block">
+                                                        Compatible with Bitwarden, Proton Pass, Google Chrome, Edge, Brave, and 1Password
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
 
@@ -587,6 +801,75 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     )}
                 </div>
             </footer>
+
+            {/* Modal for Master Password when importing into a locked vault */}
+            {showVaultPassModal && (
+                <div className="fixed inset-0 z-[600000] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+                    <form 
+                        onSubmit={handleConfirmVaultPass}
+                        className="w-full max-w-md bg-[#0f1117] border border-white/15 rounded-3xl p-6 shadow-2xl flex flex-col gap-4 animate-pop-in"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-accent/15 text-accent border border-accent/30 flex items-center justify-center">
+                                <Shield size={20} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-sm text-white">Protect Your Imported Vault</h3>
+                                <p className="text-xs text-white/50">Enter or create a Master Password to encrypt your credentials.</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-[11px] font-mono uppercase tracking-wider text-white/60 block mb-1">Master Password</label>
+                                <input 
+                                    type="password"
+                                    required
+                                    autoFocus
+                                    placeholder="Enter master password..."
+                                    value={vaultMasterPass}
+                                    onChange={e => setVaultMasterPass(e.target.value)}
+                                    className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/10 focus:border-accent outline-none text-xs text-white font-mono"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[11px] font-mono uppercase tracking-wider text-white/60 block mb-1">Confirm Master Password</label>
+                                <input 
+                                    type="password"
+                                    required
+                                    placeholder="Confirm password..."
+                                    value={vaultMasterPassConfirm}
+                                    onChange={e => setVaultMasterPassConfirm(e.target.value)}
+                                    className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/10 focus:border-accent outline-none text-xs text-white font-mono"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2.5 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowVaultPassModal(false);
+                                    setPendingVaultData(null);
+                                    setVaultMasterPass('');
+                                    setVaultMasterPassConfirm('');
+                                }}
+                                className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-xs font-semibold transition cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isImportingVault}
+                                className="flex-1 h-10 rounded-xl bg-accent hover:opacity-95 text-black text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+                            >
+                                {isImportingVault ? <RefreshCw size={14} className="animate-spin" /> : <Lock size={14} />}
+                                <span>Encrypt & Import</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     );
 }
