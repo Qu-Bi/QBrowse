@@ -7,6 +7,12 @@ const os = require('os');
 const http = require('http');
 const { pathToFileURL, fileURLToPath } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
+let autoUpdater = null;
+try {
+    autoUpdater = require('electron-updater').autoUpdater;
+} catch (e) {
+    console.warn('[AutoUpdater] Module load warning:', e.message);
+}
 
 // Set application identity for Windows Task Manager, Taskbar, and OS shell
 app.name = 'QBrowse';
@@ -1925,6 +1931,15 @@ app.whenReady().then(async () => {
               ensureLinuxDesktopEntry();
           }
       } catch (_) {}
+
+      // Silent background check for auto-updates when packaged
+      if (app.isPackaged && autoUpdater) {
+          setTimeout(() => {
+              autoUpdater.checkForUpdates().catch((err) => {
+                  console.log('[AutoUpdater] Silent background check skipped/failed:', err?.message || err);
+              });
+          }, 8000);
+      }
   }, 100);
 });
 
@@ -2082,6 +2097,100 @@ ipcMain.handle('get-hardware-specs', () => {
         threads: os.cpus().length,
         totalMemoryGB: Math.round(os.totalmem() / (1024 * 1024 * 1024))
     };
+});
+
+// Auto-Updater Events & IPC Handlers
+function broadcastUpdaterEvent(eventName, payload = {}) {
+    for (const win of browserWindows) {
+        if (win && !win.isDestroyed()) {
+            win.webContents.send('updater-event', { event: eventName, ...payload });
+        }
+    }
+}
+
+if (autoUpdater) {
+    try {
+        autoUpdater.autoDownload = true;
+        autoUpdater.autoInstallOnAppQuit = true;
+        autoUpdater.allowPrerelease = false;
+
+        autoUpdater.on('checking-for-update', () => {
+            broadcastUpdaterEvent('checking-for-update', { status: 'checking' });
+        });
+
+        autoUpdater.on('update-available', (info) => {
+            broadcastUpdaterEvent('update-available', {
+                status: 'available',
+                version: info?.version,
+                releaseDate: info?.releaseDate,
+                releaseNotes: info?.releaseNotes
+            });
+        });
+
+        autoUpdater.on('update-not-available', (info) => {
+            broadcastUpdaterEvent('update-not-available', {
+                status: 'not-available',
+                version: app.getVersion()
+            });
+        });
+
+        autoUpdater.on('download-progress', (progress) => {
+            broadcastUpdaterEvent('download-progress', {
+                status: 'downloading',
+                percent: Math.round(progress?.percent || 0),
+                bytesPerSecond: progress?.bytesPerSecond,
+                transferred: progress?.transferred,
+                total: progress?.total
+            });
+        });
+
+        autoUpdater.on('update-downloaded', (info) => {
+            broadcastUpdaterEvent('update-downloaded', {
+                status: 'downloaded',
+                version: info?.version
+            });
+        });
+
+        autoUpdater.on('error', (err) => {
+            broadcastUpdaterEvent('error', {
+                status: 'error',
+                message: err ? (err.message || String(err)) : 'Unknown update error'
+            });
+        });
+    } catch (e) {
+        console.warn('[AutoUpdater] Initialization failed:', e.message);
+    }
+}
+
+ipcMain.handle('updater-check', async () => {
+    if (!autoUpdater) {
+        return { status: 'error', message: 'AutoUpdater module not loaded' };
+    }
+    if (!app.isPackaged) {
+        return { status: 'dev', version: app.getVersion(), message: 'Auto-updates are active in packaged releases.' };
+    }
+    try {
+        const result = await autoUpdater.checkForUpdates();
+        return { status: 'checking', updateInfo: result?.updateInfo };
+    } catch (err) {
+        return { status: 'error', message: err?.message || String(err) };
+    }
+});
+
+ipcMain.handle('updater-download', async () => {
+    if (!autoUpdater || !app.isPackaged) return { status: 'dev' };
+    try {
+        await autoUpdater.downloadUpdate();
+        return { status: 'downloading' };
+    } catch (err) {
+        return { status: 'error', message: err?.message || String(err) };
+    }
+});
+
+ipcMain.handle('updater-quit-and-install', () => {
+    if (autoUpdater && app.isPackaged) {
+        autoUpdater.quitAndInstall(false, true);
+    }
 });
 
 // Vault IPC

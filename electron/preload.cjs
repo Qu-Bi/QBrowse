@@ -241,6 +241,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Browser Data & Bookmarks Migration
     detectBrowsersForImport: () => ipcRenderer.invoke('import-detect-browsers'),
     importBrowserBookmarks: (browserId) => ipcRenderer.invoke('import-browser-bookmarks', browserId),
-    pickAndParseHtmlBookmarks: () => ipcRenderer.invoke('import-pick-html-bookmarks')
+    pickAndParseHtmlBookmarks: () => ipcRenderer.invoke('import-pick-html-bookmarks'),
+
+    // Auto-Updater
+    checkForUpdates: () => ipcRenderer.invoke('updater-check'),
+    downloadUpdate: () => ipcRenderer.invoke('updater-download'),
+    quitAndInstallUpdate: () => ipcRenderer.invoke('updater-quit-and-install'),
+    onUpdaterEvent: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('updater-event', handler);
+        return () => ipcRenderer.removeListener('updater-event', handler);
+    }
 });
 

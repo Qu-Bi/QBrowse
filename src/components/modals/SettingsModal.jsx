@@ -146,11 +146,36 @@ const SettingsModal = () => {
     const [newBangUrl, setNewBangUrl] = useState('');
     const [newBangColor, setNewBangColor] = useState('#d4bc94');
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+    const [updateData, setUpdateData] = useState(null);
     const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
     const [isCheckingDefault, setIsCheckingDefault] = useState(false);
     const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
         return localStorage.getItem('qbrowse_dismiss_default_browser') !== 'true';
     });
+
+    useEffect(() => {
+        if (!window.electronAPI?.onUpdaterEvent) return;
+        const unsub = window.electronAPI.onUpdaterEvent((data) => {
+            setUpdateData(data);
+            if (data.status === 'checking') {
+                setIsCheckingUpdates(true);
+            } else {
+                setIsCheckingUpdates(false);
+            }
+            if (data.status === 'not-available') {
+                showToast(`QBrowse is up to date! (${data.version || 'v1.3.1'})`);
+            } else if (data.status === 'available') {
+                showToast(`New update found: v${data.version}! Downloading update...`);
+            } else if (data.status === 'downloaded') {
+                showToast(`Update v${data.version} ready! Click Restart to apply.`);
+            } else if (data.status === 'error') {
+                showToast(`Update notice: ${data.message || 'Check failed'}`);
+            }
+        });
+        return () => {
+            if (typeof unsub === 'function') unsub();
+        };
+    }, []);
 
     const customWallpaper = settings?.customWallpaper;
     const customWallpaperSource = settings?.customWallpaperSource;
@@ -1791,19 +1816,56 @@ const SettingsModal = () => {
                                     </div>
                                 </div>
 
-                                <button 
-                                    onClick={() => {
-                                        setIsCheckingUpdates(true);
-                                        setTimeout(() => {
-                                            setIsCheckingUpdates(false);
-                                            showToast('QBrowse is up to date! (v1.3.1)');
-                                        }, 1200);
-                                    }}
-                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95"
-                                >
-                                    <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
-                                    {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
-                                </button>
+                                {updateData?.status === 'downloaded' ? (
+                                    <button 
+                                        onClick={() => {
+                                            if (window.electronAPI?.quitAndInstallUpdate) {
+                                                window.electronAPI.quitAndInstallUpdate();
+                                            } else {
+                                                showToast('Restarting to install update...');
+                                            }
+                                        }}
+                                        className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-emerald-400/30 shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95 animate-pulse"
+                                    >
+                                        <CheckCircle2 size={13} />
+                                        Restart & Update (v{updateData.version})
+                                    </button>
+                                ) : updateData?.status === 'downloading' ? (
+                                    <div className="flex items-center gap-2.5 bg-white/10 px-3 py-1.5 rounded-lg border border-white/10">
+                                        <RefreshCw size={12} className="animate-spin text-accent" />
+                                        <span className="text-xs text-white/90 font-mono">
+                                            Downloading v{updateData.version} ({updateData.percent || 0}%)
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <button 
+                                        onClick={async () => {
+                                            setIsCheckingUpdates(true);
+                                            if (window.electronAPI?.checkForUpdates) {
+                                                try {
+                                                    const res = await window.electronAPI.checkForUpdates();
+                                                    if (res?.status === 'dev') {
+                                                        setIsCheckingUpdates(false);
+                                                        showToast('Development environment. Auto-updates active in packaged builds.');
+                                                    }
+                                                } catch (e) {
+                                                    setIsCheckingUpdates(false);
+                                                    showToast('Update check failed: ' + (e?.message || e));
+                                                }
+                                            } else {
+                                                setTimeout(() => {
+                                                    setIsCheckingUpdates(false);
+                                                    showToast('QBrowse is up to date! (v1.3.1)');
+                                                }, 1200);
+                                            }
+                                        }}
+                                        disabled={isCheckingUpdates}
+                                        className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95 disabled:opacity-50"
+                                    >
+                                        <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
+                                        {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
+                                    </button>
+                                )}
                             </div>
 
                             {/* Engine Specifications Table */}
