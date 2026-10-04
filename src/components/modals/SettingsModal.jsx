@@ -370,7 +370,7 @@ const SettingsModal = () => {
                         </h2>
                         <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
                             isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'
-                        }`}>v1.3.0</span>
+                        }`}>v1.3.1</span>
                     </div>
 
                     {/* Live Search Input */}
@@ -1784,7 +1784,7 @@ const SettingsModal = () => {
                                         <h4 className="text-xs font-semibold text-white flex items-center gap-2">
                                             QBrowse
                                             <span className="text-[10px] font-mono font-medium bg-white/[0.06] text-zinc-300 px-2 py-0.5 rounded border border-white/[0.06]">
-                                                v1.3.0
+                                                v1.3.1
                                             </span>
                                         </h4>
                                         <p className="text-[11px] text-zinc-400 mt-0.5">Privacy-first multi-space desktop browser</p>
@@ -1796,7 +1796,7 @@ const SettingsModal = () => {
                                         setIsCheckingUpdates(true);
                                         setTimeout(() => {
                                             setIsCheckingUpdates(false);
-                                            showToast('QBrowse is up to date! (v1.3.0)');
+                                            showToast('QBrowse is up to date! (v1.3.1)');
                                         }, 1200);
                                     }}
                                     className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95"

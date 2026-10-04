@@ -233,7 +233,7 @@ export default function Sidebar() {
                     handleCloseTab(tab.id);
                 }
             }}
-            className={`group relative flex items-center justify-between p-3 rounded-xl border cursor-grab active:cursor-grabbing w-full ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${
+            className={`sidebar-tab-item group relative flex items-center justify-between p-3 rounded-xl border cursor-grab active:cursor-grabbing w-full select-none ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${
                 tab.active 
                     ? (isBright 
                         ? 'bg-white/80 border-black/[0.08] text-zinc-950 font-bold shadow-[0_2px_8px_rgba(0,0,0,0.06)]' 
@@ -249,28 +249,28 @@ export default function Sidebar() {
             } : undefined}>
             <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                 {spaceType === 'ghost' ? (
-                    <Ghost size={14} className={`flex-shrink-0 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
+                    <Ghost size={14} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
                 ) : spaceType === 'tor' ? (
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 transition-colors duration-200 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
                         <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
                         <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
                         <circle cx="12" cy="12" r="1.5"/>
                     </svg>
                 ) : (
-                    tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="icon" className={`w-4 h-4 rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} onError={(e) => e.target.style.display = 'none'} /> : <Globe size={14} className={`flex-shrink-0 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
-                )}<span className={`text-sm truncate hidden md:block ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>{tab.title}</span>
+                    tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="icon" className={`w-4 h-4 rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} onError={(e) => e.target.style.display = 'none'} /> : <Globe size={14} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
+                )}<span className={`text-sm truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>{tab.title}</span>
             </div>
 
             {(tab.isAudioPlaying || tab.isMuted) && (
-                <div className="absolute right-3 opacity-100 group-hover:opacity-0 transition md:flex hidden pointer-events-none">
+                <div className="absolute right-3 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
                     {tab.isMuted ? <VolumeX size={14} className="text-red-400" /> : <Volume2 size={14} className="text-accent opacity-80 animate-pulse" />}
                 </div>
             )}
 
-            <div className={`hidden md:flex opacity-0 group-hover:opacity-100 transition absolute right-2 gap-0.5 ${isBright ? 'bg-white/90 border border-black/[0.08] text-zinc-700 shadow-sm' : 'bg-[#1a1a1c]/95 border border-white/10 text-white shadow-sm'} p-1 rounded-xl z-20`}>
+            <div className={`hidden md:flex opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] absolute right-2 gap-0.5 ${isBright ? 'bg-white/90 border border-black/[0.08] text-zinc-700 shadow-sm' : 'bg-[#1a1a1c]/95 border border-white/10 text-white shadow-sm'} p-1 rounded-xl z-20`}>
                 <button 
                     onClick={(e) => { e.stopPropagation(); handleToggleMute(tab.id, spaceType); }} 
-                    className={`p-1 transition rounded ${tab.isMuted ? 'text-red-500 hover:bg-red-500/20' : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10')}`} 
+                    className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${tab.isMuted ? 'text-red-500 hover:bg-red-500/20' : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10')}`} 
                     title={tab.isMuted ? "Unmute Tab" : "Mute Tab"}
                 >
                     {tab.isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
@@ -283,14 +283,14 @@ export default function Sidebar() {
                             useUIStore.getState().sendMediaCommand('toggle-pip'); 
                             showToast('Picture-in-Picture'); 
                         }} 
-                        className={`p-1 rounded transition ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
+                        className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
                         title="Picture in Picture"
                     >
                         <PictureInPicture2 size={12} />
                     </button>
                 )}
                 {spaceType !== 'ghost' && spaceType !== 'tor' && tab.url && tab.url !== 'about:blank' && (
-                    <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className={`p-1 rounded transition ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} title="Pin Tab"><Pin size={12} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} title="Pin Tab"><Pin size={12} /></button>
                 )}
                 <button 
                     onClick={(e) => { 
@@ -299,7 +299,7 @@ export default function Sidebar() {
                         setHoverPreview(null);
                         handleCloseTab(tab.id); 
                     }} 
-                    className={`p-1 rounded transition ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
+                    className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
                     title="Close Tab"
                 >
                     <X size={12} />
@@ -328,30 +328,56 @@ export default function Sidebar() {
                 : 'liquid-glass-dark text-white/90 sidebar-dark'
         } ${
             isFullscreen || isSidebarHidden 
-                ? 'w-0 mr-0 opacity-0 pointer-events-none' 
-                : uiScale === 'compact' ? 'w-16 md:w-60 mr-2 opacity-100' : 'w-16 md:w-64 mr-3 md:mr-4 opacity-100'
-        }`}>
+                ? 'is-hidden pointer-events-none' 
+                : ''
+        }`}
+        style={{
+            width: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 240 : 256),
+            minWidth: 0,
+            maxWidth: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 240 : 256),
+            marginRight: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 8 : 16),
+            opacity: (isFullscreen || isSidebarHidden) ? 0 : 1,
+            ...(isFullscreen ? { display: 'none', border: 'none', borderWidth: 0 } : {}),
+            transition: (isFullscreen || isSidebarHidden)
+                ? 'width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), max-width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), margin-right 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.44s cubic-bezier(0.25, 0.8, 0.25, 1)'
+                : 'width 0.48s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.48s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.48s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1)',
+            willChange: 'width, max-width, margin-right, opacity'
+        }}>
             {/* Fixed-Width Inner Container to prevent content squishing and text wrapping */}
-            <div className={`sidebar-inner h-full flex flex-col flex-shrink-0 ${
-                uiScale === 'compact' ? 'w-16 md:w-60 min-w-[4rem] md:min-w-[15rem]' : 'w-16 md:w-64 min-w-[4rem] md:min-w-[16rem]'
-            } ${
-                isFullscreen || isSidebarHidden
-                    ? '-translate-x-12 opacity-0'
-                    : 'translate-x-0 opacity-100'
-            }`}>
+            <div 
+                className="sidebar-inner h-full flex flex-col flex-shrink-0"
+                style={{
+                    width: uiScale === 'compact' ? 240 : 256,
+                    minWidth: uiScale === 'compact' ? 240 : 256,
+                    transform: (isFullscreen || isSidebarHidden) ? 'translateX(-40px)' : 'translateX(0)',
+                    opacity: (isFullscreen || isSidebarHidden) ? 0 : 1,
+                    transition: (isFullscreen || isSidebarHidden)
+                        ? 'transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.44s cubic-bezier(0.25, 0.8, 0.25, 1)'
+                        : 'transform 0.48s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1)',
+                    pointerEvents: (isFullscreen || isSidebarHidden) ? 'none' : 'auto',
+                    willChange: 'transform, opacity'
+                }}
+            >
 
-            <div className="drag-region flex gap-2 p-5 border-b border-[color:var(--sidebar-border)] items-center justify-between">
+            <div 
+                className="drag-region flex px-4 py-3.5 border-b border-[color:var(--sidebar-border)] items-center justify-between"
+                onDoubleClick={(e) => {
+                    if (!e.target.closest('button, input, select, textarea, [data-no-drag]')) {
+                        window.electronAPI?.maximize();
+                    }
+                }}
+            >
                 <div className="flex gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
-                    <button onClick={() => window.electronAPI.close()} className="w-3.5 h-3.5 rounded-full bg-red-500/80 hover:bg-red-400 transition shadow-[0_0_8px_rgba(239,68,68,0.5)] flex items-center justify-center group/btn"><X size={10} className="opacity-0 group-hover/btn:opacity-100 text-black" /></button>
-                    <button onClick={() => window.electronAPI.minimize()} className="w-3.5 h-3.5 rounded-full bg-yellow-500/80 hover:bg-yellow-400 transition shadow-[0_0_8px_rgba(234,179,8,0.5)] flex items-center justify-center group/btn"><Minus size={10} className="opacity-0 group-hover/btn:opacity-100 text-black" /></button>
-                    <button onClick={() => window.electronAPI.maximize()} className="w-3.5 h-3.5 rounded-full bg-green-500/80 hover:bg-green-400 transition shadow-[0_0_8px_rgba(34,197,94,0.5)] flex items-center justify-center group/btn"><Maximize2 size={10} className="opacity-0 group-hover/btn:opacity-100 text-black" /></button>
+                    <button onClick={() => window.electronAPI.close()} className="w-3.5 h-3.5 rounded-full bg-red-500/80 hover:bg-red-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(239,68,68,0.5)] flex items-center justify-center group/btn"><X size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" /></button>
+                    <button onClick={() => window.electronAPI.minimize()} className="w-3.5 h-3.5 rounded-full bg-yellow-500/80 hover:bg-yellow-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(234,179,8,0.5)] flex items-center justify-center group/btn"><Minus size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" /></button>
+                    <button onClick={() => window.electronAPI.maximize()} className="w-3.5 h-3.5 rounded-full bg-green-500/80 hover:bg-green-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(34,197,94,0.5)] flex items-center justify-center group/btn"><Maximize2 size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" /></button>
                 </div>
-                <div className="hidden md:flex gap-3 text-[color:var(--sidebar-text-muted)] items-center" style={{ WebkitAppRegion: 'no-drag' }}>
+                <div className="hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center" style={{ WebkitAppRegion: 'no-drag' }}>
                     <button 
                         onClick={() => togglePopover('user')} 
-                        className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all hover:scale-110 cursor-pointer relative ${
+                        className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all duration-200 hover:scale-115 active:scale-90 cursor-pointer relative ${
                             activePopover === 'user' || activePopover === 'userProfile'
-                                ? 'bg-accent-20 border-accent text-accent shadow-[0_0_10px_var(--accent)]'
+                                ? 'bg-accent-20 border-accent text-accent shadow-[0_0_10px_var(--accent)] scale-105'
                                 : (isBright ? 'bg-white/70 border-white/40 text-zinc-700 hover:text-black shadow-xs' : 'bg-white/10 border-white/20 text-white/70 hover:text-white')
                         }`} 
                         style={{ borderColor: activeProfile?.color || '#d4bc94' }}
@@ -372,9 +398,9 @@ export default function Sidebar() {
                             }`} />
                         )}
                     </button>
-                    <button onClick={() => setActiveModal('history')} className="hover:text-accent transition" title="History"><Clock size={14} /></button>
-                    <button onClick={() => setActiveModal('settings')} className="hover:text-accent transition" title="Settings"><Settings size={14} /></button>
-                    <button onClick={handleGoHome} className={`transition ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-110' : 'hover:text-accent'}`} title="Zen Dashboard"><Home size={14} /></button>
+                    <button onClick={() => setActiveModal('history')} className="hover:text-accent hover:scale-115 active:scale-90 transition-all duration-200 p-1 rounded-md" title="History"><Clock size={14} /></button>
+                    <button onClick={() => setActiveModal('settings')} className="hover:text-accent hover:scale-115 active:scale-90 hover:rotate-45 transition-all duration-200 p-1 rounded-md" title="Settings"><Settings size={14} /></button>
+                    <button onClick={handleGoHome} className={`transition-all duration-200 hover:scale-115 active:scale-90 p-1 rounded-md ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-110' : 'hover:text-accent'}`} title="Zen Dashboard"><Home size={14} /></button>
                 </div>
             </div>
 
@@ -391,7 +417,7 @@ export default function Sidebar() {
                         <button 
                             onClick={(e) => handlePinnedTabClick(e, pin)} 
                             onContextMenu={(e) => handlePinnedContextMenu(e, pin)}
-                            className={`relative w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all shadow-sm overflow-hidden ${
+                            className={`relative w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all duration-200 active:scale-95 shadow-sm overflow-hidden ${
                                 hasActiveTab 
                                     ? 'bg-[color:var(--sidebar-bg-active)] border-accent/60 shadow-[0_0_12px_var(--accent)] scale-105' 
                                     : isPopupOpen
@@ -419,7 +445,7 @@ export default function Sidebar() {
                                 <div className="absolute bottom-1 left-0 right-0 flex items-center justify-center gap-0.5 pointer-events-none px-1">
                                     {pinTabs.length <= 4 ? (
                                         pinTabs.map((t, idx) => (
-                                            <span 
+                                             <span 
                                                 key={t.id || idx} 
                                                 className={`rounded-full transition-all duration-300 ${
                                                     t.active 
@@ -450,7 +476,7 @@ export default function Sidebar() {
                         </button>
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleUnpinTab(pin); }} 
-                            className={`absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 ${isBright ? 'bg-zinc-100 border border-black/10 text-zinc-700 hover:bg-red-500 hover:text-white' : 'bg-[#2a251e] border-accent-30 text-accent hover:bg-accent hover:text-black'} rounded-full p-0.5 hover:scale-110 transition-all shadow-md z-10`}
+                            className={`absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100 ${isBright ? 'bg-zinc-100 border border-black/10 text-zinc-700 hover:bg-red-500 hover:text-white' : 'bg-[#2a251e] border-accent-30 text-accent hover:bg-accent hover:text-black'} rounded-full p-0.5 hover:scale-125 active:scale-90 transition-all duration-200 shadow-md z-10`}
                             title="Unpin"
                         >
                             <Minus size={10} />
@@ -458,7 +484,7 @@ export default function Sidebar() {
                     </div>
                 )})}
                 <div className="relative group flex justify-center animate-pin-in">
-                    <button onClick={() => setActiveModal('addPin')} className="w-10 h-10 flex flex-col items-center justify-center bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border border-[color:var(--sidebar-border)] border-dashed rounded-xl transition-all hover:scale-105 shadow-sm text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer" title="Pin New App / Shortcut">
+                    <button onClick={() => setActiveModal('addPin')} className="w-10 h-10 flex flex-col items-center justify-center bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border border-[color:var(--sidebar-border)] border-dashed rounded-xl transition-all duration-200 hover:scale-110 active:scale-90 hover:border-accent/60 shadow-sm text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer" title="Pin New App / Shortcut">
                         <Plus size={16} />
                     </button>
                 </div>
@@ -477,7 +503,7 @@ export default function Sidebar() {
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-personal' ? 'border-accent border-dashed bg-accent-10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
+                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
                                 <Plus size={12} strokeWidth={2.5} />
                             </button>
                         </div>
@@ -485,9 +511,9 @@ export default function Sidebar() {
                             const filtered = privateTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-300 w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50" />
+                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
                                         </div>
                                     </button>
@@ -506,7 +532,7 @@ export default function Sidebar() {
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-work' ? 'border-blue-400 border-dashed bg-blue-500/10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
+                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
                                 <Plus size={12} strokeWidth={2.5} />
                             </button>
                         </div>
@@ -514,9 +540,9 @@ export default function Sidebar() {
                             const filtered = workTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-300 w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50" />
+                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
                                         </div>
                                     </button>
@@ -540,12 +566,12 @@ export default function Sidebar() {
                             <div className="flex items-center gap-1">
                                 <button 
                                     onClick={() => useTorStore.getState().toggleTorEnabled(true)}
-                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition border border-purple-500/20" 
+                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition-all duration-200 hover:scale-105 active:scale-95 border border-purple-500/20" 
                                     title="Enable Tor Onion Routing (converts private space to Tor space)"
                                 >
                                     <Globe size={11} /> Tor Mode
                                 </button>
-                                <button onClick={() => handleNewTab()} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T)">
+                                <button onClick={() => handleNewTab()} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T)">
                                     <Plus size={12} strokeWidth={2.5} />
                                 </button>
                             </div>
@@ -554,9 +580,9 @@ export default function Sidebar() {
                             const filtered = ghostTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50" />
+                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
                                         </div>
                                     </button>
@@ -581,12 +607,12 @@ export default function Sidebar() {
                             <div className="flex items-center gap-1">
                                 <button 
                                     onClick={() => useTorStore.getState().toggleTorEnabled(false)}
-                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition border border-white/10" 
+                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10" 
                                     title="Turn off Tor and return to Ghost mode"
                                 >
                                     <Ghost size={11} /> Ghost
                                 </button>
-                                <button onClick={() => handleNewTab()} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T)">
+                                <button onClick={() => handleNewTab()} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T)">
                                     <Plus size={12} strokeWidth={2.5} />
                                 </button>
                             </div>
@@ -595,9 +621,9 @@ export default function Sidebar() {
                             const filtered = (torTabs || []).filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50" />
+                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>
                                         </div>
                                     </button>
@@ -634,8 +660,8 @@ export default function Sidebar() {
                             } : {})
                         }}
                     />
-                    <button onClick={() => setActiveSpace('personal')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-300 ${activeSpace === 'personal' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><User size={14} /> <span className="hidden md:block">Personal</span></button>
-                    <button onClick={() => setActiveSpace('work')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-300 ${activeSpace === 'work' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><Layers size={14} /> <span className="hidden md:block">Work</span></button>
+                    <button onClick={() => setActiveSpace('personal')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${activeSpace === 'personal' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><User size={14} /> <span className="hidden md:block">Personal</span></button>
+                    <button onClick={() => setActiveSpace('work')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${activeSpace === 'work' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><Layers size={14} /> <span className="hidden md:block">Work</span></button>
                 </div>
 
                 {/* Animated Morphing Ghost <-> Onion Button */}
@@ -654,7 +680,7 @@ export default function Sidebar() {
                         e.stopPropagation();
                         useTorStore.getState().toggleTorEnabled();
                     }}
-                    className={`relative p-2 rounded-2xl transition-all duration-300 border flex-shrink-0 overflow-hidden group ${
+                    className={`relative p-2 rounded-2xl transition-all duration-300 active:scale-90 hover:scale-105 border flex-shrink-0 overflow-hidden group cursor-pointer ${
                         (isTorEnabled ? isTor : isIncognito)
                             ? (isTorEnabled 
                                 ? 'border-purple-500/30 text-purple-300 bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.35)]' 

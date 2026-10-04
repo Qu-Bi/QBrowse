@@ -276,8 +276,8 @@ export default function Omnibox() {
         
         // Debounce Google Suggestions API
         const timer = setTimeout(() => {
-            const domainRegex = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-            if (domainRegex.test(searchQuery.trim())) {
+            const trimmedQ = searchQuery.trim();
+            if (/^(https?:\/\/|file:\/\/|qbrowse:\/\/|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/.*)?$)/i.test(trimmedQ) || trimmedQ.length > 150) {
                 setLiveSuggestions([]);
                 return;
             }

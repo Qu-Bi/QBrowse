@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, deleteApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
-import { getAuth } from "firebase/auth";
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 export function resolveFirebaseConfig() {
@@ -42,8 +42,18 @@ export const isFirebaseConfigured = Boolean(
   !firebaseConfig.apiKey.includes('placeholder')
 );
 
+function createAuth(app) {
+  try {
+    return initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence]
+    });
+  } catch (_) {
+    return getAuth(app);
+  }
+}
+
 let appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-let authInstance = getAuth(appInstance);
+let authInstance = createAuth(appInstance);
 let dbInstance = getFirestore(appInstance);
 
 export function reinitializeFirebase(newConfig) {
@@ -53,7 +63,7 @@ export function reinitializeFirebase(newConfig) {
       try { deleteApp(existing[0]); } catch (_) {}
     }
     appInstance = initializeApp(newConfig);
-    authInstance = getAuth(appInstance);
+    authInstance = createAuth(appInstance);
     dbInstance = getFirestore(appInstance);
     return true;
   } catch (e) {
@@ -63,7 +73,7 @@ export function reinitializeFirebase(newConfig) {
 }
 
 let analyticsInstance = null;
-if (typeof window !== 'undefined' && isFirebaseConfigured) {
+if (typeof window !== 'undefined' && isFirebaseConfigured && window.location.protocol.startsWith('http')) {
   isSupported().then(supported => {
     if (supported) {
       try {

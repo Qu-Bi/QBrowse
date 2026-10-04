@@ -510,21 +510,72 @@ html.eco-mode .shadow-xl {
 
 
 /* Apple Arc & macOS Sonoma Fluid Sidebar System */
+aside#qbrowse-sidebar.sidebar-container,
 .sidebar-container {
-  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  will-change: width, margin-right, opacity;
+  will-change: width, min-width, max-width, margin-right, opacity, transform;
   transform: translateZ(0);
   backface-visibility: hidden;
 }
 
 .sidebar-inner {
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
   will-change: transform, opacity;
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+
+aside#qbrowse-sidebar.is-hidden {
+  border: none !important;
+  border-width: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+}
+
+/* True Edge-to-Edge Fullscreen Mode Overrides */
+.is-fullscreen-frame {
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: transparent !important;
+}
+
+/* Sidebar Tab Item Fluid Transitions */
+.sidebar-tab-item {
+  transition: background-color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  will-change: transform, background-color, border-color, box-shadow;
+}
+
+.sidebar-tab-item:hover {
+  transform: translateX(2px);
+}
+
+.sidebar-tab-item:active {
+  transform: scale(0.985) translateX(1px);
+}
+
+/* Pinned app button entrance animation */
+@keyframes pinInSpring {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-pin-in {
+  animation: pinInSpring 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .sidebar-container,
@@ -683,7 +734,7 @@ html.eco-mode .shadow-xl {
               border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .liquid-glass-bright {
@@ -696,7 +747,7 @@ html.eco-mode .shadow-xl {
               border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Floating Inner Liquid Glass Capsule / Pill Controls (Nested inside liquid-glass without secondary blur to prevent Chromium dark composite bug) */

@@ -365,8 +365,7 @@ export default function MainFrame() {
 
         if (splitSuggestDebounceRef.current) clearTimeout(splitSuggestDebounceRef.current);
         splitSuggestDebounceRef.current = setTimeout(() => {
-            const domainRegex = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-            if (domainRegex.test(q)) {
+            if (/^(https?:\/\/|file:\/\/|qbrowse:\/\/|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/.*)?$)/i.test(q) || q.length > 150) {
                 setSplitLiveSuggestions(localItems);
                 return;
             }
@@ -504,7 +503,10 @@ export default function MainFrame() {
     };
 
     return (
-        <main className={`flex-1 min-w-0 relative z-20 flex flex-col`}>
+        <main 
+            className={`flex-1 min-w-0 relative z-20 flex flex-col ${isFullscreen ? 'p-0 m-0' : ''}`}
+            style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
+        >
             
             <TopBar />
 
@@ -729,10 +731,19 @@ export default function MainFrame() {
                                     (isGhostEmpty && activeSpace === 'ghost') ||
                                     (isTorEmpty && activeSpace === 'tor');
                 return (
-                    <div ref={mainContainerRef} className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? '' : 'pt-2'}`}>
-                        <div className={`relative w-full h-full overflow-hidden transition-[border-radius] duration-200 ease-out flex ${isFullscreen ? 'rounded-none border-none' : 'rounded-[2rem]'} ${
-                            isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'
-                        }`}>
+                    <div 
+                        ref={mainContainerRef} 
+                        className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? 'p-0 m-0' : 'pt-2'}`}
+                        style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
+                    >
+                        <div 
+                            className={`relative w-full h-full overflow-hidden transition-[border-radius] duration-200 ease-out flex ${
+                                isFullscreen 
+                                    ? 'is-fullscreen-frame rounded-none border-none shadow-none !border-0 !shadow-none' 
+                                    : `rounded-[2rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
+                            }`}
+                            style={isFullscreen ? { border: 'none', borderWidth: 0, boxShadow: 'none', borderRadius: 0, margin: 0, padding: 0 } : undefined}
+                        >
                     <DownloadPopup />
                     <SavePasswordBanner />
                     <FindInPageBar />

@@ -90,11 +90,12 @@ const PasskeyVerificationModal = () => {
     }, [displayedPrompt, authStatus]);
 
     if (!displayedPrompt) return null;
+    const activePrompt = displayedPrompt || passkeyPrompt;
 
     const handleCancel = async () => {
         if (authStatus === 'success') return;
-        if (window.electronAPI && window.electronAPI.respondPasskeyVerification) {
-            await window.electronAPI.respondPasskeyVerification(displayedPrompt.requestId, false);
+        if (window.electronAPI && window.electronAPI.respondPasskeyVerification && activePrompt?.requestId) {
+            await window.electronAPI.respondPasskeyVerification(activePrompt.requestId, false);
         }
         setPasskeyPrompt(null);
     };
@@ -107,10 +108,10 @@ const PasskeyVerificationModal = () => {
         // Wait 750ms for user to enjoy the Apple-like Face ID checkmark animation
         await new Promise(r => setTimeout(r, 750));
 
-        if (window.electronAPI && window.electronAPI.respondPasskeyVerification) {
-            await window.electronAPI.respondPasskeyVerification(passkeyPrompt.requestId, true);
+        if (window.electronAPI && window.electronAPI.respondPasskeyVerification && activePrompt?.requestId) {
+            await window.electronAPI.respondPasskeyVerification(activePrompt.requestId, true);
         }
-        showToast(`Passkey verified for ${passkeyPrompt.rpId || passkeyPrompt.hostname}!`);
+        showToast(`Passkey verified for ${activePrompt?.rpId || activePrompt?.hostname || 'Website'}!`);
         setPasskeyPrompt(null);
     };
 
@@ -119,7 +120,7 @@ const PasskeyVerificationModal = () => {
         setAuthStatus('scanning');
         setErrorMessage('');
         try {
-            const domain = passkeyPrompt.rpId || passkeyPrompt.hostname || 'the website';
+            const domain = activePrompt?.rpId || activePrompt?.hostname || 'the website';
             const res = await window.electronAPI.verifyWindowsHello(`Sign in to ${domain} with your QVault passkey`);
             if (res && (res.verified || res.success)) {
                 await triggerSuccessSequence();
@@ -276,14 +277,14 @@ const PasskeyVerificationModal = () => {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                             <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                {passkeyPrompt.rpId || passkeyPrompt.hostname}
+                                {activePrompt?.rpId || activePrompt?.hostname || 'Website'}
                             </span>
                             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
                                 Passkey
                             </span>
                         </div>
                         <p className={`text-xs truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                            Account: <span className={`font-medium ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{passkeyPrompt.username || 'Passkey User'}</span>
+                            Account: <span className={`font-medium ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{activePrompt?.username || 'Passkey User'}</span>
                         </p>
                     </div>
                 </div>

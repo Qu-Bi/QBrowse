@@ -241,8 +241,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Browser Data & Bookmarks Migration
     detectBrowsersForImport: () => ipcRenderer.invoke('import-detect-browsers'),
     importBrowserBookmarks: (browserId) => ipcRenderer.invoke('import-browser-bookmarks', browserId),
-    pickAndParseHtmlBookmarks: () => ipcRenderer.invoke('import-pick-html-bookmarks'),
-
-    invoke: (channel, data) => ipcRenderer.invoke(channel, data)
+    pickAndParseHtmlBookmarks: () => ipcRenderer.invoke('import-pick-html-bookmarks')
 });
 

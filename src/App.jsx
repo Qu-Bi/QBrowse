@@ -482,7 +482,8 @@ export default function App() {
     return (
         <ContextMenuProvider>
             <div
-                className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 ${isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'} ${isFullscreen ? 'p-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'}`}
+                className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 ${isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'} ${isFullscreen ? 'p-0 m-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'}`}
+                style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
                 onClick={() => closeContextMenus()}
                 onContextMenu={handleContextMenu}
                 onDragOver={(e) => onDragOver(e, 'root')}
@@ -521,7 +522,10 @@ export default function App() {
                     />
                 </div>
                 <Sidebar />
-                <div className="flex-1 flex flex-col h-full relative z-20 min-w-0">
+                <div 
+                    className={`flex-1 flex flex-col h-full relative z-20 min-w-0 ${isFullscreen ? 'p-0 m-0' : ''}`}
+                    style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
+                >
                     <MainFrame />
                 </div>
 

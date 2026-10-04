@@ -195,11 +195,19 @@ export default function TopBar() {
 
     return (
         <>
-            <div className={`relative z-[60] transition-[margin,opacity] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${isFullscreen ? '-mt-[60px] opacity-0' : 'mt-0 opacity-100'}`}>
+            <div 
+                className={`relative z-[60] transition-all duration-200 ease-out ${isFullscreen ? 'hidden' : 'mt-0 opacity-100'}`}
+                style={isFullscreen ? { display: 'none' } : undefined}
+            >
                 {/* SINGLE BUBBLE TOPBAR */}
                 <div 
                     id="qbrowse-topbar"
                     onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+                    onDoubleClick={(e) => {
+                        if (!e.target.closest('button, input, select, textarea, [data-no-drag]')) {
+                            window.electronAPI?.maximize();
+                        }
+                    }}
                     className={`drag-region flex mt-0 mx-0 mb-2 ${uiScale === 'compact' ? 'h-[44px]' : 'h-[50px]'} z-50 items-center justify-between px-3 rounded-full transition-all ${
                     isBright ? 'liquid-glass-bright text-zinc-900' : 'liquid-glass-dark text-white'
                 }`}>

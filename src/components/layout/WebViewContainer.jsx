@@ -66,33 +66,21 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
     const showSwitcher = useUIStore(state => state.showSwitcher);
     useEffect(() => {
-        if (showSwitcher && isActive && isSpaceActive && wvRef.current && isDomReadyRef.current && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
-            try {
-                wvRef.current.capturePage().then(img => {
-                    if (!img) return;
-                    const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
-                    setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
-                    useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
-                }).catch(() => {});
-            } catch(e) {}
+        if (isActive && isSpaceActive && wvRef.current && isDomReadyRef.current && !tab.isClosing && tab.url && tab.url !== 'about:blank' && !tab.url.startsWith('qbrowse://')) {
+            const timer = setTimeout(() => {
+                const wv = wvRef.current;
+                if (!wv || !isActive || tab.isClosing) return;
+                try {
+                    wv.capturePage().then(img => {
+                        if (!img || img.isEmpty()) return;
+                        const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
+                        useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                    }).catch(() => {});
+                } catch (_) {}
+            }, showSwitcher ? 50 : 1200);
+            return () => clearTimeout(timer);
         }
-    }, [showSwitcher, isActive, isSpaceActive, setSpaceTabs, tab.id, tab.isClosing, tab.url]);
-
-    // Snapshot thumbnail upon tab deactivation so hover previews & tab switcher are always fresh
-    const prevActiveForSnapshotRef = useRef(isActive);
-    useEffect(() => {
-        if (prevActiveForSnapshotRef.current && !isActive && wvRef.current && isDomReadyRef.current && tab.url && tab.url !== 'about:blank' && !tab.isClosing) {
-            try {
-                wvRef.current.capturePage().then(img => {
-                    if (!img || img.isEmpty()) return;
-                    const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
-                    setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
-                    useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
-                }).catch(() => {});
-            } catch (_) {}
-        }
-        prevActiveForSnapshotRef.current = isActive;
-    }, [isActive, tab.id, tab.url, tab.isClosing, setSpaceTabs]);
+    }, [showSwitcher, isActive, isSpaceActive, tab.id, tab.isClosing, tab.url]);
 
     // Push matching credentials to webview when vault unlocks or URL/space changes
     useEffect(() => {
@@ -222,6 +210,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const defaultFallbackTitle = space === 'ghost' ? 'New Incognito Tab' : 'New Tab';
 
         const handleNavigate = (e) => {
+            if (e && e.isMainFrame === false) return;
             if (!e.url || e.url === 'about:blank') return;
             currentRequestedUrlRef.current = e.url;
             setSpaceTabs(prev => {
@@ -519,6 +508,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const handleNavigateSafe = (e) => {
+            if (e && e.isMainFrame === false) return;
             console.log(`[WebView ${tab.id}] did-navigate:`, e.url);
             wv.hasCrashed = false;
             setActiveNoteCard(null);
@@ -531,6 +521,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             sendVaultMatchesToWebview();
         };
         const handleNavigateInPage = (e) => {
+            if (e && e.isMainFrame === false) return;
             console.log(`[WebView ${tab.id}] did-navigate-in-page:`, e.url);
             handleNavigateSafe(e);
             if (isActive && isSpaceActive) {
@@ -794,9 +785,8 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             updateNavState();
         };
         const handleConsoleMessage = (e) => {
-            if (e.level === 2) {
-                console.warn(`[WebView ${tab.id}] CONSOLE:`, e.message);
-            } else if (e.level === 3) {
+            // Keep third-party web page errors confined to DevTools unless explicit debug flag is enabled
+            if (window.__qbrowseDebugWebviews && e.level === 3) {
                 console.error(`[WebView ${tab.id}] CONSOLE:`, e.message);
             }
         };
@@ -1136,7 +1126,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             applySmartDark();
         }
         
-        const onNav = () => applySmartDark();
+        const onNav = (e) => {
+            if (e && e.isMainFrame === false) return;
+            applySmartDark();
+        };
         wv.addEventListener('dom-ready', onNav);
         wv.addEventListener('did-finish-load', onNav);
         wv.addEventListener('did-navigate', onNav);

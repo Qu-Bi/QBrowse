@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme, screen } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -23,6 +23,7 @@ try {
 const activeWebviewDialogs = new Map();
 const pendingPromptResponses = new Map();
 let localDialogPort = 0;
+const localDialogAuthToken = crypto.randomBytes(32).toString('hex');
 let latestActiveWebviewUrl = '';
 
 // Internal dialog bridge server for synchronous window.alert, confirm, and prompt calls
@@ -35,6 +36,14 @@ const localDialogServer = http.createServer((req, res) => {
     if (req.method === 'OPTIONS') {
         res.writeHead(200);
         res.end();
+        return;
+    }
+
+    // Security: Require cryptographic token to block local port scanning & cross-origin abuse
+    const clientToken = req.headers['x-qbrowse-dialog-token'];
+    if (!clientToken || clientToken !== localDialogAuthToken) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden: Unauthorized dialog request' }));
         return;
     }
 
@@ -100,7 +109,7 @@ localDialogServer.listen(0, '127.0.0.1', () => {
 });
 
 ipcMain.on('get-dialog-port', (event) => {
-    event.returnValue = localDialogPort;
+    event.returnValue = { port: localDialogPort, token: localDialogAuthToken };
 });
 
 // Suppress internal native OS message boxes and route alerts/confirms through in-tab custom sheets
@@ -527,9 +536,25 @@ ipcMain.handle('open-path', async (event, dirUrlOrPath) => {
     }
 });
 
+const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+
+function isSafeExternalUrl(urlStr) {
+    if (!urlStr || typeof urlStr !== 'string') return false;
+    if (/[\r\n\0]/.test(urlStr)) return false;
+    try {
+        const parsed = new URL(urlStr);
+        return SAFE_EXTERNAL_PROTOCOLS.has(parsed.protocol.toLowerCase());
+    } catch {
+        return false;
+    }
+}
+
 ipcMain.handle('open-external', async (event, url) => {
     try {
-        if (!url || typeof url !== 'string') return false;
+        if (!isSafeExternalUrl(url)) {
+            console.warn('[Security] Blocked unsafe external URL launch:', url);
+            return false;
+        }
         await shell.openExternal(url);
         return true;
     } catch (e) {
@@ -539,31 +564,42 @@ ipcMain.handle('open-external', async (event, url) => {
 });
 
 ipcMain.handle('open-app-protocol', async (event, { protocolUrl, fallbackUrl } = {}) => {
-    try {
-        if (protocolUrl && typeof protocolUrl === 'string') {
+    const dangerousSchemes = ['file:', 'javascript:', 'data:', 'vbscript:', 'powershell:', 'cmd:', 'ms-msdt:', 'search-ms:'];
+    const isDangerous = (u) => {
+        if (!u || typeof u !== 'string' || /[\r\n\0]/.test(u)) return true;
+        const lower = u.toLowerCase().trim();
+        return dangerousSchemes.some(s => lower.startsWith(s));
+    };
+
+    if (protocolUrl && !isDangerous(protocolUrl)) {
+        try {
             await shell.openExternal(protocolUrl);
             return true;
+        } catch (e) {
+            console.warn('[Main] App protocol launch failed, falling back to external browser:', e.message);
         }
-    } catch (e) {
-        console.warn('[Main] App protocol launch failed, falling back to external browser:', e.message);
     }
-    try {
-        if (fallbackUrl && typeof fallbackUrl === 'string') {
+    if (fallbackUrl && isSafeExternalUrl(fallbackUrl)) {
+        try {
             await shell.openExternal(fallbackUrl);
             return true;
+        } catch (e) {
+            console.warn('[Main] Failed to open fallback URL:', e.message);
         }
-    } catch (e) {
-        console.warn('[Main] Failed to open fallback URL:', e.message);
     }
     return false;
 });
 
 ipcMain.handle('open-with-dialog', async (event, url) => {
-    if (!url || typeof url !== 'string') return false;
+    if (!isSafeExternalUrl(url)) {
+        console.warn('[Security] Blocked unsafe URL in open-with-dialog:', url);
+        return false;
+    }
     try {
         if (process.platform === 'win32') {
+            const sanitizedUrl = url.replace(/[\r\n\0]/g, '');
             const tempUrlFile = path.join(os.tmpdir(), `qbrowse_open_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.url`);
-            await fs.writeFile(tempUrlFile, `[InternetShortcut]\r\nURL=${url}\r\n`, 'utf8');
+            await fs.writeFile(tempUrlFile, `[InternetShortcut]\r\nURL=${sanitizedUrl}\r\n`, 'utf8');
             const openWithPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'OpenWith.exe');
             const child = spawn(openWithPath, [tempUrlFile], { detached: true, stdio: 'ignore' });
             child.unref();
@@ -766,6 +802,119 @@ function decrypt(text, key) {
 }
 
 const browserWindows = new Set();
+const windowAnimationState = new WeakMap();
+const normalBoundsMap = new WeakMap();
+
+function getAnimationConfig() {
+    try {
+        const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
+        const profile = performanceEngine.detectHardwareProfile(null, isOnBattery);
+        if (profile.activeTier === 'eco' || profile.reduceVisuals) {
+            return { enabled: false, duration: 0, interval: 16 };
+        } else if (profile.activeTier === 'ultra') {
+            return { enabled: true, duration: 190, interval: 4 }; // ~250Hz ultra high refresh
+        } else {
+            return { enabled: true, duration: 180, interval: 6 }; // ~165Hz balanced
+        }
+    } catch (_) {
+        return { enabled: true, duration: 180, interval: 6 };
+    }
+}
+
+function easeOutCubic(x) {
+    return 1 - Math.pow(1 - x, 3);
+}
+
+function easeInCubic(x) {
+    return x * x * x;
+}
+
+function animateBounds(window, startBounds, targetBounds, duration = 180, interval = 5, easing = 'easeOut') {
+    return new Promise((resolve) => {
+        const startTime = performance.now();
+        
+        const existing = windowAnimationState.get(window);
+        if (existing && existing.timer) {
+            clearInterval(existing.timer);
+        }
+
+        const timer = setInterval(() => {
+            if (!window || window.isDestroyed()) {
+                clearInterval(timer);
+                windowAnimationState.delete(window);
+                return resolve();
+            }
+
+            const elapsed = performance.now() - startTime;
+            const progress = Math.min(1, elapsed / duration);
+            const ease = easing === 'easeIn' ? easeInCubic(progress) : easeOutCubic(progress);
+
+            const current = {
+                x: Math.round(startBounds.x + (targetBounds.x - startBounds.x) * ease),
+                y: Math.round(startBounds.y + (targetBounds.y - startBounds.y) * ease),
+                width: Math.round(startBounds.width + (targetBounds.width - startBounds.width) * ease),
+                height: Math.round(startBounds.height + (targetBounds.height - startBounds.height) * ease)
+            };
+
+            try {
+                window.setBounds(current);
+            } catch (_) {}
+
+            if (progress >= 1) {
+                clearInterval(timer);
+                windowAnimationState.delete(window);
+                resolve();
+            }
+        }, interval);
+
+        windowAnimationState.set(window, { timer });
+    });
+}
+
+let isSmoothMaximizing = false;
+
+async function toggleMaximizeSmooth(win) {
+    if (!win || win.isDestroyed() || isSmoothMaximizing) return;
+    const config = getAnimationConfig();
+    if (!config.enabled) {
+        if (win.isMaximized()) win.unmaximize();
+        else win.maximize();
+        return;
+    }
+    if (windowAnimationState.has(win)) return;
+
+    isSmoothMaximizing = true;
+    try {
+        const currentScreen = screen.getDisplayMatching(win.getBounds());
+        const workArea = currentScreen.workArea;
+
+        if (win.isMaximized()) {
+            const restoreBounds = normalBoundsMap.get(win) || {
+                width: 1580,
+                height: 1000,
+                x: Math.max(0, Math.round(workArea.x + (workArea.width - 1580) / 2)),
+                y: Math.max(0, Math.round(workArea.y + (workArea.height - 1000) / 2))
+            };
+
+            win.unmaximize();
+            win.setBounds(workArea);
+            await animateBounds(win, workArea, restoreBounds, config.duration, config.interval, 'easeOut');
+            try {
+                if (!win.isDestroyed()) win.setBounds(restoreBounds);
+            } catch (_) {}
+        } else {
+            const currentBounds = win.getBounds();
+            normalBoundsMap.set(win, currentBounds);
+
+            await animateBounds(win, currentBounds, workArea, config.duration, config.interval, 'easeOut');
+            if (!win.isDestroyed()) {
+                win.maximize();
+            }
+        }
+    } finally {
+        isSmoothMaximizing = false;
+    }
+}
 
 function createWindow(options = {}) {
   ensureVault();
@@ -784,6 +933,7 @@ function createWindow(options = {}) {
     icon: path.join(__dirname, '../icon.png'),
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       webviewTag: true, // Enable <webview>
@@ -801,7 +951,8 @@ function createWindow(options = {}) {
     const level = event?.level ?? 0;
     const message = event?.message ?? '';
     if (typeof message !== 'string') return;
-    if (level >= 2 || message.includes('[Sync]') || message.includes('error') || message.includes('Error') || message.includes('Backup')) {
+    if (message.startsWith('[WebView') || message.includes('CONSOLE:')) return;
+    if (level >= 3 || message.includes('App Crashed')) {
       console.log(`[Renderer] ${message}`);
     }
   });
@@ -824,7 +975,23 @@ function createWindow(options = {}) {
     win.loadFile(path.join(__dirname, '../dist/index.html'), { query: queryParams });
   }
 
+  // Security: Protect top-level main window against navigating away from local app shell
+  win.webContents.on('will-navigate', (event, navigationUrl) => {
+    const isAppOrigin = isDev
+      ? navigationUrl.startsWith('http://localhost:1420')
+      : (navigationUrl.startsWith('file://') && navigationUrl.includes('dist/index.html'));
+
+    if (!isAppOrigin) {
+      event.preventDefault();
+      console.warn('[Security] Prevented top-level mainWindow navigation to:', navigationUrl);
+      if (navigationUrl && navigationUrl !== 'about:blank') {
+        win.webContents.send('open-new-tab-url', { url: navigationUrl, disposition: 'default' });
+      }
+    }
+  });
+
   win.once('ready-to-show', () => {
+    normalBoundsMap.set(win, win.getBounds());
     win.show();
     if (initialUrlToOpen) {
       setTimeout(() => {
@@ -833,6 +1000,17 @@ function createWindow(options = {}) {
           initialUrlToOpen = null;
         }
       }, 1200);
+    }
+  });
+
+  win.on('resize', () => {
+    if (!win.isMaximized() && !win.isFullScreen() && !win.isMinimized() && !windowAnimationState.has(win)) {
+      normalBoundsMap.set(win, win.getBounds());
+    }
+  });
+  win.on('move', () => {
+    if (!win.isMaximized() && !win.isFullScreen() && !win.isMinimized() && !windowAnimationState.has(win)) {
+      normalBoundsMap.set(win, win.getBounds());
     }
   });
 
@@ -975,6 +1153,20 @@ function createWindow(options = {}) {
 
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
+
+        // Security: Strictly enforce sandbox and process isolation on any attached <webview>
+        contents.on('will-attach-webview', (attachEvent, webPreferences, params) => {
+            // Guarantee our approved preload script is used
+            webPreferences.preload = path.join(__dirname, 'webview_preload.cjs');
+
+            // Strictly disable Node.js integration and enforce context isolation
+            webPreferences.nodeIntegration = false;
+            webPreferences.nodeIntegrationInSubFrames = false;
+            webPreferences.contextIsolation = true;
+            webPreferences.webSecurity = true;
+            webPreferences.allowRunningInsecureContent = false;
+            webPreferences.enableRemoteModule = false;
+        });
         
         const getTargetWindow = () => {
             if (contents.hostWebContents) {
@@ -1060,6 +1252,18 @@ function createWindow(options = {}) {
             }
         };
 
+        // CRITICAL: Safely wrap capturePage to prevent UnknownVizError when webviews are not compositing
+        const originalCapturePage = contents.capturePage;
+        if (typeof originalCapturePage === 'function') {
+            contents.capturePage = function(rect) {
+                try {
+                    return originalCapturePage.call(this, rect).catch(() => null);
+                } catch (_) {
+                    return Promise.resolve(null);
+                }
+            };
+        }
+
         // CRITICAL: Safely wrap loadURL to gracefully absorb ERR_ABORTED (-3), ERR_FAILED (-2), and any navigation rejections
         const originalLoadURL = contents.loadURL;
         contents.loadURL = function(url, options) {
@@ -1123,7 +1327,8 @@ function createWindow(options = {}) {
             contents.on('did-navigate', (event, url) => {
                 if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
             });
-            contents.on('did-navigate-in-page', (event, url) => {
+            contents.on('did-navigate-in-page', (event, url, isMainFrame) => {
+                if (isMainFrame === false) return;
                 if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
             });
             contents.on('dom-ready', () => {
@@ -1363,12 +1568,22 @@ function setupHeadersHandler(sess) {
 
         if (localDialogPort) {
             for (const headerKey of Object.keys(responseHeaders)) {
-                if (headerKey.toLowerCase() === 'content-security-policy') {
+                const lowerKey = headerKey.toLowerCase();
+                if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
                     responseHeaders[headerKey] = responseHeaders[headerKey].map(val => {
-                        if (val.includes('connect-src')) {
-                            return val.replace(/connect-src\s+([^;]+)/i, `connect-src $1 http://127.0.0.1:${localDialogPort}`);
+                        if (/connect-src\s+/i.test(val)) {
+                            return val.replace(/connect-src\s+([^;]+)/i, (match, sources) => {
+                                const additions = [];
+                                if (!sources.includes(`127.0.0.1:${localDialogPort}`)) additions.push(`http://127.0.0.1:${localDialogPort}`);
+                                if (!sources.includes('data:')) additions.push('data:');
+                                if (!sources.includes('blob:')) additions.push('blob:');
+                                return additions.length > 0 ? `connect-src ${sources.trim()} ${additions.join(' ')}` : match;
+                            });
                         }
-                        return val + `; connect-src * http://127.0.0.1:${localDialogPort}`;
+                        if (/default-src\s+/i.test(val)) {
+                            return val + `; connect-src * 'self' data: blob: filesystem: http://127.0.0.1:${localDialogPort}`;
+                        }
+                        return val;
                     });
                 }
             }
@@ -1845,8 +2060,7 @@ ipcMain.on('window-minimize', (event) => {
 ipcMain.on('window-maximize', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
     if (win) {
-        if (win.isMaximized()) win.unmaximize();
-        else win.maximize();
+        toggleMaximizeSmooth(win);
     }
 });
 ipcMain.on('window-set-fullscreen', (event, state) => {
@@ -1898,8 +2112,9 @@ ipcMain.handle('fetch-suggestions', async (event, query) => {
 });
 
 ipcMain.on('set-fullscreen', (event, value) => {
-    if (mainWindow) {
-        mainWindow.setFullScreen(value);
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (win) {
+        win.setFullScreen(value);
     }
 });
 
