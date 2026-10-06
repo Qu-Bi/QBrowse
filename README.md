@@ -4,6 +4,7 @@
   <p><strong>Next-Generation Privacy Browser with Integrated Tor Onion Routing, Local Gemma AI & Encrypted Cloud Sync</strong></p>
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  ![GitHub Release](https://img.shields.io/github/v/release/Qu-Bi/QBrowse)
 </div>
 
 ---
