@@ -52,10 +52,13 @@ const AuthModal = () => {
     const [mode, setMode] = useState('login'); // 'login' | 'register'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [customMasterPass, setCustomMasterPass] = useState('');
     const [useAccountPassAsMaster, setUseAccountPassAsMaster] = useState(true);
     const [showPass, setShowPass] = useState(false);
+    const [showConfirmPass, setShowConfirmPass] = useState(false);
     const [showCustomPass, setShowCustomPass] = useState(false);
+    const [validationError, setValidationError] = useState(null);
     const [authStatus, setAuthStatus] = useState('idle'); // 'idle' | 'authenticating' | 'success'
     const [showConfigDrawer, setShowConfigDrawer] = useState(!isFirebaseConfigured);
     const [customConfigInput, setCustomConfigInput] = useState('');
@@ -112,16 +115,33 @@ const AuthModal = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!email || !password || authStatus !== 'idle') return;
+        setValidationError(null);
+        if (!email.trim() || !password || authStatus !== 'idle') return;
+
+        if (password.length < 6) {
+            setValidationError('Password must be at least 6 characters long.');
+            return;
+        }
+
+        if (mode === 'register') {
+            if (!confirmPassword) {
+                setValidationError('Please confirm your password.');
+                return;
+            }
+            if (password !== confirmPassword) {
+                setValidationError('Passwords do not match. Please re-check.');
+                return;
+            }
+        }
 
         setAuthStatus('authenticating');
         const masterPassToUse = useAccountPassAsMaster ? password : customMasterPass;
 
         let success = false;
         if (mode === 'login') {
-            success = await signIn(email, password, masterPassToUse);
+            success = await signIn(email.trim(), password, masterPassToUse);
         } else {
-            success = await signUp(email, password, masterPassToUse);
+            success = await signUp(email.trim(), password, masterPassToUse);
         }
 
         if (success) {
@@ -143,6 +163,7 @@ const AuthModal = () => {
             onClick={authStatus !== 'success' ? closeModal : undefined}
         >
             <div 
+                id="auth-modal"
                 className={`w-full max-w-md rounded-3xl p-8 relative overflow-hidden transition-all duration-500 ${
                     authStatus === 'success'
                         ? 'border-emerald-500/40 shadow-[0_0_90px_rgba(16,185,129,0.35)]'
@@ -294,35 +315,65 @@ const AuthModal = () => {
                     /* Auth Form */
                     <form onSubmit={handleSubmit} className="space-y-4">
                         {/* Tab Selector */}
-                        <div className={`flex p-1 border rounded-xl ${isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'}`}>
-                            <button
-                                type="button"
-                                onClick={() => setMode('login')}
-                                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                    mode === 'login' 
-                                        ? 'bg-accent text-black shadow-md' 
-                                        : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white')
-                                }`}
-                            >
-                                Sign In
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setMode('register')}
-                                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                    mode === 'register' 
-                                        ? 'bg-accent text-black shadow-md' 
-                                        : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white')
-                                }`}
-                            >
-                                Register
-                            </button>
+                        <div className="space-y-1.5">
+                            <div className={`flex p-1 border rounded-xl ${isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'}`}>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMode('login');
+                                        setValidationError(null);
+                                    }}
+                                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                        mode === 'login' 
+                                            ? 'bg-accent text-black shadow-md' 
+                                            : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                                    }`}
+                                >
+                                    <span>Sign In</span>
+                                    <span className="text-[10px] opacity-75 font-normal">(Existing)</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMode('register');
+                                        setValidationError(null);
+                                    }}
+                                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                        mode === 'register' 
+                                            ? 'bg-accent text-black shadow-md' 
+                                            : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                                    }`}
+                                >
+                                    <span>Register</span>
+                                    <span className="text-[10px] opacity-75 font-normal">(New Account)</span>
+                                </button>
+                            </div>
+
+                            <p className={`text-[11px] text-center pt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
+                                {mode === 'register' 
+                                    ? '✨ Create a free QBrowse account to sync your data across devices.'
+                                    : '🔐 Sign in to synchronize your existing vault & spaces.'}
+                            </p>
                         </div>
 
-                        {authError && (
-                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-600 dark:text-red-300 flex items-center gap-2">
-                                <AlertCircle size={14} className="flex-shrink-0" />
-                                <span className="truncate">{authError}</span>
+                        {(validationError || authError) && (
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-600 dark:text-red-300 flex items-center justify-between gap-2 animate-pop-in">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <AlertCircle size={14} className="flex-shrink-0 text-red-500" />
+                                    <span className="truncate">{validationError || authError}</span>
+                                </div>
+                                {authError && authError.includes('already exists') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMode('login');
+                                            setValidationError(null);
+                                        }}
+                                        className="shrink-0 text-[11px] font-bold text-accent underline hover:opacity-80"
+                                    >
+                                        Switch to Sign In
+                                    </button>
+                                )}
                             </div>
                         )}
 
@@ -398,14 +449,19 @@ const AuthModal = () => {
                             </div>
 
                             <div>
-                                <label className={`text-[11px] font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Account Password</label>
+                                <label className={`text-[11px] font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                    {mode === 'register' ? 'Create Password (min. 6 characters)' : 'Account Password'}
+                                </label>
                                 <div className="relative flex items-center">
                                     <Lock size={14} className={`absolute left-3 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
                                     <input
                                         type={showPass ? "text" : "password"}
                                         required
                                         value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
+                                        onChange={(e) => {
+                                            setPassword(e.target.value);
+                                            setValidationError(null);
+                                        }}
                                         placeholder="••••••••••••"
                                         className={`w-full border rounded-xl py-2 pl-9 pr-9 text-xs outline-none transition-colors ${
                                             isBright 
@@ -422,6 +478,52 @@ const AuthModal = () => {
                                     </button>
                                 </div>
                             </div>
+
+                            {mode === 'register' && (
+                                <div className="animate-pop-in">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className={`text-[11px] font-semibold block ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                            Confirm Password
+                                        </label>
+                                        {confirmPassword.length > 0 && (
+                                            password === confirmPassword ? (
+                                                <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
+                                                    <Check size={11} strokeWidth={3} /> Passwords match
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-red-500">Passwords do not match</span>
+                                            )
+                                        )}
+                                    </div>
+                                    <div className="relative flex items-center">
+                                        <Lock size={14} className={`absolute left-3 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
+                                        <input
+                                            type={showConfirmPass ? "text" : "password"}
+                                            required
+                                            value={confirmPassword}
+                                            onChange={(e) => {
+                                                setConfirmPassword(e.target.value);
+                                                setValidationError(null);
+                                            }}
+                                            placeholder="••••••••••••"
+                                            className={`w-full border rounded-xl py-2 pl-9 pr-9 text-xs outline-none transition-colors ${
+                                                confirmPassword.length > 0 && password !== confirmPassword
+                                                    ? 'border-red-500/50 focus:border-red-500'
+                                                    : (isBright 
+                                                        ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent' 
+                                                        : 'bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-accent')
+                                            }`}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmPass(!showConfirmPass)}
+                                            className={`absolute right-3 ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white'}`}
+                                        >
+                                            {showConfirmPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Master Encryption Key Option (Redesigned Glass Switch Card) */}
                             <div className="space-y-2 pt-1">
@@ -545,6 +647,36 @@ const AuthModal = () => {
                         </button>
 
                         <div className="text-center pt-2 space-y-2">
+                            {mode === 'register' ? (
+                                <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                    Already have an account?{' '}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMode('login');
+                                            setValidationError(null);
+                                        }}
+                                        className="text-accent font-bold hover:underline cursor-pointer"
+                                    >
+                                        Sign In here
+                                    </button>
+                                </p>
+                            ) : (
+                                <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                    Don't have an account yet?{' '}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMode('register');
+                                            setValidationError(null);
+                                        }}
+                                        className="text-accent font-bold hover:underline cursor-pointer"
+                                    >
+                                        Create a free account (Register)
+                                    </button>
+                                </p>
+                            )}
+
                             <button
                                 type="button"
                                 onClick={() => {

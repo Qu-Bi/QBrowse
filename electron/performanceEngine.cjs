@@ -7,7 +7,8 @@ let currentSettings = {
     mode: 'auto', // 'auto' | 'eco' | 'balanced' | 'ultra'
     tabSleepTimeoutMinutes: 15,
     reduceVisualsOnEco: true,
-    autoBatterySaver: true
+    autoBatterySaver: true,
+    bfcacheEnabled: true
 };
 
 function initSettings(userDataPath) {
@@ -118,6 +119,9 @@ function detectHardwareProfile(gpuInfo = null, isOnBattery = false) {
         mode: currentSettings.mode,
         tabSleepTimeoutMinutes: finalSleepTimeout,
         reduceVisuals: activeTier === 'eco' && currentSettings.reduceVisualsOnEco,
+        bfcacheEnabled: currentSettings.bfcacheEnabled !== false,
+        isBfcacheActive: currentSettings.bfcacheEnabled !== false && activeTier !== 'eco',
+        bfcachePages: activeTier === 'ultra' ? 6 : (activeTier === 'balanced' ? 3 : 0),
         gpuRenderer: driverVendor || glRenderer || (isSoftwareGpu ? 'Software (CPU Fallback)' : 'Hardware Accelerated')
     };
 }

@@ -16,7 +16,47 @@ export default function SnippingOverlay() {
     const [currentPos, setCurrentPos] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
     const [selection, setSelection] = useState(null);
+    const [isCapturing, setIsCapturing] = useState(false);
     const overlayRef = useRef(null);
+
+    const handleConfirmCapture = useCallback(async () => {
+        if (!selection || selection.width < 10 || selection.height < 10 || isCapturing) return;
+
+        setIsCapturing(true);
+
+        // 1. Instantly hide the overlay DOM synchronously to prevent Chromium compositor from baking it in
+        if (overlayRef.current) {
+            overlayRef.current.style.display = 'none';
+            overlayRef.current.style.visibility = 'hidden';
+            overlayRef.current.style.opacity = '0';
+        }
+
+        const captureRect = {
+            x: Math.round(selection.left),
+            y: Math.round(selection.top),
+            width: Math.round(selection.width),
+            height: Math.round(selection.height)
+        };
+
+        // 2. Clear snipping mode in store
+        setIsSnippingMode(false);
+
+        // 3. Wait for Chromium to flush and present clean frame without any overlay elements
+        await new Promise((resolve) => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setTimeout(resolve, 80);
+                });
+            });
+        });
+
+        // 4. Capture clean screen area
+        try {
+            await captureSelectedArea(captureRect);
+        } finally {
+            setIsCapturing(false);
+        }
+    }, [selection, isCapturing, captureSelectedArea, setIsSnippingMode]);
 
     // Cancel on Escape or confirm on Enter
     useEffect(() => {
@@ -25,14 +65,17 @@ export default function SnippingOverlay() {
             setCurrentPos(null);
             setIsDragging(false);
             setSelection(null);
+            setIsCapturing(false);
             return;
         }
 
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
-                setIsSnippingMode(false);
-            } else if (e.key === 'Enter' && selection && selection.width > 15 && selection.height > 15) {
+                if (!isCapturing) {
+                    setIsSnippingMode(false);
+                }
+            } else if (e.key === 'Enter' && selection && selection.width > 15 && selection.height > 15 && !isCapturing) {
                 e.preventDefault();
                 handleConfirmCapture();
             }
@@ -40,10 +83,10 @@ export default function SnippingOverlay() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isSnippingMode, selection, setIsSnippingMode]);
+    }, [isSnippingMode, selection, isCapturing, setIsSnippingMode, handleConfirmCapture]);
 
     const handleMouseDown = (e) => {
-        if (e.button !== 0) return; // Left click only
+        if (isCapturing || e.button !== 0) return; // Left click only
         const rect = overlayRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
         const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
         const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
@@ -54,7 +97,7 @@ export default function SnippingOverlay() {
     };
 
     const handleMouseMove = (e) => {
-        if (!isDragging || !startPos) return;
+        if (isCapturing || !isDragging || !startPos) return;
         const rect = overlayRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
         const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
         const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
@@ -76,28 +119,53 @@ export default function SnippingOverlay() {
         }
     };
 
-    const handleConfirmCapture = useCallback(async () => {
-        if (!selection || selection.width < 10 || selection.height < 10) return;
+    // Calculate intelligent action bar position (especially on resolutions lower than 1080p)
+    const getActionBarStyle = () => {
+        if (!selection) return {};
 
-        setIsSnippingMode(false);
-        await captureSelectedArea({
-            x: Math.round(selection.left),
-            y: Math.round(selection.top),
-            width: Math.round(selection.width),
-            height: Math.round(selection.height)
-        });
-    }, [selection, captureSelectedArea, setIsSnippingMode]);
+        const BAR_HEIGHT = 44;
+        const BAR_WIDTH = 165;
+        const MARGIN = 12;
 
-    if (!isSnippingMode) return null;
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
+
+        const spaceBelow = winH - (selection.top + selection.height);
+        const spaceAbove = selection.top;
+
+        let top;
+        if (spaceBelow >= BAR_HEIGHT + MARGIN) {
+            // Ample space below selection
+            top = selection.top + selection.height + MARGIN;
+        } else if (spaceAbove >= BAR_HEIGHT + MARGIN) {
+            // Low resolution (< 1080p) or near bottom of window: position cleanly ABOVE selection
+            top = selection.top - BAR_HEIGHT - MARGIN;
+        } else {
+            // Selection spans almost the entire vertical viewport: place inside selection bottom
+            top = Math.max(10, selection.top + selection.height - BAR_HEIGHT - 10);
+        }
+
+        // Horizontal positioning: align with right edge of selection, clamped safely inside viewport
+        let left = selection.left + selection.width - BAR_WIDTH;
+        left = Math.max(10, Math.min(winW - BAR_WIDTH - 10, left));
+
+        return {
+            left: `${Math.round(left)}px`,
+            top: `${Math.round(top)}px`
+        };
+    };
+
+    if (!isSnippingMode || isCapturing) return null;
 
     return createPortal(
         <div
             ref={overlayRef}
+            id="qbrowse-snipping-overlay"
             className={`fixed inset-0 z-[100000] cursor-crosshair select-none ${isBright ? 'bg-black/25' : 'bg-black/40'} backdrop-blur-[0.5px] overflow-hidden`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onContextMenu={(e) => { e.preventDefault(); setIsSnippingMode(false); }}
+            onContextMenu={(e) => { e.preventDefault(); if (!isCapturing) setIsSnippingMode(false); }}
         >
             {/* Instruction Pill */}
             {!selection && !isDragging && (
@@ -122,8 +190,10 @@ export default function SnippingOverlay() {
                         height: `${selection.height}px`
                     }}
                 >
-                    {/* Dimension Badge */}
-                    <div className={`absolute -top-7 left-0 ${isBright ? 'bg-white/95 border-black/10 text-zinc-900 shadow-md' : 'bg-black/90 border-white/20 text-white shadow-lg'} border font-mono text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap`}>
+                    {/* Dimension Badge - Flips inside if near window top */}
+                    <div className={`absolute ${selection.top < 32 ? 'top-1.5 left-1.5' : '-top-7 left-0'} ${
+                        isBright ? 'bg-white/95 border-black/10 text-zinc-900 shadow-md' : 'bg-black/90 border-white/20 text-white shadow-lg'
+                    } border font-mono text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap`}>
                         {Math.round(selection.width)} × {Math.round(selection.height)} px
                     </div>
 
@@ -143,15 +213,12 @@ export default function SnippingOverlay() {
                             ? 'bg-white/95 border-white/70 shadow-[0_15px_35px_rgba(0,0,0,0.15)] text-zinc-900' 
                             : 'bg-[#0e1015]/95 border-white/20 shadow-[0_15px_35px_rgba(0,0,0,0.8)] text-white'
                     } border backdrop-blur-2xl rounded-xl p-1 pointer-events-auto animate-pop-in`}
-                    style={{
-                        left: `${Math.min(window.innerWidth - 180, Math.max(10, selection.left + selection.width - 160))}px`,
-                        top: `${Math.min(window.innerHeight - 50, selection.top + selection.height + 12)}px`
-                    }}
+                    style={getActionBarStyle()}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
                     <button
                         onClick={handleConfirmCapture}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-black font-bold text-xs hover:bg-accent/90 transition shadow-sm active:scale-95"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-black font-bold text-xs hover:bg-accent/90 transition shadow-sm active:scale-95 cursor-pointer"
                     >
                         <Check size={14} strokeWidth={3} />
                         <span>Snip</span>
@@ -161,7 +228,7 @@ export default function SnippingOverlay() {
                             setSelection(null);
                             setIsSnippingMode(false);
                         }}
-                        className={`p-1.5 rounded-lg ${isBright ? 'hover:bg-black/5 text-zinc-500' : 'hover:bg-white/10 text-white/60'} hover:text-red-500 transition`}
+                        className={`p-1.5 rounded-lg ${isBright ? 'hover:bg-black/5 text-zinc-500' : 'hover:bg-white/10 text-white/60'} hover:text-red-500 transition cursor-pointer`}
                         title="Cancel (Esc)"
                     >
                         <X size={14} />

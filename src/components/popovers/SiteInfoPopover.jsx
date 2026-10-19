@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, ShieldCheck, MapPin, Camera, Bell, Clipboard, Volume2, Code, RotateCcw, Cookie, X, Trash2 } from 'lucide-react';
+import { Lock, Unlock, ShieldCheck, MapPin, Camera, Bell, Clipboard, Volume2, Code, RotateCcw, Cookie, X, Trash2 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
@@ -105,6 +105,7 @@ export default function SiteInfoPopover({ isClosing }) {
 
     return (
         <div 
+            id="site-info-popover"
             onClick={e => e.stopPropagation()} 
             className={`absolute top-[52px] left-[calc(50%-320px)] z-[80] w-72 rounded-2xl backdrop-blur-3xl p-3.5 flex flex-col gap-3 transition-colors ${
                 isBright
@@ -115,22 +116,37 @@ export default function SiteInfoPopover({ isClosing }) {
             }`}
         >
             {/* Header: Domain & Lock */}
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                    <Lock size={13} className="text-emerald-500 flex-shrink-0" />
-                    <span className={`text-xs font-bold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>
-                        {domain || 'Current Site'}
-                    </span>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <span className="text-[9px] font-semibold tracking-wide uppercase text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                        Secure
-                    </span>
-                    <button onClick={closePopover} className={`p-0.5 rounded-md transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}>
-                        <X size={12} />
-                    </button>
-                </div>
-            </div>
+            {(() => {
+                const isInsecure = currentTab?.url?.startsWith('http://') || currentTab?.title?.startsWith('Insecure') || currentTab?.title?.startsWith('Error');
+                return (
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                            {isInsecure ? (
+                                <Unlock size={13} className="text-amber-500 flex-shrink-0" />
+                            ) : (
+                                <Lock size={13} className="text-emerald-500 flex-shrink-0" />
+                            )}
+                            <span className={`text-xs font-bold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>
+                                {domain || 'Current Site'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {isInsecure ? (
+                                <span className="text-[9px] font-semibold tracking-wide uppercase text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                    Not Secure
+                                </span>
+                            ) : (
+                                <span className="text-[9px] font-semibold tracking-wide uppercase text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                    Secure
+                                </span>
+                            )}
+                            <button onClick={closePopover} className={`p-0.5 rounded-md transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}>
+                                <X size={12} />
+                            </button>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Cookies Info Row */}
             <div className={`pt-2.5 border-t flex items-center justify-between text-xs ${isDark ? 'border-white/5' : 'border-black/5'}`}>

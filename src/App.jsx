@@ -3,6 +3,8 @@ import useUIStore, { syncInitialSettingsToElectron } from './store/useUIStore';
 import useTabStore from './store/useTabStore';
 import useAIStore from './store/useAIStore';
 import useProfileStore from './store/useProfileStore';
+import useTorStore from './store/useTorStore';
+import useSyncStore from './store/useSyncStore';
 import useGlobalShortcuts from './hooks/useGlobalShortcuts';
 import useDragAndDrop from './hooks/useDragAndDrop';
 import { listenToEvent } from './services/electronIPC';
@@ -30,6 +32,8 @@ import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
 import UserProfilePopover from './components/popovers/UserProfilePopover';
+import ReadAloudPlayer from './components/common/ReadAloudPlayer';
+import { isLikelyDownloadUrl } from './utils/downloadHelpers';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
@@ -54,6 +58,10 @@ export default function App() {
     const isBooting = useUIStore(state => state.isBooting);
     const finishBoot = useUIStore(state => state.finishBoot);
     const activeModal = useUIStore(state => state.activeModal);
+    const a11yHighContrast = useUIStore(state => state.settings?.a11yHighContrast);
+    const a11yDyslexiaFont = useUIStore(state => state.settings?.a11yDyslexiaFont);
+    const a11yReducedMotion = useUIStore(state => state.settings?.a11yReducedMotion);
+    const a11yFocusRings = useUIStore(state => state.settings?.a11yFocusRings);
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
@@ -180,12 +188,26 @@ export default function App() {
 
     // Listen to backend events
     useEffect(() => {
+        const handleBeforeUnload = () => {
+            try {
+                useSyncStore.getState().flushDebouncedSync();
+            } catch (_) {}
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
         if (window.electronAPI) {
-            // Sync all persisted frontend settings to Electron on startup
-            syncInitialSettingsToElectron();
+            // Resiliently merge persisted disk settings on startup, then sync to Electron
+            useUIStore.getState().initSettingsFromDisk().then(() => {
+                syncInitialSettingsToElectron();
+            }).catch(() => {
+                syncInitialSettingsToElectron();
+            });
 
             // Initialize hardware profile and dynamic performance tier
             useUIStore.getState().initPerformanceProfile();
+
+            // Initialize Tor network state listeners
+            useTorStore.getState().init();
 
             const startupSettings = useUIStore.getState().settings;
             if (startupSettings?.playStartupSound) {
@@ -201,10 +223,17 @@ export default function App() {
             }
 
             if (window.electronAPI.onOpenNewTab) {
-                window.electronAPI.onOpenNewTab(({ url }) => {
-                    console.log("[App] Intercepted new window request from Electron:", url);
-                    if (url && url !== 'about:blank') {
-                        useTabStore.getState().handleNewTab(url);
+                window.electronAPI.onOpenNewTab((data) => {
+                    const targetUrl = typeof data === 'string' ? data : (data?.url || '');
+                    const disposition = typeof data === 'object' ? data?.disposition : undefined;
+                    console.log("[App] Intercepted new window request from Electron:", { targetUrl, disposition });
+                    if (targetUrl && targetUrl !== 'about:blank') {
+                        const isLikelyDownload = isLikelyDownloadUrl(targetUrl);
+                        const makeActive = !isLikelyDownload && (disposition !== 'background-tab');
+                        useTabStore.getState().handleNewTab(targetUrl, makeActive, {
+                            isOpenedByNewWindow: true,
+                            isDownloadTab: isLikelyDownload
+                        });
                     }
                 });
             }
@@ -213,6 +242,7 @@ export default function App() {
                 window.electronAPI.onDownloadStarted((data) => {
                     useUIStore.getState().addDownload({ ...data, state: 'progressing', receivedBytes: 0, speedBytesPerSec: 0 });
                     useUIStore.getState().setActiveDownloadPopup(data.id);
+                    useTabStore.getState().closeDownloadTabIfOrphaned(data);
                 });
                 window.electronAPI.onDownloadUpdated((data) => {
                     useUIStore.getState().updateDownload(data.id, data);
@@ -222,9 +252,18 @@ export default function App() {
                     }
                 });
                 window.electronAPI.onDownloadDone((data) => {
-                    useUIStore.getState().updateDownload(data.id, { state: data.state, savePath: data.savePath });
+                    useUIStore.getState().updateDownload(data.id, { 
+                        state: data.state, 
+                        savePath: data.savePath,
+                        verified: data.verified,
+                        checksum: data.checksum,
+                        algorithm: data.algorithm,
+                        actualBytes: data.actualBytes,
+                        error: data.error,
+                        verifiedAt: data.verifiedAt
+                    });
                     useUIStore.getState().setActiveDownloadPopup(data.id);
-                    if (data.state === 'completed') {
+                    if (data.state === 'completed' && data.verified !== false) {
                         const s = useUIStore.getState().settings;
                         if (s?.downloadSound !== false) {
                             playDownloadCompleteChime();
@@ -249,6 +288,15 @@ export default function App() {
                 });
                 useAIStore.getState().fetchEngineStatus();
             }
+            if (window.electronAPI.onDisplayMetricsChanged) {
+                window.electronAPI.onDisplayMetricsChanged((data) => {
+                    console.log("[App] Screen resolution/metrics updated:", data);
+                    requestAnimationFrame(() => {
+                        window.dispatchEvent(new Event('resize'));
+                    });
+                });
+            }
+
             if (window.electronAPI.onPasskeyPrompt) {
                 window.electronAPI.onPasskeyPrompt((promptData) => {
                     console.log("[App] Received passkey verification prompt:", promptData);
@@ -316,6 +364,10 @@ export default function App() {
                 });
             }
         }
+
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
     }, []);
 
     // Global Drag & Drop: Open local files/folders dropped into QBrowse window
@@ -463,6 +515,15 @@ export default function App() {
         };
     }, [accentColor, activeSpace, theme, isBright]);
 
+    // Synchronize accessibility modifier classes on root document element
+    useEffect(() => {
+        const root = document.documentElement;
+        root.classList.toggle('a11y-high-contrast', !!a11yHighContrast);
+        root.classList.toggle('a11y-dyslexia-font', !!a11yDyslexiaFont);
+        root.classList.toggle('a11y-reduced-motion', !!a11yReducedMotion);
+        root.classList.toggle('a11y-focus-rings', !!a11yFocusRings);
+    }, [a11yHighContrast, a11yDyslexiaFont, a11yReducedMotion, a11yFocusRings]);
+
     const handleBootFinish = () => {
         finishBoot();
         if (!useUIStore.getState().setupComplete) {
@@ -568,6 +629,7 @@ export default function App() {
                 <Overlays />
                 <TabSwitcherOverlay />
                 <DefaultBrowserBanner />
+                <ReadAloudPlayer />
 
                 {/* USER PROFILE & CLOUD SYNC POPOVER */}
                 {((activePopover === 'user' || activePopover === 'userProfile') || (isPopoverClosing && (activePopover === 'user' || activePopover === 'userProfile'))) && (

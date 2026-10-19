@@ -8,7 +8,7 @@ const defaultCircuit = [
 ];
 
 const useTorStore = create((set, get) => ({
-    isTorEnabled: false,
+    isTorEnabled: typeof window !== 'undefined' ? localStorage.getItem('qbrowse_tor_enabled') === 'true' : false,
     status: 'stopped', // 'stopped' | 'downloading' | 'starting' | 'connected' | 'error'
     bootstrapProgress: 0,
     downloadProgress: 0,
@@ -28,15 +28,20 @@ const useTorStore = create((set, get) => ({
         const current = get().isTorEnabled;
         const next = typeof forcedValue === 'boolean' ? forcedValue : !current;
         set({ isTorEnabled: next });
+        try {
+            localStorage.setItem('qbrowse_tor_enabled', String(next));
+        } catch (_) {}
 
         try {
             const { default: useTabStore } = await import('./useTabStore');
             const currentSpace = useTabStore.getState().activeSpace;
             if (next) {
-                if (currentSpace === 'ghost') {
+                if (currentSpace !== 'tor') {
                     useTabStore.getState().setActiveSpace('tor');
                 }
-                get().startTor();
+                if (get().status !== 'connected' && get().status !== 'starting') {
+                    get().startTor();
+                }
             } else {
                 if (currentSpace === 'tor') {
                     useTabStore.getState().setActiveSpace('ghost');
@@ -66,6 +71,8 @@ const useTorStore = create((set, get) => ({
                 set({ isTorEnabled: true });
                 get().fetchCircuit();
                 get().checkExitIp();
+            } else if (get().isTorEnabled && data.status !== 'starting') {
+                get().startTor();
             }
         } catch (err) {
             console.warn('[TorStore] Failed to fetch status:', err);

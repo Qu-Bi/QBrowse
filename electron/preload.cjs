@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAiLogs: () => ipcRenderer.invoke('ai-get-logs'),
     pickAiModelFile: () => ipcRenderer.invoke('ai-pick-model-file'),
     downloadAiModel: (options) => ipcRenderer.invoke('ai-download-model', options),
+    cancelAiDownload: () => ipcRenderer.invoke('ai-cancel-download'),
     sendAiQuery: (options) => ipcRenderer.invoke('ai-generate-completion', options),
     parseFile: (filePath) => ipcRenderer.invoke('ai-parse-file', filePath),
     webSearch: (query) => ipcRenderer.invoke('ai-web-search', query),
@@ -77,6 +78,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
     setFullscreen: (value) => ipcRenderer.send('set-fullscreen', value),
     setWebviewColorScheme: (webContentsId, colorScheme) => ipcRenderer.send('set-webview-color-scheme', { webContentsId, colorScheme }),
+    getHistoryUrl: (webContentsId, offset) => ipcRenderer.invoke('get-webview-history-url', { webContentsId, offset }),
 
     onOpenNewTab: (callback) => {
         ipcRenderer.removeAllListeners('open-new-tab-url');
@@ -134,6 +136,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     openFile: (path) => ipcRenderer.invoke('open-file', path),
     showItemInFolder: (path) => ipcRenderer.invoke('show-item-in-folder', path),
+    verifyDownloadFile: (filePath) => ipcRenderer.invoke('verify-download-file', filePath),
+    compareDownloadChecksum: (data) => ipcRenderer.invoke('compare-download-checksum', data),
+    getFileChecksum: (data) => ipcRenderer.invoke('get-file-checksum', data),
+    deleteDownloadFile: (filePath) => ipcRenderer.invoke('delete-download-file', filePath),
 
     // Navigation Shortcuts / Mouse 4 and 5
     onGlobalNavigateBack: (callback) => ipcRenderer.on('global-navigate-back', callback),
@@ -151,9 +157,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAllSitePermissions: () => ipcRenderer.invoke('get-all-site-permissions'),
     resetSitePermissions: (domain) => ipcRenderer.invoke('reset-site-permissions', domain),
     selectFolder: () => ipcRenderer.invoke('select-folder'),
-    setDoh: (provider) => ipcRenderer.invoke('set-doh', provider),
+    setDoh: (config) => ipcRenderer.invoke('set-doh', config),
+    testDns: (endpoint) => ipcRenderer.invoke('test-dns', endpoint),
     setWebRTC: (enabled) => ipcRenderer.invoke('set-webrtc', enabled),
+    getSettings: () => ipcRenderer.invoke('get-settings'),
     saveSetting: (key, value) => ipcRenderer.invoke('save-setting', { key, value }),
+    syncSmartDarkState: (state) => ipcRenderer.send('sync-smart-dark-state', state),
     getAppMetrics: () => ipcRenderer.invoke('get-app-metrics'),
     killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
     openNewWindow: (options) => ipcRenderer.invoke('open-new-window', options),
@@ -185,7 +194,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Default Browser & External URLs
-    checkDefaultBrowser: () => ipcRenderer.invoke('system-check-default-browser'),
+    checkDefaultBrowser: (options) => ipcRenderer.invoke('system-check-default-browser', options),
     setDefaultBrowser: () => ipcRenderer.invoke('system-set-default-browser'),
     openDefaultAppsSettings: () => ipcRenderer.invoke('system-open-default-apps-settings'),
     getInitialLaunchUrl: () => ipcRenderer.invoke('get-initial-launch-url'),
@@ -208,6 +217,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     captureAndSave: (opts) => ipcRenderer.invoke('capture-and-save', opts),
     captureSliceDataUrl: (opts) => ipcRenderer.invoke('capture-slice-dataurl', opts),
     saveScreenshotDataUrl: (opts) => ipcRenderer.invoke('save-screenshot-dataurl', opts),
+    copyImageToClipboard: (filePath) => ipcRenderer.invoke('copy-image-to-clipboard', filePath),
+    allowInsecureHost: (hostname) => ipcRenderer.invoke('allow-insecure-host', hostname),
 
     // Performance & Hardware Profiling
     getHardwareProfile: () => ipcRenderer.invoke('system-get-hardware-profile'),
@@ -217,6 +228,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('performance-profile-changed', handler);
         return () => ipcRenderer.removeListener('performance-profile-changed', handler);
+    },
+    onDisplayMetricsChanged: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('display-metrics-changed', handler);
+        return () => ipcRenderer.removeListener('display-metrics-changed', handler);
     },
 
     // Custom Wallpaper & Background
@@ -251,6 +267,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('updater-event', handler);
         return () => ipcRenderer.removeListener('updater-event', handler);
-    }
+    },
+
+    // Insecure & Certificate Bypass
+    allowInsecureHost: (hostname) => ipcRenderer.invoke('allow-insecure-host', hostname)
 });
 

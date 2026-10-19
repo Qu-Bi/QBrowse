@@ -83,6 +83,41 @@ export default function Sidebar() {
     // Actually folder state was in App.jsx. I will manage it with local state in Sidebar for now since it's just visual toggle.
     const [localPrivateOpen, setLocalPrivateOpen] = React.useState(true);
     const [localWorkOpen, setLocalWorkOpen] = React.useState(true);
+    const [dragPos, setDragPos] = React.useState(null);
+
+    React.useEffect(() => {
+        if (!draggedItem) {
+            setDragPos(null);
+            return;
+        }
+        const handleWindowDragOver = (e) => {
+            e.preventDefault();
+            if (e.clientX > 0 || e.clientY > 0) {
+                setDragPos({ x: e.clientX, y: e.clientY });
+            }
+        };
+        const handleDragEndWindow = () => {
+            setDragPos(null);
+            useTabStore.getState().setDraggedItem(null);
+            useTabStore.getState().setDragOverItem(null);
+        };
+        window.addEventListener('dragover', handleWindowDragOver);
+        window.addEventListener('dragend', handleDragEndWindow);
+        window.addEventListener('drop', handleDragEndWindow);
+        return () => {
+            window.removeEventListener('dragover', handleWindowDragOver);
+            window.removeEventListener('dragend', handleDragEndWindow);
+            window.removeEventListener('drop', handleDragEndWindow);
+        };
+    }, [draggedItem]);
+
+    // Safety auto-heal: guarantee the current space never gets stuck with zero tabs
+    React.useEffect(() => {
+        const tabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
+        if (tabs && tabs.length === 0) {
+            handleNewTab('', true);
+        }
+    }, [activeSpace, privateTabs, workTabs, ghostTabs, torTabs, handleNewTab]);
 
     const handleTabContextMenuClick = (e, tab, spaceType) => {
         e.preventDefault();
@@ -147,10 +182,51 @@ export default function Sidebar() {
         setPinnedContextMenu({ x: e.clientX, y: e.clientY, pin, openedAt: Date.now() });
     };
 
+    const handlePinnedAuxClick = (e, pin) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetUrl = pin.domain.startsWith('http') ? pin.domain : `https://${pin.domain}`;
+            useTabStore.getState().addTab({
+                id: `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                pinnedId: pin.id,
+                title: pin.title,
+                url: targetUrl,
+                active: false,
+                folderId: null
+            });
+            useUIStore.getState().showToast(`Opened ${pin.title} in background tab`);
+        }
+    };
+
+    const handleNewTabAuxClick = (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleNewTab('', false);
+        }
+    };
+
     const renderTab = (tab, spaceType) => (
         <div key={tab.id}
             draggable
-            onDragStart={(e) => { clearTimeout(hoverTimeout.current); setHoverPreview(null); handleDragStart(e, tab, spaceType); }}
+            onDragStart={(e) => { 
+                clearTimeout(hoverTimeout.current); 
+                setHoverPreview(null); 
+                if (e.dataTransfer) {
+                    try {
+                        const emptyImg = new Image();
+                        emptyImg.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+                        e.dataTransfer.setDragImage(emptyImg, 0, 0);
+                    } catch (_) {}
+                }
+                handleDragStart(e, tab, spaceType); 
+            }}
+            onDragEnd={() => {
+                setDragPos(null);
+                useTabStore.getState().setDraggedItem(null);
+                useTabStore.getState().setDragOverItem(null);
+            }}
             onDragOver={(e) => { e.preventDefault(); handleDragOver(tab.id); }}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, tab, spaceType)}
@@ -213,7 +289,7 @@ export default function Sidebar() {
                                 if (img && !img.isEmpty()) {
                                     const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
                                     useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
-                                    setHoverPreview(prev => (prev && prev.tab.id === tab.id ? { ...prev, tab: { ...prev.tab, thumbnail } } : prev));
+                                    setHoverPreview(prev => (prev?.tab?.id === tab.id ? { ...prev, tab: { ...prev.tab, thumbnail } } : prev));
                                 }
                             }).catch(() => {});
                         }
@@ -224,6 +300,9 @@ export default function Sidebar() {
                 clearTimeout(hoverTimeout.current);
                 setHoverPreview(null);
             }}
+            onMouseDown={(e) => {
+                if (e.button === 1) e.preventDefault();
+            }}
             onAuxClick={(e) => {
                 if (e.button === 1) {
                     e.preventDefault();
@@ -233,7 +312,7 @@ export default function Sidebar() {
                     handleCloseTab(tab.id);
                 }
             }}
-            className={`sidebar-tab-item group relative flex items-center justify-between p-3 rounded-xl border cursor-grab active:cursor-grabbing w-full select-none ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${
+            className={`sidebar-tab-item group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
                 tab.active 
                     ? (isBright 
                         ? 'bg-white/80 border-black/[0.08] text-zinc-950 font-bold shadow-[0_2px_8px_rgba(0,0,0,0.06)]' 
@@ -245,20 +324,22 @@ export default function Sidebar() {
             style={tab.active && !isBright ? { 
                 borderColor: 'var(--accent-40)', 
                 backgroundColor: 'var(--accent-15)',
-                boxShadow: '0 0 18px var(--accent-30)'
+                boxShadow: draggedItem?.tab?.id === tab.id ? 'none' : '0 0 18px var(--accent-30)'
             } : undefined}>
-            <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+            <div className="flex items-center gap-2.5 w-full justify-center md:justify-start pointer-events-none pr-8">
                 {spaceType === 'ghost' ? (
                     <Ghost size={14} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
                 ) : spaceType === 'tor' ? (
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 transition-colors duration-200 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
+                    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 transition-colors duration-200 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
                         <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
                         <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
                         <circle cx="12" cy="12" r="1.5"/>
                     </svg>
                 ) : (
                     tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="icon" className={`w-4 h-4 rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} onError={(e) => e.target.style.display = 'none'} /> : <Globe size={14} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
-                )}<span className={`text-sm truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>{tab.title}</span>
+                )}<span className={`${uiScale === 'compact' ? 'text-xs' : 'text-sm'} truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
+                    {(!tab.title || tab.title === 'about:blank' || tab.title === '') ? (spaceType === 'ghost' ? 'New Incognito Tab' : 'New Tab') : tab.title}
+                </span>
             </div>
 
             {(tab.isAudioPlaying || tab.isMuted) && (
@@ -335,7 +416,7 @@ export default function Sidebar() {
             width: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 240 : 256),
             minWidth: 0,
             maxWidth: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 240 : 256),
-            marginRight: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 8 : 16),
+            marginRight: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 6 : 16),
             opacity: (isFullscreen || isSidebarHidden) ? 0 : 1,
             ...(isFullscreen ? { display: 'none', border: 'none', borderWidth: 0 } : {}),
             transition: (isFullscreen || isSidebarHidden)
@@ -400,11 +481,25 @@ export default function Sidebar() {
                     </button>
                     <button onClick={() => setActiveModal('history')} className="hover:text-accent hover:scale-115 active:scale-90 transition-all duration-200 p-1 rounded-md" title="History"><Clock size={14} /></button>
                     <button onClick={() => setActiveModal('settings')} className="hover:text-accent hover:scale-115 active:scale-90 hover:rotate-45 transition-all duration-200 p-1 rounded-md" title="Settings"><Settings size={14} /></button>
-                    <button onClick={handleGoHome} className={`transition-all duration-200 hover:scale-115 active:scale-90 p-1 rounded-md ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-110' : 'hover:text-accent'}`} title="Zen Dashboard"><Home size={14} /></button>
+                    <button 
+                        onClick={handleGoHome} 
+                        onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                        onAuxClick={(e) => {
+                            if (e.button === 1) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleNewTab('qbrowse://home', false);
+                            }
+                        }}
+                        className={`transition-all duration-200 hover:scale-115 active:scale-90 p-1 rounded-md ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-110' : 'hover:text-accent'}`} 
+                        title="Zen Dashboard (Middle-click to open in background)"
+                    >
+                        <Home size={14} />
+                    </button>
                 </div>
             </div>
 
-            <div className="px-4 py-4 hidden md:grid grid-cols-4 gap-2 border-b border-[color:var(--sidebar-border)] relative z-10">
+            <div className={`px-4 ${uiScale === 'compact' ? 'py-2.5 gap-1.5' : 'py-4 gap-2'} hidden md:grid grid-cols-4 border-b border-[color:var(--sidebar-border)] relative z-10`}>
                 {pinnedTabs.map((pin) => {
                     const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs);
                     const pinTabs = tabs.filter(t => isTabForPin(t, pin));
@@ -417,6 +512,8 @@ export default function Sidebar() {
                         <button 
                             onClick={(e) => handlePinnedTabClick(e, pin)} 
                             onContextMenu={(e) => handlePinnedContextMenu(e, pin)}
+                            onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                            onAuxClick={(e) => handlePinnedAuxClick(e, pin)}
                             className={`relative w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all duration-200 active:scale-95 shadow-sm overflow-hidden ${
                                 hasActiveTab 
                                     ? 'bg-[color:var(--sidebar-bg-active)] border-accent/60 shadow-[0_0_12px_var(--accent)] scale-105' 
@@ -424,7 +521,7 @@ export default function Sidebar() {
                                     ? 'bg-[color:var(--sidebar-bg-active)] border-white/40 scale-105'
                                     : 'bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border-[color:var(--sidebar-border)] group-hover:scale-105'
                             }`} 
-                            title={`${pin.title}${pinTabs.length > 0 ? ` (${pinTabs.length} open tab${pinTabs.length > 1 ? 's' : ''})` : ''} • Right-click for tab list`}
+                            title={`${pin.title}${pinTabs.length > 0 ? ` (${pinTabs.length} open tab${pinTabs.length > 1 ? 's' : ''})` : ''} • Middle-click to open in background • Right-click for tab list`}
                         >
                             <img 
                                 src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} 
@@ -496,14 +593,14 @@ export default function Sidebar() {
 
                     {/* PERSONAL TABS */}
                     <div 
-                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
                         onDragOver={(e) => { e.preventDefault(); handleDragOver('root-personal'); }}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'personal')}
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-personal' ? 'border-accent border-dashed bg-accent-10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
+                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T • Middle-click for background)">
                                 <Plus size={12} strokeWidth={2.5} />
                             </button>
                         </div>
@@ -511,7 +608,7 @@ export default function Sidebar() {
                             const filtered = privateTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tab (Middle-click for background)">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
@@ -525,14 +622,14 @@ export default function Sidebar() {
 
                     {/* WORK TABS */}
                     <div 
-                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
                         onDragOver={(e) => { e.preventDefault(); handleDragOver('root-work'); }}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'work')}
                     >
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-work' ? 'border-blue-400 border-dashed bg-blue-500/10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={() => handleNewTab()} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T)">
+                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T • Middle-click for background)">
                                 <Plus size={12} strokeWidth={2.5} />
                             </button>
                         </div>
@@ -540,7 +637,7 @@ export default function Sidebar() {
                             const filtered = workTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tab (Middle-click for background)">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
@@ -554,7 +651,7 @@ export default function Sidebar() {
 
                     {/* GHOST TABS */}
                     <div 
-                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
                         onDragOver={(e) => { e.preventDefault(); handleDragOver('root-ghost'); }}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'ghost')}
@@ -571,7 +668,7 @@ export default function Sidebar() {
                                 >
                                     <Globe size={11} /> Tor Mode
                                 </button>
-                                <button onClick={() => handleNewTab()} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T)">
+                                <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T • Middle-click for background)">
                                     <Plus size={12} strokeWidth={2.5} />
                                 </button>
                             </div>
@@ -580,7 +677,7 @@ export default function Sidebar() {
                             const filtered = ghostTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (Middle-click for background)">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
@@ -594,7 +691,7 @@ export default function Sidebar() {
 
                     {/* TOR TABS */}
                     <div 
-                        className="w-1/4 h-full flex flex-col gap-1 p-4 pt-2 overflow-y-auto hide-scroll"
+                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
                         onDragOver={(e) => { e.preventDefault(); handleDragOver('root-tor'); }}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'tor')}
@@ -612,7 +709,7 @@ export default function Sidebar() {
                                 >
                                     <Ghost size={11} /> Ghost
                                 </button>
-                                <button onClick={() => handleNewTab()} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T)">
+                                <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T • Middle-click for background)">
                                     <Plus size={12} strokeWidth={2.5} />
                                 </button>
                             </div>
@@ -621,7 +718,7 @@ export default function Sidebar() {
                             const filtered = (torTabs || []).filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                             if (filtered.length === 0) {
                                 return (
-                                    <button onClick={() => handleNewTab()} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in">
+                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in" title="New Tor Tab (Middle-click for background)">
                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                             <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                             <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>
@@ -744,6 +841,36 @@ export default function Sidebar() {
             </div>
             </div>
         </aside>
+        {draggedItem && dragPos && (
+            <div
+                className={`fixed pointer-events-none z-[999999] flex items-center justify-between px-3 py-2.5 border select-none shadow-2xl backdrop-blur-2xl transition-none ${
+                    isBright 
+                        ? 'bg-white/95 border-black/15 text-zinc-950 shadow-[0_12px_28px_rgba(0,0,0,0.18)]' 
+                        : 'bg-[#18191f]/95 border-accent/40 text-accent shadow-[0_16px_36px_rgba(0,0,0,0.8),0_0_15px_var(--accent-20)]'
+                }`}
+                style={{
+                    left: `${dragPos.x + 10}px`,
+                    top: `${dragPos.y - 18}px`,
+                    width: uiScale === 'compact' ? '200px' : '220px',
+                    borderRadius: uiScale === 'compact' ? '8px' : '12px'
+                }}
+            >
+                <div className="flex items-center gap-2.5 truncate">
+                    {draggedItem.tab.url && draggedItem.tab.url !== 'about:blank' ? (
+                        <img 
+                            src={`https://www.google.com/s2/favicons?sz=64&domain=${draggedItem.tab.url}`} 
+                            className="w-4 h-4 rounded-sm shrink-0" 
+                            onError={(e) => e.target.style.display = 'none'} 
+                        />
+                    ) : (
+                        <Globe size={14} className={`shrink-0 ${isBright ? 'text-zinc-800' : 'text-accent'}`} />
+                    )}
+                    <span className="text-xs font-semibold truncate">
+                        {draggedItem.tab.title || 'New Tab'}
+                    </span>
+                </div>
+            </div>
+        )}
         <PinnedStackPopup />
         </>
     );

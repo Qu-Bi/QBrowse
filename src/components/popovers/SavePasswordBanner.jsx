@@ -173,6 +173,7 @@ export default function SavePasswordBanner() {
 
     return (
         <div 
+            id="save-password-banner"
             className={`fixed top-14 right-6 z-[70000] w-[350px] rounded-2xl backdrop-blur-3xl p-4 ${
                 isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
             } origin-top-right overflow-hidden select-none transition-all duration-300 ${

@@ -17,22 +17,29 @@ let metrics = {
     status: 'stopped'
 };
 
+let healthPollTimer = null;
+let currentDownloadReq = null;
+
 const MODEL_PRESETS = [
     {
         id: 'gemma-4-e2b',
-        name: 'Gemma 4 E2B Instruct (Q4_K_M)',
-        size: '3.11 GB',
-        url: 'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
-        filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
-        description: 'Unsloth Gemma 4 E2B Instruct GGUF model for fast web page summarization, chat, and reasoning.'
+        name: 'Gemma 4 E2B Instruct (Q4_0)',
+        size: '2.04 GB (Model) + 557 MB (Vision)',
+        url: 'https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf',
+        filename: 'gemma-4-E2B-it-Q4_0.gguf',
+        mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-Q8_0.gguf',
+        mmprojFilename: 'mmproj-gemma-4-E2B-it-Q8_0.gguf',
+        description: 'Gemma 4 E2B Instruct GGUF model with full Multimodal Vision support for analyzing images and chat.'
     },
     {
         id: 'gemma-4-e4b',
-        name: 'Gemma 4 E4B Instruct (Q4_K_M)',
-        size: '4.98 GB',
-        url: 'https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
-        filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
-        description: 'High reasoning Unsloth Gemma 4 E4B model for complex code analysis, writing, and research.'
+        name: 'Gemma 4 E4B Instruct (Q4_0)',
+        size: '4.59 GB (Model) + 560 MB (Vision)',
+        url: 'https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf',
+        filename: 'gemma-4-E4B-it-Q4_0.gguf',
+        mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-Q8_0.gguf',
+        mmprojFilename: 'mmproj-gemma-4-E4B-it-Q8_0.gguf',
+        description: 'High reasoning Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
     }
 ];
 
@@ -152,7 +159,7 @@ async function generateRealAiReplyStream(prompt, onToken, onDone) {
         let retries = 0;
         let success = false;
         
-        while (retries < 10 && !success) {
+        while (retries < 25 && !success) {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 60000);
@@ -168,11 +175,20 @@ async function generateRealAiReplyStream(prompt, onToken, onDone) {
                 });
                 clearTimeout(timeoutId);
 
+                // If model is still loading into RAM/VRAM, llama-server returns HTTP 503
+                if (res.status === 503) {
+                    retries++;
+                    if (retries === 1 && onToken) {
+                        onToken("[Model is currently loading into memory... Please wait...]\n\n");
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    continue;
+                }
+
                 if (res.ok && res.body) {
                     success = true;
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder('utf-8');
-                    let removedLoadingMessage = false;
                     
                     while (true) {
                         const { done, value } = await reader.read();
@@ -188,8 +204,6 @@ async function generateRealAiReplyStream(prompt, onToken, onDone) {
                                     const parsed = JSON.parse(jsonStr);
                                     const token = parsed.choices?.[0]?.delta?.content || '';
                                     if (token && onToken) {
-                                        // A slightly hacky way to ensure the UI gets the tokens, the UI will append.
-                                        // The loading message will just remain at the top.
                                         onToken(token);
                                     }
                                 } catch(e) {}
@@ -199,15 +213,18 @@ async function generateRealAiReplyStream(prompt, onToken, onDone) {
                     if (onDone) onDone();
                     return;
                 }
-                break; // If response is not ok but didn't throw (e.g., 404), break to next endpoint
+
+                // If non-200 and non-503, log warning and try next endpoint
+                appendLog(`[WARN] AI endpoint ${ep} returned HTTP ${res.status}`);
+                break;
             } catch(e) {
-                // If it's the primary server port, it might still be loading the GGUF into memory
+                // If it's the primary server port, it might still be starting the process or loading
                 if (ep === localEndpoints[0]) {
                     retries++;
                     if (retries === 1 && onToken) {
                         onToken("[Model is currently loading into memory... Please wait...]\n\n");
                     }
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                 } else {
                     break;
                 }
@@ -221,8 +238,12 @@ async function generateRealAiReplyStream(prompt, onToken, onDone) {
 }
 
 function processPromptStream(options = {}, onToken, onDone) {
-    const { prompt = '' } = options;
-    generateRealAiReplyStream(prompt, onToken, onDone);
+    const { prompt = '', pageContext = '' } = options;
+    let fullPrompt = prompt;
+    if (pageContext && typeof pageContext === 'string' && pageContext.trim()) {
+        fullPrompt = `[Context from current web page:\n${pageContext.slice(0, 3000)}]\n\nUser Question: ${prompt}`;
+    }
+    generateRealAiReplyStream(fullPrompt, onToken, onDone);
 }
 
 // Built-in OpenAI-compatible HTTP server when binary is absent
@@ -472,9 +493,17 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 }
             }
             if (!mmprojTarget) {
-                const availableProj = getDownloadedModels().find(m => m.filename.startsWith('mmproj-'));
-                if (availableProj) {
-                    mmprojTarget = availableProj.path;
+                // Find matching mmproj projector for this specific model family
+                const modelBase = path.basename(currentModelPath).toLowerCase();
+                const availableProjs = getDownloadedModels().filter(m => m.filename.startsWith('mmproj-'));
+                const matchedProj = availableProjs.find(m => {
+                    const fn = m.filename.toLowerCase();
+                    if (modelBase.includes('e4b') && fn.includes('e4b')) return true;
+                    if (modelBase.includes('e2b') && fn.includes('e2b')) return true;
+                    return false;
+                });
+                if (matchedProj) {
+                    mmprojTarget = matchedProj.path;
                 }
             }
 
@@ -483,10 +512,20 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                     ? mmprojTarget 
                     : path.join(getModelsDir(), mmprojTarget);
 
-                if (fs.existsSync(mmprojFullPath)) {
+                const modelBase = path.basename(currentModelPath).toLowerCase();
+                const projBase = path.basename(mmprojTarget).toLowerCase();
+                const isCompatible = (modelBase.includes('e4b') && projBase.includes('e4b')) ||
+                                     (modelBase.includes('e2b') && projBase.includes('e2b')) ||
+                                     (!modelBase.includes('e4b') && !modelBase.includes('e2b'));
+
+                if (isCompatible && fs.existsSync(mmprojFullPath)) {
                     args.push('--mmproj', mmprojFullPath);
-                } else if (fs.existsSync(mmprojTarget)) {
+                    appendLog(`[INFO] Loaded multimodal vision projector: ${path.basename(mmprojFullPath)}`);
+                } else if (isCompatible && fs.existsSync(mmprojTarget)) {
                     args.push('--mmproj', mmprojTarget);
+                    appendLog(`[INFO] Loaded multimodal vision projector: ${path.basename(mmprojTarget)}`);
+                } else {
+                    appendLog(`[WARN] Skipping incompatible vision projector ${projBase} for model ${modelBase}`);
                 }
             }
 
@@ -503,14 +542,23 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
             metrics.status = 'loading'; // Model is loading into RAM/VRAM
             if (onStatusChange) onStatusChange(metrics);
 
-            // Poll /health endpoint to detect when model finishes loading
-            const pollReady = setInterval(() => {
+            if (healthPollTimer) {
+                clearInterval(healthPollTimer);
+                healthPollTimer = null;
+            }
+
+            // Poll /health endpoint to detect when model finishes loading into memory
+            healthPollTimer = setInterval(() => {
                 fetch(`http://127.0.0.1:${port}/health`)
                     .then(res => res.json())
                     .then(data => {
                         if (data && data.status === 'ok') {
-                            clearInterval(pollReady);
+                            if (healthPollTimer) {
+                                clearInterval(healthPollTimer);
+                                healthPollTimer = null;
+                            }
                             metrics.status = 'running';
+                            appendLog(`[SUCCESS] Model loaded successfully into memory. llama-server is READY on port ${port}.`);
                             if (onStatusChange) onStatusChange(metrics);
                         }
                     }).catch(() => {});
@@ -529,7 +577,10 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
             });
 
             serverProcess.on('close', (code) => {
-                clearInterval(pollReady);
+                if (healthPollTimer) {
+                    clearInterval(healthPollTimer);
+                    healthPollTimer = null;
+                }
                 isServerRunning = false;
                 serverProcess = null;
                 metrics.status = 'stopped';
@@ -551,6 +602,10 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
             throw new Error(`Executable not found at ${binaryPath}`);
         }
     } catch(err) {
+        if (healthPollTimer) {
+            clearInterval(healthPollTimer);
+            healthPollTimer = null;
+        }
         appendLog(`[ERROR] Failed to spawn llama-server: ${err.message}`);
         metrics.status = 'error';
         if (onStatusChange) onStatusChange(metrics);
@@ -559,6 +614,10 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
 }
 
 function stopLlamaServer() {
+    if (healthPollTimer) {
+        clearInterval(healthPollTimer);
+        healthPollTimer = null;
+    }
     if (serverProcess) {
         serverProcess.kill('SIGTERM');
         serverProcess = null;
@@ -582,11 +641,26 @@ function getDownloadedModels() {
     if (!fs.existsSync(dir)) return [];
     try {
         const files = fs.readdirSync(dir);
-        return files.filter(f => f.endsWith('.gguf') || f.endsWith('.bin')).map(f => ({
-            filename: f,
-            path: path.join(dir, f),
-            sizeBytes: fs.statSync(path.join(dir, f)).size
-        }));
+        const validModels = [];
+        for (const f of files) {
+            if ((f.endsWith('.gguf') || f.endsWith('.bin')) && !f.endsWith('.tmp') && !f.endsWith('.downloading')) {
+                const fullPath = path.join(dir, f);
+                try {
+                    const stats = fs.statSync(fullPath);
+                    if (stats.size > 10 * 1024 * 1024) {
+                        validModels.push({
+                            filename: f,
+                            path: fullPath,
+                            sizeBytes: stats.size
+                        });
+                    } else if (stats.size === 0) {
+                        // Clean up 0-byte aborted download artifact
+                        try { fs.unlinkSync(fullPath); } catch (_) {}
+                    }
+                } catch (_) {}
+            }
+        }
+        return validModels;
     } catch {
         return [];
     }
@@ -605,15 +679,53 @@ function getStatus() {
     };
 }
 
-// Model File Downloader with User-Agent & HTTP 301/302 Redirect Support
+function cancelModelDownload() {
+    if (currentDownloadReq && typeof currentDownloadReq.abort === 'function') {
+        currentDownloadReq.abort();
+        currentDownloadReq = null;
+        return { success: true };
+    }
+    return { success: false };
+}
+
+// Model File Downloader with robust HTTP 301/302/307/308 Redirect & CDN Support
 function downloadModel(modelUrl, targetFilename, onProgress) {
     return new Promise((resolve, reject) => {
         const destPath = path.join(getModelsDir(), targetFilename);
-        const file = fs.createWriteStream(destPath);
+        const tempPath = path.join(getModelsDir(), `${targetFilename}.downloading`);
+        let fileStream = null;
+        let isAborted = false;
 
-        appendLog(`Starting download of GGUF model weights from: ${modelUrl}`);
+        // Clean up any stale temp file from a previous aborted attempt
+        try {
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        } catch (_) {}
 
-        const request = (url) => {
+        appendLog(`[DOWNLOAD] Initiating download of ${targetFilename} from: ${modelUrl}`);
+
+        currentDownloadReq = {
+            abort: () => {
+                isAborted = true;
+                appendLog(`[DOWNLOAD] Cancelled download of ${targetFilename}`);
+                try {
+                    if (fileStream) {
+                        fileStream.destroy();
+                        fileStream = null;
+                    }
+                    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+                } catch (_) {}
+                reject(new Error('Download cancelled by user'));
+            }
+        };
+
+        const downloadHop = (url, hopCount = 0) => {
+            if (isAborted) return;
+            if (hopCount > 10) {
+                const err = new Error('Too many redirects while downloading model');
+                appendLog(`[ERROR] ${err.message}`);
+                return reject(err);
+            }
+
             const client = url.startsWith('https') ? https : http;
             const reqOptions = {
                 headers: {
@@ -622,24 +734,44 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
                 }
             };
 
-            client.get(url, reqOptions, (response) => {
-                if (response.statusCode === 301 || response.statusCode === 302) {
-                    const redirectUrl = response.headers.location;
-                    appendLog(`Redirecting download to: ${redirectUrl}`);
-                    return request(redirectUrl);
-                }
-
-                if (response.statusCode !== 200) {
-                    appendLog(`[ERROR] HuggingFace download HTTP status: ${response.statusCode}`);
-                    reject(new Error(`HTTP Status ${response.statusCode}`));
+            const req = client.get(url, reqOptions, (response) => {
+                if (isAborted) {
+                    response.destroy();
                     return;
                 }
 
-                const totalBytes = parseInt(response.headers['content-length'], 10) || (3.1 * 1024 * 1024 * 1024);
+                // Handle HTTP redirects (HuggingFace CDN uses 302, 307, 308)
+                if ([301, 302, 307, 308].includes(response.statusCode)) {
+                    const location = response.headers.location;
+                    if (!location) {
+                        return reject(new Error(`Redirect ${response.statusCode} missing Location header`));
+                    }
+                    const nextUrl = new URL(location, url).href;
+                    appendLog(`[DOWNLOAD] Following redirect (${response.statusCode}) to CDN endpoint...`);
+                    response.destroy();
+                    return downloadHop(nextUrl, hopCount + 1);
+                }
+
+                if (response.statusCode !== 200) {
+                    response.destroy();
+                    const err = new Error(`HuggingFace download failed: HTTP Status ${response.statusCode}`);
+                    appendLog(`[ERROR] ${err.message}`);
+                    return reject(err);
+                }
+
+                const totalBytes = parseInt(response.headers['content-length'], 10) || (2.5 * 1024 * 1024 * 1024);
                 let downloadedBytes = 0;
                 let lastProgressTime = 0;
 
+                try {
+                    fileStream = fs.createWriteStream(tempPath);
+                } catch (err) {
+                    response.destroy();
+                    return reject(err);
+                }
+
                 response.on('data', (chunk) => {
+                    if (isAborted) return;
                     downloadedBytes += chunk.length;
                     
                     const now = Date.now();
@@ -650,32 +782,84 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
                             percent,
                             downloadedBytes,
                             totalBytes,
+                            filename: targetFilename,
                             destPath
                         });
                     }
                 });
 
-                response.pipe(file);
+                response.pipe(fileStream);
 
-                file.on('finish', () => {
-                    file.close();
-                    currentModelPath = destPath;
-                    appendLog(`[SUCCESS] GGUF Model weights saved & verified: ${destPath}`);
-                    resolve({ success: true, destPath });
+                fileStream.on('finish', () => {
+                    if (isAborted) return;
+                    fileStream.close((closeErr) => {
+                        if (closeErr) {
+                            try { fs.unlinkSync(tempPath); } catch (_) {}
+                            return reject(closeErr);
+                        }
+
+                        try {
+                            const stat = fs.statSync(tempPath);
+                            if (stat.size < 1024 * 1024) {
+                                try { fs.unlinkSync(tempPath); } catch (_) {}
+                                return reject(new Error('Downloaded model file is suspiciously small or truncated'));
+                            }
+
+                            // Atomic rename from .downloading to final .gguf filename
+                            if (fs.existsSync(destPath)) {
+                                try { fs.unlinkSync(destPath); } catch (_) {}
+                            }
+                            fs.renameSync(tempPath, destPath);
+
+                            currentModelPath = destPath;
+                            currentDownloadReq = null;
+                            appendLog(`[SUCCESS] GGUF Model weights verified and saved: ${destPath}`);
+
+                            if (onProgress) {
+                                onProgress({
+                                    percent: 100,
+                                    downloadedBytes: stat.size,
+                                    totalBytes: stat.size,
+                                    filename: targetFilename,
+                                    destPath
+                                });
+                            }
+
+                            resolve({ success: true, destPath });
+                        } catch (err) {
+                            try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+                            reject(err);
+                        }
+                    });
                 });
 
-                file.on('error', (err) => {
-                    fs.unlink(destPath, () => {});
+                fileStream.on('error', (err) => {
+                    response.destroy();
+                    try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+                    currentDownloadReq = null;
                     appendLog(`[ERROR] File write error: ${err.message}`);
                     reject(err);
                 });
-            }).on('error', (err) => {
-                appendLog(`[ERROR] Network error: ${err.message}`);
+
+                response.on('error', (err) => {
+                    if (fileStream) fileStream.destroy();
+                    try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+                    currentDownloadReq = null;
+                    appendLog(`[ERROR] Download stream error: ${err.message}`);
+                    reject(err);
+                });
+            });
+
+            req.on('error', (err) => {
+                if (fileStream) fileStream.destroy();
+                try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (_) {}
+                currentDownloadReq = null;
+                appendLog(`[ERROR] Network error during download: ${err.message}`);
                 reject(err);
             });
         };
 
-        request(modelUrl);
+        downloadHop(modelUrl);
     });
 }
 
@@ -685,7 +869,9 @@ module.exports = {
     processPromptStream,
     getLogs,
     getStatus,
+    getDownloadedModels,
     downloadModel,
+    cancelModelDownload,
     getModelsDir,
     MODEL_PRESETS
 };

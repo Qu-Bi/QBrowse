@@ -4,7 +4,7 @@ import {
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
-    ZoomIn, RotateCcw, AlertCircle, Info, Sliders
+    ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy
 } from 'lucide-react';
 
 function getToastIcon(message, isBright = false) {
@@ -108,71 +108,152 @@ const DownloadPopup = () => {
     };
 
     return (
-        <div className={`absolute top-4 right-4 w-[330px] rounded-2xl backdrop-blur-3xl border shadow-2xl z-[70000] p-4 overflow-hidden transition-all ${
-            isBright 
-                ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
-                : 'bg-[#0c0d0f]/80 border-white/15 text-white shadow-[0_20px_50px_rgba(0,0,0,0.6)]'
-        } ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}>
-            {/* Header */}
-            <div className={`flex justify-between items-center pb-3 border-b mb-3 ${isBright ? 'border-black/5' : 'border-white/5'}`}>
-                <div className="flex items-center gap-2">
-                    {popupData.state === 'completed' ? (
-                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center border border-emerald-500/30">
-                            <Check size={11} strokeWidth={3} />
-                        </div>
+        <div 
+            id="download-toast-popup" 
+            className={`fixed top-4 right-6 w-72 backdrop-blur-2xl rounded-2xl p-1.5 select-none outline-none z-[70000] ${
+                isBright 
+                    ? 'bg-white/85 border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] text-zinc-900' 
+                    : 'bg-[#0c0c0f]/94 border border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] text-white/90'
+            } ${isClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+        >
+            {/* Header: Section Header matching right-click menu */}
+            <div className={`flex items-center justify-between px-2.5 py-1 text-xs font-semibold border-b mb-1 ${
+                isBright ? 'text-zinc-500 border-black/[0.06]' : 'text-white/50 border-white/[0.06]'
+            }`}>
+                <div className="flex items-center gap-2 truncate">
+                    {popupData.isScreenshot ? (
+                        <Camera size={13} className="text-accent flex-shrink-0" />
                     ) : (
-                        <div className="w-5 h-5 rounded-full bg-accent/20 text-accent flex items-center justify-center border border-accent/30 animate-pulse">
-                            <Download size={11} strokeWidth={3} />
-                        </div>
+                        <Download size={13} className="text-accent flex-shrink-0" />
                     )}
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${popupData.state === 'completed' ? 'text-emerald-500' : 'text-accent'}`}>
-                        {popupData.state === 'completed' ? 'Download Complete' : 'Downloading'}
+                    <span className="truncate">
+                        {popupData.isScreenshot 
+                            ? (popupData.screenshotType ? `Screenshot (${popupData.screenshotType})` : 'Screenshot') 
+                            : (popupData.state === 'completed' 
+                                ? (popupData.verified ? 'Verified Download' : 'Download Complete') 
+                                : popupData.state === 'failed' || popupData.state === 'interrupted'
+                                    ? 'Download Failed'
+                                    : 'Downloading...')}
                     </span>
                 </div>
-                <button onClick={handleClose} className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-black' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}>
+                <button 
+                    onClick={handleClose} 
+                    className={`p-1 rounded-lg transition cursor-pointer ${
+                        isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'
+                    }`}
+                >
                     <X size={12} />
                 </button>
             </div>
 
-            {/* Body */}
-            <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${isBright ? 'bg-black/5 border-black/10 text-zinc-700' : 'bg-white/5 border-white/10 text-white/70'}`}>
-                    <FileText size={18} />
+            {/* Details row */}
+            <div className={`px-2.5 py-1.5 rounded-xl transition ${
+                isBright ? 'bg-black/[0.02]' : 'bg-white/[0.03]'
+            }`}>
+                <div className={`text-xs font-medium truncate ${isBright ? 'text-zinc-800' : 'text-white/90'}`} title={popupData.fileName}>
+                    {popupData.fileName}
                 </div>
-                <div className="flex flex-col min-w-0 flex-1">
-                    <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`} title={popupData.fileName}>{popupData.fileName}</span>
-                    <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                        <span>
-                            {popupData.state === 'progressing' 
-                                ? `${((popupData.receivedBytes || 0) / 1024 / 1024).toFixed(1)} / ${((popupData.totalBytes || 1) / 1024 / 1024).toFixed(1)} MB`
-                                : `${((popupData.totalBytes || popupData.receivedBytes || 0) / 1024 / 1024).toFixed(1)} MB`
-                            }
+                <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                    <span>
+                        {popupData.state === 'progressing' 
+                            ? `${((popupData.receivedBytes || 0) / 1024 / 1024).toFixed(1)} / ${((popupData.totalBytes || 1) / 1024 / 1024).toFixed(1)} MB`
+                            : (popupData.actualBytes || popupData.totalBytes) > 0
+                                ? (popupData.actualBytes || popupData.totalBytes) < 1048576
+                                    ? `${((popupData.actualBytes || popupData.totalBytes) / 1024).toFixed(1)} KB`
+                                    : `${((popupData.actualBytes || popupData.totalBytes) / 1024 / 1024).toFixed(1)} MB`
+                                : 'Saved'
+                        }
+                    </span>
+                    {popupData.state === 'progressing' && popupData.speedBytesPerSec > 0 && (
+                        <span className="text-accent font-semibold">
+                            • {((popupData.speedBytesPerSec || 0) / 1024 / 1024).toFixed(1)} MB/s
                         </span>
-                        {popupData.state === 'progressing' && popupData.speedBytesPerSec > 0 && (
-                            <span className="text-accent font-semibold">
-                                • {((popupData.speedBytesPerSec || 0) / 1024 / 1024).toFixed(1)} MB/s
-                            </span>
-                        )}
-                    </div>
+                    )}
+                    {popupData.state === 'completed' && popupData.verified && (
+                        <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
+                            • <ShieldCheck size={11} className="inline text-emerald-400" /> Verified
+                        </span>
+                    )}
+                    {popupData.state === 'completed' && popupData.verified === false && (
+                        <span className="text-amber-400 font-semibold flex items-center gap-0.5">
+                            • <AlertCircle size={11} className="inline text-amber-400" /> Unverified
+                        </span>
+                    )}
+                    {popupData.isScreenshot && (
+                        <span className="text-emerald-400/90 font-sans">• Copied to clipboard</span>
+                    )}
                 </div>
             </div>
 
-            {/* Progress Bar (if active) */}
+            {/* Progress Bar (if progressing) */}
             {popupData.state === 'progressing' && (
-                <div className={`w-full h-1.5 rounded-full overflow-hidden border mt-3 relative ${isBright ? 'bg-black/10 border-black/5' : 'bg-white/5 border-white/5'}`}>
-                    <div className="h-full bg-accent rounded-full shadow-[0_0_10px_var(--accent)] transition-all duration-300" style={{ width: `${Math.min(100, Math.max(0, ((popupData.receivedBytes || 0) / (popupData.totalBytes || 1)) * 100))}%` }}></div>
+                <div className={`w-full h-1 rounded-full overflow-hidden my-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`}>
+                    <div className="h-full bg-accent transition-all duration-200" style={{ width: `${Math.min(100, Math.max(0, ((popupData.receivedBytes || 0) / (popupData.totalBytes || 1)) * 100))}%` }}></div>
                 </div>
             )}
 
-            {/* Action Buttons (if completed) */}
+            {/* Action Buttons styled like right click menu items */}
             {popupData.state === 'completed' && (
-                <div className={`grid grid-cols-2 gap-2 mt-3 pt-3 border-t ${isBright ? 'border-black/5' : 'border-white/5'}`}>
-                    <button onClick={() => window.electronAPI.showItemInFolder(popupData.savePath)} className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-medium transition ${isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700 hover:text-black' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80 hover:text-white'}`} title="Show in folder">
-                        <FolderOpen size={13} /> Folder
+                <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${
+                    isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
+                }`}>
+                    <button 
+                        onClick={() => window.electronAPI?.openFile?.(popupData.savePath)} 
+                        className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
+                            isBright
+                                ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/5 active:bg-black/10'
+                                : 'text-white/80 hover:text-white hover:bg-white/10 active:bg-white/15'
+                        }`}
+                    >
+                        <ExternalLink size={13} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
+                        <span>Open</span>
                     </button>
-                    <button onClick={() => window.electronAPI.openFile(popupData.savePath)} className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-accent hover:brightness-110 text-white text-xs font-semibold transition shadow-md shadow-accent/20" title="Open file">
-                        <ExternalLink size={13} /> Open
+                    <button 
+                        onClick={() => window.electronAPI?.showItemInFolder?.(popupData.savePath)} 
+                        className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
+                            isBright
+                                ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5 active:bg-black/10'
+                                : 'text-white/60 hover:text-white hover:bg-white/10 active:bg-white/15'
+                        }`}
+                    >
+                        <FolderOpen size={13} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
+                        <span>Folder</span>
                     </button>
+                    {popupData.checksum && (
+                        <button 
+                            onClick={() => {
+                                navigator.clipboard.writeText(popupData.checksum);
+                                useUIStore.getState().showToast('SHA-256 checksum copied to clipboard');
+                            }} 
+                            title={`SHA-256: ${popupData.checksum}`}
+                            className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
+                                isBright
+                                    ? 'text-emerald-700 hover:text-emerald-950 hover:bg-emerald-50 active:bg-emerald-100'
+                                    : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 active:bg-emerald-500/20'
+                            }`}
+                        >
+                            <ShieldCheck size={13} className="text-emerald-400" />
+                            <span>Hash</span>
+                        </button>
+                    )}
+                    {popupData.isScreenshot && popupData.savePath && (
+                        <button 
+                            onClick={async () => {
+                                if (window.electronAPI?.copyImageToClipboard) {
+                                    await window.electronAPI.copyImageToClipboard(popupData.savePath);
+                                    useUIStore.getState().showToast('Screenshot copied to clipboard');
+                                }
+                            }} 
+                            title="Copy Image to Clipboard"
+                            className={`p-1.5 rounded-xl transition cursor-pointer outline-none ${
+                                isBright
+                                    ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5 active:bg-black/10'
+                                    : 'text-white/60 hover:text-white hover:bg-white/10 active:bg-white/15'
+                            }`}
+                        >
+                            <Copy size={13} />
+                        </button>
+                    )}
                 </div>
             )}
         </div>
@@ -252,6 +333,7 @@ export default function MainFrame() {
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive);
     const adblockStats = useUIStore(state => state.adblockStats);
     const accentColor = useUIStore(state => state.accentColor);
+    const uiScale = useUIStore(state => state.settings?.uiScale);
 
     const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -733,13 +815,15 @@ export default function MainFrame() {
                 return (
                     <div 
                         ref={mainContainerRef} 
-                        className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? 'p-0 m-0' : 'pt-2'}`}
+                        className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? 'p-0 m-0' : 'pt-0'}`}
                         style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
                     >
                         <div 
                             className={`relative w-full h-full overflow-hidden transition-[border-radius] duration-200 ease-out flex ${
                                 isFullscreen 
                                     ? 'is-fullscreen-frame rounded-none border-none shadow-none !border-0 !shadow-none' 
+                                    : uiScale === 'compact'
+                                    ? `rounded-[1.25rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
                                     : `rounded-[2rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
                             }`}
                             style={isFullscreen ? { border: 'none', borderWidth: 0, boxShadow: 'none', borderRadius: 0, margin: 0, padding: 0 } : undefined}

@@ -175,6 +175,7 @@ const PasskeyVerificationModal = () => {
             onClick={handleCancel}
         >
             <div 
+                id="passkey-modal"
                 className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 ${
                     authStatus === 'success' 
                         ? 'border-emerald-500/40 shadow-[0_0_90px_rgba(16,185,129,0.35)]' 

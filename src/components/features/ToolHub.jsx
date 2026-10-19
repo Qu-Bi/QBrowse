@@ -4,7 +4,8 @@ import {
     Copy, Cpu, Download, Zap, Globe, Send, FolderOpen, ExternalLink,
     Trash2, RefreshCw, Paperclip, FileText, Image as ImageIcon, Play, Square, Sliders,
     Mic, Volume2, Loader2, Search, Camera, Crop, Maximize2,
-    Highlighter, StickyNote, ChevronDown, ChevronRight, FileDown, ArrowUpRight
+    Highlighter, StickyNote, ChevronDown, ChevronRight, FileDown, ArrowUpRight, Check,
+    ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -17,6 +18,14 @@ import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure pdfjs worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
 
 export default function ToolHub() {
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
@@ -34,7 +43,7 @@ export default function ToolHub() {
         removeAttachment, clearAttachments, aiContextEnabled, setAiContextEnabled, 
         ttsEnabled, setTtsEnabled, webSearchEnabled, setWebSearchEnabled, parsePdfAsImage,
         isGenerating, isRunning, status, toggleEngine, sendChatMessage, stopChatMessage, activeModelId,
-        downloadedModels, downloadProgress, downloadModel
+        downloadedModels, downloadProgress, downloadDetail, downloadModel, cancelDownload
     } = useAIStore();
 
     const [isRecording, setIsRecording] = useState(false);
@@ -984,73 +993,193 @@ export default function ToolHub() {
                         {/* Header Bar: Status & Engine Launcher */}
                         {(() => {
                             const isStarting = status === 'loading' || status === 'starting' || status === 'downloading_engine';
+                            const isDownloading = status === 'downloading';
+                            const activePreset = MODEL_PRESETS.find(m => m.id === activeModelId) || MODEL_PRESETS[0];
+                            const isCurrentModelDownloaded = (downloadedModels || []).some(m => m.filename === activePreset?.filename || m.path?.includes(activePreset?.filename));
+                            const hasAnyModel = (downloadedModels || []).length > 0;
+
                             return (
-                                <div className={`p-2.5 ${isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/40 border-white/10'} border rounded-2xl mb-3 flex items-center justify-between`}>
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-2 h-2 rounded-full ${isStarting ? 'bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]' : isRunning ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]' : (isBright ? 'bg-zinc-400' : 'bg-white/30')}`} />
-                                        <div>
-                                            <span className={`text-[11px] font-bold ${isBright ? 'text-zinc-900' : 'text-white'} block leading-none`}>{activePresetName}</span>
-                                            <span className={`text-[9px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                                {isRunning ? 'llama-server Active (Port 8080)' : isStarting ? 'Starting engine...' : 'Offline'}
-                                            </span>
+                                <div className={`p-2.5 ${isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/40 border-white/10'} border rounded-2xl mb-3 flex flex-col gap-2`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-2 h-2 rounded-full ${
+                                                isDownloading 
+                                                    ? 'bg-cyan-400 animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.8)]' 
+                                                    : isStarting 
+                                                        ? 'bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]' 
+                                                        : isRunning 
+                                                            ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]' 
+                                                            : (isBright ? 'bg-zinc-400' : 'bg-white/30')
+                                            }`} />
+                                            <div>
+                                                <span className={`text-[11px] font-bold ${isBright ? 'text-zinc-900' : 'text-white'} block leading-none`}>
+                                                    {activePresetName}
+                                                </span>
+                                                <span className={`text-[9px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                                    {isRunning 
+                                                        ? 'llama-server Active (Port 8080)' 
+                                                        : isDownloading 
+                                                            ? `Downloading model (${downloadProgress || 0}%)...` 
+                                                            : isStarting 
+                                                                ? 'Starting engine...' 
+                                                                : isCurrentModelDownloaded 
+                                                                    ? 'Ready to Start' 
+                                                                    : hasAnyModel 
+                                                                        ? 'Downloaded' 
+                                                                        : 'Model Not Downloaded'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5">
+                                            {isDownloading ? (
+                                                <button
+                                                    onClick={cancelDownload}
+                                                    className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition flex items-center gap-1 cursor-pointer"
+                                                    title="Cancel Download"
+                                                >
+                                                    <X size={10} /> Cancel
+                                                </button>
+                                            ) : (!isCurrentModelDownloaded && !hasAnyModel) ? (
+                                                <button
+                                                    onClick={() => downloadModel(activePreset)}
+                                                    className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-accent text-black hover:scale-105 transition flex items-center gap-1 cursor-pointer shadow-xs"
+                                                    title={`Download ${activePreset.name} (${activePreset.size})`}
+                                                >
+                                                    <Download size={10} /> Download
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={toggleEngine}
+                                                    disabled={isStarting}
+                                                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                                        isStarting
+                                                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait'
+                                                            : isRunning 
+                                                                ? 'bg-red-500/20 text-red-500 border border-red-500/30 hover:bg-red-500/30' 
+                                                                : 'bg-accent text-black hover:scale-105'
+                                                    }`}
+                                                >
+                                                    {isStarting ? (
+                                                        <> <Loader2 size={10} className="animate-spin" /> Starting... </>
+                                                    ) : isRunning ? (
+                                                        <> <Square size={10} fill="currentColor" /> Stop </>
+                                                    ) : (
+                                                        <> <Play size={10} fill="currentColor" /> Start </>
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            {isRunning && status !== 'loading' && (
+                                                <button
+                                                    onClick={() => {
+                                                        const tabStore = useTabStore.getState();
+                                                        const activeTabId = tabStore.activeTabId;
+                                                        if (activeTabId) {
+                                                            tabStore.handleNavigate(activeTabId, 'qbrowse://ai');
+                                                        } else {
+                                                            tabStore.handleNewTab('qbrowse://ai');
+                                                        }
+                                                        setIsRightPanelOpen(false);
+                                                    }}
+                                                    className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
+                                                    title="Open llama.cpp Web UI"
+                                                >
+                                                    <Globe size={12} />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    setSettingsTab('ai');
+                                                    openModal('settings');
+                                                }}
+                                                className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
+                                                title="llama.cpp Console & Advanced Settings"
+                                            >
+                                                <Sliders size={12} />
+                                            </button>
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-1.5">
-                                        <button
-                                            onClick={toggleEngine}
-                                            disabled={isStarting}
-                                            className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                                isStarting
-                                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait'
-                                                    : isRunning 
-                                                        ? 'bg-red-500/20 text-red-500 border border-red-500/30 hover:bg-red-500/30' 
-                                                        : 'bg-accent text-black hover:scale-105'
-                                            }`}
-                                        >
-                                            {isStarting ? (
-                                                <> <Loader2 size={10} className="animate-spin" /> Starting... </>
-                                            ) : isRunning ? (
-                                                <> <Square size={10} fill="currentColor" /> Stop </>
-                                            ) : (
-                                                <> <Play size={10} fill="currentColor" /> Start </>
-                                            )}
-                                        </button>
-                                        {isRunning && status !== 'loading' && (
-                                            <button
-                                                onClick={() => {
-                                                    const tabStore = useTabStore.getState();
-                                                    const activeTabId = tabStore.activeTabId;
-                                                    if (activeTabId) {
-                                                        tabStore.handleNavigate(activeTabId, 'qbrowse://ai');
-                                                    } else {
-                                                        tabStore.handleNewTab('qbrowse://ai');
-                                                    }
-                                                    setIsRightPanelOpen(false);
-                                                }}
-                                                className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
-                                                title="Open llama.cpp Web UI"
-                                            >
-                                                <Globe size={12} />
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={() => {
-                                                setSettingsTab('ai');
-                                                openModal('settings');
-                                            }}
-                                            className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
-                                            title="llama.cpp Console & Advanced Settings"
-                                        >
-                                            <Sliders size={12} />
-                                        </button>
-                                    </div>
+                                    {/* Live Download Progress Bar in Header */}
+                                    {isDownloading && (
+                                        <div className="space-y-1 pt-1.5 border-t border-white/5">
+                                            <div className="flex justify-between text-[10px] font-mono text-accent">
+                                                <span className="truncate">
+                                                    {downloadDetail?.filename ? `Downloading ${downloadDetail.filename}` : 'Downloading weights...'}
+                                                </span>
+                                                <span className="font-bold flex-shrink-0 ml-2">
+                                                    {downloadDetail?.downloadedBytes 
+                                                        ? `${(downloadDetail.downloadedBytes / 1024 / 1024).toFixed(0)}MB / ${(downloadDetail.totalBytes / 1024 / 1024).toFixed(0)}MB (${downloadProgress}%)` 
+                                                        : `${downloadProgress || 0}%`}
+                                                </span>
+                                            </div>
+                                            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isBright ? 'bg-black/10' : 'bg-white/10'}`}>
+                                                <div 
+                                                    className="h-full bg-accent rounded-full transition-all duration-300" 
+                                                    style={{ width: `${downloadProgress || 0}%` }} 
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })()}
 
                         {/* Chat Messages */}
                         <div className="flex-1 overflow-y-auto hide-scroll flex flex-col gap-3.5 pr-1 animate-pop-in">
+                            {/* Missing Model Banner in Chat Area */}
+                            {(() => {
+                                const activePreset = MODEL_PRESETS.find(m => m.id === activeModelId) || MODEL_PRESETS[0];
+                                const hasAnyModel = (downloadedModels || []).length > 0;
+                                const isDownloading = status === 'downloading';
+
+                                if (!hasAnyModel && !isDownloading) {
+                                    return (
+                                        <div className={`p-3.5 rounded-2xl border ${
+                                            isBright 
+                                                ? 'bg-accent/15 border-accent/40 text-zinc-900' 
+                                                : 'bg-accent/10 border-accent/30 text-white'
+                                        } flex flex-col gap-2.5 shadow-xs mb-1`}>
+                                            <div className="flex items-start gap-2.5">
+                                                <div className="w-8 h-8 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center flex-shrink-0 text-accent">
+                                                    <Download size={15} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h4 className="text-xs font-bold leading-tight flex items-center gap-1.5">
+                                                        No AI Model Downloaded
+                                                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-accent/20 text-accent font-semibold">Offline</span>
+                                                    </h4>
+                                                    <p className={`text-[11px] leading-relaxed mt-1 ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>
+                                                        Download {activePreset.name} to run fast, private local AI for web summarization, coding, and chat.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 pt-1 border-t border-accent/20">
+                                                <button
+                                                    onClick={() => downloadModel(activePreset)}
+                                                    className="flex-1 py-1.5 px-3 bg-accent text-black font-bold text-xs rounded-xl shadow-xs hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                                                >
+                                                    <Download size={13} />
+                                                    <span>Download Model ({activePreset.size.split('+')[0].trim()})</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setSettingsTab('ai');
+                                                        openModal('settings');
+                                                    }}
+                                                    className={`py-1.5 px-3 rounded-xl text-xs font-semibold border ${
+                                                        isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80'
+                                                    } transition cursor-pointer`}
+                                                >
+                                                    Settings
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
                             {(() => {
                                 const visibleMessages = chatHistory.filter((msg, i, arr) => {
                                     if (msg.role === 'tool') return false;
@@ -1277,43 +1406,200 @@ export default function ToolHub() {
 
                     {/* DOWNLOADS TAB */}
                     <div className={`absolute inset-0 p-5 overflow-y-auto hide-scroll transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'downloads' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
-                        <div className="flex items-center justify-between mb-4">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Active & Recent Downloads</span>
-                            <span className="text-[10px] font-mono text-accent font-bold">{downloads.length} Items</span>
+                        <div className="flex items-center justify-between mb-3">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                Active & Recent Downloads
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
+                                    {downloads.length} {downloads.length === 1 ? 'Item' : 'Items'}
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        const p = useUIStore.getState().settings?.downloadsPath || '';
+                                        if (window.electronAPI?.openPath) {
+                                            window.electronAPI.openPath(p);
+                                        } else if (downloads[0]?.savePath && window.electronAPI?.showItemInFolder) {
+                                            window.electronAPI.showItemInFolder(downloads[0].savePath);
+                                        }
+                                    }}
+                                    className={`p-1 rounded-md transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
+                                    title="Open Downloads Folder"
+                                >
+                                    <FolderOpen size={12} />
+                                </button>
+                                {downloads.length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            useUIStore.getState().clearDownloads?.();
+                                            useUIStore.getState().showToast?.('Downloads list cleared');
+                                        }}
+                                        className={`p-1 rounded-md transition cursor-pointer ${isBright ? 'text-zinc-400 hover:text-red-500 hover:bg-red-50' : 'text-white/40 hover:text-red-400 hover:bg-red-500/10'}`}
+                                        title="Clear All Downloads"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         <div className="flex flex-col gap-2">
                             {downloads.length > 0 ? (
-                                downloads.map((dl, i) => (
-                                    <div 
-                                        key={i} 
-                                        onContextMenu={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            useUIStore.getState().setToolHubContextMenu({
-                                                x: e.clientX,
-                                                y: e.clientY,
-                                                type: 'download',
-                                                item: dl
-                                            });
-                                        }}
-                                        className={`p-3 ${
-                                            isBright ? 'bg-white/80 hover:bg-white border-black/[0.08] hover:border-black/15 shadow-xs' : 'bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/10'
-                                        } border rounded-xl space-y-2 cursor-context-menu transition`}
-                                    >
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className={`font-semibold ${isBright ? 'text-zinc-900' : 'text-white'} truncate max-w-[200px]`}>{dl.filename || dl.url}</span>
-                                            <span className="font-mono text-[10px] text-accent font-bold">{dl.progress || 100}%</span>
+                                downloads.map((dl, i) => {
+                                    const isScreenshot = !!(dl.isScreenshot || dl.screenshotType || (dl.fileName || dl.filename || '').startsWith('Screenshot_'));
+                                    const fileName = dl.fileName || dl.filename || (isScreenshot ? 'Screenshot.png' : 'Downloaded File');
+                                    const ext = (fileName.split('.').pop() || '').toLowerCase();
+                                    const isImg = isScreenshot || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
+                                    const isProgressing = dl.state === 'progressing';
+                                    const progressPct = isProgressing 
+                                        ? Math.min(100, Math.round(((dl.receivedBytes || 0) / (dl.totalBytes || 1)) * 100)) 
+                                        : (dl.progress || 100);
+                                    const sizeStr = (dl.totalBytes || dl.receivedBytes) ? formatBytes(dl.totalBytes || dl.receivedBytes) : '';
+
+                                    return (
+                                        <div 
+                                            key={dl.id || i}
+                                            onClick={() => {
+                                                const path = dl.savePath || dl.filePath;
+                                                if (path && window.electronAPI?.openFile) {
+                                                    window.electronAPI.openFile(path);
+                                                } else if (path && window.electronAPI?.showItemInFolder) {
+                                                    window.electronAPI.showItemInFolder(path);
+                                                }
+                                            }}
+                                            onContextMenu={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                useUIStore.getState().setToolHubContextMenu({
+                                                    x: e.clientX,
+                                                    y: e.clientY,
+                                                    type: 'download',
+                                                    item: dl
+                                                });
+                                            }}
+                                            className={`p-3 ${
+                                                isBright 
+                                                    ? 'bg-white/80 border-black/[0.08] hover:bg-white hover:border-black/15 shadow-xs' 
+                                                    : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
+                                            } border rounded-xl transition cursor-pointer group animate-pop-in relative`}
+                                        >
+                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                    {isScreenshot ? (
+                                                        <Camera size={13} className="text-accent flex-shrink-0" />
+                                                    ) : (
+                                                        <Download size={13} className={isBright ? 'text-zinc-500 flex-shrink-0' : 'text-white/50 flex-shrink-0'} />
+                                                    )}
+                                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white/90'} truncate`} title={fileName}>
+                                                        {fileName}
+                                                    </span>
+                                                </div>
+                                                {isProgressing ? (
+                                                    <span className="text-[10px] font-mono text-accent font-bold">{progressPct}%</span>
+                                                ) : isScreenshot ? (
+                                                    <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
+                                                        {dl.screenshotType || 'Snip'}
+                                                    </span>
+                                                ) : dl.state === 'completed' && dl.verified ? (
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex items-center gap-0.5" title={`SHA-256: ${dl.checksum || 'Verified'}`}>
+                                                        <ShieldCheck size={10} /> Verified
+                                                    </span>
+                                                ) : dl.state === 'completed' && dl.verified === false ? (
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center gap-0.5" title={dl.error || 'Unverified'}>
+                                                        <AlertTriangle size={10} /> Unverified
+                                                    </span>
+                                                ) : null}
+                                            </div>
+
+                                            {isProgressing && (
+                                                <div className={`w-full h-1 ${isBright ? 'bg-black/10' : 'bg-black/40'} rounded-full overflow-hidden my-2`}>
+                                                    <div className="h-full bg-accent transition-all duration-300" style={{ width: `${progressPct}%` }}></div>
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-between items-center mt-2 pt-1 border-t border-white/[0.04]">
+                                                <span className={`text-[9px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+                                                    {sizeStr || 'Saved'}
+                                                    {isProgressing && dl.speedBytesPerSec > 0 && ` • ${(dl.speedBytesPerSec / 1024 / 1024).toFixed(1)} MB/s`}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition">
+                                                    {(dl.checksum || dl.savePath) && (
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                let hash = dl.checksum;
+                                                                if (!hash && window.electronAPI?.verifyDownloadFile && dl.savePath) {
+                                                                    const res = await window.electronAPI.verifyDownloadFile(dl.savePath);
+                                                                    if (res?.verified && res.checksum) {
+                                                                        hash = res.checksum;
+                                                                        useUIStore.getState().updateDownload(dl.id, { verified: true, checksum: hash });
+                                                                    }
+                                                                }
+                                                                if (hash) {
+                                                                    navigator.clipboard.writeText(hash);
+                                                                    useUIStore.getState().showToast('SHA-256 checksum copied to clipboard');
+                                                                } else {
+                                                                    useUIStore.getState().showToast('Unable to calculate hash - file missing');
+                                                                }
+                                                            }}
+                                                            className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50' : 'text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10'} transition cursor-pointer`}
+                                                            title={dl.checksum ? `SHA-256: ${dl.checksum} (Click to copy)` : "Verify & Copy SHA-256 Checksum"}
+                                                        >
+                                                            <ShieldCheck size={12} className={dl.verified ? "text-emerald-400" : ""} />
+                                                        </button>
+                                                    )}
+                                                    {isImg && (dl.savePath || dl.filePath) && (
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                const path = dl.savePath || dl.filePath;
+                                                                if (window.electronAPI?.copyImageToClipboard) {
+                                                                    await window.electronAPI.copyImageToClipboard(path);
+                                                                    useUIStore.getState().showToast('Screenshot copied to clipboard');
+                                                                }
+                                                            }}
+                                                            className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'} transition cursor-pointer`}
+                                                            title="Copy Image to Clipboard"
+                                                        >
+                                                            <Copy size={12} />
+                                                        </button>
+                                                    )}
+                                                    {(dl.savePath || dl.filePath) && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const path = dl.savePath || dl.filePath;
+                                                                if (window.electronAPI?.showItemInFolder) {
+                                                                    window.electronAPI.showItemInFolder(path);
+                                                                }
+                                                            }}
+                                                            className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'} transition cursor-pointer`}
+                                                            title="Show in Folder"
+                                                        >
+                                                            <FolderOpen size={12} />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            await useUIStore.getState().removeDownload(dl.id, true);
+                                                            useUIStore.getState().showToast('Download and file deleted');
+                                                        }}
+                                                        className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-red-500 hover:bg-red-50' : 'text-white/40 hover:text-red-400 hover:bg-red-500/10'} transition cursor-pointer`}
+                                                        title="Delete file & remove from list"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className={`w-full h-1 ${isBright ? 'bg-black/10' : 'bg-black/40'} rounded-full overflow-hidden`}>
-                                            <div className="h-full bg-accent" style={{ width: `${dl.progress || 100}%` }}></div>
-                                        </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             ) : (
-                                <div className="flex flex-col items-center justify-center text-center p-8">
+                                <div className="flex flex-col items-center justify-center text-center p-6 mt-12">
                                     <Download size={32} className={`${isBright ? 'text-zinc-300' : 'text-white/10'} mb-2`} />
                                     <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'} font-medium`}>No active downloads</p>
+                                    <p className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/20'} mt-1`}>Screenshots and downloaded files will appear here</p>
                                 </div>
                             )}
                         </div>

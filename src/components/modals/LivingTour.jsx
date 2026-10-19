@@ -48,7 +48,7 @@ const TOUR_STEPS = [
     {
         id: 'vault',
         targetId: 'tour-vault-trigger',
-        featureSelector: '#popover-vault-container',
+        featureSelector: '#popover-vault-container, #qvault-popover',
         title: 'Zero-Knowledge QVault',
         icon: KeyRound,
         badge: 'Hardware Security',
@@ -84,7 +84,7 @@ const TOUR_STEPS = [
     {
         id: 'toolhub',
         targetId: 'tour-toolhub-trigger',
-        featureSelector: '#toolhub-drawer-panel',
+        featureSelector: '#toolhub-container, #toolhub-drawer-panel',
         title: 'ToolHub & Persistent Sticky Notes',
         icon: StickyNote,
         badge: 'Research & Tools',
@@ -113,7 +113,8 @@ const areRectsDifferent = (r1, r2) => {
     return Math.abs(r1.top - r2.top) > 1 ||
            Math.abs(r1.left - r2.left) > 1 ||
            Math.abs(r1.width - r2.width) > 1 ||
-           Math.abs(r1.height - r2.height) > 1;
+           Math.abs(r1.height - r2.height) > 1 ||
+           Math.abs((r1.cornerRadius || 0) - (r2.cornerRadius || 0)) > 1;
 };
 
 export default function LivingTour({ onExit }) {
@@ -130,6 +131,12 @@ export default function LivingTour({ onExit }) {
 
     const prevTargetRef = useRef(null);
     const prevFeatureRef = useRef(null);
+
+    // Reset rect cache references when jumping between steps or stages
+    useEffect(() => {
+        prevTargetRef.current = null;
+        prevFeatureRef.current = null;
+    }, [currentStep, stage]);
 
     // Live App State Hooks to detect real user actions
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -270,7 +277,7 @@ export default function LivingTour({ onExit }) {
             clearInterval(interval);
             window.removeEventListener('resize', measure);
         };
-    }, [stage, currentStep, step.targetId, step.featureSelector, isOmniboxOpen, isRightPanelOpen]);
+    }, [stage, currentStep, step.targetId, step.featureSelector, isOmniboxOpen, isRightPanelOpen, activePopover, isSplitView, activeSpace]);
 
     // Keyboard Shortcuts
     useEffect(() => {
@@ -349,7 +356,7 @@ export default function LivingTour({ onExit }) {
                         animation: hudCardEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
                     }
                 `}</style>
-                <div className="max-w-xl w-full rounded-[2.5rem] bg-[#0c0d16]/75 backdrop-blur-3xl border border-white/[0.14] p-8 shadow-[0_35px_100px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.15),inset_0_1px_1px_0_rgba(255,255,255,0.25)] flex flex-col items-center text-center space-y-6 relative overflow-hidden animate-hud-enter">
+                <div id="living-tour-welcome-modal" className="max-w-xl w-full rounded-[2.5rem] bg-[#0c0d16]/75 backdrop-blur-3xl border border-white/[0.14] p-8 shadow-[0_35px_100px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.15),inset_0_1px_1px_0_rgba(255,255,255,0.25)] flex flex-col items-center text-center space-y-6 relative overflow-hidden animate-hud-enter">
                     {/* Glassmorphic Ambient Mesh Gradients */}
                     <div className="absolute -top-24 left-1/4 w-80 h-36 bg-accent/20 rounded-full blur-3xl pointer-events-none" />
                     <div className="absolute -bottom-24 right-1/4 w-80 h-36 bg-purple-500/12 rounded-full blur-3xl pointer-events-none" />

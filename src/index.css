@@ -27,25 +27,24 @@
 
 /* Custom Glassmorphism Scrollbar System */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.25);
+  background: transparent;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(140, 140, 150, 0.3);
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
   transition: all 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent, rgba(212, 188, 148, 0.7));
-  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 ::-webkit-scrollbar-corner {
@@ -178,11 +177,15 @@ body {
 .animate-modal-dialog {
   animation: modalDialogEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
   transform-origin: center center;
+  transform: translateZ(0);
+  will-change: transform, opacity;
 }
 
 .animate-modal-dialog-out {
   animation: modalDialogExit 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
   transform-origin: center center;
+  transform: translateZ(0);
+  will-change: transform, opacity;
 }
 
 /* Apple visionOS & macOS Fluid Settings Sheet Animation */
@@ -362,16 +365,24 @@ body {
 /* Silky Smooth Tab & Webview Closing System */
 .tab-closing-anim {
   max-height: 0px !important;
-  margin-top: 0px !important;
+  min-height: 0px !important;
+  margin-top: -4px !important;
   margin-bottom: 0px !important;
   padding-top: 0px !important;
   padding-bottom: 0px !important;
+  border-top-width: 0px !important;
+  border-bottom-width: 0px !important;
   opacity: 0 !important;
-  transform: translateX(-16px) scale(0.9) !important;
+  transform: scale(0.92) translateX(-14px) !important;
   pointer-events: none !important;
   overflow: hidden !important;
   border-color: transparent !important;
-  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  transition: max-height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              padding 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              margin 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              border-width 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.18s ease-out,
+              transform 0.22s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 .webview-closing-anim {
@@ -546,12 +557,18 @@ aside#qbrowse-sidebar.is-hidden {
 
 /* Sidebar Tab Item Fluid Transitions */
 .sidebar-tab-item {
-  transition: background-color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+  box-sizing: border-box;
+  max-height: 52px;
+  transition: max-height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              padding 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              margin 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
               border-color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
               box-shadow 0.22s cubic-bezier(0.22, 1, 0.36, 1),
               color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-              transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) !important;
-  will-change: transform, background-color, border-color, box-shadow;
+              transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  will-change: transform, background-color, border-color, box-shadow, max-height, opacity;
 }
 
 .sidebar-tab-item:hover {
@@ -730,11 +747,11 @@ aside#qbrowse-sidebar.is-hidden {
   -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28) !important;
+  transform: translateZ(0);
+  will-change: transform;
   transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .liquid-glass-bright {
@@ -743,11 +760,11 @@ aside#qbrowse-sidebar.is-hidden {
   -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 16px 45px rgba(0, 0, 0, 0.05) !important;
+  transform: translateZ(0);
+  will-change: transform;
   transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              -webkit-backdrop-filter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Floating Inner Liquid Glass Capsule / Pill Controls (Nested inside liquid-glass without secondary blur to prevent Chromium dark composite bug) */
@@ -791,7 +808,7 @@ html.eco-mode .liquid-glass-dark {
   background-color: #0c0d14 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
 }
 
 html.no-glass .liquid-glass-bright,
@@ -799,13 +816,185 @@ html.eco-mode .liquid-glass-bright {
   background-color: #f4f4f5 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
 }
 
 html.no-glass [class*="backdrop-blur"],
-html.eco-mode [class*="backdrop-blur"] {
+html.eco-mode [class*="backdrop-blur"],
+html.no-glass [data-context-menu],
+html.eco-mode [data-context-menu] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* =========================================================
+   Eco Mode: Solid Non-Bleeding Panel System
+   Replaces translucent glass backgrounds with crisp, solid,
+   high-contrast surfaces when GPU composite blur is disabled.
+   ========================================================= */
+
+/* Dark Theme - Solid Eco Panels, Modals, Popovers & Drawers */
+html:not(.theme-light).eco-mode #toolhub-container,
+html:not(.theme-light).eco-mode #settings-modal,
+html:not(.theme-light).eco-mode #history-modal,
+html:not(.theme-light).eco-mode #cookies-modal,
+html:not(.theme-light).eco-mode #resource-manager-modal,
+html:not(.theme-light).eco-mode #passkey-modal,
+html:not(.theme-light).eco-mode #auth-modal,
+html:not(.theme-light).eco-mode #add-pin-modal,
+html:not(.theme-light).eco-mode #browser-dialog-card,
+html:not(.theme-light).eco-mode #living-tour-welcome-modal,
+html:not(.theme-light).eco-mode #living-tour-hud-card,
+html:not(.theme-light).eco-mode #tour-hud-card,
+html:not(.theme-light).eco-mode #popover-vault-container,
+html:not(.theme-light).eco-mode #qvault-popover,
+html:not(.theme-light).eco-mode #site-info-popover,
+html:not(.theme-light).eco-mode #user-profile-popover,
+html:not(.theme-light).eco-mode #popover-tor-container,
+html:not(.theme-light).eco-mode #save-password-banner,
+html:not(.theme-light).eco-mode #pinned-stack-popup,
+html:not(.theme-light).eco-mode #download-toast-popup,
+html:not(.theme-light).eco-mode #qbrowse-sticky-note-card,
+html:not(.theme-light).eco-mode #qbrowse-highlight-pill,
+html:not(.theme-light).eco-mode [data-context-menu],
+html:not(.theme-light).eco-mode #omnibox-card,
+html:not(.theme-light).eco-mode #omnibox-dropdown,
+html:not(.theme-light).eco-mode .tab-switcher-card {
+  background-color: #0c0d14 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85) !important;
+}
+
+/* Dark Theme - Headers & Subheaders */
+html:not(.theme-light).eco-mode #toolhub-container > div:first-of-type,
+html:not(.theme-light).eco-mode #history-modal > div:first-child,
+html:not(.theme-light).eco-mode #cookies-modal > div:first-child,
+html:not(.theme-light).eco-mode #resource-manager-modal > div:first-child,
+html:not(.theme-light).eco-mode #user-profile-popover > div:first-child,
+html:not(.theme-light).eco-mode #popover-vault-container > div:first-child,
+html:not(.theme-light).eco-mode #qvault-popover > div:first-child,
+html:not(.theme-light).eco-mode #pinned-stack-popup > div:first-child,
+html:not(.theme-light).eco-mode #tour-spaces-container {
+  background-color: #12131b !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Dark Theme - Inner Section Cards & Textareas */
+html:not(.theme-light).eco-mode #settings-modal .rounded-xl,
+html:not(.theme-light).eco-mode #settings-modal > div:first-child,
+html:not(.theme-light).eco-mode #toolhub-container textarea,
+html:not(.theme-light).eco-mode #toolhub-container [class*="rounded-2xl"],
+html:not(.theme-light).eco-mode #toolhub-container [class*="rounded-full"] {
+  background-color: #141520 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Bright Theme - Solid Eco Panels, Modals, Popovers & Drawers */
+html.theme-light.eco-mode #toolhub-container,
+html.theme-light.eco-mode #settings-modal,
+html.theme-light.eco-mode #history-modal,
+html.theme-light.eco-mode #cookies-modal,
+html.theme-light.eco-mode #resource-manager-modal,
+html.theme-light.eco-mode #passkey-modal,
+html.theme-light.eco-mode #auth-modal,
+html.theme-light.eco-mode #add-pin-modal,
+html.theme-light.eco-mode #browser-dialog-card,
+html.theme-light.eco-mode #living-tour-welcome-modal,
+html.theme-light.eco-mode #living-tour-hud-card,
+html.theme-light.eco-mode #tour-hud-card,
+html.theme-light.eco-mode #popover-vault-container,
+html.theme-light.eco-mode #qvault-popover,
+html.theme-light.eco-mode #site-info-popover,
+html.theme-light.eco-mode #user-profile-popover,
+html.theme-light.eco-mode #popover-tor-container,
+html.theme-light.eco-mode #save-password-banner,
+html.theme-light.eco-mode #pinned-stack-popup,
+html.theme-light.eco-mode #download-toast-popup,
+html.theme-light.eco-mode #qbrowse-sticky-note-card,
+html.theme-light.eco-mode #qbrowse-highlight-pill,
+html.theme-light.eco-mode [data-context-menu],
+html.theme-light.eco-mode #omnibox-card,
+html.theme-light.eco-mode #omnibox-dropdown,
+html.theme-light.eco-mode .tab-switcher-card {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: #18181b !important;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.14) !important;
+}
+
+/* Bright Theme - Headers & Subheaders */
+html.theme-light.eco-mode #toolhub-container > div:first-of-type,
+html.theme-light.eco-mode #history-modal > div:first-child,
+html.theme-light.eco-mode #cookies-modal > div:first-child,
+html.theme-light.eco-mode #resource-manager-modal > div:first-child,
+html.theme-light.eco-mode #user-profile-popover > div:first-child,
+html.theme-light.eco-mode #popover-vault-container > div:first-child,
+html.theme-light.eco-mode #qvault-popover > div:first-child,
+html.theme-light.eco-mode #pinned-stack-popup > div:first-child,
+html.theme-light.eco-mode #tour-spaces-container {
+  background-color: #f4f5f8 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Bright Theme - Inner Section Cards & Textareas */
+html.theme-light.eco-mode #settings-modal .rounded-xl,
+html.theme-light.eco-mode #settings-modal > div:first-child,
+html.theme-light.eco-mode #toolhub-container textarea,
+html.theme-light.eco-mode #toolhub-container [class*="rounded-2xl"],
+html.theme-light.eco-mode #toolhub-container [class*="rounded-full"] {
+  background-color: #f7f8fa !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Modal Backdrop Overlays in Eco Mode (High-contrast dimming without blur overhead) */
+html:not(.theme-light).eco-mode .animate-modal,
+html:not(.theme-light).eco-mode .animate-modal-backdrop,
+html:not(.theme-light).eco-mode #omnibox-overlay,
+html:not(.theme-light).eco-mode .fixed.inset-0.z-\[200\],
+html:not(.theme-light).eco-mode .fixed.inset-0.z-\[300\],
+html:not(.theme-light).eco-mode .fixed.inset-0.z-\[50000\],
+html:not(.theme-light).eco-mode .fixed.inset-0.z-\[60000\],
+html:not(.theme-light).eco-mode .fixed.inset-0.z-\[64990\],
+html:not(.theme-light).eco-mode .absolute.inset-0.z-\[200\],
+html:not(.theme-light).eco-mode .absolute.inset-0.z-\[80\] {
+  background-color: rgba(0, 0, 0, 0.78) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.theme-light.eco-mode .animate-modal,
+html.theme-light.eco-mode .animate-modal-backdrop,
+html.theme-light.eco-mode #omnibox-overlay,
+html.theme-light.eco-mode .fixed.inset-0.z-\[200\],
+html.theme-light.eco-mode .fixed.inset-0.z-\[300\],
+html.theme-light.eco-mode .fixed.inset-0.z-\[50000\],
+html.theme-light.eco-mode .fixed.inset-0.z-\[60000\],
+html.theme-light.eco-mode .fixed.inset-0.z-\[64990\],
+html.theme-light.eco-mode .absolute.inset-0.z-\[200\],
+html.theme-light.eco-mode .absolute.inset-0.z-\[80\] {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* TopBar Pills & Capsule Controls in Eco Mode */
+html:not(.theme-light).eco-mode .liquid-pill-dark {
+  background-color: #141520 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+html:not(.theme-light).eco-mode .liquid-pill-dark:hover {
+  background-color: #1a1c2a !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.theme-light.eco-mode .liquid-pill-bright {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+html.theme-light.eco-mode .liquid-pill-bright:hover {
+  background-color: #f7f8fa !important;
+  border-color: rgba(0, 0, 0, 0.18) !important;
 }
 
 /* Snappy instant transitions on eco mode to avoid frame drops */
@@ -830,6 +1019,83 @@ html.ultra-mode .liquid-glass-bright {
   backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
   -webkit-backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(255, 255, 255, 0.6) inset !important;
+}
+
+/* ==============================================================================
+   --- ACCESSIBILITY (EU EAA / EN 301 549 & WCAG 2.1 AA) STYLES ---
+   ============================================================================== */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+html.a11y-high-contrast {
+  --accent: #e5c483 !important;
+  filter: contrast(115%);
+}
+
+html.a11y-high-contrast * {
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+html.a11y-high-contrast.theme-light * {
+  border-color: rgba(0, 0, 0, 0.35) !important;
+}
+
+html.a11y-high-contrast button,
+html.a11y-high-contrast input,
+html.a11y-high-contrast [role="button"] {
+  outline: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+html.a11y-high-contrast.theme-light button,
+html.a11y-high-contrast.theme-light input,
+html.a11y-high-contrast.theme-light [role="button"] {
+  outline: 1px solid rgba(0, 0, 0, 0.2) !important;
+}
+
+html.a11y-dyslexia-font,
+html.a11y-dyslexia-font body,
+html.a11y-dyslexia-font button,
+html.a11y-dyslexia-font input,
+html.a11y-dyslexia-font p,
+html.a11y-dyslexia-font span,
+html.a11y-dyslexia-font h1,
+html.a11y-dyslexia-font h2,
+html.a11y-dyslexia-font h3,
+html.a11y-dyslexia-font h4,
+html.a11y-dyslexia-font h5,
+html.a11y-dyslexia-font h6 {
+  font-family: 'OpenDyslexic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1.5 !important;
+}
+
+html.a11y-reduced-motion,
+html.a11y-reduced-motion *,
+html.a11y-reduced-motion *::before,
+html.a11y-reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+html.a11y-focus-rings *:focus-visible {
+  outline: 3px solid var(--accent, #d4bc94) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 10px rgba(212, 188, 148, 0.6) !important;
 }
 
 

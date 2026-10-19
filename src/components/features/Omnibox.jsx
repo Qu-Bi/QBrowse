@@ -19,6 +19,12 @@ import {
     matchBangSuggestions, 
     findBangByTrigger 
 } from '../../utils/searchBangs';
+import { 
+    getAllSearchEngines, 
+    getSearchEngineById, 
+    buildSearchEngineUrl, 
+    parseKeywordQuery 
+} from '../../utils/searchEngines';
 
 const availableCommands = [
     { id: 'ls', title: 'List open tabs (Mission Control)', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
@@ -94,6 +100,14 @@ const parseUrlInput = (input, activeBang = null, customBangs = []) => {
         return `file://${trimmed}`;
     }
 
+    // Explicit scheme with a host (e.g. http://site.com or https://site.com)
+    if (/^https?:\/\/\S+/i.test(trimmed)) {
+        const withoutScheme = trimmed.replace(/^https?:\/\//i, '').trim();
+        if (withoutScheme.length > 0 && withoutScheme !== '/') {
+            return trimmed;
+        }
+    }
+
     const isLocal = /^(https?:\/\/)?localhost(:\d+)?(\/.*)?$/i.test(trimmed) ||
                     /^(https?:\/\/)?\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/i.test(trimmed);
                     
@@ -101,28 +115,23 @@ const parseUrlInput = (input, activeBang = null, customBangs = []) => {
                   
     if (isUrl) {
         const isOnion = /\.onion(\/.*)?$/i.test(trimmed);
-        const httpsOnly = useUIStore.getState().settings?.httpsOnly !== false;
-        if (trimmed.startsWith('http://') && !isLocal && httpsOnly && !isOnion) {
-            return trimmed.replace(/^http:\/\//i, 'https://');
-        }
-        if (trimmed.startsWith('http')) return trimmed;
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
         // .onion services default to http
         if (isOnion) return `http://${trimmed}`;
         return isLocal ? `http://${trimmed}` : `https://${trimmed}`;
     }
 
     const activeSpace = useTabStore.getState().activeSpace;
-    const q = encodeURIComponent(trimmed);
-    if (activeSpace === 'tor') {
-        return `https://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/?q=${q}`;
+    const settings = useUIStore.getState().settings || {};
+    const customEngines = settings.customSearchEngines || [];
+    const searchEngine = settings.searchEngine || 'google';
+
+    const keywordMatch = parseKeywordQuery(trimmed, customEngines);
+    if (keywordMatch) {
+        return buildSearchEngineUrl(keywordMatch.engine, keywordMatch.queryText, customEngines, activeSpace === 'tor');
     }
 
-    const engine = useUIStore.getState().settings?.searchEngine || 'google';
-    if (engine === 'duckduckgo') return `https://duckduckgo.com/?q=${q}`;
-    if (engine === 'bing') return `https://www.bing.com/search?q=${q}`;
-    if (engine === 'brave') return `https://search.brave.com/search?q=${q}`;
-    if (engine === 'ecosia') return `https://www.ecosia.org/search?q=${q}`;
-    return `https://www.google.com/search?q=${q}`;
+    return buildSearchEngineUrl(searchEngine, trimmed, customEngines, activeSpace === 'tor');
 };
 
 const getCompletedSuggestionText = (target, currentInput) => {
@@ -215,21 +224,18 @@ export default function Omnibox() {
     const smartCalc = useUIStore(state => state.settings?.smartCalc);
     const searchInNewTab = useUIStore(state => state.settings?.searchInNewTab);
     const searchEngine = useUIStore(state => state.settings?.searchEngine) || 'google';
+    const customSearchEngines = useUIStore(state => state.settings?.customSearchEngines) || [];
+    const activeEngineObj = getSearchEngineById(searchEngine, customSearchEngines);
+    const keywordEngineMatch = parseKeywordQuery(searchQuery, customSearchEngines);
+    const currentEngineName = isTor 
+        ? 'DuckDuckGo Onion' 
+        : (keywordEngineMatch ? keywordEngineMatch.engine.name : (activeEngineObj?.name || 'Google'));
     const activeBang = useUIStore(state => state.activeBang);
     const setActiveBang = useUIStore(state => state.setActiveBang);
     const clearActiveBang = useUIStore(state => state.clearActiveBang);
     const customBangs = useUIStore(state => state.settings?.customBangs) || [];
     const theme = useUIStore(state => state.theme);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor' && !isTor;
-
-    const engineNames = {
-        google: 'Google',
-        duckduckgo: 'DuckDuckGo',
-        bing: 'Bing',
-        brave: 'Brave',
-        ecosia: 'Ecosia'
-    };
-    const currentEngineName = isTor ? 'DuckDuckGo Onion' : (engineNames[searchEngine] || 'Google');
     const searchInputRef = useRef(null);
 
     const [liveSuggestions, setLiveSuggestions] = useState([]);
@@ -331,14 +337,22 @@ export default function Omnibox() {
     const getSmartPredictions = (query) => {
         if (!query) return [];
         const q = query.toLowerCase();
+        const cleanQ = q.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+        const scheme = q.startsWith('http://') ? 'http://' : 'https://';
 
-        const siteMatches = topSites
-            .filter(site => site.startsWith(q))
-            .map(site => ({ url: site, title: `Go to ${site}`, score: 100, visits: 10, lastVisit: Date.now() }));
+        const siteMatches = cleanQ 
+            ? topSites
+                .filter(site => site.startsWith(cleanQ))
+                .map(site => ({ url: `${scheme}${site}`, title: `Go to ${scheme}${site}`, score: 100, visits: 10, lastVisit: Date.now() }))
+            : [];
 
         const historySource = (isTor || isIncognito) ? [] : historyStoreData;
         return [...historySource, ...siteMatches]
-            .filter(item => item.url.includes(q) || item.title.toLowerCase().includes(q))
+            .filter(item => {
+                const itemUrl = item.url.toLowerCase();
+                const itemTitle = item.title.toLowerCase();
+                return itemUrl.includes(q) || itemTitle.includes(q) || (cleanQ && (itemUrl.includes(cleanQ) || itemTitle.includes(cleanQ)));
+            })
             .map(item => {
                 const hoursSinceVisit = (Date.now() - item.lastVisit) / (1000 * 60 * 60);
                 const recencyBoost = Math.max(0, 24 - hoursSinceVisit) * 0.1;
@@ -394,28 +408,38 @@ export default function Omnibox() {
     });
 
     const parsedInput = parseUrlInput(searchQuery, activeBang, customBangs);
-    const isSearchEngineUrl = !!effectiveBang ||
-                              parsedInput.includes('google.com/search?q=') ||
-                              parsedInput.includes('duckduckgo.com/?q=') ||
-                              parsedInput.includes('duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion') ||
-                              parsedInput.includes('bing.com/search?q=') ||
-                              parsedInput.includes('search.brave.com/search?q=') ||
-                              parsedInput.includes('ecosia.org/search?q=');
+    const allEngines = getAllSearchEngines(customSearchEngines);
+    const isSearchEngineUrl = !!effectiveBang || !!keywordEngineMatch ||
+                              allEngines.some(e => {
+                                  try {
+                                      const host = new URL(e.url.replace(/%s/g, '').replace(/\{q\}/g, '')).host;
+                                      return parsedInput.includes(host);
+                                  } catch {
+                                      return false;
+                                  }
+                              }) ||
+                              parsedInput.includes('duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion');
     const isDirectUrl = parsedInput && !isSearchEngineUrl;
     const isLocalInput = parsedInput && parsedInput.startsWith('file://');
     const directUrlPrediction = isDirectUrl ? { 
         url: parsedInput, 
-        title: isLocalInput ? `Open ${parsedInput.endsWith('/') || parsedInput.endsWith('\\') ? 'Folder' : 'File'}: ${searchQuery}` : `Go to ${searchQuery}`, 
+        title: isLocalInput ? `Open ${parsedInput.endsWith('/') || parsedInput.endsWith('\\') ? 'Folder' : 'File'}: ${searchQuery}` : `Go to ${parsedInput}`, 
         score: 100000,
         isLocalFile: isLocalInput,
         isDirectory: parsedInput.endsWith('/') || parsedInput.endsWith('\\')
     } : null;
 
-    const searchPrediction = (!isDirectUrl && (effectiveQueryText.length > 0 || effectiveBang)) ? [{
-        url: effectiveBang ? buildBangSearchUrl(effectiveBang, effectiveQueryText) : parsedInput,
+    const searchPrediction = (!isDirectUrl && (effectiveQueryText.length > 0 || effectiveBang || keywordEngineMatch)) ? [{
+        url: effectiveBang 
+            ? buildBangSearchUrl(effectiveBang, effectiveQueryText) 
+            : (keywordEngineMatch 
+                ? buildSearchEngineUrl(keywordEngineMatch.engine, keywordEngineMatch.queryText, customSearchEngines, isTor) 
+                : parsedInput),
         title: effectiveBang 
             ? (effectiveQueryText ? `Search ${effectiveBang.name}: "${effectiveQueryText}"` : `Go to ${effectiveBang.name}`) 
-            : `Search ${currentEngineName}: "${searchQuery.trim()}"`,
+            : (keywordEngineMatch 
+                ? `Search ${keywordEngineMatch.engine.name}: "${keywordEngineMatch.queryText}"`
+                : `Search ${currentEngineName}: "${searchQuery.trim()}"`),
         score: 150000,
         isSearch: true,
         bang: effectiveBang
@@ -727,6 +751,38 @@ export default function Omnibox() {
             handleCloseOmnibox(true);
         } else {
             const targetUrl = pred.url;
+
+            // Direct internal URL interception to trigger native modals and views
+            if (targetUrl) {
+                const norm = targetUrl.toLowerCase();
+                if (norm.startsWith('qbrowse://settings') || norm.startsWith('chrome://settings')) {
+                    const sub = targetUrl.split('settings/')[1] || targetUrl.split('settings#')[1] || 'appearance';
+                    useUIStore.getState().openSettings(sub);
+                    handleCloseOmnibox(true);
+                    return;
+                }
+                if (norm.startsWith('qbrowse://history') || norm.startsWith('chrome://history')) {
+                    useUIStore.getState().openModal('history');
+                    handleCloseOmnibox(true);
+                    return;
+                }
+                if (norm.startsWith('qbrowse://cookies')) {
+                    useUIStore.getState().openModal('cookies');
+                    handleCloseOmnibox(true);
+                    return;
+                }
+                if (norm.startsWith('qbrowse://resources') || norm.startsWith('qbrowse://taskmanager')) {
+                    useUIStore.getState().openModal('resources');
+                    handleCloseOmnibox(true);
+                    return;
+                }
+                if (norm.startsWith('qbrowse://downloads') || norm.startsWith('chrome://downloads')) {
+                    useUIStore.getState().setIsToolHubOpen(true);
+                    handleCloseOmnibox(true);
+                    return;
+                }
+            }
+
             setCurrentUrl(targetUrl);
 
             const isSplit = useUIStore.getState().isSplitView;
@@ -751,8 +807,8 @@ export default function Omnibox() {
 
             if (activeSpace === 'tor') {
                 const torStatus = useTorStore.getState().status;
-                if (torStatus !== 'connected') {
-                    useUIStore.getState().showToast('Tor is offline. Click "Connect to Tor Network" to browse.');
+                if (torStatus !== 'connected' && torStatus !== 'starting' && torStatus !== 'downloading') {
+                    useTorStore.getState().startTor();
                 }
             }
             handleCloseOmnibox(true);
@@ -934,7 +990,7 @@ export default function Omnibox() {
     if (!isOmniboxOpen && !isOmniboxClosing) return null;
 
     return (
-        <div className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] ${isBright ? 'bg-black/25 backdrop-blur-md' : 'bg-black/50 backdrop-blur-md'} transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
+        <div id="omnibox-overlay" className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] ${isBright ? 'bg-black/25 backdrop-blur-md' : 'bg-black/50 backdrop-blur-md'} transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
             <div 
                 id="omnibox-palette"
                 className={`w-full max-w-[720px] mx-4 flex flex-col relative ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} 
@@ -943,6 +999,7 @@ export default function Omnibox() {
             >
 
                 <div 
+                    id="omnibox-card"
                     onMouseEnter={() => setIsCardHovered(true)}
                     onMouseLeave={() => setIsCardHovered(false)}
                     className={`w-full rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${
@@ -1059,6 +1116,7 @@ export default function Omnibox() {
                     <div className="w-full mt-2 animate-fade-in">
                         <div 
                             ref={omniboxContainerRef} 
+                            id="omnibox-dropdown"
                             style={{
                                 scrollbarWidth: 'none',
                                 msOverflowStyle: 'none'
@@ -1196,6 +1254,16 @@ export default function Omnibox() {
                                                 key={i} 
                                                 data-selected={isSelected} 
                                                 onClick={() => handleSelectPrediction(pred)} 
+                                                onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                                onAuxClick={(e) => {
+                                                    if (e.button === 1 && pred.url && !pred.isAI && !pred.isMath) {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        useTabStore.getState().handleNewTab(pred.url, false);
+                                                        showToast('Opened in background tab');
+                                                        handleCloseOmnibox(false);
+                                                    }
+                                                }}
                                                 onMouseMove={(e) => handleOptionMouseMove(i, e)}
                                                 className={`w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-150 group text-left border ${
                                                     isSelected 

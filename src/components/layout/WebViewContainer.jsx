@@ -12,6 +12,32 @@ import { X, StickyNote, Trash2, Copy, Check } from 'lucide-react';
 import FlagsPage from '../pages/FlagsPage';
 import LocalFileViewer from '../pages/LocalFileViewer';
 import DrmHandOffBanner from '../features/DrmHandOffBanner';
+import WebviewErrorOverlay from '../common/WebviewErrorOverlay';
+import { buildSearchEngineUrl } from '../../utils/searchEngines';
+import { isLikelyDownloadUrl } from '../../utils/downloadHelpers';
+
+const normalizeUrlForCompare = (u) => {
+    if (!u) return '';
+    try {
+        let str = String(u).trim();
+        str = str.replace(/\/+$/, '');
+        const parsed = new URL(str.includes('://') ? str : `http://${str}`);
+        return `${parsed.protocol}//${parsed.hostname.toLowerCase().replace(/^www\./, '')}${parsed.pathname || ''}${parsed.search || ''}`;
+    } catch (_) {
+        return String(u).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+    }
+};
+
+const isSameOrEquivalentUrl = (a, b) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const normA = normalizeUrlForCompare(a);
+    const normB = normalizeUrlForCompare(b);
+    if (normA === normB) return true;
+    const hostA = normA.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const hostB = normB.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    return hostA === hostB;
+};
 
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
@@ -25,9 +51,14 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     const isVaultUnlocked = useVaultStore(state => state.isUnlocked);
     const vaultPasswords = useVaultStore(state => state.passwords);
     const allowVaultInGhostTor = useVaultStore(state => state.allowVaultInGhostTor);
+    const bypassedInsecureHosts = useTabStore(state => state.bypassedInsecureHosts);
+    const allowInsecureHost = useTabStore(state => state.allowInsecureHost);
 
     const [isDrmDismissed, setIsDrmDismissed] = useState(false);
     const [genericDrmError, setGenericDrmError] = useState(null);
+    const [loadError, setLoadError] = useState(null);
+    const loadErrorRef = useRef(null);
+    const failedUrlsRef = useRef(new Set());
     const [activeNoteCard, setActiveNoteCard] = useState(null);
     const [selectionPill, setSelectionPill] = useState(null);
     const [pillCopied, setPillCopied] = useState(false);
@@ -35,7 +66,164 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     activeNoteCardRef.current = activeNoteCard;
     const prevHostRef = useRef('');
 
+    const theme = useUIStore(state => state.theme);
+    const isBright = theme === 'light' && space !== 'ghost' && space !== 'tor';
+
+    const cleanHost = React.useMemo(() => {
+        try {
+            if (!tab.url) return '';
+            const u = new URL(tab.url.startsWith('http') ? tab.url : `https://${tab.url}`);
+            return u.hostname.replace(/^www\./i, '');
+        } catch (_) {
+            return '';
+        }
+    }, [tab.url]);
+
+    const isHttpWarning = React.useMemo(() => {
+        if (!tab.url || !tab.url.startsWith('http://')) return false;
+        try {
+            const u = new URL(tab.url);
+            if (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname.endsWith('.onion')) {
+                return false;
+            }
+            const clean = u.hostname.toLowerCase();
+            return !bypassedInsecureHosts.has(clean) && !bypassedInsecureHosts.has(clean.replace(/^www\./, ''));
+        } catch (_) {
+            return false;
+        }
+    }, [tab.url, bypassedInsecureHosts]);
+
+    const activeError = React.useMemo(() => {
+        if (loadError) return loadError;
+        if (isHttpWarning) {
+            return {
+                errorCode: 'HTTP_INSECURE',
+                errorDescription: 'ERR_UNENCRYPTED_HTTP',
+                validatedURL: tab.url,
+                isHttpWarning: true,
+                time: Date.now()
+            };
+        }
+        return null;
+    }, [loadError, isHttpWarning, tab.url]);
+
+    // Update tab title when error or insecure warning is active
     useEffect(() => {
+        if (activeError) {
+            const rawUrl = activeError.validatedURL || tab.url || '';
+            let hostStr = '';
+            try {
+                if (rawUrl) {
+                    const parsed = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
+                    hostStr = parsed.hostname.replace(/^www\./i, '');
+                }
+            } catch (_) {
+                hostStr = rawUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0] || '';
+            }
+            const hostDisplay = hostStr || cleanHost;
+            const isCertOrSsl = ['-113', '-107', '-200', '-201', '-202', '-203', '-204', '-205', '-206', '-207', '-208', '-210', '-211', '-212', '-213', '-214', '-217', '-501', '-502'].includes(String(activeError.errorCode));
+            const titleText = activeError.errorCode === 'HTTP_INSECURE'
+                ? `Insecure HTTP • ${hostDisplay || 'Site'}`
+                : (isCertOrSsl
+                    ? `Insecure Site • ${hostDisplay || 'Security Warning'}`
+                    : `Error • ${hostDisplay || 'Connection Failed'}`);
+            if (tab.title !== titleText) {
+                useTabStore.getState().updateTabTitle(tab.id, titleText);
+            }
+        }
+    }, [activeError, cleanHost, tab.id, tab.title, tab.url]);
+
+    const handleRetry = () => {
+        const target = loadError?.validatedURL || tab.url;
+        loadErrorRef.current = null;
+        failedUrlsRef.current.clear();
+        setLoadError(null);
+        const wv = wvRef.current;
+        if (wv && target && typeof wv.loadURL === 'function') {
+            try {
+                wv.loadURL(target).catch(() => {});
+            } catch (_) {}
+        }
+    };
+
+    const handleSearchWeb = () => {
+        const rawUrl = activeError?.validatedURL || tab.url || '';
+        let query = cleanHost || '';
+        if (!query) {
+            query = rawUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0] || '';
+        }
+        const settings = useUIStore.getState().settings || {};
+        const customEngines = settings.customSearchEngines || [];
+        const searchEngine = settings.searchEngine || 'google';
+        const targetSearchUrl = buildSearchEngineUrl(searchEngine, query || rawUrl, customEngines, space === 'tor');
+        loadErrorRef.current = null;
+        failedUrlsRef.current.clear();
+        setLoadError(null);
+        useTabStore.getState().handleNavigateTab(tab.id, targetSearchUrl);
+    };
+
+    const handleNavigateHome = () => {
+        loadErrorRef.current = null;
+        failedUrlsRef.current.clear();
+        setLoadError(null);
+        const defaultTitle = space === 'ghost' ? 'New Incognito Tab' : 'New Tab';
+        useTabStore.getState().handleNavigateTab(tab.id, '', defaultTitle);
+        useUIStore.getState().setCurrentUrl('');
+        const wv = wvRef.current;
+        if (wv && typeof wv.loadURL === 'function') {
+            try {
+                wv.loadURL('about:blank').catch(() => {});
+            } catch (_) {}
+        }
+    };
+
+    const handleProceedInsecure = async (targetUrl, host) => {
+        const rawTarget = targetUrl || loadError?.validatedURL || tab.url;
+        let resolvedHost = host;
+        if (!resolvedHost && rawTarget) {
+            try {
+                resolvedHost = new URL(rawTarget.startsWith('http') ? rawTarget : `http://${rawTarget}`).hostname;
+            } catch (_) {}
+        }
+        const hostname = (resolvedHost || cleanHost || '').toLowerCase().trim();
+        if (hostname) {
+            allowInsecureHost(hostname);
+        }
+        loadErrorRef.current = null;
+        failedUrlsRef.current.clear();
+        setLoadError(null);
+
+        // Fallback to http:// if it was an SSL cipher mismatch or handshake failure on https://
+        let finalUrl = rawTarget;
+        const isSslFailure = loadError && ['-113', '-107', '-502'].includes(String(loadError.errorCode));
+        if ((isSslFailure || !finalUrl.startsWith('http://')) && finalUrl && finalUrl.startsWith('https://')) {
+            finalUrl = finalUrl.replace(/^https:\/\//i, 'http://');
+        } else if (!finalUrl.includes('://')) {
+            finalUrl = `http://${finalUrl}`;
+        }
+
+        if (finalUrl) {
+            setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: finalUrl, title: cleanHost || 'Loading...' } : t));
+            useTabStore.getState().updateTabState(tab.id, { url: finalUrl, title: cleanHost || 'Loading...' });
+            if (isActive && isSpaceActive) {
+                useUIStore.getState().setCurrentUrl(finalUrl);
+            }
+        }
+
+        const wv = wvRef.current;
+        if (wv && typeof wv.loadURL === 'function') {
+            try {
+                wv.loadURL(finalUrl || tab.url).catch(() => {});
+            } catch (_) {}
+        }
+    };
+
+    useEffect(() => {
+        if (loadErrorRef.current && isSameOrEquivalentUrl(loadErrorRef.current.validatedURL, tab.url)) {
+            return;
+        }
+        loadErrorRef.current = null;
+        setLoadError(null);
         try {
             const currentHost = tab.url ? new URL(tab.url).hostname : '';
             if (currentHost !== prevHostRef.current) {
@@ -54,6 +242,21 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         }
         if (u.startsWith('qbrowse://ai')) {
             return u.replace('qbrowse://ai', 'http://127.0.0.1:8080');
+        }
+        if (u.startsWith('qbrowse://')) {
+            return 'about:blank';
+        }
+        // If it's an unencrypted HTTP URL and not yet bypassed, do not load initially — error overlay will render
+        if (u.startsWith('http://')) {
+            try {
+                const host = new URL(u).hostname.toLowerCase();
+                const bypassed = useTabStore.getState().bypassedInsecureHosts;
+                if (host !== 'localhost' && host !== '127.0.0.1' && !host.endsWith('.onion')) {
+                    if (!bypassed?.has(host) && !bypassed?.has(host.replace(/^www\./, ''))) {
+                        return 'about:blank';
+                    }
+                }
+            } catch (_) {}
         }
         if (!u.includes('://')) {
             return `https://${u}`;
@@ -149,8 +352,25 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             return;
         }
 
-        // Internal pages (Flags, local file viewer) are handled by React components
-        if (tab.url.startsWith('qbrowse://flags') || tab.url.startsWith('file://')) {
+        // Internal pages (Flags, local file viewer, etc.) are handled by React components
+        if (tab.url.startsWith('qbrowse://') && !tab.url.startsWith('qbrowse://ai')) {
+            return;
+        }
+        if (tab.url.startsWith('file://')) {
+            return;
+        }
+
+        // If there's an active load error for this URL or it recently failed, do NOT trigger duplicate loadURL loop
+        if (loadErrorRef.current && isSameOrEquivalentUrl(loadErrorRef.current.validatedURL, tab.url)) {
+            return;
+        }
+        if (failedUrlsRef.current.has(normalizeUrlForCompare(tab.url))) {
+            return;
+        }
+
+        // If this URL is an unencrypted HTTP URL and not yet bypassed, do NOT load it in webview yet!
+        // The HTTP Security Warning interstitial will be rendered instead.
+        if (isHttpWarning) {
             return;
         }
 
@@ -200,7 +420,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         } else {
             wv.addEventListener('dom-ready', doLoad, { once: true });
         }
-    }, [tab.url, torStatus, space]);
+    }, [tab.url, torStatus, space, isHttpWarning, loadError]);
 
     // Setup Webview Event Listeners
     useEffect(() => {
@@ -335,6 +555,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
         const handleDomReady = () => {
             isDomReadyRef.current = true;
+            try {
+                useTabStore.getState().setTabNavigatedToDocument(tab.id);
+            } catch (_) {}
             try { wv.insertCSS(customScrollbarCSS).catch(() => {}); } catch(e){}
             try {
                 const isSmooth = useUIStore.getState().settings?.smooth !== false;
@@ -351,6 +574,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
             sendAnnotationsToWebview();
             sendVaultMatchesToWebview();
+            try {
+                wv.send('apply-a11y-settings', useUIStore.getState().settings);
+            } catch (_) {}
 
             if (pendingScrollAnnotationRef.current) {
                 const pending = pendingScrollAnnotationRef.current;
@@ -404,7 +630,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const handleFailLoad = (e) => {
-            if (!e.isMainFrame || e.errorCode === -3) return; // Ignore aborted requests
+            if (!e || e.errorCode === -3 || e.isMainFrame === false) return; // Ignore aborted requests and subframes
             if (space === 'tor') {
                 const tor = useTorStore.getState();
                 if (tor.status !== 'connected') {
@@ -412,92 +638,42 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 }
             }
             wv.hasCrashed = true;
-            
-            let errorTitle = 'This site can’t be reached';
-            let errorMsg = e.errorDescription || 'An unknown error occurred.';
-            
-            const codes = {
-                '-105': { t: 'Server DNS address could not be found.', m: 'Check your internet connection or the spelling of the URL.' },
-                '-106': { t: 'No internet connection', m: 'Check your network cables, modem, and routers.' },
-                '-102': { t: 'Connection refused', m: 'The site might be down or your network is blocking the request.' },
-                '-109': { t: 'Address is unreachable', m: 'The server could not be reached. Try again later.' },
-                '-501': { t: 'Insecure connection', m: 'The connection is not secure. Certificate is invalid.' },
-                '-137': { t: 'Name resolution failed', m: 'The domain name could not be resolved.' },
-                '-118': { t: 'Connection timed out', m: 'The server took too long to respond.' },
-                '-101': { t: 'Connection reset', m: 'The connection was reset by the server.' },
-                '-104': { t: 'Connection closed', m: 'The connection was unexpectedly closed.' },
-                '-111': { t: 'Pipe routing error', m: 'Failed to route the connection to the host.' },
-                '-200': { t: 'Certificate Error', m: 'The site provided an invalid security certificate.' }
+            const failedUrl = e.validatedURL || tab.url;
+            const errObj = {
+                errorCode: e.errorCode ?? -1,
+                errorDescription: e.errorDescription || 'ERR_FAILED',
+                validatedURL: failedUrl,
+                time: Date.now()
             };
-            
-            if (codes[e.errorCode.toString()]) {
-                errorTitle = codes[e.errorCode.toString()].t;
-                errorMsg = codes[e.errorCode.toString()].m;
+            loadErrorRef.current = errObj;
+            failedUrlsRef.current.add(normalizeUrlForCompare(failedUrl));
+            if (tab.url) {
+                failedUrlsRef.current.add(normalizeUrlForCompare(tab.url));
             }
+            setLoadError(errObj);
 
-            const isDark = useUIStore.getState().isForceDark || useUIStore.getState().isIncognito;
-            const bgColor = isDark ? '#1a1a1a' : '#f8fafc';
-            const textColor = isDark ? '#f1f5f9' : '#0f172a';
-            const subTextColor = isDark ? '#94a3b8' : '#64748b';
-            const accentColor = '#818cf8';
+            let hostStr = '';
+            try {
+                if (failedUrl) {
+                    const parsed = new URL(failedUrl.startsWith('http') ? failedUrl : `https://${failedUrl}`);
+                    hostStr = parsed.hostname.replace(/^www\./i, '');
+                }
+            } catch (_) {
+                hostStr = failedUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0] || '';
+            }
+            const isCertOrSsl = ['-113', '-107', '-200', '-201', '-202', '-203', '-204', '-205', '-206', '-207', '-208', '-210', '-211', '-212', '-213', '-214', '-217', '-501', '-502'].includes(String(errObj.errorCode));
+            const errorTitle = isCertOrSsl 
+                ? `Insecure Site • ${hostStr || 'Security Warning'}`
+                : `Error • ${hostStr || 'Connection Failed'}`;
 
-            const html = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <title>${errorTitle}</title>
-                    <style>
-                        body {
-                            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                            background-color: ${bgColor};
-                            color: ${textColor};
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            height: 100vh;
-                            margin: 0;
-                            text-align: center;
-                            padding: 20px;
-                        }
-                        .icon { display: flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 20px; background: rgba(129, 140, 248, 0.1); border: 1px solid rgba(129, 140, 248, 0.2); margin-bottom: 24px; color: ${accentColor}; }
-                        h1 { margin: 0 0 16px; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
-                        p { margin: 0 0 8px; color: ${subTextColor}; max-width: 400px; line-height: 1.5; font-size: 14px; }
-                        .error-code { margin-top: 24px; font-size: 11px; font-family: monospace; color: ${subTextColor}; opacity: 0.7; }
-                        button {
-                            margin-top: 28px;
-                            padding: 10px 24px;
-                            background-color: ${accentColor};
-                            color: white;
-                            border: none;
-                            border-radius: 99px;
-                            font-size: 13px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            transition: opacity 0.2s, transform 0.2s;
-                            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-                        }
-                        button:hover { opacity: 0.9; transform: translateY(-1px); }
-                        button:active { transform: translateY(0); }
-                    </style>
-                </head>
-                <body>
-                    <div class="icon">
-                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                    </div>
-                    <h1>${errorTitle}</h1>
-                    <p>${errorMsg}</p>
-                    <button onclick="window.location.reload()">Try Again</button>
-                    <div class="error-code">ERR_CODE: ${e.errorCode} | ${e.errorDescription}</div>
-                </body>
-                </html>
-            `;
-            wv.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {});
+            // Synchronize tab.url, title, and currentUrl so the omnibar and active tab do not stay stuck on the previous page
+            if (failedUrl && failedUrl !== 'about:blank') {
+                setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: failedUrl, title: errorTitle } : t));
+                useTabStore.getState().updateTabState(tab.id, { url: failedUrl, title: errorTitle });
+                if (isActive && isSpaceActive) {
+                    useUIStore.getState().setCurrentUrl(failedUrl);
+                }
+            }
         };
         const updateNavState = () => {
             try {
@@ -511,6 +687,11 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             if (e && e.isMainFrame === false) return;
             console.log(`[WebView ${tab.id}] did-navigate:`, e.url);
             wv.hasCrashed = false;
+            loadErrorRef.current = null;
+            if (e.url) {
+                failedUrlsRef.current.delete(normalizeUrlForCompare(e.url));
+            }
+            setLoadError(null);
             setActiveNoteCard(null);
             let displayUrl = e.url;
             if (displayUrl && displayUrl.startsWith('http://127.0.0.1:8080')) {
@@ -725,6 +906,11 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                         existingId
                     });
                 }
+            } else if (e.channel === 'extracted-read-aloud-text') {
+                const payload = e.args && e.args[0];
+                if (payload) {
+                    window.dispatchEvent(new CustomEvent('qbrowse-extracted-tts-text', { detail: payload }));
+                }
             } else if (e.channel === 'qbrowse-js-dialog') {
                 const dialogData = e.args && e.args[0];
                 if (dialogData) {
@@ -769,6 +955,11 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         
         const handleDidStartLoading = () => {
             console.log(`[WebView ${tab.id}] did-start-loading`);
+            if (loadErrorRef.current && isSameOrEquivalentUrl(loadErrorRef.current.validatedURL, tab.url)) {
+                return;
+            }
+            loadErrorRef.current = null;
+            setLoadError(null);
             if (isActive && isSpaceActive) {
                 useUIStore.getState().setIsReaderAvailable(false);
             }
@@ -779,7 +970,20 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             updateNavState();
         };
         const handleFailLoadLogged = (e) => {
-            if (e.errorCode === -3) return;
+            if (!e || e.isMainFrame === false) return;
+            if (e.errorCode === -3) {
+                // net::ERR_ABORTED: Common when navigation transitions into an external file download
+                if (tab.isOpenedByNewWindow || tab.isDownloadTab) {
+                    console.log(`[WebView ${tab.id}] Navigation aborted for download, checking orphan tab cleanup.`);
+                    useTabStore.getState().closeDownloadTabIfOrphaned({
+                        url: tab.url,
+                        urlChain: [tab.url],
+                        webContentsId: (wv && typeof wv.getWebContentsId === 'function') ? wv.getWebContentsId() : null,
+                        canGoBack: false
+                    });
+                }
+                return;
+            }
             console.error(`[WebView ${tab.id}] did-fail-load or crashed. Code:`, e.errorCode, 'Desc:', e.errorDescription, 'URL:', e.validatedURL);
             handleFailLoad(e);
             updateNavState();
@@ -792,12 +996,31 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const handleNewWindow = (e) => {
-            console.log(`[WebView ${tab.id}] new-window intercepted:`, e.url);
+            console.log(`[WebView ${tab.id}] new-window intercepted:`, e.url, e.disposition);
             try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
             if (e.url && e.url !== 'about:blank') {
-                useTabStore.getState().handleNewTab(e.url);
+                const isLikelyDownload = isLikelyDownloadUrl(e.url);
+                // Direct download files stay in the background so the user's active page is not interrupted
+                const makeActive = !isLikelyDownload && (e.disposition !== 'background-tab');
+                useTabStore.getState().handleNewTab(e.url, makeActive, {
+                    isOpenedByNewWindow: true,
+                    openerTabId: tab.id,
+                    isDownloadTab: isLikelyDownload
+                });
             }
         };
+
+        const registerWcId = () => {
+            try {
+                if (wv && typeof wv.getWebContentsId === 'function') {
+                    const wcId = wv.getWebContentsId();
+                    if (wcId) {
+                        useTabStore.getState().setTabWebContentsId(tab.id, wcId);
+                    }
+                }
+            } catch (_) {}
+        };
+        registerWcId();
 
         const handleFoundInPage = (event) => {
             const res = event.result || event;
@@ -837,6 +1060,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             });
         };
 
+        wv.addEventListener('did-attach', registerWcId);
         wv.addEventListener('context-menu', handleContextMenu);
         wv.addEventListener('found-in-page', handleFoundInPage);
         wv.addEventListener('did-start-loading', handleDidStartLoading);
@@ -846,7 +1070,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('crashed', handleFailLoadLogged);
         wv.addEventListener('plugin-crashed', handleFailLoadLogged);
         wv.addEventListener('page-title-updated', handleTitleUpdate);
-        wv.addEventListener('dom-ready', () => { handleDomReady(); updateNavState(); });
+        wv.addEventListener('dom-ready', () => { registerWcId(); handleDomReady(); updateNavState(); });
         wv.addEventListener('did-stop-loading', handleDidStopLoading);
         wv.addEventListener('enter-html-full-screen', handleEnterHtmlFullScreen);
         wv.addEventListener('leave-html-full-screen', handleLeaveHtmlFullScreen);
@@ -858,6 +1082,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('did-create-window', handleNewWindow);
 
         return () => {
+            wv.removeEventListener('did-attach', registerWcId);
             wv.removeEventListener('context-menu', handleContextMenu);
             wv.removeEventListener('did-start-loading', handleDidStartLoading);
             wv.removeEventListener('did-navigate', handleNavigateSafe);
@@ -1143,6 +1368,49 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
     }, [isForceDark, tab.url, darkExclusions]);
 
+    // Sync Accessibility Settings to webview
+    const a11ySettings = useUIStore(state => state.settings);
+    useEffect(() => {
+        const wv = wvRef.current;
+        if (!wv || !isDomReadyRef.current) return;
+        try {
+            wv.send('apply-a11y-settings', {
+                a11yHighContrast: a11ySettings?.a11yHighContrast,
+                a11yDyslexiaFont: a11ySettings?.a11yDyslexiaFont,
+                a11yMinFontSize: a11ySettings?.a11yMinFontSize,
+                a11yReducedMotion: a11ySettings?.a11yReducedMotion,
+                a11ySuppressAutoplay: a11ySettings?.a11ySuppressAutoplay,
+                a11yCaretBrowsing: a11ySettings?.a11yCaretBrowsing,
+                a11yFocusRings: a11ySettings?.a11yFocusRings,
+                a11yVideoCaptions: a11ySettings?.a11yVideoCaptions,
+                a11yMonoAudio: a11ySettings?.a11yMonoAudio
+            });
+        } catch (_) {}
+    }, [
+        a11ySettings?.a11yHighContrast,
+        a11ySettings?.a11yDyslexiaFont,
+        a11ySettings?.a11yMinFontSize,
+        a11ySettings?.a11yReducedMotion,
+        a11ySettings?.a11ySuppressAutoplay,
+        a11ySettings?.a11yCaretBrowsing,
+        a11ySettings?.a11yFocusRings,
+        a11ySettings?.a11yVideoCaptions,
+        a11ySettings?.a11yMonoAudio
+    ]);
+
+    // Handle Read Aloud text extraction request for active tab
+    useEffect(() => {
+        const handleRequestTts = () => {
+            if (isActive && isSpaceActive && wvRef.current) {
+                try {
+                    wvRef.current.send('extract-read-aloud-text');
+                } catch (_) {}
+            }
+        };
+        window.addEventListener('qbrowse-request-tts-extraction', handleRequestTts);
+        return () => window.removeEventListener('qbrowse-request-tts-extraction', handleRequestTts);
+    }, [isActive, isSpaceActive]);
+
     const isFlagsPage = tab.url && (tab.url.startsWith('qbrowse://flags') || tab.url.startsWith('chrome://flags') || tab.url.startsWith('about:flags'));
     const isLocalResource = tab.url && tab.url.startsWith('file://') && !/\.(html?|xhtml)$/i.test(tab.url);
 
@@ -1336,13 +1604,24 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     <LocalFileViewer tab={tab} />
                 </div>
             )}
+            {activeError && shouldShow && !isFlagsPage && !isLocalResource && (
+                <WebviewErrorOverlay
+                    error={activeError}
+                    tab={tab}
+                    isBright={isBright}
+                    onRetry={handleRetry}
+                    onSearchWeb={handleSearchWeb}
+                    onNavigateHome={handleNavigateHome}
+                    onProceedInsecure={handleProceedInsecure}
+                />
+            )}
             <webview
                 ref={wvRef}
                 id={`webview-${tab.id}`}
                 src={initialUrl}
                 partition={space === 'ghost' ? 'ghost' : (space === 'tor' ? 'tor' : `persist:profile_${activeProfileId || 'default'}`)}
                 className="w-full h-full"
-                style={{ display: 'flex', visibility: shouldShow && !isFlagsPage && !isLocalResource ? 'visible' : 'hidden' }}
+                style={{ display: 'flex', visibility: shouldShow && !isFlagsPage && !isLocalResource && !activeError ? 'visible' : 'hidden' }}
                 allowpopups="true"
                 plugins="true"
                 webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}
@@ -1361,6 +1640,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                         }}
                     />
                     <div
+                        id="qbrowse-sticky-note-card"
                         className="absolute z-[99999] w-[320px] bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] p-3.5 text-white flex flex-col gap-2.5 animate-pop-in select-none"
                         style={{
                             top: `${cardTop}px`,
@@ -1556,7 +1836,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
           
           // Optimization: Do not spawn heavy Chromium webview renderers for blank / new tab pages.
           // Blank tabs use the lightweight React Zen Dashboard instead.
-          const isBlankTab = !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://newtab');
+          const isBlankTab = !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://newtab') || tab.url.startsWith('qbrowse://home') || tab.url.startsWith('qbrowse://blank') || (tab.url.startsWith('qbrowse://') && !tab.url.startsWith('qbrowse://flags') && !tab.url.startsWith('qbrowse://ai'));
           if (isBlankTab) return null;
 
           // If this is the left container in split view, don't render the right split tab

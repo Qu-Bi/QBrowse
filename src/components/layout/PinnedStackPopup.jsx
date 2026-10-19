@@ -161,6 +161,7 @@ export default function PinnedStackPopup() {
             {/* Floating Stack Popup Picker */}
             <div 
                 ref={popupRef}
+                id="pinned-stack-popup"
                 className={`fixed z-[65000] w-[320px] max-h-[calc(100vh-32px)] overflow-hidden backdrop-blur-3xl rounded-2xl flex flex-col p-3 gap-2.5 ${
                     isClosing ? 'animate-pop-out' : 'animate-pop-in'
                 } select-none transition-all duration-300 ${
@@ -246,6 +247,14 @@ export default function PinnedStackPopup() {
                                 <div
                                     key={tab.id}
                                     onClick={() => handleSelectTab(tab)}
+                                    onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                    onAuxClick={(e) => {
+                                        if (e.button === 1) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleCloseTab(tab.id);
+                                        }
+                                    }}
                                     className={`group relative flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
                                         tab.active 
                                             ? (isBright ? 'bg-accent/20 border-accent/40 text-zinc-950 font-semibold shadow-sm' : 'bg-accent/20 border-accent/40 text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]')

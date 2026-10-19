@@ -134,25 +134,53 @@ export default function AIEngineSettings() {
                     </div>
 
                     {/* Quick Access Launcher Button */}
-                    <button
-                        onClick={toggleEngine}
-                        disabled={status === 'loading' || status === 'starting' || status === 'downloading_engine'}
-                        className={`px-6 py-3 rounded-2xl font-bold text-xs tracking-wide transition-all shadow-lg flex items-center gap-2 cursor-pointer ${
-                            status === 'loading' || status === 'starting' || status === 'downloading_engine'
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait'
-                                : isRunning
-                                    ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30'
-                                    : 'bg-accent text-black hover:scale-105 shadow-[0_10px_25px_var(--accent-30)]'
-                        }`}
-                    >
-                        {status === 'loading' || status === 'starting' || status === 'downloading_engine' ? (
-                            <> <Loader2 size={14} className="animate-spin text-amber-400" /> Starting llama-server... </>
-                        ) : isRunning ? (
-                            <> <Square size={14} fill="currentColor" /> Stop llama-server </>
-                        ) : (
-                            <> <Play size={14} fill="currentColor" /> Start llama-server Engine </>
-                        )}
-                    </button>
+                    {isDownloading ? (
+                        <div className="flex items-center gap-3">
+                            <div className="text-right">
+                                <span className="text-xs font-bold text-accent block leading-tight">
+                                    Downloading Model ({downloadProgress || 0}%)
+                                </span>
+                                <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                    {downloadDetail?.downloadedBytes 
+                                        ? `${(downloadDetail.downloadedBytes / 1024 / 1024).toFixed(0)}MB / ${(downloadDetail.totalBytes / 1024 / 1024).toFixed(0)}MB` 
+                                        : 'Connecting to CDN...'}
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => useAIStore.getState().cancelDownload()}
+                                className="px-4 py-2.5 rounded-2xl font-bold text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                            >
+                                <Square size={13} fill="currentColor" /> Cancel
+                            </button>
+                        </div>
+                    ) : !hasDownloadedModel ? (
+                        <button
+                            onClick={() => downloadModel(activePreset)}
+                            className="px-6 py-3 rounded-2xl font-bold text-xs tracking-wide transition-all shadow-lg flex items-center gap-2 cursor-pointer bg-accent text-black hover:scale-105 shadow-[0_10px_25px_var(--accent-30)]"
+                        >
+                            <Download size={14} /> Download {activePreset.name.split('(')[0].trim()} ({activePreset.size.split('+')[0].trim()})
+                        </button>
+                    ) : (
+                        <button
+                            onClick={toggleEngine}
+                            disabled={status === 'loading' || status === 'starting' || status === 'downloading_engine'}
+                            className={`px-6 py-3 rounded-2xl font-bold text-xs tracking-wide transition-all shadow-lg flex items-center gap-2 cursor-pointer ${
+                                status === 'loading' || status === 'starting' || status === 'downloading_engine'
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-wait'
+                                    : isRunning
+                                        ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30'
+                                        : 'bg-accent text-black hover:scale-105 shadow-[0_10px_25px_var(--accent-30)]'
+                            }`}
+                        >
+                            {status === 'loading' || status === 'starting' || status === 'downloading_engine' ? (
+                                <> <Loader2 size={14} className="animate-spin text-amber-400" /> Starting llama-server... </>
+                            ) : isRunning ? (
+                                <> <Square size={14} fill="currentColor" /> Stop llama-server </>
+                            ) : (
+                                <> <Play size={14} fill="currentColor" /> Start llama-server Engine </>
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
 

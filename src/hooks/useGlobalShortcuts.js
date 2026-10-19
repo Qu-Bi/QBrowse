@@ -51,7 +51,13 @@ export const handleEscapeDismissal = () => {
         return true;
     }
 
-    // 6. Find in Page Bar
+    // 6. Read Aloud Floating Player
+    if (uiStore.isReadAloudOpen) {
+        uiStore.closeReadAloud();
+        return true;
+    }
+
+    // 7. Find in Page Bar
     if (uiStore.isFindOpen) {
         uiStore.setIsFindOpen(false);
         return true;
@@ -463,6 +469,20 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             }
             break;
 
+        // Caret Browsing Toggle (F7)
+        case 'f7': {
+            const next = !uiStore.settings?.a11yCaretBrowsing;
+            uiStore.toggleSetting('a11yCaretBrowsing');
+            uiStore.showToast(next ? 'Caret Browsing enabled (Arrow keys navigate page text)' : 'Caret Browsing disabled');
+            break;
+        }
+
+        // Read Aloud Assistant (Alt+R)
+        case 'alt_r': {
+            uiStore.toggleReadAloud();
+            break;
+        }
+
         default:
             break;
     }
@@ -512,6 +532,18 @@ export default function useGlobalShortcuts() {
             if (e.key === 'F11' || e.key === 'F12' || e.key === 'F3') {
                 e.preventDefault();
                 executeShortcut(e.key.toLowerCase(), e.shiftKey);
+                return;
+            }
+
+            if (e.key === 'F7') {
+                e.preventDefault();
+                executeShortcut('f7');
+                return;
+            }
+
+            if (e.altKey && (e.key === 'r' || e.key === 'R')) {
+                e.preventDefault();
+                executeShortcut('alt_r');
                 return;
             }
 
@@ -624,7 +656,7 @@ export default function useGlobalShortcuts() {
                     return;
                 }
 
-                if (shortcut === 'f11' || shortcut === 'f12' || shortcut === 'f3') {
+                if (shortcut === 'f11' || shortcut === 'f12' || shortcut === 'f3' || shortcut === 'f7' || shortcut === 'alt_r') {
                     executeShortcut(shortcut, shift);
                 }
             });

@@ -28,15 +28,20 @@ const HistoryModal = () => {
         useUIStore.getState().showToast('Browsing history cleared');
     };
 
-    const handleOpenUrl = (url) => {
+    const handleOpenUrl = (url, inBackground = false) => {
         if (!url) return;
-        const activeTab = useTabStore.getState().getActiveTab();
-        if (activeTab) {
-            useTabStore.getState().handleNavigateTab(activeTab.id, url);
+        if (inBackground) {
+            useTabStore.getState().handleNewTab(url, false);
+            useUIStore.getState().showToast('Opened in background tab');
         } else {
-            useTabStore.getState().handleAddTab('personal', url);
+            const activeTab = useTabStore.getState().getActiveTab();
+            if (activeTab) {
+                useTabStore.getState().handleNavigateTab(activeTab.id, url);
+            } else {
+                useTabStore.getState().handleAddTab('personal', url);
+            }
+            closeModal();
         }
-        closeModal();
     };
 
     return (
@@ -136,7 +141,22 @@ const HistoryModal = () => {
                                     history.filter(item => item.title.toLowerCase().includes(historySearchQuery.toLowerCase()) || item.url.toLowerCase().includes(historySearchQuery.toLowerCase())).map((item, i) => (
                                         <div 
                                             key={item.url} 
-                                            onClick={() => handleOpenUrl(item.url)}
+                                            onClick={(e) => {
+                                                if (e.ctrlKey || e.metaKey) {
+                                                    e.preventDefault();
+                                                    handleOpenUrl(item.url, true);
+                                                } else {
+                                                    handleOpenUrl(item.url, false);
+                                                }
+                                            }}
+                                            onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                            onAuxClick={(e) => {
+                                                if (e.button === 1) {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleOpenUrl(item.url, true);
+                                                }
+                                            }}
                                             className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-200 group cursor-pointer border animate-tab-fade ${
                                                 isBright 
                                                     ? 'hover:bg-black/[0.03] border-transparent hover:border-black/[0.06] hover:shadow-xs' 
@@ -228,7 +248,22 @@ const HistoryModal = () => {
                                                 return (
                                                 <div 
                                                     key={item.url + i} 
-                                                    onClick={() => handleOpenUrl(item.url)}
+                                                    onClick={(e) => {
+                                                        if (e.ctrlKey || e.metaKey) {
+                                                            e.preventDefault();
+                                                            handleOpenUrl(item.url, true);
+                                                        } else {
+                                                            handleOpenUrl(item.url, false);
+                                                        }
+                                                    }}
+                                                    onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                                    onAuxClick={(e) => {
+                                                        if (e.button === 1) {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            handleOpenUrl(item.url, true);
+                                                        }
+                                                    }}
                                                     className={`flex items-center gap-4 p-3 rounded-2xl transition-all duration-200 group cursor-pointer border animate-tab-fade ${
                                                         isBright 
                                                             ? 'hover:bg-black/[0.03] border-transparent hover:border-black/[0.06] hover:shadow-xs' 

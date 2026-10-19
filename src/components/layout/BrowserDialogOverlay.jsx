@@ -146,6 +146,7 @@ export default function BrowserDialogOverlay() {
             }}
         >
             <div 
+                id="browser-dialog-card"
                 className={`relative w-full max-w-md rounded-2xl overflow-hidden border transition-all duration-300 ${
                     isClosing ? 'animate-pop-out' : 'animate-pop-in'
                 } p-5 flex flex-col gap-4 ${

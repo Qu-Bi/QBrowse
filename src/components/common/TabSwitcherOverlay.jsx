@@ -55,8 +55,8 @@ export default function TabSwitcherOverlay() {
         return null;
     }
 
-    const CARD_WIDTH = 400;
-    const CARD_GAP = 28;
+    const CARD_WIDTH = 540;
+    const CARD_GAP = 32;
     const TOTAL_STEP = CARD_WIDTH + CARD_GAP;
 
     const spaceLabel = activeSpace === 'ghost' ? 'Incognito / Ghost Space' : (activeSpace === 'work' ? 'Work Space' : 'Personal Space');
@@ -83,7 +83,7 @@ export default function TabSwitcherOverlay() {
             </div>
 
             {/* Centered Carousel Track */}
-            <div className="relative w-full h-[320px] md:h-[350px] flex items-center" onClick={e => e.stopPropagation()}>
+            <div className="relative w-full h-[370px] md:h-[400px] flex items-center" onClick={e => e.stopPropagation()}>
                 <div 
                     className="absolute flex items-center top-0 bottom-0"
                     style={{
@@ -106,7 +106,7 @@ export default function TabSwitcherOverlay() {
                                     setSwitcherIndex(idx);
                                     confirmSwitcher();
                                 }}
-                                className={`flex-shrink-0 aspect-[16/10] ${
+                                className={`flex-shrink-0 aspect-[16/10] tab-switcher-card ${
                                     isBright 
                                         ? 'bg-white/85 backdrop-blur-3xl border text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.14)]' 
                                         : 'bg-[#141418] border text-white shadow-2xl'

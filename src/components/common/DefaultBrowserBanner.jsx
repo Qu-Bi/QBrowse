@@ -8,12 +8,22 @@ export default function DefaultBrowserBanner() {
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
+    const activeModal = useUIStore(state => state.activeModal);
+    const setupComplete = useUIStore(state => state.setupComplete);
+    const isFullscreen = useUIStore(state => state.isFullscreen);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const [isVisible, setIsVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [isDefault, setIsDefault] = useState(false);
     const [isSetting, setIsSetting] = useState(false);
+
+    const isSuppressed = 
+        !setupComplete || 
+        activeModal !== null || 
+        isFullscreen ||
+        activeSpace === 'tor' ||
+        activeSpace === 'ghost';
 
     const closeBanner = (callback) => {
         if (isClosing) return;
@@ -26,40 +36,71 @@ export default function DefaultBrowserBanner() {
     };
 
     useEffect(() => {
-        // Do not display if user explicitly chose "Don't ask again"
-        const isDismissedForever = localStorage.getItem('qbrowse_dismiss_default_browser') === 'true';
-        if (isDismissedForever) return;
-
-        let isMounted = true;
-
-        const verifyDefault = async () => {
-            if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
-                try {
-                    const res = await window.electronAPI.checkDefaultBrowser();
-                    if (isMounted) {
-                        setIsDefault(!!res.isDefault);
-                        if (!res.isDefault) {
-                            // Brief delay so browser UI settles gracefully before prompt
-                            setTimeout(() => {
-                                if (isMounted) setIsVisible(true);
-                            }, 1800);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[DefaultBrowserBanner] Check failed:', e);
-                }
+        const isPermanentlyDismissed = () => {
+            try {
+                return localStorage.getItem('qbrowse_dismiss_default_browser') === 'true';
+            } catch (_) {
+                return false;
             }
         };
 
-        verifyDefault();
+        const isSessionDismissed = () => {
+            try {
+                return sessionStorage.getItem('qbrowse_dismiss_default_browser_session') === 'true';
+            } catch (_) {
+                return false;
+            }
+        };
+
+        const hasAlreadyCheckedThisSession = () => {
+            try {
+                return sessionStorage.getItem('qbrowse_default_browser_prompted') === 'true';
+            } catch (_) {
+                return false;
+            }
+        };
+
+        if (isPermanentlyDismissed() || isSessionDismissed()) return;
+
+        let isMounted = true;
+        let timerId = null;
+
+        // Startup check: Only run ONCE per browser session
+        if (setupComplete && !hasAlreadyCheckedThisSession()) {
+            try {
+                sessionStorage.setItem('qbrowse_default_browser_prompted', 'true');
+            } catch (_) {}
+
+            if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
+                window.electronAPI.checkDefaultBrowser({ force: true }).then((res) => {
+                    if (!isMounted) return;
+                    if (res && res.isDefault) {
+                        setIsDefault(true);
+                    } else if (!isPermanentlyDismissed() && !isSessionDismissed()) {
+                        // Delay gracefully so the browser window and tabs load without jarring the user
+                        timerId = setTimeout(() => {
+                            if (isMounted && !isPermanentlyDismissed() && !isSessionDismissed()) {
+                                setIsVisible(true);
+                            }
+                        }, 4000);
+                    }
+                }).catch((e) => {
+                    console.warn('[DefaultBrowserBanner] Initial check failed:', e);
+                });
+            }
+        }
 
         const handleFocus = async () => {
             if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
                 try {
-                    const res = await window.electronAPI.checkDefaultBrowser();
+                    const res = await window.electronAPI.checkDefaultBrowser({ force: true });
                     if (isMounted) {
-                        if (res.isDefault) {
-                            closeBanner(() => setIsDefault(true));
+                        if (res && res.isDefault) {
+                            setIsDefault(true);
+                            try {
+                                sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
+                            } catch (_) {}
+                            closeBanner();
                         } else {
                             setIsDefault(false);
                         }
@@ -72,24 +113,47 @@ export default function DefaultBrowserBanner() {
 
         return () => {
             isMounted = false;
+            if (timerId) clearTimeout(timerId);
             window.removeEventListener('focus', handleFocus);
         };
-    }, []);
+    }, [setupComplete]);
 
     const handleSetDefault = async () => {
         setIsSetting(true);
+        try {
+            sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
+        } catch (_) {}
+
         if (window.electronAPI && window.electronAPI.setDefaultBrowser) {
             try {
                 const res = await window.electronAPI.setDefaultBrowser();
-                if (res.isDefault) {
+                if (res && res.isDefault) {
                     showToast('QBrowse is now your default browser!');
                     closeBanner(() => setIsDefault(true));
                 } else {
-                    showToast('System settings opened. Click "Set default" for QBrowse.');
+                    showToast('Opening Windows Default Apps. Click "Set default" for QBrowse.');
                     closeBanner();
+
+                    // Background poll for up to 30s while user interacts with Windows Settings
+                    let polls = 0;
+                    const pollInterval = setInterval(async () => {
+                        polls++;
+                        if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
+                            try {
+                                const check = await window.electronAPI.checkDefaultBrowser({ force: true });
+                                if (check && check.isDefault) {
+                                    setIsDefault(true);
+                                    showToast('QBrowse is now your default browser!');
+                                    clearInterval(pollInterval);
+                                }
+                            } catch (_) {}
+                        }
+                        if (polls >= 20) clearInterval(pollInterval);
+                    }, 1500);
                 }
             } catch (err) {
-                showToast('Could not set default browser.');
+                showToast('Could not open default browser settings.');
+                closeBanner();
             }
         } else {
             showToast('Platform API not available.');
@@ -99,17 +163,23 @@ export default function DefaultBrowserBanner() {
     };
 
     const handleNeverAskAgain = () => {
-        closeBanner(() => {
+        try {
             localStorage.setItem('qbrowse_dismiss_default_browser', 'true');
+            sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
+        } catch (_) {}
+        closeBanner(() => {
             showToast('Default browser prompt silenced.');
         });
     };
 
     const handleDismissSession = () => {
+        try {
+            sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
+        } catch (_) {}
         closeBanner();
     };
 
-    if ((!isVisible && !isClosing) || (isDefault && !isClosing)) return null;
+    if (isSuppressed || (!isVisible && !isClosing) || (isDefault && !isClosing)) return null;
 
     return (
         <div className={`fixed top-12 right-6 z-[9990] max-w-[350px] w-full ${isClosing ? 'animate-pop-out' : 'animate-pop-in'} origin-top-right pointer-events-auto select-none`}>

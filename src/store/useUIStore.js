@@ -1,8 +1,30 @@
 import { create } from 'zustand';
 import { parseArticle } from '../utils/readerExtractor.js';
+import { playDownloadCompleteChime } from '../utils/bootAudio.js';
 
 let globalToastTimeout = null;
 let globalZoomTimeout = null;
+
+const loadInitialDownloads = () => {
+    try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            const raw = localStorage.getItem('qbrowse_downloads');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        }
+    } catch (_) {}
+    return [];
+};
+
+const saveDownloadsToStorage = (downloads) => {
+    try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem('qbrowse_downloads', JSON.stringify((downloads || []).slice(0, 50)));
+        }
+    } catch (_) {}
+};
 
 const defaultSettings = {
     httpsOnly: true,
@@ -21,6 +43,7 @@ const defaultSettings = {
     cosmetic: true,
     social: true,
     searchEngine: 'google',
+    customSearchEngines: [],
     smartCalc: true,
     liveSearch: true,
     showFullUrls: false,
@@ -31,6 +54,8 @@ const defaultSettings = {
     uiScale: 'comfortable',
     faviconGlow: true,
     doh: 'cloudflare',
+    dohMode: 'automatic',
+    customDohUrl: '',
     customBangs: [],
     readerTheme: 'dark',
     readerFont: 'serif',
@@ -42,7 +67,19 @@ const defaultSettings = {
     wallpaperDimming: 25,
     wallpaperBlur: 24,
     closeWindowOnLastTab: true,
-    playStartupSound: false
+    playStartupSound: false,
+
+    // Accessibility (EU European Accessibility Act / EN 301 549 & WCAG 2.1 AA)
+    a11yHighContrast: false,
+    a11yDyslexiaFont: false,
+    a11yMinFontSize: 'default', // 'default' | '12px' | '14px' | '16px' | '18px'
+    a11yPageZoom: 100, // 80 - 200%
+    a11yReducedMotion: false,
+    a11ySuppressAutoplay: false,
+    a11yCaretBrowsing: false,
+    a11yFocusRings: false,
+    a11yVideoCaptions: false,
+    a11yMonoAudio: false
 };
 
 const loadSettings = () => {
@@ -186,19 +223,83 @@ const useUIStore = create((set, get) => ({
   rightPanelTab: 'ai', // 'ai' | 'downloads' | 'settings' | 'history'
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
 
-  // Downloads
-  downloads: [],
-  setDownloads: (downloads) => set({ downloads }),
-  addDownload: (download) => set(state => ({ downloads: [download, ...state.downloads] })),
-  updateDownload: (id, updates) => set(state => ({
-      downloads: state.downloads.map(d => d.id === id ? { ...d, ...updates } : d)
-  })),
-  removeDownload: (id) => set(state => ({
-      downloads: state.downloads.filter(d => d.id !== id)
-  })),
+  // Downloads (Persistent & Synchronized with ToolHub)
+  downloads: loadInitialDownloads(),
+  setDownloads: (downloads) => {
+    saveDownloadsToStorage(downloads);
+    set({ downloads });
+  },
+  addDownload: (download) => set(state => {
+    const next = [download, ...(state.downloads || []).filter(d => d.id !== download.id)];
+    saveDownloadsToStorage(next);
+    return { downloads: next };
+  }),
+  updateDownload: (id, updates) => set(state => {
+    const next = (state.downloads || []).map(d => d.id === id ? { ...d, ...updates } : d);
+    saveDownloadsToStorage(next);
+    return { downloads: next };
+  }),
+  removeDownload: async (id, deleteFile = true) => {
+    const item = (get().downloads || []).find(d => d.id === id);
+    if (item && deleteFile) {
+      const filePath = item.savePath || item.filePath;
+      if (filePath && window.electronAPI?.deleteDownloadFile) {
+        try {
+          await window.electronAPI.deleteDownloadFile(filePath);
+        } catch (e) {
+          console.warn('[Downloads] Failed to remove file from disk:', e);
+        }
+      }
+    }
+    const next = (get().downloads || []).filter(d => d.id !== id);
+    saveDownloadsToStorage(next);
+    set({ downloads: next });
+  },
+  clearDownloads: () => set(() => {
+    saveDownloadsToStorage([]);
+    return { downloads: [] };
+  }),
 
   activeDownloadPopup: null,
   setActiveDownloadPopup: (popup) => set({ activeDownloadPopup: popup }),
+
+  registerScreenshotDownload: (res, title, type = 'Screenshot') => {
+    if (!res || !res.success || !res.filePath) return;
+    const fileName = res.fileName || res.filePath.split(/[\\/]/).pop() || `${type}.png`;
+    const downloadItem = {
+      id: `screenshot_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      fileName,
+      filename: fileName,
+      url: `file://${res.filePath.replace(/\\/g, '/')}`,
+      savePath: res.filePath,
+      filePath: res.filePath,
+      state: 'completed',
+      progress: 100,
+      totalBytes: res.fileSize || 0,
+      receivedBytes: res.fileSize || 0,
+      speedBytesPerSec: 0,
+      isScreenshot: true,
+      screenshotType: type,
+      createdAt: Date.now(),
+      completedAt: Date.now()
+    };
+
+    get().addDownload(downloadItem);
+    get().setActiveDownloadPopup(downloadItem.id);
+
+    const s = get().settings;
+    if (s?.downloadSound !== false) {
+      try {
+        playDownloadCompleteChime();
+      } catch (_) {}
+    }
+
+    setTimeout(() => {
+      if (get().activeDownloadPopup === downloadItem.id) {
+        get().setActiveDownloadPopup(null);
+      }
+    }, 4500);
+  },
 
   // Navigation
   
@@ -315,9 +416,14 @@ const useUIStore = create((set, get) => ({
   refresh: () => {
     set({ isRefreshing: true });
     try {
-        const wv = Array.from(document.querySelectorAll('webview')).find(w => w.style.visibility !== 'hidden' && w.style.display !== 'none');
-        if (wv && typeof wv.reload === 'function') {
-            wv.reload();
+        const activeWv = get().getActiveWebView();
+        if (activeWv && typeof activeWv.reload === 'function') {
+            activeWv.reload();
+        } else {
+            const wv = Array.from(document.querySelectorAll('webview')).find(w => w.style.visibility !== 'hidden' && w.style.display !== 'none');
+            if (wv && typeof wv.reload === 'function') {
+                wv.reload();
+            }
         }
     } catch (e) {}
     setTimeout(() => set({ isRefreshing: false }), 1000);
@@ -613,6 +719,7 @@ const useUIStore = create((set, get) => ({
 
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
+          get().registerScreenshotDownload(res, title, 'Visible Viewport');
           get().showToast('Screenshot saved to Downloads & copied to clipboard!');
         } else {
           get().showToast(`Failed to capture screenshot: ${res?.error || 'Unknown error'}`);
@@ -678,6 +785,7 @@ const useUIStore = create((set, get) => ({
           const res = await window.electronAPI.captureAndSave({ webContentsId: wcId, title });
           if (res?.success) {
             set({ lastScreenshotPath: res.filePath });
+            get().registerScreenshotDownload(res, title, 'Full Page');
             get().showToast('Full page screenshot saved & copied to clipboard!');
           }
         }
@@ -743,6 +851,7 @@ const useUIStore = create((set, get) => ({
         });
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
+          get().registerScreenshotDownload(res, title, 'Full Page');
           get().showToast('Full page screenshot saved & copied to clipboard!');
         } else {
           get().showToast(`Failed to save screenshot: ${res?.error || 'Unknown error'}`);
@@ -756,7 +865,30 @@ const useUIStore = create((set, get) => ({
 
   captureSelectedArea: async (rect) => {
     try {
+      // 1. Clear any active toast notifications so they don't leak into capture
       set({ toast: null, isToastClosing: false });
+
+      // 2. Ensure snipping mode is turned off and any overlay DOM is hidden
+      if (get().isSnippingMode) {
+        set({ isSnippingMode: false });
+      }
+      const overlayEl = document.getElementById('qbrowse-snipping-overlay');
+      if (overlayEl) {
+        overlayEl.style.display = 'none';
+        overlayEl.style.visibility = 'hidden';
+        overlayEl.style.opacity = '0';
+      }
+
+      // 3. Guarantee compositor has flushed clean frame before capture
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 60))));
+
+      const cleanRect = {
+        x: Math.max(0, Math.round(rect.x)),
+        y: Math.max(0, Math.round(rect.y)),
+        width: Math.max(1, Math.round(rect.width)),
+        height: Math.max(1, Math.round(rect.height))
+      };
+
       const wv = get().getActiveWebView();
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
@@ -775,27 +907,30 @@ const useUIStore = create((set, get) => ({
         let res;
         const r = wv?.getBoundingClientRect?.();
         const isInsideWv = wv && wcId && r && (
-          rect.x >= r.left - 2 &&
-          rect.y >= r.top - 2 &&
-          (rect.x + rect.width) <= (r.right + 2) &&
-          (rect.y + rect.height) <= (r.bottom + 2)
+          cleanRect.x >= r.left - 2 &&
+          cleanRect.y >= r.top - 2 &&
+          (cleanRect.x + cleanRect.width) <= (r.right + 2) &&
+          (cleanRect.y + cleanRect.height) <= (r.bottom + 2)
         );
 
         if (isInsideWv) {
           // Translate to guest webview local coordinates
+          const localX = Math.max(0, Math.round(cleanRect.x - r.left));
+          const localY = Math.max(0, Math.round(cleanRect.y - r.top));
           const localRect = {
-            x: Math.max(0, Math.round(rect.x - r.left)),
-            y: Math.max(0, Math.round(rect.y - r.top)),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height)
+            x: localX,
+            y: localY,
+            width: Math.max(1, Math.min(cleanRect.width, Math.round(r.width - localX))),
+            height: Math.max(1, Math.min(cleanRect.height, Math.round(r.height - localY)))
           };
           res = await window.electronAPI.captureAndSave({ webContentsId: wcId, rect: localRect, title });
         } else {
-          res = await window.electronAPI.captureAndSave({ rect, title });
+          res = await window.electronAPI.captureAndSave({ rect: cleanRect, title });
         }
 
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
+          get().registerScreenshotDownload(res, title, 'Snip');
           get().showToast('Snip saved to Downloads & copied to clipboard!');
         } else {
           get().showToast(`Failed to save snip: ${res?.error || 'Unknown error'}`);
@@ -971,13 +1106,36 @@ const useUIStore = create((set, get) => ({
 
   settingsTab: 'appearance',
   setSettingsTab: (tab) => set({ settingsTab: tab }),
+  openSettings: (tab = 'appearance') => {
+    const targetTab = (tab === 'performance' || tab === 'perf') ? 'engine' : tab;
+    set({ activeModal: 'settings', settingsTab: targetTab, isModalClosing: false, closingModal: null });
+  },
+
+  // Read Aloud Floating Player
+  isReadAloudOpen: false,
+  openReadAloud: () => set({ isReadAloudOpen: true }),
+  closeReadAloud: () => set({ isReadAloudOpen: false }),
+  toggleReadAloud: () => set(state => ({ isReadAloudOpen: !state.isReadAloudOpen })),
   user: null,
   setUser: (user) => set({ user }),
 
   isForceDark: localStorage.getItem('qbrowse_isForceDark') === 'true',
   setIsForceDark: (val) => {
       set({ isForceDark: val });
-      localStorage.setItem('qbrowse_isForceDark', val);
+      try {
+          localStorage.setItem('qbrowse_isForceDark', val);
+      } catch (_) {}
+      if (typeof window !== 'undefined' && window.electronAPI) {
+          if (window.electronAPI.saveSetting) {
+              window.electronAPI.saveSetting('isForceDark', val);
+          }
+          if (window.electronAPI.syncSmartDarkState) {
+              window.electronAPI.syncSmartDarkState({
+                  isForceDark: val,
+                  darkExclusions: get().darkExclusions
+              });
+          }
+      }
   },
   isAdblockActive: true,
   setIsAdblockActive: (val) => {
@@ -1020,15 +1178,96 @@ const useUIStore = create((set, get) => ({
   })(),
   setDarkExclusions: (exclusions) => {
       set({ darkExclusions: exclusions });
-      localStorage.setItem('qbrowse_dark_exclusions', JSON.stringify(exclusions));
+      try {
+          localStorage.setItem('qbrowse_dark_exclusions', JSON.stringify(exclusions));
+      } catch (_) {}
+      if (typeof window !== 'undefined' && window.electronAPI) {
+          if (window.electronAPI.saveSetting) {
+              window.electronAPI.saveSetting('darkExclusions', exclusions);
+          }
+          if (window.electronAPI.syncSmartDarkState) {
+              window.electronAPI.syncSmartDarkState({
+                  isForceDark: get().isForceDark,
+                  darkExclusions: exclusions
+              });
+          }
+      }
   },
   
   settings: loadSettings(),
+  initSettingsFromDisk: async () => {
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getSettings) {
+      try {
+        const diskSettings = await window.electronAPI.getSettings();
+        if (diskSettings && typeof diskSettings === 'object' && Object.keys(diskSettings).length > 0) {
+          const localStored = localStorage.getItem('qbrowse_settings');
+          let localParsed = null;
+          try {
+            if (localStored) localParsed = JSON.parse(localStored);
+          } catch (_) {}
+
+          // Disk settings provides resilient persistence if Local Storage was out of sync
+          const merged = localParsed
+            ? { ...defaultSettings, ...diskSettings, ...localParsed }
+            : { ...defaultSettings, ...diskSettings };
+
+          set({ settings: merged });
+          try {
+            localStorage.setItem('qbrowse_settings', JSON.stringify(merged));
+          } catch (_) {}
+
+          // Mirror top-level appearance settings if present in disk store
+          if (diskSettings.theme && (diskSettings.theme === 'light' || diskSettings.theme === 'dark')) {
+            get().setTheme(diskSettings.theme);
+          }
+          if (diskSettings.accentColor && typeof diskSettings.accentColor === 'string') {
+            get().setAccentColor(diskSettings.accentColor);
+          }
+          if (typeof diskSettings.isGlassEnabled === 'boolean') {
+            get().setIsGlassEnabled(diskSettings.isGlassEnabled);
+          }
+          if (typeof diskSettings.isForceDark === 'boolean') {
+            get().setIsForceDark(diskSettings.isForceDark);
+          } else if (window.electronAPI && window.electronAPI.saveSetting) {
+            window.electronAPI.saveSetting('isForceDark', get().isForceDark);
+          }
+          if (Array.isArray(diskSettings.darkExclusions)) {
+            get().setDarkExclusions(diskSettings.darkExclusions);
+          } else if (window.electronAPI && window.electronAPI.saveSetting) {
+            window.electronAPI.saveSetting('darkExclusions', get().darkExclusions);
+          }
+          if (typeof diskSettings.isSwipeEnabled === 'boolean') {
+            get().setIsSwipeEnabled(diskSettings.isSwipeEnabled);
+          }
+
+          // Ensure disk store has all current merged fields
+          Object.entries(merged).forEach(([k, v]) => {
+            window.electronAPI.saveSetting(k, v);
+          });
+        }
+      } catch (e) {
+        console.warn('[useUIStore] initSettingsFromDisk notice:', e);
+      }
+    }
+  },
+  resetAllSettings: () => {
+    set({ settings: { ...defaultSettings } });
+    try {
+      localStorage.setItem('qbrowse_settings', JSON.stringify(defaultSettings));
+      localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+    } catch (_) {}
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
+      Object.entries(defaultSettings).forEach(([k, v]) => {
+        window.electronAPI.saveSetting(k, v);
+      });
+    }
+  },
   toggleSetting: (key) => {
       set((state) => {
           const newSettings = { ...state.settings, [key]: !state.settings[key] };
           try {
               localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+              localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
           } catch(e) {}
           
           if (['hardware', 'isolation'].includes(key)) {
@@ -1045,6 +1284,7 @@ const useUIStore = create((set, get) => ({
           const newSettings = { ...state.settings, [key]: value };
           try {
               localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+              localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
           } catch(e) {}
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, value);
@@ -1078,6 +1318,80 @@ const useUIStore = create((set, get) => ({
       get().setSettingValue('customBangs', updated);
   },
 
+  // Custom Search Engines Management
+  addCustomSearchEngine: (engine) => {
+      const customEngines = get().settings?.customSearchEngines || [];
+      const cleanName = (engine.name || '').trim();
+      const cleanKeyword = (engine.keyword || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      const cleanUrl = (engine.url || '').trim();
+      if (!cleanName || !cleanUrl) return;
+
+      const newEngine = {
+          id: engine.id || `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          name: cleanName,
+          keyword: cleanKeyword || cleanName.toLowerCase().replace(/\s+/g, ''),
+          url: cleanUrl,
+          suggestUrl: engine.suggestUrl ? engine.suggestUrl.trim() : null,
+          color: engine.color || '#d4bc94',
+          isCustom: true
+      };
+
+      const updated = [...customEngines, newEngine];
+      get().setSettingValue('customSearchEngines', updated);
+      return newEngine;
+  },
+  updateCustomSearchEngine: (id, updatedEngine) => {
+      const customEngines = get().settings?.customSearchEngines || [];
+      const updated = customEngines.map(e => {
+          if (e.id === id) {
+              return {
+                  ...e,
+                  ...updatedEngine,
+                  id,
+                  isCustom: true
+              };
+          }
+          return e;
+      });
+      get().setSettingValue('customSearchEngines', updated);
+  },
+  removeCustomSearchEngine: (id) => {
+      const customEngines = get().settings?.customSearchEngines || [];
+      const currentDefault = get().settings?.searchEngine;
+      const updated = customEngines.filter(e => e.id !== id);
+      get().setSettingValue('customSearchEngines', updated);
+      if (currentDefault === id) {
+          get().setSettingValue('searchEngine', 'google');
+      }
+  },
+  setDefaultSearchEngine: (id) => {
+      get().setSettingValue('searchEngine', id);
+  },
+
+  // Secure DNS & Host Resolver Configuration
+  setDnsConfiguration: async ({ provider, mode, customUrl }) => {
+      const current = get().settings || {};
+      const newDoh = provider !== undefined ? provider : (current.doh || 'cloudflare');
+      const newMode = mode !== undefined ? mode : (current.dohMode || 'automatic');
+      const newCustomUrl = customUrl !== undefined ? customUrl : (current.customDohUrl || '');
+
+      get().setSettingValue('doh', newDoh);
+      get().setSettingValue('dohMode', newMode);
+      get().setSettingValue('customDohUrl', newCustomUrl);
+
+      if (window.electronAPI?.setDoh) {
+          try {
+              await window.electronAPI.setDoh({
+                  provider: newDoh,
+                  mode: newMode,
+                  customUrl: newCustomUrl
+              });
+          } catch (e) {
+              console.warn('[Store] Failed to apply DNS config via IPC:', e);
+          }
+      }
+  },
+
   // Custom Wallpaper & Background
   setCustomWallpaper: (url, source = 'url', originalUrl = null) => {
       set((state) => {
@@ -1089,7 +1403,13 @@ const useUIStore = create((set, get) => ({
           };
           try {
               localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+              localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
           } catch(e) {}
+          if (window.electronAPI && window.electronAPI.saveSetting) {
+              window.electronAPI.saveSetting('customWallpaper', url);
+              window.electronAPI.saveSetting('customWallpaperSource', source);
+              window.electronAPI.saveSetting('customWallpaperOriginalUrl', originalUrl || (source === 'url' ? url : null));
+          }
           return { settings: newSettings };
       });
   },
@@ -1117,7 +1437,13 @@ const useUIStore = create((set, get) => ({
           };
           try {
               localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+              localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
           } catch(e) {}
+          if (window.electronAPI && window.electronAPI.saveSetting) {
+              window.electronAPI.saveSetting('customWallpaper', null);
+              window.electronAPI.saveSetting('customWallpaperSource', 'default');
+              window.electronAPI.saveSetting('customWallpaperOriginalUrl', null);
+          }
           return { settings: newSettings };
       });
   },
@@ -1180,6 +1506,9 @@ const useUIStore = create((set, get) => ({
     try {
       localStorage.setItem('qbrowse_isGlassEnabled', JSON.stringify(val));
     } catch (_) {}
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
+      window.electronAPI.saveSetting('isGlassEnabled', val);
+    }
     if (typeof document !== 'undefined') {
       document.documentElement.classList.toggle('no-glass', !val);
     }
@@ -1196,6 +1525,9 @@ const useUIStore = create((set, get) => ({
     try {
       localStorage.setItem('qbrowse_isSwipeEnabled', JSON.stringify(val));
     } catch (_) {}
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
+      window.electronAPI.saveSetting('isSwipeEnabled', val);
+    }
   },
   // Webview Fullscreen
   isWebviewFullscreen: false,
@@ -1221,6 +1553,9 @@ const useUIStore = create((set, get) => ({
               }
           }
       } catch(e) {}
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
+          window.electronAPI.saveSetting('theme', validTheme);
+      }
 
       // Trigger GPU compositor veil crossfade
       set({ 
@@ -1237,8 +1572,33 @@ const useUIStore = create((set, get) => ({
       const next = get().theme === 'light' ? 'dark' : 'light';
       get().setTheme(next);
   },
-  accentColor: '#d4bc94',
-  setAccentColor: (color) => set({ accentColor: color }),
+  accentColor: (() => {
+      try {
+          const stored = localStorage.getItem('qbrowse_accent_color');
+          if (stored && stored.startsWith('#')) return stored;
+      } catch (_) {}
+      return '#d4bc94';
+  })(),
+  setAccentColor: (color) => {
+      if (!color) return;
+      const validColor = color.startsWith('#') ? color : `#${color}`;
+      set({ accentColor: validColor });
+      try {
+          localStorage.setItem('qbrowse_accent_color', validColor);
+      } catch (_) {}
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
+          window.electronAPI.saveSetting('accentColor', validColor);
+      }
+      try {
+          const profileStore = window.__profileStore?.getState();
+          if (profileStore && profileStore.activeProfileId && profileStore.updateProfile) {
+              const activeProfile = profileStore.getActiveProfile?.();
+              if (activeProfile && activeProfile.color !== validColor) {
+                  profileStore.updateProfile(profileStore.activeProfileId, { color: validColor, silent: true });
+              }
+          }
+      } catch (_) {}
+  },
 
   // Onboarding & Tutorial
   setupComplete: localStorage.getItem('qbrowse_setup_complete') === 'true',
@@ -1285,7 +1645,7 @@ const useUIStore = create((set, get) => ({
     if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
     window.__switcherTimer = setTimeout(() => {
       set({ showSwitcherUI: true });
-    }, 140);
+    }, 220);
 
     set({
       showSwitcher: true,
@@ -1413,12 +1773,19 @@ const useUIStore = create((set, get) => ({
     get().setSettingValue(key, val);
   },
 
+  // Read Aloud (Text-to-Speech Accessibility Player)
+  isReadAloudOpen: false,
+  openReadAloud: () => set({ isReadAloudOpen: true }),
+  closeReadAloud: () => set({ isReadAloudOpen: false }),
+  toggleReadAloud: () => set(state => ({ isReadAloudOpen: !state.isReadAloudOpen })),
+
   // Hardware-Aware Performance Scaling System
   hardwareProfile: null,
   performanceMode: 'auto', // 'auto' | 'eco' | 'balanced' | 'ultra'
   activePerformanceTier: 'balanced',
   tabSleepTimeoutMinutes: 15,
   reduceVisualsOnEco: true,
+  bfcacheEnabled: true,
 
   initPerformanceProfile: async () => {
     if (typeof window === 'undefined' || !window.electronAPI?.getHardwareProfile) return;
@@ -1454,7 +1821,8 @@ const useUIStore = create((set, get) => ({
           performanceMode: profile.mode || 'auto',
           activePerformanceTier: profile.activeTier || 'balanced',
           tabSleepTimeoutMinutes: profile.tabSleepTimeoutMinutes || 15,
-          reduceVisualsOnEco: profile.reduceVisuals !== false
+          reduceVisualsOnEco: profile.reduceVisuals !== false,
+          bfcacheEnabled: profile.bfcacheEnabled !== false
         });
         applyDom(profile.activeTier, profile.reduceVisuals !== false);
       }
@@ -1467,7 +1835,8 @@ const useUIStore = create((set, get) => ({
               performanceMode: updatedProfile.mode || 'auto',
               activePerformanceTier: updatedProfile.activeTier || 'balanced',
               tabSleepTimeoutMinutes: updatedProfile.tabSleepTimeoutMinutes || 15,
-              reduceVisualsOnEco: updatedProfile.reduceVisuals !== false
+              reduceVisualsOnEco: updatedProfile.reduceVisuals !== false,
+              bfcacheEnabled: updatedProfile.bfcacheEnabled !== false
             });
             applyDom(updatedProfile.activeTier, updatedProfile.reduceVisuals !== false);
           }
@@ -1553,6 +1922,21 @@ const useUIStore = create((set, get) => ({
     }
   },
 
+  toggleBfcache: async () => {
+    const newVal = !get().bfcacheEnabled;
+    try {
+      if (window.electronAPI?.setPerformanceSettings) {
+        const updated = await window.electronAPI.setPerformanceSettings({ bfcacheEnabled: newVal });
+        set({ bfcacheEnabled: newVal, hardwareProfile: updated || get().hardwareProfile });
+      } else {
+        set({ bfcacheEnabled: newVal });
+      }
+      get().showToast(newVal ? 'Instant Back/Forward Cache enabled' : 'Instant Back/Forward Cache disabled');
+    } catch (_) {
+      set({ bfcacheEnabled: newVal });
+    }
+  },
+
   setReduceVisualsOnEco: async (enabled) => {
     try {
       if (window.electronAPI?.setPerformanceSettings) {
@@ -1593,12 +1977,22 @@ try {
 } catch (_) {}
 
 export const syncInitialSettingsToElectron = () => {
-  if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
+  if (typeof window !== 'undefined' && window.electronAPI) {
     try {
-      const currentSettings = useUIStore.getState().settings || {};
-      Object.entries(currentSettings).forEach(([key, val]) => {
-        window.electronAPI.saveSetting(key, val);
-      });
+      if (window.electronAPI.saveSetting) {
+        const currentSettings = useUIStore.getState().settings || {};
+        Object.entries(currentSettings).forEach(([key, val]) => {
+          window.electronAPI.saveSetting(key, val);
+        });
+        window.electronAPI.saveSetting('isForceDark', useUIStore.getState().isForceDark);
+        window.electronAPI.saveSetting('darkExclusions', useUIStore.getState().darkExclusions);
+      }
+      if (window.electronAPI.syncSmartDarkState) {
+        window.electronAPI.syncSmartDarkState({
+          isForceDark: useUIStore.getState().isForceDark,
+          darkExclusions: useUIStore.getState().darkExclusions
+        });
+      }
     } catch (_) {}
   }
 };

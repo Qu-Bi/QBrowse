@@ -10,8 +10,168 @@ ipcRenderer.sendToHost = function(channel, ...args) {
 
 const isOAuthPopup = Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup');
 
+function isGoogleAuthTarget(urlOrHost) {
+    if (!urlOrHost) return false;
+    try {
+        const str = String(urlOrHost).toLowerCase();
+        let hostname = str;
+        if (str.includes('://')) {
+            hostname = new URL(str).hostname.toLowerCase();
+        }
+        return hostname.startsWith('accounts.google.') ||
+               hostname === 'oauth2.googleapis.com' ||
+               hostname.startsWith('accounts.youtube.') ||
+               hostname === 'myaccount.google.com' ||
+               hostname.startsWith('consent.google.') ||
+               hostname.startsWith('consent.youtube.') ||
+               (hostname.includes('google.') && (str.includes('/signin') || str.includes('/servicelogin'))) ||
+               (hostname === 'apis.google.com' && (str.includes('/auth') || str.includes('/oauth')));
+    } catch (_) {
+        const s = String(urlOrHost).toLowerCase();
+        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.');
+    }
+}
+
+const currentHostname = typeof window !== 'undefined' && window.location ? (window.location.hostname || '') : '';
+const currentHref = typeof window !== 'undefined' && window.location ? (window.location.href || '') : '';
+const isGoogleAuth = isGoogleAuthTarget(currentHostname) || isGoogleAuthTarget(currentHref);
+
+// Authentic Google Chrome desktop stealth hardening: remove Electron tokens, mock standard Chrome runtime APIs
+try {
+    const chromeFull = (process && process.versions && process.versions.chrome) || '150.0.7871.114';
+    const chromeMajor = chromeFull.split('.')[0] || '150';
+    const stealthChromeScript = `
+        (function() {
+            'use strict';
+            try {
+                // 1. Sanitize navigator.userAgentData to pure Google Chrome desktop on prototype
+                const proto = (window.navigator && Object.getPrototypeOf(window.navigator)) || (window.navigator || {});
+                if (window.navigator && window.navigator.userAgentData) {
+                    const cleanBrands = [
+                        { brand: 'Google Chrome', version: '${chromeMajor}' },
+                        { brand: 'Chromium', version: '${chromeMajor}' },
+                        { brand: 'Not_A Brand', version: '24' }
+                    ];
+
+                    const fakeUaData = {
+                        brands: cleanBrands,
+                        mobile: false,
+                        platform: 'Windows',
+                        getHighEntropyValues: async (hints = []) => {
+                            const res = {
+                                brands: cleanBrands,
+                                mobile: false,
+                                platform: 'Windows'
+                            };
+                            if (hints.includes('platformVersion')) res.platformVersion = '15.0.0';
+                            if (hints.includes('architecture')) res.architecture = 'x86';
+                            if (hints.includes('bitness')) res.bitness = '64';
+                            if (hints.includes('model')) res.model = '';
+                            if (hints.includes('uaFullVersion')) res.uaFullVersion = '${chromeFull}';
+                            if (hints.includes('fullVersionList')) {
+                                res.fullVersionList = [
+                                    { brand: 'Google Chrome', version: '${chromeFull}' },
+                                    { brand: 'Chromium', version: '${chromeFull}' },
+                                    { brand: 'Not_A Brand', version: '24.0.0.0' }
+                                ];
+                            }
+                            return res;
+                        },
+                        toJSON: () => ({
+                            brands: cleanBrands,
+                            mobile: false,
+                            platform: 'Windows'
+                        })
+                    };
+
+                    try {
+                        Object.defineProperty(proto, 'userAgentData', {
+                            get: () => fakeUaData,
+                            configurable: true,
+                            enumerable: true
+                        });
+                    } catch (_) {}
+                }
+
+                // 2. Inject authentic window.chrome runtime properties (csi, loadTimes, app, runtime)
+                if (!window.chrome) window.chrome = {};
+
+                if (typeof window.chrome.csi !== 'function') {
+                    window.chrome.csi = function csi() {
+                        const navStart = (window.performance && window.performance.timing) ? window.performance.timing.navigationStart : Date.now();
+                        return {
+                            startE: navStart,
+                            onloadT: navStart + 120,
+                            pageT: (window.performance && window.performance.now) ? window.performance.now() : 150,
+                            tran: 15
+                        };
+                    };
+                }
+
+                if (typeof window.chrome.loadTimes !== 'function') {
+                    window.chrome.loadTimes = function loadTimes() {
+                        const navStart = (window.performance && window.performance.timing) ? window.performance.timing.navigationStart : Date.now();
+                        const nowSec = navStart / 1000;
+                        return {
+                            requestTime: nowSec,
+                            startLoadTime: nowSec,
+                            commitLoadTime: nowSec + 0.05,
+                            finishDocumentLoadTime: nowSec + 0.12,
+                            finishLoadTime: nowSec + 0.15,
+                            firstPaintTime: nowSec + 0.08,
+                            firstPaintAfterLoadTime: 0,
+                            navigationType: 'Other',
+                            wasFetchedViaSpdy: true,
+                            wasNpnNegotiated: true,
+                            npnNegotiatedProtocol: 'h2',
+                            wasAlternateProtocolAvailable: false,
+                            connectionInfo: 'h2'
+                        };
+                    };
+                }
+
+                if (!window.chrome.app) {
+                    window.chrome.app = {
+                        isInstalled: false,
+                        InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+                        RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+                        getIsInstalled: () => false,
+                        getDetails: () => null,
+                        getRunningState: () => 'cannot_run'
+                    };
+                }
+
+                if (!window.chrome.runtime) {
+                    window.chrome.runtime = {
+                        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+                        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+                        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+                        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+                        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+                        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
+                        connect: function connect() { throw new TypeError('Error in invocation of runtime.connect'); },
+                        sendMessage: function sendMessage() { throw new TypeError('Error in invocation of runtime.sendMessage'); }
+                    };
+                }
+            } catch (_) {}
+        })();
+    `;
+    if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
+        webFrame.executeJavaScript(stealthChromeScript).catch(() => {});
+    }
+    if (typeof window !== 'undefined') {
+        window.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
+                    webFrame.executeJavaScript(stealthChromeScript).catch(() => {});
+                }
+            } catch (_) {}
+        }, { once: true });
+    }
+} catch (_) {}
+
 // Synchronously bridge window.alert, window.confirm, and window.prompt to QBrowse in-tab UI
-if (!isOAuthPopup) {
+if (!isOAuthPopup && !isGoogleAuth) {
     try {
         const dialogInfo = ipcRenderer.sendSync('get-dialog-port');
         const dialogPort = (dialogInfo && typeof dialogInfo === 'object') ? dialogInfo.port : dialogInfo;
@@ -407,6 +567,10 @@ try {
                 });
                 const passkeys = (matches || []).filter(m => m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId)));
                 if (passkeys.length > 0) {
+                    if (data?.conditional) {
+                        // Silent on conditional mediation (autofill probe on page load)
+                        return null;
+                    }
                     let chosen = passkeys[0];
                     if (data?.allowCredentials && Array.isArray(data.allowCredentials) && data.allowCredentials.length > 0) {
                         const matched = passkeys.find(p => {
@@ -454,7 +618,23 @@ const injectMainWorldPasskeyOverride = () => {
             (function() {
                 if (typeof window === 'undefined' || !window.navigator || !window.navigator.credentials) return;
                 if (window.__qbrowse_passkey_overridden) return;
-                window.__qbrowse_passkey_overridden = true;
+                try {
+                    Object.defineProperty(window, '__qbrowse_passkey_overridden', {
+                        value: true,
+                        writable: true,
+                        configurable: true,
+                        enumerable: false
+                    });
+                } catch(_) {
+                    window.__qbrowse_passkey_overridden = true;
+                }
+                try {
+                    if (window.__qbrowse_passkey_bridge) {
+                        Object.defineProperty(window, '__qbrowse_passkey_bridge', {
+                            enumerable: false
+                        });
+                    }
+                } catch (_) {}
 
                 const origGet = navigator.credentials.get.bind(navigator.credentials);
                 const origCreate = navigator.credentials.create.bind(navigator.credentials);
@@ -699,8 +879,8 @@ const injectMainWorldPasskeyOverride = () => {
                 };
 
                 try {
-                    navigator.credentials.get.toString = () => origGet.toString();
-                    navigator.credentials.create.toString = () => origCreate.toString();
+                    try { Object.defineProperty(navigator.credentials.get, 'name', { value: 'get', configurable: true }); } catch (_) {}
+                    try { Object.defineProperty(navigator.credentials.create, 'name', { value: 'create', configurable: true }); } catch (_) {}
                 } catch(e) {}
             })();
         `;
@@ -912,9 +1092,9 @@ let smartDarkTimer = null;
 let isApplyingSmartDark = false;
 let observedDocEl = false;
 let observedBody = false;
+let updateOAuthThemeGlobal = null;
 
 function runSmartDark() {
-    if (isOAuthPopup) return;
     const { isForceDark, isExcluded } = currentSmartDarkConfig;
     try {
         const docEl = document.documentElement;
@@ -947,7 +1127,10 @@ function runSmartDark() {
                 @media screen {
                     html.qbrowse-smart-dark-active {
                         filter: invert(1) hue-rotate(180deg) !important;
-                        background-color: #121214 !important;
+                        background-color: #ffffff !important;
+                    }
+                    html.qbrowse-smart-dark-active body {
+                        background-color: inherit;
                     }
                     /* Counter-invert all images, media, canvas, background images and banners so they retain natural colors */
                     html.qbrowse-smart-dark-active img,
@@ -981,7 +1164,9 @@ function runSmartDark() {
                         filter: none !important;
                     }
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
-                    html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
+                    html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal,
+                    html.qbrowse-smart-dark-active #qbrowse-oauth-header,
+                    html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar {
                         filter: invert(1) hue-rotate(180deg) !important;
                     }
                 }
@@ -998,7 +1183,9 @@ function runSmartDark() {
                         filter: none !important;
                     }
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
-                    html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
+                    html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal,
+                    html.qbrowse-smart-dark-active #qbrowse-oauth-header,
+                    html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar {
                         filter: none !important;
                     }
                 }
@@ -1021,8 +1208,9 @@ function runSmartDark() {
 
         const isOurInjectedBg = (bg) => {
             if (!bg) return false;
-            // Injected background #121214 is [18, 18, 20]
-            return Math.abs(bg[0] - 18) <= 2 && Math.abs(bg[1] - 18) <= 2 && Math.abs(bg[2] - 20) <= 2;
+            // Injected background #121214 [18, 18, 20] or pre-inversion canvas #ffffff [255, 255, 255]
+            return (bg[0] === 255 && bg[1] === 255 && bg[2] === 255) ||
+                   (Math.abs(bg[0] - 18) <= 2 && Math.abs(bg[1] - 18) <= 2 && Math.abs(bg[2] - 20) <= 2);
         };
 
         let isNativelyDark = false;
@@ -1068,10 +1256,13 @@ function runSmartDark() {
             return false;
         };
 
-        // 3. Check <meta name="color-scheme">
+        // 3. Check <meta name="color-scheme"> (only strictly dark; ignore 'light dark' which just declares dark support)
         const metaScheme = document.querySelector('meta[name="color-scheme"]');
-        if (metaScheme && (metaScheme.content || '').toLowerCase().includes('dark')) {
-            isNativelyDark = true;
+        if (metaScheme) {
+            const schemeContent = (metaScheme.content || '').toLowerCase().trim();
+            if (schemeContent === 'dark' || schemeContent === 'only dark') {
+                isNativelyDark = true;
+            }
         }
 
         if (checkDarkAttrs(docEl) || checkDarkAttrs(body) || checkDarkClasses(docEl) || checkDarkClasses(body)) {
@@ -1122,6 +1313,7 @@ function runSmartDark() {
         // Apply or remove dark mode with state-check to avoid unnecessary DOM writes
         const isCurrentlyActive = docEl.classList.contains('qbrowse-smart-dark-active');
         const shouldBeActive = !isNativelyDark;
+        console.log('[QBrowse SmartDark] URL:', window.location.href, 'config:', currentSmartDarkConfig, 'isNativelyDark:', isNativelyDark, 'shouldBeActive:', shouldBeActive);
 
         if (shouldBeActive !== isCurrentlyActive) {
             isApplyingSmartDark = true;
@@ -1146,6 +1338,9 @@ function runSmartDark() {
                     } catch (_) {}
                 } else {
                     docEl.classList.remove('qbrowse-smart-dark-active');
+                }
+                if (typeof updateOAuthThemeGlobal === 'function') {
+                    updateOAuthThemeGlobal();
                 }
             } finally {
                 setTimeout(() => {
@@ -1210,6 +1405,9 @@ function runSmartDark() {
 function checkSmartDark(isForceDark, isExcluded) {
     currentSmartDarkConfig = { isForceDark, isExcluded };
     runSmartDark();
+    if (typeof updateOAuthThemeGlobal === 'function') {
+        updateOAuthThemeGlobal();
+    }
 }
 
 window.addEventListener('DOMContentLoaded', runSmartDark);
@@ -1219,6 +1417,208 @@ window.addEventListener('hashchange', runSmartDark);
 
 ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
     checkSmartDark(isForceDark, isExcluded);
+    if (typeof updateOAuthThemeGlobal === 'function') {
+        updateOAuthThemeGlobal();
+    }
+});
+
+// Immediately query main process on preload startup for OAuth popups so state is ready before DOM ready
+if (isOAuthPopup) {
+    try {
+        ipcRenderer.invoke('get-smart-dark-state', window.location.href)
+            .then(state => {
+                if (state && typeof state.isForceDark === 'boolean') {
+                    checkSmartDark(state.isForceDark, state.isExcluded);
+                }
+            })
+            .catch(() => {});
+    } catch (_) {}
+}
+
+// ==============================================================================
+// --- ACCESSIBILITY (EU EAA / EN 301 549 & WCAG 2.1 AA) WEB ENGINE ---
+// ==============================================================================
+let currentA11yConfig = {
+    a11yHighContrast: false,
+    a11yDyslexiaFont: false,
+    a11yMinFontSize: 'default',
+    a11yReducedMotion: false,
+    a11ySuppressAutoplay: false,
+    a11yCaretBrowsing: false,
+    a11yFocusRings: false,
+    a11yVideoCaptions: false,
+    a11yMonoAudio: false
+};
+
+function applyWebviewA11yStyles(config) {
+    if (!config) return;
+    currentA11yConfig = { ...currentA11yConfig, ...config };
+
+    const styleId = 'qbrowse-webview-a11y-styles';
+    let styleEl = document.getElementById(styleId);
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        (document.head || document.documentElement).appendChild(styleEl);
+    }
+
+    let css = '';
+
+    // 1. High Contrast Mode (Amplified text readability and solid focus)
+    if (currentA11yConfig.a11yHighContrast) {
+        css += `
+            html {
+                filter: contrast(120%) !important;
+            }
+            body, p, span, h1, h2, h3, h4, h5, h6, li, td, th {
+                text-shadow: none !important;
+            }
+            a:focus, button:focus, input:focus, [tabindex]:focus {
+                outline: 3px solid #e5c483 !important;
+                outline-offset: 2px !important;
+            }
+        `;
+    }
+
+    // 2. Dyslexia-Friendly Font (OpenDyslexic with sans-serif fallback)
+    if (currentA11yConfig.a11yDyslexiaFont) {
+        css += `
+            @font-face {
+                font-family: 'OpenDyslexic';
+                src: url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Regular.otf') format('opentype');
+                font-weight: normal;
+                font-style: normal;
+                font-display: swap;
+            }
+            body, p, span, a, li, input, textarea, select, button, div, h1, h2, h3, h4, h5, h6 {
+                font-family: 'OpenDyslexic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                letter-spacing: 0.02em !important;
+                line-height: 1.6 !important;
+            }
+        `;
+    }
+
+    // 3. Minimum Font Size
+    if (currentA11yConfig.a11yMinFontSize && currentA11yConfig.a11yMinFontSize !== 'default') {
+        const sizePx = parseInt(currentA11yConfig.a11yMinFontSize, 10);
+        if (sizePx && sizePx >= 12) {
+            css += `
+                body, p, span, a, li, input, textarea, select, div {
+                    font-size: max(${sizePx}px, 1em) !important;
+                }
+            `;
+        }
+    }
+
+    // 4. Force Reduced Motion (Strict WCAG 2.2.2 / 2.3.3)
+    if (currentA11yConfig.a11yReducedMotion) {
+        css += `
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+        `;
+    }
+
+    // 5. High-Visibility Keyboard Focus Rings
+    if (currentA11yConfig.a11yFocusRings) {
+        css += `
+            *:focus-visible {
+                outline: 3px solid #d4bc94 !important;
+                outline-offset: 2px !important;
+                box-shadow: 0 0 10px rgba(212, 188, 148, 0.75) !important;
+            }
+        `;
+    }
+
+    styleEl.textContent = css;
+
+    // 6. Caret Browsing Toggle
+    try {
+        if (typeof document.designMode !== 'undefined') {
+            document.body?.setAttribute('contenteditable', currentA11yConfig.a11yCaretBrowsing ? 'false' : 'false');
+        }
+    } catch (_) {}
+
+    // 7. Video Captions Default (Ensure HTML5 video subtitles are showing)
+    if (currentA11yConfig.a11yVideoCaptions) {
+        try {
+            const videos = document.querySelectorAll('video');
+            videos.forEach(v => {
+                if (v.textTracks && v.textTracks.length > 0) {
+                    for (let i = 0; i < v.textTracks.length; i++) {
+                        if (v.textTracks[i].kind === 'subtitles' || v.textTracks[i].kind === 'captions') {
+                            v.textTracks[i].mode = 'showing';
+                        }
+                    }
+                }
+            });
+        } catch (_) {}
+    }
+
+    // 8. Suppress Video / Media Autoplay
+    if (currentA11yConfig.a11ySuppressAutoplay) {
+        try {
+            const media = document.querySelectorAll('video, audio');
+            media.forEach(m => {
+                m.autoplay = false;
+                if (!m.paused && m.currentTime < 1) {
+                    m.pause();
+                }
+            });
+        } catch (_) {}
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => applyWebviewA11yStyles(currentA11yConfig));
+window.addEventListener('load', () => applyWebviewA11yStyles(currentA11yConfig));
+
+ipcRenderer.on('apply-a11y-settings', (event, config) => {
+    applyWebviewA11yStyles(config);
+});
+
+// Read Aloud Text Extractor IPC Handlers
+ipcRenderer.on('extract-read-aloud-text', (event) => {
+    try {
+        const selection = window.getSelection()?.toString()?.trim();
+        if (selection && selection.length > 10) {
+            const data = {
+                paragraphs: [selection],
+                title: document.title || 'Selected Text'
+            };
+            ipcRenderer.sendToHost('extracted-read-aloud-text', data);
+            if (event && event.sender && typeof event.sender.send === 'function') {
+                event.sender.send('extracted-read-aloud-text', data);
+            }
+            return;
+        }
+
+        const candidates = Array.from(document.querySelectorAll('article p, main p, [role="main"] p, .content p, p'));
+        const paragraphs = candidates
+            .map(p => p.innerText?.trim())
+            .filter(t => t && t.length > 20 && !/^(cookie|privacy policy|terms|sign in|copyright)/i.test(t))
+            .slice(0, 80);
+
+        const payload = {
+            paragraphs: paragraphs.length > 0 ? paragraphs : [document.body?.innerText?.slice(0, 2000) || ''],
+            title: document.title || 'Page Content'
+        };
+        ipcRenderer.sendToHost('extracted-read-aloud-text', payload);
+        if (event && event.sender && typeof event.sender.send === 'function') {
+            event.sender.send('extracted-read-aloud-text', payload);
+        }
+    } catch (err) {
+        const fallback = {
+            paragraphs: [document.body?.innerText?.slice(0, 1000) || ''],
+            title: document.title || 'Page Content'
+        };
+        ipcRenderer.sendToHost('extracted-read-aloud-text', fallback);
+        if (event && event.sender && typeof event.sender.send === 'function') {
+            event.sender.send('extracted-read-aloud-text', fallback);
+        }
+    }
 });
 
 // ==============================================================================
@@ -2357,100 +2757,347 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
     const isOAuthPopup = Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup');
     if (!isOAuthPopup) return;
 
+    function createSvgIcon(name, size = 12) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', String(size));
+        svg.setAttribute('height', String(size));
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2.2');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+
+        if (name === 'lock') {
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', '3'); rect.setAttribute('y', '11'); rect.setAttribute('width', '18'); rect.setAttribute('height', '11'); rect.setAttribute('rx', '2'); rect.setAttribute('ry', '2');
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
+            svg.appendChild(rect); svg.appendChild(path);
+        } else if (name === 'arrow-left' || name === 'chevron-left') {
+            const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p.setAttribute('d', 'm15 18-6-6 6-6');
+            svg.appendChild(p);
+        } else if (name === 'arrow-right' || name === 'chevron-right') {
+            const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p.setAttribute('d', 'm9 18 6-6-6-6');
+            svg.appendChild(p);
+        } else if (name === 'reload') {
+            const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p1.setAttribute('d', 'M3 12a9 9 0 0 1 15.54-6.36l2.46 2.46M21 3v6h-6');
+            const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p2.setAttribute('d', 'M21 12a9 9 0 0 1-15.54 6.36l-2.46-2.46M3 21v-6h6');
+            svg.appendChild(p1); svg.appendChild(p2);
+        } else if (name === 'search') {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', '11'); circle.setAttribute('cy', '11'); circle.setAttribute('r', '8');
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', '21'); line.setAttribute('y1', '21'); line.setAttribute('x2', '16.65'); line.setAttribute('y2', '16.65');
+            svg.appendChild(circle); svg.appendChild(line);
+        } else if (name === 'chevron-up') {
+            const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p.setAttribute('d', 'm18 15-6-6-6 6');
+            svg.appendChild(p);
+        } else if (name === 'chevron-down') {
+            const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p.setAttribute('d', 'm6 9 6 6 6-6');
+            svg.appendChild(p);
+        } else if (name === 'minimize') {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', '5'); line.setAttribute('y1', '12'); line.setAttribute('x2', '19'); line.setAttribute('y2', '12');
+            svg.appendChild(line);
+        } else if (name === 'maximize') {
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', '4'); rect.setAttribute('y', '4'); rect.setAttribute('width', '16'); rect.setAttribute('height', '16'); rect.setAttribute('rx', '2');
+            svg.appendChild(rect);
+        } else if (name === 'close') {
+            const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            l1.setAttribute('x1', '18'); l1.setAttribute('y1', '6'); l1.setAttribute('x2', '6'); l1.setAttribute('y2', '18');
+            const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            l2.setAttribute('x1', '6'); l2.setAttribute('y1', '6'); l2.setAttribute('x2', '18'); l2.setAttribute('y2', '18');
+            svg.appendChild(l1); svg.appendChild(l2);
+        } else if (name === 'minus') {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', '5'); line.setAttribute('y1', '12'); line.setAttribute('x2', '19'); line.setAttribute('y2', '12');
+            svg.appendChild(line);
+        } else if (name === 'plus') {
+            const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            l1.setAttribute('x1', '12'); l1.setAttribute('y1', '5'); l1.setAttribute('x2', '12'); l1.setAttribute('y2', '19');
+            const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            l2.setAttribute('x1', '5'); l2.setAttribute('y1', '12'); l2.setAttribute('x2', '19'); l2.setAttribute('y2', '12');
+            svg.appendChild(l1); svg.appendChild(l2);
+        }
+
+        return svg;
+    }
+
     function injectOAuthControls() {
         if (document.getElementById('qbrowse-oauth-header')) return;
 
+        // 1. Inject Custom Minimal Scrollbars & Top Offset
+        const style = document.createElement('style');
+        style.id = 'qbrowse-oauth-style';
+        style.textContent = `
+            body {
+                padding-top: 54px !important;
+                box-sizing: border-box !important;
+            }
+            /* Clean Minimal Overlay Scrollbars */
+            ::-webkit-scrollbar {
+                width: 6px !important;
+                height: 6px !important;
+            }
+            ::-webkit-scrollbar-track {
+                background: transparent !important;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: rgba(120, 120, 130, 0.40) !important;
+                border-radius: 9999px !important;
+                transition: background-color 0.2s ease !important;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: rgba(120, 120, 130, 0.70) !important;
+            }
+            ::-webkit-scrollbar-corner {
+                background: transparent !important;
+            }
+        `;
+        const targetHead = document.head || document.documentElement;
+        if (targetHead) targetHead.appendChild(style);
+
+        // 2. Build Top Header Container
         const header = document.createElement('div');
         header.id = 'qbrowse-oauth-header';
         header.style.cssText = [
             'position: fixed !important',
-            'top: 0 !important',
-            'left: 0 !important',
-            'right: 0 !important',
-            'height: 38px !important',
+            'top: 8px !important',
+            'left: 10px !important',
+            'right: 10px !important',
+            'height: 42px !important',
             'z-index: 2147483647 !important',
             'display: flex !important',
             'align-items: center !important',
             'justify-content: space-between !important',
-            'padding: 0 12px !important',
-            'background: rgba(18, 19, 24, 0.95) !important',
-            'backdrop-filter: blur(20px) !important',
-            '-webkit-backdrop-filter: blur(20px) !important',
-            'border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important',
+            'padding: 0 8px !important',
+            'border-radius: 9999px !important',
             'user-select: none !important',
             '-webkit-app-region: drag !important',
-            'box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important',
-            'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
-            'color: #ffffff !important'
+            'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif !important',
+            'box-sizing: border-box !important',
+            'transition: background 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease, color 0.25s ease !important'
         ].join(';');
 
-        // Left / Center badge
-        const badge = document.createElement('div');
-        badge.style.cssText = [
-            'display: flex !important',
+        // Double-click header to maximize/restore
+        header.ondblclick = (e) => {
+            if (e.target.closest('button, #qbrowse-oauth-nav-pill, #qbrowse-oauth-close-btn, #qbrowse-oauth-find-bar')) return;
+            try { ipcRenderer.send('window-maximize'); } catch (_) {}
+        };
+
+        // Close window helper
+        const closePopup = () => {
+            try { ipcRenderer.send('window-close'); } catch (_) {}
+            try { window.close(); } catch (_) {}
+        };
+
+        // Window drag engine: Supports both native -webkit-app-region drag and IPC drag
+        let isDraggingWindow = false;
+        let lastScreenX = 0;
+        let lastScreenY = 0;
+
+        header.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // Only left click
+            // Never initiate window dragging on clickable buttons or the find bar
+            if (e.target.closest('button, #qbrowse-oauth-nav-pill, #qbrowse-oauth-close-btn, #qbrowse-oauth-find-bar')) {
+                return;
+            }
+
+            isDraggingWindow = true;
+            lastScreenX = e.screenX;
+            lastScreenY = e.screenY;
+
+            const onMouseMove = (moveEvent) => {
+                if (!isDraggingWindow) return;
+                const deltaX = moveEvent.screenX - lastScreenX;
+                const deltaY = moveEvent.screenY - lastScreenY;
+                if (deltaX !== 0 || deltaY !== 0) {
+                    lastScreenX = moveEvent.screenX;
+                    lastScreenY = moveEvent.screenY;
+                    try {
+                        ipcRenderer.send('window-drag-by', { deltaX, deltaY });
+                    } catch (_) {}
+                }
+            };
+
+            const onMouseUp = () => {
+                isDraggingWindow = false;
+                window.removeEventListener('mousemove', onMouseMove, true);
+                window.removeEventListener('mouseup', onMouseUp, true);
+            };
+
+            window.addEventListener('mousemove', onMouseMove, true);
+            window.addEventListener('mouseup', onMouseUp, true);
+        });
+
+        // --- 3-Section Balanced Structure for Dead-Center Alignment ---
+        // Left and Right sections allow window dragging in all empty space around the controls!
+        const leftSection = document.createElement('div');
+        leftSection.style.cssText = 'display: flex !important; align-items: center !important; justify-content: flex-start !important; flex: 1 !important; min-width: 65px !important; -webkit-app-region: drag !important; cursor: default !important;';
+
+        const centerSection = document.createElement('div');
+        centerSection.id = 'centerSection';
+        centerSection.style.cssText = 'display: flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important; -webkit-app-region: drag !important; cursor: default !important;';
+
+        const rightSection = document.createElement('div');
+        rightSection.style.cssText = 'display: flex !important; align-items: center !important; justify-content: flex-end !important; flex: 1 !important; min-width: 65px !important; -webkit-app-region: drag !important; cursor: default !important;';
+
+        // --- 1. Left: Compact Segmented Navigation Pill [ < | > ] ---
+        const navPill = document.createElement('div');
+        navPill.id = 'qbrowse-oauth-nav-pill';
+        navPill.style.cssText = [
+            'display: inline-flex !important',
             'align-items: center !important',
-            'gap: 8px !important',
-            'font-size: 11px !important',
-            'color: rgba(255, 255, 255, 0.85) !important',
-            'font-weight: 500 !important',
-            'max-width: 80% !important',
-            'overflow: hidden !important',
-            'text-overflow: ellipsis !important',
-            'white-space: nowrap !important'
+            'height: 30px !important',
+            'padding: 0 3px !important',
+            'border-radius: 9999px !important',
+            '-webkit-app-region: no-drag !important',
+            'flex-shrink: 0 !important',
+            'gap: 1px !important',
+            'transition: background 0.2s ease, border-color 0.2s ease !important'
         ].join(';');
 
-        const lockIconWrapper = document.createElement('div');
-        lockIconWrapper.style.cssText = [
-            'display: flex !important',
+        let currentIsLight = true;
+
+        function createNavButton(iconName, title, onClick) {
+            const btn = document.createElement('button');
+            btn.title = title;
+            btn.style.cssText = [
+                '-webkit-app-region: no-drag !important',
+                'display: flex !important',
+                'align-items: center !important',
+                'justify-content: center !important',
+                'width: 24px !important',
+                'height: 24px !important',
+                'border-radius: 9999px !important',
+                'background: transparent !important',
+                'border: none !important',
+                'cursor: pointer !important',
+                'transition: all 0.15s ease !important',
+                'outline: none !important',
+                'padding: 0 !important',
+                'flex-shrink: 0 !important'
+            ].join(';');
+
+            btn.appendChild(createSvgIcon(iconName, 13));
+
+            btn.onmouseenter = () => {
+                btn.style.background = currentIsLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.16)';
+                btn.style.color = currentIsLight ? '#000000' : '#ffffff';
+            };
+            btn.onmouseleave = () => {
+                btn.style.background = 'transparent';
+                btn.style.color = currentIsLight ? 'rgba(24, 24, 27, 0.75)' : 'rgba(255, 255, 255, 0.82)';
+            };
+            btn.onmousedown = () => {
+                btn.style.transform = 'scale(0.90)';
+            };
+            btn.onmouseup = () => {
+                btn.style.transform = 'none';
+            };
+
+            btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClick(e);
+            };
+
+            return btn;
+        }
+
+        const backBtn = createNavButton('chevron-left', 'Back (Alt+Left)', () => {
+            if (window.history.length > 1) window.history.back();
+            try { ipcRenderer.send('oauth-navigate-back'); } catch (_) {}
+        });
+
+        const navDivider = document.createElement('div');
+        navDivider.style.cssText = 'width: 1px !important; height: 12px !important; margin: 0 2px !important; flex-shrink: 0 !important; transition: background 0.2s ease !important;';
+
+        const fwdBtn = createNavButton('chevron-right', 'Forward (Alt+Right)', () => {
+            window.history.forward();
+            try { ipcRenderer.send('oauth-navigate-forward'); } catch (_) {}
+        });
+
+        navPill.appendChild(backBtn);
+        navPill.appendChild(navDivider);
+        navPill.appendChild(fwdBtn);
+        leftSection.appendChild(navPill);
+
+        // --- 2. Center: Sleek Content-Sized Domain Pill [ 🔒 domain.com ] ---
+        const domainPill = document.createElement('div');
+        domainPill.id = 'qbrowse-oauth-badge';
+        domainPill.style.cssText = [
+            'display: inline-flex !important',
             'align-items: center !important',
             'justify-content: center !important',
-            'width: 20px !important',
-            'height: 20px !important',
-            'border-radius: 5px !important',
-            'background: rgba(52, 211, 153, 0.18) !important',
-            'color: #34d399 !important',
-            'flex-shrink: 0 !important'
+            'height: 30px !important',
+            'padding: 0 14px !important',
+            'border-radius: 9999px !important',
+            'gap: 6px !important',
+            'max-width: 260px !important',
+            'overflow: hidden !important',
+            'text-overflow: ellipsis !important',
+            'white-space: nowrap !important',
+            '-webkit-app-region: drag !important',
+            'cursor: default !important',
+            'user-select: none !important',
+            'transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important',
+            'box-sizing: border-box !important'
         ].join(';');
 
-        const lockSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        lockSvg.setAttribute('width', '11');
-        lockSvg.setAttribute('height', '11');
-        lockSvg.setAttribute('viewBox', '0 0 24 24');
-        lockSvg.setAttribute('fill', 'none');
-        lockSvg.setAttribute('stroke', 'currentColor');
-        lockSvg.setAttribute('stroke-width', '2.5');
-        lockSvg.setAttribute('stroke-linecap', 'round');
-        lockSvg.setAttribute('stroke-linejoin', 'round');
+        domainPill.onmouseenter = () => {
+            domainPill.style.background = currentIsLight ? 'rgba(0, 0, 0, 0.07)' : 'rgba(255, 255, 255, 0.10)';
+            domainPill.style.borderColor = currentIsLight ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.14)';
+        };
+        domainPill.onmouseleave = () => {
+            domainPill.style.background = currentIsLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.06)';
+            domainPill.style.borderColor = currentIsLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)';
+        };
 
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', '3');
-        rect.setAttribute('y', '11');
-        rect.setAttribute('width', '18');
-        rect.setAttribute('height', '11');
-        rect.setAttribute('rx', '2');
-        rect.setAttribute('ry', '2');
-
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
-
-        lockSvg.appendChild(rect);
-        lockSvg.appendChild(path);
-        lockIconWrapper.appendChild(lockSvg);
+        const lockIcon = createSvgIcon('lock', 12);
+        lockIcon.style.flexShrink = '0';
+        lockIcon.style.pointerEvents = 'none';
+        lockIcon.style.transition = 'color 0.2s ease';
 
         const hostSpan = document.createElement('span');
         hostSpan.id = 'qbrowse-oauth-hostname';
-        hostSpan.style.cssText = 'color: #ffffff !important; font-weight: 600 !important; letter-spacing: -0.01em !important;';
-        hostSpan.textContent = window.location.hostname || 'Sign in';
+        hostSpan.style.cssText = [
+            'font-size: 12.5px !important',
+            'font-weight: 550 !important',
+            'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+            'letter-spacing: -0.01em !important',
+            'overflow: hidden !important',
+            'text-overflow: ellipsis !important',
+            'white-space: nowrap !important',
+            'line-height: 1 !important',
+            'pointer-events: none !important',
+            'user-select: none !important',
+            '-webkit-app-region: drag !important',
+            'transition: color 0.2s ease !important'
+        ].join(';');
 
-        const secureLabel = document.createElement('span');
-        secureLabel.style.cssText = 'font-size: 10px !important; color: rgba(255, 255, 255, 0.45) !important; padding-left: 2px !important;';
-        secureLabel.textContent = '• Secure Login';
+        const getCleanDomain = () => {
+            try {
+                return (window.location.hostname || '').replace(/^www\./, '') || 'Sign in';
+            } catch (_) {
+                return 'Sign in';
+            }
+        };
+        hostSpan.textContent = getCleanDomain();
 
-        badge.appendChild(lockIconWrapper);
-        badge.appendChild(hostSpan);
-        badge.appendChild(secureLabel);
+        domainPill.appendChild(lockIcon);
+        domainPill.appendChild(hostSpan);
+        centerSection.appendChild(domainPill);
 
-        // Close button
+        // --- 3. Right: Single Sleek Close 'X' Button ---
         const closeBtn = document.createElement('button');
         closeBtn.id = 'qbrowse-oauth-close-btn';
         closeBtn.title = 'Close (Esc)';
@@ -2459,58 +3106,35 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
             'display: flex !important',
             'align-items: center !important',
             'justify-content: center !important',
-            'width: 26px !important',
-            'height: 26px !important',
-            'border-radius: 7px !important',
-            'background: rgba(255, 255, 255, 0.08) !important',
-            'border: 1px solid rgba(255, 255, 255, 0.1) !important',
-            'color: rgba(255, 255, 255, 0.75) !important',
+            'width: 30px !important',
+            'height: 30px !important',
+            'border-radius: 9999px !important',
             'cursor: pointer !important',
-            'transition: all 0.15s ease !important',
+            'transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important',
             'outline: none !important',
-            'padding: 0 !important'
+            'padding: 0 !important',
+            'flex-shrink: 0 !important'
         ].join(';');
 
-        const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        closeSvg.setAttribute('width', '12');
-        closeSvg.setAttribute('height', '12');
-        closeSvg.setAttribute('viewBox', '0 0 24 24');
-        closeSvg.setAttribute('fill', 'none');
-        closeSvg.setAttribute('stroke', 'currentColor');
-        closeSvg.setAttribute('stroke-width', '2.5');
-        closeSvg.setAttribute('stroke-linecap', 'round');
-        closeSvg.setAttribute('stroke-linejoin', 'round');
-
-        const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line1.setAttribute('x1', '18');
-        line1.setAttribute('y1', '6');
-        line1.setAttribute('x2', '6');
-        line1.setAttribute('y2', '18');
-
-        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line2.setAttribute('x1', '6');
-        line2.setAttribute('y1', '6');
-        line2.setAttribute('x2', '18');
-        line2.setAttribute('y2', '18');
-
-        closeSvg.appendChild(line1);
-        closeSvg.appendChild(line2);
-        closeBtn.appendChild(closeSvg);
+        closeBtn.appendChild(createSvgIcon('close', 11));
 
         closeBtn.onmouseenter = () => {
-            closeBtn.style.background = 'rgba(239, 68, 68, 0.25)';
-            closeBtn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-            closeBtn.style.color = '#f87171';
+            closeBtn.style.background = currentIsLight ? 'rgba(239, 68, 68, 0.14)' : 'rgba(239, 68, 68, 0.24)';
+            closeBtn.style.borderColor = currentIsLight ? 'rgba(239, 68, 68, 0.28)' : 'rgba(239, 68, 68, 0.45)';
+            closeBtn.style.color = currentIsLight ? '#dc2626' : '#f87171';
+            closeBtn.style.transform = 'scale(1.06)';
         };
         closeBtn.onmouseleave = () => {
-            closeBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-            closeBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-            closeBtn.style.color = 'rgba(255, 255, 255, 0.75)';
+            closeBtn.style.background = currentIsLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.06)';
+            closeBtn.style.borderColor = currentIsLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)';
+            closeBtn.style.color = currentIsLight ? 'rgba(24, 24, 27, 0.65)' : 'rgba(255, 255, 255, 0.75)';
+            closeBtn.style.transform = 'none';
         };
-
-        const closePopup = () => {
-            try { ipcRenderer.send('window-close'); } catch (_) {}
-            try { window.close(); } catch (_) {}
+        closeBtn.onmousedown = () => {
+            closeBtn.style.transform = 'scale(0.92)';
+        };
+        closeBtn.onmouseup = () => {
+            closeBtn.style.transform = 'scale(1.06)';
         };
 
         closeBtn.onclick = (e) => {
@@ -2519,37 +3143,425 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
             closePopup();
         };
 
-        header.appendChild(badge);
-        header.appendChild(closeBtn);
+        rightSection.appendChild(closeBtn);
 
-        const style = document.createElement('style');
-        style.id = 'qbrowse-oauth-style';
-        style.textContent = `
-            html {
-                margin-top: 38px !important;
-                box-sizing: border-box !important;
-            }
-        `;
+        // Assemble TopBar (Left: Nav Pill, Center: Centered Domain Pill, Right: Close Button)
+        header.appendChild(leftSection);
+        header.appendChild(centerSection);
+        header.appendChild(rightSection);
 
-        const targetHead = document.head || document.documentElement;
-        if (targetHead) targetHead.appendChild(style);
         document.documentElement.appendChild(header);
 
-        // Update host if changed
+        // Zoom & Find In Page engines
+        const applyZoom = (newFactor) => {
+            try {
+                const clamped = Math.min(3.0, Math.max(0.5, Math.round(newFactor * 10) / 10));
+                webFrame.setZoomFactor(clamped);
+            } catch (_) {}
+        };
+
+        let isFindBarOpen = false;
+        let findBar = null;
+        let findInput = null;
+        let findCounter = null;
+        let findSearchIcon = null;
+        let findButtons = [];
+
+        const toggleFindBar = () => {
+            if (!findBar) createFindBar();
+            isFindBarOpen = !isFindBarOpen;
+            if (isFindBarOpen) {
+                findBar.style.display = 'flex';
+                setTimeout(() => { if (findInput) { findInput.focus(); findInput.select(); } }, 50);
+            } else {
+                closeFindBar();
+            }
+        };
+
+        const closeFindBar = () => {
+            isFindBarOpen = false;
+            if (findBar) findBar.style.display = 'none';
+            try { ipcRenderer.send('oauth-stop-find-in-page', 'clearSelection'); } catch (_) {}
+        };
+
+        // 3. Build Floating Find In Page Bar (Floats cleanly below the header)
+        function createFindBar() {
+            if (findBar) return;
+            findBar = document.createElement('div');
+            findBar.id = 'qbrowse-oauth-find-bar';
+            findBar.style.cssText = [
+                'position: fixed !important',
+                'top: 56px !important',
+                'right: 12px !important',
+                'z-index: 2147483647 !important',
+                'display: none !important',
+                'align-items: center !important',
+                'gap: 4px !important',
+                'padding: 3px 6px !important',
+                'border-radius: 12px !important',
+                'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+                'user-select: none !important',
+                'transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important'
+            ].join(';');
+
+            findSearchIcon = createSvgIcon('search', 12);
+            findSearchIcon.style.flexShrink = '0';
+            findSearchIcon.style.margin = '0 2px';
+
+            findInput = document.createElement('input');
+            findInput.type = 'text';
+            findInput.placeholder = 'Find in page...';
+            findInput.style.cssText = [
+                'background: transparent !important',
+                'border: none !important',
+                'outline: none !important',
+                'font-size: 11px !important',
+                'width: 125px !important',
+                'padding: 2px 4px !important'
+            ].join(';');
+
+            findCounter = document.createElement('span');
+            findCounter.textContent = '0/0';
+            findCounter.style.cssText = 'font-size: 10px !important; font-family: monospace !important; padding: 0 4px !important; flex-shrink: 0 !important;';
+
+            let debounceTimer = null;
+            const performFind = (forward = true, findNext = false) => {
+                const text = findInput.value.trim();
+                if (!text) {
+                    findCounter.textContent = '0/0';
+                    findCounter.style.color = currentIsLight ? 'rgba(0, 0, 0, 0.50)' : 'rgba(255, 255, 255, 0.45)';
+                    try { ipcRenderer.send('oauth-stop-find-in-page', 'clearSelection'); } catch (_) {}
+                    return;
+                }
+                try {
+                    ipcRenderer.send('oauth-find-in-page', { text, forward, findNext });
+                } catch (_) {}
+            };
+
+            findInput.oninput = () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => performFind(true, false), 40);
+            };
+
+            findInput.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    performFind(!e.shiftKey, true);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeFindBar();
+                }
+            };
+
+            function createFindBtn(iconName, title, onClick) {
+                const btn = document.createElement('button');
+                btn.title = title;
+                btn.style.cssText = [
+                    '-webkit-app-region: no-drag !important',
+                    'display: flex !important',
+                    'align-items: center !important',
+                    'justify-content: center !important',
+                    'width: 20px !important',
+                    'height: 20px !important',
+                    'border-radius: 9999px !important',
+                    'background: transparent !important',
+                    'border: none !important',
+                    'cursor: pointer !important',
+                    'transition: all 0.15s ease !important',
+                    'outline: none !important',
+                    'padding: 0 !important',
+                    'flex-shrink: 0 !important'
+                ].join(';');
+                btn.appendChild(createSvgIcon(iconName, 11));
+                btn.onmouseenter = () => {
+                    btn.style.background = currentIsLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.15)';
+                    btn.style.color = currentIsLight ? '#000000' : '#ffffff';
+                };
+                btn.onmouseleave = () => {
+                    btn.style.background = 'transparent';
+                    btn.style.color = currentIsLight ? 'rgba(0, 0, 0, 0.65)' : 'rgba(255, 255, 255, 0.70)';
+                };
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClick(e);
+                };
+                findButtons.push(btn);
+                return btn;
+            }
+
+            const prevBtn = createFindBtn('chevron-up', 'Previous match (Shift+Enter)', () => {
+                performFind(false, true);
+            });
+
+            const nextBtn = createFindBtn('chevron-down', 'Next match (Enter)', () => {
+                performFind(true, true);
+            });
+
+            const closeFindBtn = createFindBtn('close', 'Close (Esc)', () => {
+                closeFindBar();
+            });
+
+            findBar.appendChild(findSearchIcon);
+            findBar.appendChild(findInput);
+            findBar.appendChild(findCounter);
+            findBar.appendChild(prevBtn);
+            findBar.appendChild(nextBtn);
+            findBar.appendChild(closeFindBtn);
+
+            document.documentElement.appendChild(findBar);
+
+            // Listen for native find results from main process
+            ipcRenderer.on('oauth-found-in-page-result', (event, data) => {
+                if (!findCounter) return;
+                const matches = data.matches || 0;
+                const active = data.activeMatchOrdinal || 0;
+                findCounter.textContent = `${active}/${matches}`;
+                if (matches === 0 && findInput && findInput.value.trim().length > 0) {
+                    findCounter.style.color = '#f87171';
+                } else if (matches > 0) {
+                    findCounter.style.color = currentIsLight ? '#059669' : '#34d399';
+                } else {
+                    findCounter.style.color = currentIsLight ? 'rgba(0, 0, 0, 0.50)' : 'rgba(255, 255, 255, 0.45)';
+                }
+            });
+
+            // Apply current theme to newly created find bar
+            applyTheme(currentIsLight);
+        }
+
+        // --- 4. Adaptive Frosted Glass Theme Engine ---
+        function detectPageIsLight() {
+            try {
+                const html = document.documentElement;
+                if (html && html.classList.contains('qbrowse-smart-dark-active')) return false;
+                if (html && (html.classList.contains('dark') || html.getAttribute('data-theme') === 'dark')) return false;
+                if (html && (html.classList.contains('light') || html.getAttribute('data-theme') === 'light')) return true;
+
+                const elements = [document.body, document.documentElement].filter(Boolean);
+                for (const el of elements) {
+                    const bg = window.getComputedStyle(el).backgroundColor;
+                    if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+                        const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+                        if (m) {
+                            const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
+                            if (a > 0.1) {
+                                const lum = 0.299 * parseInt(m[1], 10) + 0.587 * parseInt(m[2], 10) + 0.114 * parseInt(m[3], 10);
+                                return lum > 130;
+                            }
+                        }
+                    }
+                }
+                return true;
+            } catch (_) {
+                return true;
+            }
+        }
+
+        function applyTheme(isLight) {
+            currentIsLight = isLight;
+
+            if (isLight) {
+                // LIGHT FROSTED GLASS (Matches ContextMenu isBright & liquid-glass-bright)
+                header.style.background = 'rgba(255, 255, 255, 0.78)';
+                header.style.backdropFilter = 'blur(28px) saturate(180%)';
+                header.style.webkitBackdropFilter = 'blur(28px) saturate(180%)';
+                header.style.border = '1px solid rgba(0, 0, 0, 0.08)';
+                header.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.95)';
+                header.style.color = '#18181b';
+
+                navPill.style.background = 'rgba(0, 0, 0, 0.04)';
+                navPill.style.border = '1px solid rgba(0, 0, 0, 0.06)';
+                navDivider.style.background = 'rgba(0, 0, 0, 0.08)';
+
+                backBtn.style.color = 'rgba(24, 24, 27, 0.75)';
+                fwdBtn.style.color = 'rgba(24, 24, 27, 0.75)';
+
+                domainPill.style.background = 'rgba(0, 0, 0, 0.04)';
+                domainPill.style.border = '1px solid rgba(0, 0, 0, 0.06)';
+                lockIcon.style.color = '#059669';
+                hostSpan.style.color = '#18181b';
+
+                closeBtn.style.background = 'rgba(0, 0, 0, 0.04)';
+                closeBtn.style.border = '1px solid rgba(0, 0, 0, 0.06)';
+                closeBtn.style.color = 'rgba(24, 24, 27, 0.65)';
+
+                if (findBar) {
+                    findBar.style.background = 'rgba(255, 255, 255, 0.88)';
+                    findBar.style.backdropFilter = 'blur(28px) saturate(180%)';
+                    findBar.style.webkitBackdropFilter = 'blur(28px) saturate(180%)';
+                    findBar.style.border = '1px solid rgba(0, 0, 0, 0.10)';
+                    findBar.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.95)';
+                    if (findInput) findInput.style.color = '#18181b';
+                    if (findCounter) findCounter.style.color = 'rgba(0, 0, 0, 0.50)';
+                    if (findSearchIcon) findSearchIcon.style.color = 'rgba(0, 0, 0, 0.40)';
+                    findButtons.forEach(b => { b.style.color = 'rgba(0, 0, 0, 0.65)'; });
+                }
+            } else {
+                // DARK FROSTED GLASS (Matches ContextMenu dark & liquid-glass-dark)
+                header.style.background = 'rgba(15, 16, 23, 0.82)';
+                header.style.backdropFilter = 'blur(28px) saturate(160%)';
+                header.style.webkitBackdropFilter = 'blur(28px) saturate(160%)';
+                header.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+                header.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                header.style.color = '#ffffff';
+
+                navPill.style.background = 'rgba(255, 255, 255, 0.06)';
+                navPill.style.border = '1px solid rgba(255, 255, 255, 0.08)';
+                navDivider.style.background = 'rgba(255, 255, 255, 0.12)';
+
+                backBtn.style.color = 'rgba(255, 255, 255, 0.82)';
+                fwdBtn.style.color = 'rgba(255, 255, 255, 0.82)';
+
+                domainPill.style.background = 'rgba(255, 255, 255, 0.06)';
+                domainPill.style.border = '1px solid rgba(255, 255, 255, 0.08)';
+                lockIcon.style.color = '#34d399';
+                hostSpan.style.color = 'rgba(255, 255, 255, 0.92)';
+
+                closeBtn.style.background = 'rgba(255, 255, 255, 0.06)';
+                closeBtn.style.border = '1px solid rgba(255, 255, 255, 0.08)';
+                closeBtn.style.color = 'rgba(255, 255, 255, 0.75)';
+
+                if (findBar) {
+                    findBar.style.background = 'rgba(15, 16, 23, 0.94)';
+                    findBar.style.backdropFilter = 'blur(28px) saturate(180%)';
+                    findBar.style.webkitBackdropFilter = 'blur(28px) saturate(180%)';
+                    findBar.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+                    findBar.style.boxShadow = '0 16px 48px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08)';
+                    if (findInput) findInput.style.color = '#ffffff';
+                    if (findCounter) findCounter.style.color = 'rgba(255, 255, 255, 0.45)';
+                    if (findSearchIcon) findSearchIcon.style.color = 'rgba(255, 255, 255, 0.40)';
+                    findButtons.forEach(b => { b.style.color = 'rgba(255, 255, 255, 0.70)'; });
+                }
+            }
+        }
+
+        const updateTheme = () => {
+            const isLight = detectPageIsLight();
+            if (isLight !== currentIsLight) {
+                applyTheme(isLight);
+            }
+        };
+
+        updateOAuthThemeGlobal = updateTheme;
+
+        // Initialize theme
+        applyTheme(detectPageIsLight());
+        window.addEventListener('load', updateTheme);
+
+        // Fetch smart dark mode state from main process on startup
+        if (isOAuthPopup) {
+            try {
+                ipcRenderer.invoke('get-smart-dark-state', window.location.href)
+                    .then(state => {
+                        if (state && typeof state.isForceDark === 'boolean') {
+                            checkSmartDark(state.isForceDark, state.isExcluded);
+                            updateTheme();
+                        }
+                    })
+                    .catch(() => {});
+            } catch (_) {}
+        }
+
+        let themeDebounce = null;
+        const themeObserver = new MutationObserver(() => {
+            clearTimeout(themeDebounce);
+            themeDebounce = setTimeout(updateTheme, 80);
+        });
+        if (document.documentElement) {
+            themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+        }
+        if (document.body) {
+            themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+        }
+
+        // 5. Update Hostname on Navigation
         const updateHost = () => {
             const h = document.getElementById('qbrowse-oauth-hostname');
-            if (h && window.location.hostname) h.textContent = window.location.hostname;
+            if (h && window.location.hostname) {
+                h.textContent = window.location.hostname.replace(/^www\./, '');
+            }
+            updateTheme();
         };
         window.addEventListener('popstate', updateHost);
         window.addEventListener('hashchange', updateHost);
+        document.addEventListener('DOMContentLoaded', updateHost);
 
-        // Escape key dismisses the popup window
+        // 5. Global Keyboard & Mouse Shortcuts inside OAuth Popup
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
+            // Find in page (Ctrl+F)
+            if (e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
                 e.preventDefault();
-                closePopup();
+                toggleFindBar();
+                return;
+            }
+
+            // Zoom In (Ctrl++ / Ctrl+=)
+            if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === 'Add')) {
+                e.preventDefault();
+                applyZoom(webFrame.getZoomFactor() + 0.1);
+                return;
+            }
+
+            // Zoom Out (Ctrl+-)
+            if (e.ctrlKey && (e.key === '-' || e.key === 'Subtract')) {
+                e.preventDefault();
+                applyZoom(webFrame.getZoomFactor() - 0.1);
+                return;
+            }
+
+            // Zoom Reset (Ctrl+0)
+            if (e.ctrlKey && (e.key === '0' || e.key === 'num0')) {
+                e.preventDefault();
+                applyZoom(1.0);
+                return;
+            }
+
+            // Reload (F5 / Ctrl+R)
+            if (e.key === 'F5' || (e.ctrlKey && (e.key === 'r' || e.key === 'R'))) {
+                e.preventDefault();
+                try { window.location.reload(); } catch (_) {
+                    try { ipcRenderer.send('oauth-reload'); } catch (_) {}
+                }
+                return;
+            }
+
+            // Back (Alt+Left)
+            if (e.altKey && e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (window.history.length > 1) window.history.back();
+                try { ipcRenderer.send('oauth-navigate-back'); } catch (_) {}
+                return;
+            }
+
+            // Forward (Alt+Right)
+            if (e.altKey && e.key === 'ArrowRight') {
+                e.preventDefault();
+                window.history.forward();
+                try { ipcRenderer.send('oauth-navigate-forward'); } catch (_) {}
+                return;
+            }
+
+            // Escape
+            if (e.key === 'Escape') {
+                if (isFindBarOpen) {
+                    e.preventDefault();
+                    closeFindBar();
+                } else {
+                    e.preventDefault();
+                    closePopup();
+                }
             }
         }, true);
+
+        // Zoom via Ctrl + Wheel
+        window.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const step = e.deltaY < 0 ? 0.05 : -0.05;
+                applyZoom(webFrame.getZoomFactor() + step);
+            }
+        }, { passive: false });
     }
 
     if (document.readyState === 'loading') {

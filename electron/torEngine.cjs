@@ -1,9 +1,18 @@
-const { spawn, execSync } = require('child_process');
+const { spawn, exec, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const http = require('http');
 const https = require('https');
+
+function execPromise(cmd, timeoutMs = 4000) {
+    return new Promise((resolve, reject) => {
+        exec(cmd, { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout) => {
+            if (err) return reject(err);
+            resolve(stdout ? stdout.trim() : '');
+        });
+    });
+}
 
 let torProcess = null;
 let torStatus = 'stopped'; // 'stopped' | 'downloading' | 'starting' | 'connected' | 'error'
@@ -421,9 +430,11 @@ async function requestNewTorCircuit() {
 
 async function checkTorExitIp() {
     const curlBin = process.platform === 'win32' ? 'curl.exe' : 'curl';
+
+    // 1. Try official check.torproject.org API
     try {
-        const out = execSync(`${curlBin} -s --max-time 4 --socks5-hostname 127.0.0.1:${activeSocksPort} https://check.torproject.org/api/ip`, { encoding: 'utf8', stdio: 'pipe' });
-        const parsed = JSON.parse(out.trim());
+        const out = await execPromise(`${curlBin} -s --max-time 4 --socks5-hostname 127.0.0.1:${activeSocksPort} https://check.torproject.org/api/ip`);
+        const parsed = JSON.parse(out);
         if (parsed && parsed.IP) {
             verifiedExitIp = parsed.IP;
             return {
@@ -433,7 +444,23 @@ async function checkTorExitIp() {
             };
         }
     } catch (e) {
-        console.warn('[TorEngine] SOCKS exit IP check error:', e.message);
+        console.warn('[TorEngine] SOCKS exit IP check (torproject) error:', e.message);
+    }
+
+    // 2. Fallback check endpoint over Tor SOCKS
+    try {
+        const out = await execPromise(`${curlBin} -s --max-time 4 --socks5-hostname 127.0.0.1:${activeSocksPort} https://api.ipify.org?format=json`);
+        const parsed = JSON.parse(out);
+        if (parsed && parsed.ip) {
+            verifiedExitIp = parsed.ip;
+            return {
+                isTor: true,
+                ip: parsed.ip,
+                status: 'Protected by Tor Network'
+            };
+        }
+    } catch (e) {
+        console.warn('[TorEngine] SOCKS exit IP check (ipify) error:', e.message);
     }
 
     return { isTor: Boolean(verifiedExitIp), ip: verifiedExitIp || 'Unknown', status: 'Active' };
@@ -518,6 +545,10 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
 
     // 2. If already running our own process
     if (torProcess && !torProcess.killed) {
+        torStatus = 'connected';
+        bootstrapProgress = 100;
+        if (typeof onStatusChange === 'function') onStatusChange(torStatus);
+        if (typeof onBootstrap === 'function') onBootstrap(100);
         return { success: true, mode: 'running', socksPort: activeSocksPort };
     }
 
@@ -679,6 +710,11 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
 function stopTor() {
     if (torProcess) {
         try {
+            if (process.platform === 'win32' && torProcess.pid) {
+                try {
+                    execSync(`taskkill /pid ${torProcess.pid} /t /f`, { stdio: 'ignore' });
+                } catch (_) {}
+            }
             torProcess.kill('SIGTERM');
         } catch (_) {
             try { torProcess.kill('SIGKILL'); } catch (__) {}
@@ -687,8 +723,13 @@ function stopTor() {
     }
     torStatus = 'stopped';
     bootstrapProgress = 0;
+    verifiedExitIp = null;
     return true;
 }
+
+process.on('exit', () => {
+    stopTor();
+});
 
 function getStatus() {
     return {

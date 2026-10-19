@@ -24,3 +24,4 @@ firebase-debug.log
 *.key
 *.pem
 certs/
+scratch/

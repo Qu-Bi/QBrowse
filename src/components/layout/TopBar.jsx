@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PanelLeft, Lock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User, BookOpen, Cpu, Feather, GaugeCircle, Rocket } from 'lucide-react';
+import { PanelLeft, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, ArrowLeftRight, User, BookOpen, Cpu, Feather, GaugeCircle, Rocket } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
@@ -146,6 +146,28 @@ export default function TopBar() {
         }
     };
 
+    const handleHistoryNewTab = async (offset) => {
+        if (!activeTabId) return;
+        const wv = document.getElementById(`webview-${activeTabId}`);
+        if (!wv) return;
+        try {
+            let wcId = null;
+            if (typeof wv.getWebContentsId === 'function') {
+                wcId = wv.getWebContentsId();
+            }
+            if (wcId && window.electronAPI?.getHistoryUrl) {
+                const targetUrl = await window.electronAPI.getHistoryUrl(wcId, offset);
+                if (targetUrl && targetUrl !== 'about:blank') {
+                    useTabStore.getState().handleNewTab(targetUrl, false);
+                    showToast(offset < 0 ? 'Opened previous page in background tab' : 'Opened next page in background tab');
+                    return;
+                }
+            }
+        } catch (err) {
+            console.error('[TopBar] Failed to get history URL for background tab:', err);
+        }
+    };
+
     const handleSwapPanes = (e) => {
         if (e) e.stopPropagation();
         if (!isSplitView || !leftTab) return;
@@ -208,7 +230,7 @@ export default function TopBar() {
                             window.electronAPI?.maximize();
                         }
                     }}
-                    className={`drag-region flex mt-0 mx-0 mb-2 ${uiScale === 'compact' ? 'h-[44px]' : 'h-[50px]'} z-50 items-center justify-between px-3 rounded-full transition-all ${
+                    className={`drag-region flex mt-0 mx-0 ${uiScale === 'compact' ? 'mb-1.5 h-[44px]' : 'mb-3 h-[50px]'} z-50 items-center justify-between px-3 rounded-full transition-all duration-300 ${
                     isBright ? 'liquid-glass-bright text-zinc-900' : 'liquid-glass-dark text-white'
                 }`}>
 
@@ -236,14 +258,32 @@ export default function TopBar() {
                             isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                         }`}>
                             <button 
-                                onClick={handleBack} 
+                                onClick={(e) => {
+                                    if (e.ctrlKey || e.metaKey) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleHistoryNewTab(-1);
+                                    } else {
+                                        handleBack(e);
+                                    }
+                                }} 
+                                onMouseDown={(e) => {
+                                    if (e.button === 1) e.preventDefault();
+                                }}
+                                onAuxClick={(e) => {
+                                    if (e.button === 1 && canGoBack) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleHistoryNewTab(-1);
+                                    }
+                                }}
                                 disabled={!canGoBack}
                                 className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${
                                     canGoBack 
                                         ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
                                         : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
                                 }`}
-                                title="Back (Mouse 4 / Alt+Left)"
+                                title={`Back (Alt+Left • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
                             >
                                 <ChevronLeft size={14} strokeWidth={2} />
                             </button>
@@ -251,14 +291,32 @@ export default function TopBar() {
                             <div className={`w-px h-3.5 mx-0.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
 
                             <button 
-                                onClick={handleForward} 
+                                onClick={(e) => {
+                                    if (e.ctrlKey || e.metaKey) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleHistoryNewTab(1);
+                                    } else {
+                                        handleForward(e);
+                                    }
+                                }} 
+                                onMouseDown={(e) => {
+                                    if (e.button === 1) e.preventDefault();
+                                }}
+                                onAuxClick={(e) => {
+                                    if (e.button === 1 && canGoForward) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleHistoryNewTab(1);
+                                    }
+                                }}
                                 disabled={!canGoForward}
                                 className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${
                                     canGoForward 
                                         ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
                                         : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
                                 }`}
-                                title="Forward (Mouse 5 / Alt+Right)"
+                                title={`Forward (Alt+Right • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
                             >
                                 <ChevronRight size={14} strokeWidth={2} />
                             </button>
@@ -275,7 +333,7 @@ export default function TopBar() {
                                 e.stopPropagation();
                                 const x = e.clientX + 220 > window.innerWidth ? window.innerWidth - 230 : e.clientX;
                                 const y = e.clientY + 200 > window.innerHeight ? window.innerHeight - 220 : e.clientY;
-                                useUIStore.getState().setTopBarContextMenu({ x, y, url: rawUrl, tabId: activeTab?.id });
+                                useUIStore.getState().setTopBarContextMenu({ x, y, url: rawUrl, tabId: focusedTab?.id });
                             }}
                             className={`relative w-full flex items-center justify-between px-3.5 h-9 rounded-full transition-all duration-300 group cursor-pointer min-w-0 gap-2.5 ${
                                 isBright ? 'liquid-pill-bright hover:border-accent/60' : 'liquid-pill-dark hover:border-accent/50'
@@ -290,15 +348,20 @@ export default function TopBar() {
                             {/* Left Security Icon / Tor State Indicator */}
                             {isTor ? (
                                 <div 
-                                    className="relative group/tor flex items-center flex-shrink-0 z-10"
+                                    className="relative group/tor flex items-center flex-shrink-0 z-10 cursor-pointer"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        togglePopover('tor');
+                                    }}
+                                    title="Tor Onion Circuit & Identity (Click to view circuit)"
                                 >
                                     <div 
-                                        className={`p-1.5 rounded-full transition-all duration-200 flex items-center justify-center relative select-none ${
+                                        className={`p-1.5 rounded-full transition-all duration-200 flex items-center justify-center relative select-none hover:scale-110 active:scale-95 ${
                                             torStatus === 'connected'
-                                                ? 'text-purple-400 bg-purple-500/15'
+                                                ? 'text-purple-400 bg-purple-500/15 hover:bg-purple-500/25'
                                                 : (torStatus === 'starting' || torStatus === 'downloading')
                                                 ? 'text-purple-300 bg-purple-500/10 animate-pulse'
-                                                : 'text-purple-400/30 opacity-60'
+                                                : 'text-purple-400/30 opacity-60 hover:opacity-100 hover:bg-purple-500/15'
                                         }`}
                                     >
                                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-200 group-hover/tor:scale-110">
@@ -351,7 +414,11 @@ export default function TopBar() {
                                     {isRefreshing ? (
                                         <X size={12} className={isBright ? "text-zinc-500" : "text-gray-400"} />
                                     ) : rawUrl ? (
-                                        <Lock size={12} className={`group-hover/lock:scale-110 transition-transform ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`} />
+                                        (rawUrl.startsWith('http://') || focusedTab?.title?.startsWith('Insecure') || focusedTab?.title?.startsWith('Error')) ? (
+                                            <Unlock size={12} className="text-amber-400 group-hover/lock:scale-110 transition-transform" />
+                                        ) : (
+                                            <Lock size={12} className={`group-hover/lock:scale-110 transition-transform ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`} />
+                                        )
                                     ) : (
                                         <Search size={13} className={isBright ? 'text-zinc-400 group-hover/lock:text-zinc-600' : 'text-white/40 group-hover/lock:text-white/70'} />
                                     )}
@@ -399,7 +466,29 @@ export default function TopBar() {
                                 )}
                                 <div
                                     className={`p-1 rounded-full transition-colors cursor-pointer ${isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}
-                                    onClick={(e) => { e.stopPropagation(); refresh(); }}
+                                    onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        if (e.ctrlKey || e.metaKey) {
+                                            if (rawUrl && !rawUrl.startsWith('qbrowse://')) {
+                                                useTabStore.getState().handleNewTab(rawUrl, false);
+                                                showToast('Duplicated tab in background');
+                                            }
+                                        } else {
+                                            refresh(); 
+                                        }
+                                    }}
+                                    onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                    onAuxClick={(e) => {
+                                        if (e.button === 1) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            if (rawUrl && !rawUrl.startsWith('qbrowse://')) {
+                                                useTabStore.getState().handleNewTab(rawUrl, false);
+                                                showToast('Duplicated tab in background');
+                                            }
+                                        }
+                                    }}
+                                    title="Reload page (Middle-click to duplicate in background)"
                                 >
                                     <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
                                 </div>
@@ -533,7 +622,7 @@ export default function TopBar() {
                                 onContextMenu={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    useUIStore.getState().openSettings('performance');
+                                    useUIStore.getState().openSettings('engine');
                                 }}
                                 className={`p-1.5 rounded-full transition-all duration-300 ease-out group relative flex items-center justify-center cursor-pointer ${
                                     performanceMode === 'auto'

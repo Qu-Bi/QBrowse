@@ -56,21 +56,34 @@ const useAIStore = create((set, get) => ({
     ],
     chatInput: '',
     attachedFiles: [], // Array of { name, size, type, content, dataUrl }
-    aiContextEnabled: true,
+    aiContextEnabled: typeof window !== 'undefined' ? localStorage.getItem('qbrowse_ai_context') !== 'false' : true,
     ttsEnabled: false,
-    webSearchEnabled: false, // Default to false so it doesn't search web by default
+    webSearchEnabled: typeof window !== 'undefined' ? localStorage.getItem('qbrowse_ai_web_search') === 'true' : false,
     isGenerating: false,
     downloadProgress: null,
-    parsePdfAsImage: true,
+    parsePdfAsImage: typeof window !== 'undefined' ? localStorage.getItem('qbrowse_ai_pdf_image') !== 'false' : true,
 
     // Actions
     setChatInput: (val) => set(state => ({ chatInput: typeof val === 'function' ? val(state.chatInput) : val })),
-    setAiContextEnabled: (val) => set({ aiContextEnabled: val }),
+    setAiContextEnabled: (val) => {
+        set({ aiContextEnabled: val });
+        try { localStorage.setItem('qbrowse_ai_context', String(val)); } catch (_) {}
+    },
     setTtsEnabled: (val) => set({ ttsEnabled: val }),
-    setWebSearchEnabled: (val) => set({ webSearchEnabled: val }),
+    setWebSearchEnabled: (val) => {
+        set({ webSearchEnabled: val });
+        try { localStorage.setItem('qbrowse_ai_web_search', String(val)); } catch (_) {}
+    },
     toggleTTS: () => set(state => ({ ttsEnabled: !state.ttsEnabled })),
-    toggleWebSearch: () => set(state => ({ webSearchEnabled: !state.webSearchEnabled })),
-    setParsePdfAsImage: (val) => set({ parsePdfAsImage: val }),
+    toggleWebSearch: () => {
+        const next = !get().webSearchEnabled;
+        set({ webSearchEnabled: next });
+        try { localStorage.setItem('qbrowse_ai_web_search', String(next)); } catch (_) {}
+    },
+    setParsePdfAsImage: (val) => {
+        set({ parsePdfAsImage: val });
+        try { localStorage.setItem('qbrowse_ai_pdf_image', String(val)); } catch (_) {}
+    },
     addAttachment: (fileObj) => set(state => ({ attachedFiles: [...state.attachedFiles, fileObj] })),
     removeAttachment: (index) => set(state => ({ attachedFiles: state.attachedFiles.filter((_, i) => i !== index) })),
     clearAttachments: () => set({ attachedFiles: [] }),
@@ -133,12 +146,27 @@ const useAIStore = create((set, get) => ({
                 modelPath = '';
             }
 
-            if (!mmprojPath) {
-                const matchingMmproj = (downloadedModels || []).find(m => m.filename.startsWith('mmproj-'));
+            if (!mmprojPath && modelPath) {
+                const modelBase = modelPath.toLowerCase();
+                const matchingMmproj = (downloadedModels || []).find(m => {
+                    const fn = m.filename.toLowerCase();
+                    if (fn.startsWith('mmproj-')) {
+                        if (modelBase.includes('e4b') && fn.includes('e4b')) return true;
+                        if (modelBase.includes('e2b') && fn.includes('e2b')) return true;
+                    }
+                    return false;
+                });
                 if (matchingMmproj) {
                     mmprojPath = matchingMmproj.filename;
                 }
             }
+        }
+
+        // If no model exists at all, automatically trigger downloading the recommended preset
+        if (!modelPath) {
+            const preset = MODEL_PRESETS.find(m => m.id === activeModelId) || MODEL_PRESETS[0];
+            get().downloadModel(preset);
+            return { success: false, downloading: true, message: `Downloading ${preset.name}...` };
         }
 
         if (window.electronAPI && typeof window.electronAPI.startAiServer === 'function') {
@@ -179,7 +207,10 @@ const useAIStore = create((set, get) => ({
     },
 
     toggleEngine: async () => {
-        const { isRunning } = get();
+        const { isRunning, status } = get();
+        if (status === 'downloading') {
+            return;
+        }
         if (isRunning) {
             await get().stopEngine();
         } else {
@@ -195,22 +226,52 @@ const useAIStore = create((set, get) => ({
             try {
                 const res = await window.electronAPI.getAiStatus();
                 if (res) {
+                    const downloaded = res.downloadedModels || [];
+                    const currentActive = get().activeModelId;
+                    const customPath = get().customModelPath;
+
+                    // If current active preset isn't downloaded, but another preset IS downloaded, auto-switch to it
+                    let newActiveId = currentActive;
+                    if (!customPath && downloaded.length > 0) {
+                        const activePreset = MODEL_PRESETS.find(m => m.id === currentActive);
+                        const hasCurrent = activePreset && downloaded.some(m => m.filename === activePreset.filename || m.path?.includes(activePreset.filename));
+                        if (!hasCurrent) {
+                            const foundPreset = MODEL_PRESETS.find(p => downloaded.some(m => m.filename === p.filename || m.path?.includes(p.filename)));
+                            if (foundPreset) {
+                                newActiveId = foundPreset.id;
+                            }
+                        }
+                    }
+
                     set({
                         isRunning: res.isRunning,
+                        status: res.isRunning ? 'running' : (get().status === 'downloading' ? 'downloading' : (res.metrics?.status || 'stopped')),
                         metrics: res.metrics || get().metrics,
-                        downloadedModels: res.downloadedModels || []
+                        downloadedModels: downloaded,
+                        activeModelId: newActiveId
                     });
                 }
             } catch(e) {}
         }
     },
 
+    cancelDownload: async () => {
+        if (window.electronAPI && typeof window.electronAPI.cancelAiDownload === 'function') {
+            await window.electronAPI.cancelAiDownload();
+        }
+        set({ status: 'stopped', downloadProgress: null, downloadDetail: null });
+    },
+
     downloadModel: async (presetObj) => {
+        if (!presetObj) {
+            presetObj = MODEL_PRESETS.find(m => m.id === get().activeModelId) || MODEL_PRESETS[0];
+        }
         set({
             activeModelId: presetObj.id,
             status: 'downloading',
             downloadProgress: 0,
-            downloadDetail: { percent: 0, downloadedBytes: 0, totalBytes: 0 }
+            downloadDetail: { percent: 0, downloadedBytes: 0, totalBytes: 0, filename: presetObj.filename },
+            lastError: null
         });
         
         if (window.electronAPI && typeof window.electronAPI.downloadAiModel === 'function') {
@@ -225,15 +286,15 @@ const useAIStore = create((set, get) => ({
             }
 
             try {
-                // Download Main Model
+                // 1. Download Main Model
                 await window.electronAPI.downloadAiModel({
                     url: presetObj.url,
                     filename: presetObj.filename
                 });
                 
-                // Download mmproj if required
+                // 2. Download mmproj if required
                 if (presetObj.mmprojUrl) {
-                    set({ downloadProgress: 0, downloadDetail: { percent: 0, downloadedBytes: 0, totalBytes: 0 } });
+                    set({ downloadProgress: 0, downloadDetail: { percent: 0, downloadedBytes: 0, totalBytes: 0, filename: presetObj.mmprojFilename } });
                     await window.electronAPI.downloadAiModel({
                         url: presetObj.mmprojUrl,
                         filename: presetObj.mmprojFilename
@@ -243,10 +304,15 @@ const useAIStore = create((set, get) => ({
                 if (unsub) unsub();
                 set({ status: 'stopped', downloadProgress: 100 });
                 get().setActiveModelId(presetObj.id);
-                get().fetchEngineStatus();
+                await get().fetchEngineStatus();
+
+                // Automatically start the engine upon successful download
+                setTimeout(() => {
+                    get().startEngine();
+                }, 300);
             } catch(e) {
                 if (unsub) unsub();
-                set({ status: 'error', downloadProgress: null });
+                set({ status: 'error', downloadProgress: null, lastError: `Download failed: ${e?.message || e}` });
             }
         } else {
             // Web browser simulated progress stream
@@ -256,7 +322,7 @@ const useAIStore = create((set, get) => ({
                 const downloadedBytes = Math.round((p / 100) * 1.6 * 1024 * 1024 * 1024);
                 set({ 
                     downloadProgress: p,
-                    downloadDetail: { percent: p, downloadedBytes, totalBytes: 1.6 * 1024 * 1024 * 1024 }
+                    downloadDetail: { percent: p, downloadedBytes, totalBytes: 1.6 * 1024 * 1024 * 1024, filename: presetObj.filename }
                 });
 
                 if (p >= 100) {
@@ -270,6 +336,7 @@ const useAIStore = create((set, get) => ({
                         ]
                     });
                     get().setActiveModelId(presetObj.id);
+                    setTimeout(() => get().startEngine(), 300);
                 }
             }, 200);
         }
@@ -368,19 +435,67 @@ const useAIStore = create((set, get) => ({
                 }
             }] : undefined;
 
-            const response = await fetch('http://127.0.0.1:8080/v1/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                signal: abortController.signal,
-                body: JSON.stringify({
-                    messages: apiMessages,
-                    stream: true,
-                    temperature: temperature,
-                    tools: tools
-                })
-            });
+            let response = null;
+            let retries = 0;
+            const maxRetries = 25; // 25 * 1.5s = ~37s
 
-            if (response.ok && response.body) {
+            while (retries < maxRetries) {
+                try {
+                    response = await fetch('http://127.0.0.1:8080/v1/chat/completions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: abortController.signal,
+                        body: JSON.stringify({
+                            messages: apiMessages,
+                            stream: true,
+                            temperature: temperature,
+                            tools: tools
+                        })
+                    });
+
+                    if (response.status === 503) {
+                        retries++;
+                        if (retries === 1) {
+                            set(state => {
+                                const updated = [...state.chatHistory];
+                                if (updated[aiMsgIndex]) {
+                                    updated[aiMsgIndex] = { role: 'ai', content: '[Model is loading into memory... Please wait...]', attachments: [] };
+                                }
+                                return { chatHistory: updated };
+                            });
+                        }
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+
+                    break;
+                } catch (fetchErr) {
+                    if (fetchErr.name === 'AbortError') throw fetchErr;
+                    retries++;
+                    if (retries === 1) {
+                        set(state => {
+                            const updated = [...state.chatHistory];
+                            if (updated[aiMsgIndex]) {
+                                updated[aiMsgIndex] = { role: 'ai', content: '[Starting local AI engine... Please wait...]', attachments: [] };
+                            }
+                            return { chatHistory: updated };
+                        });
+                    }
+                    if (retries >= maxRetries) throw fetchErr;
+                    await new Promise(r => setTimeout(r, 1500));
+                }
+            }
+
+            if (response && response.ok && response.body) {
+                // Clear any loading indicator text
+                set(state => {
+                    const updated = [...state.chatHistory];
+                    if (updated[aiMsgIndex]) {
+                        updated[aiMsgIndex] = { role: 'ai', content: '', attachments: [] };
+                    }
+                    return { chatHistory: updated };
+                });
+
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder('utf-8');
                 let accumulated = '';

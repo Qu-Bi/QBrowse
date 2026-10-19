@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme, screen, Menu, MenuItem } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -31,6 +31,150 @@ const pendingPromptResponses = new Map();
 let localDialogPort = 0;
 const localDialogAuthToken = crypto.randomBytes(32).toString('hex');
 let latestActiveWebviewUrl = '';
+
+// Active OAuth popup windows registry & settings synchronization
+const activeOAuthWindows = new Set();
+let liveSmartDarkState = {
+    isForceDark: null,
+    darkExclusions: ['youtube.com', 'github.com', 'figma.com']
+};
+
+// Clean browser User-Agent: Standard desktop Chrome matching Chromium runtime
+const cleanChromeUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+app.userAgentFallback = cleanChromeUA;
+
+function isGoogleAuthUrl(targetUrl) {
+    if (!targetUrl || typeof targetUrl !== 'string') return false;
+    try {
+        const u = new URL(targetUrl);
+        const h = u.hostname.toLowerCase();
+        return h.startsWith('accounts.google.') ||
+               h === 'oauth2.googleapis.com' ||
+               h.startsWith('accounts.youtube.') ||
+               h === 'myaccount.google.com' ||
+               h.startsWith('consent.google.') ||
+               h.startsWith('consent.youtube.') ||
+               (h.includes('google.') && (u.pathname.startsWith('/signin') || u.pathname.startsWith('/ServiceLogin'))) ||
+               (h === 'apis.google.com' && (u.pathname.includes('/auth') || u.pathname.includes('/oauth')));
+    } catch (_) {
+        const s = targetUrl.toLowerCase();
+        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.');
+    }
+}
+
+function getSettingsStore() {
+    try {
+        const p = path.join(app.getPath('userData'), 'settings.json');
+        if (fsSync.existsSync(p)) {
+            settingsStore = JSON.parse(fsSync.readFileSync(p, 'utf8')) || {};
+        }
+    } catch (_) {}
+    return settingsStore || {};
+}
+
+function injectOAuthSmartDarkCSS(childWindow) {
+    if (!childWindow || childWindow.isDestroyed()) return;
+    try {
+        childWindow.webContents.insertCSS(`
+            @media screen {
+                html.qbrowse-smart-dark-active {
+                    filter: invert(1) hue-rotate(180deg) !important;
+                    background-color: #ffffff !important;
+                }
+                html.qbrowse-smart-dark-active img,
+                html.qbrowse-smart-dark-active picture,
+                html.qbrowse-smart-dark-active video,
+                html.qbrowse-smart-dark-active canvas,
+                html.qbrowse-smart-dark-active svg image,
+                html.qbrowse-smart-dark-active [role="img"],
+                html.qbrowse-smart-dark-active [style*="background-image"],
+                html.qbrowse-smart-dark-active [style*="background: url"],
+                html.qbrowse-smart-dark-active [style*="background:url"],
+                html.qbrowse-smart-dark-active [class*="bg-image"],
+                html.qbrowse-smart-dark-active [class*="background-image"],
+                html.qbrowse-smart-dark-active [class*="background_image"],
+                html.qbrowse-smart-dark-active [class*="hero-image"],
+                html.qbrowse-smart-dark-active [class*="banner-image"],
+                html.qbrowse-smart-dark-active [class*="ext-background-image"],
+                html.qbrowse-smart-dark-active [id*="backgroundImage"],
+                html.qbrowse-smart-dark-active [id*="background-image"],
+                html.qbrowse-smart-dark-active .qbrowse-counter-invert {
+                    filter: invert(1) hue-rotate(180deg) !important;
+                }
+                html.qbrowse-smart-dark-active [style*="background-image"] img,
+                html.qbrowse-smart-dark-active [style*="background: url"] img,
+                html.qbrowse-smart-dark-active [style*="background:url"] img,
+                html.qbrowse-smart-dark-active [class*="bg-image"] img,
+                html.qbrowse-smart-dark-active [class*="background-image"] img,
+                html.qbrowse-smart-dark-active [role="img"] img,
+                html.qbrowse-smart-dark-active .qbrowse-counter-invert img {
+                    filter: none !important;
+                }
+                html.qbrowse-smart-dark-active .qbrowse-note-badge,
+                html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal,
+                html.qbrowse-smart-dark-active #qbrowse-oauth-header,
+                html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar {
+                    filter: invert(1) hue-rotate(180deg) !important;
+                }
+            }
+            @media print {
+                html.qbrowse-smart-dark-active {
+                    filter: none !important;
+                    background-color: #ffffff !important;
+                    color: #000000 !important;
+                }
+                html.qbrowse-smart-dark-active img,
+                html.qbrowse-smart-dark-active picture,
+                html.qbrowse-smart-dark-active video,
+                html.qbrowse-smart-dark-active canvas {
+                    filter: none !important;
+                }
+                html.qbrowse-smart-dark-active .qbrowse-note-badge,
+                html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal,
+                html.qbrowse-smart-dark-active #qbrowse-oauth-header,
+                html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar {
+                    filter: none !important;
+                }
+            }
+        `, { cssOrigin: 'user' });
+    } catch (_) {}
+}
+
+function syncOAuthWindowSmartDark(childWindow) {
+    if (!childWindow || childWindow.isDestroyed()) return;
+    try {
+        const store = getSettingsStore();
+        let isForceDark = (store && typeof store.isForceDark === 'boolean') 
+            ? store.isForceDark 
+            : (liveSmartDarkState.isForceDark !== null ? liveSmartDarkState.isForceDark : false);
+        const exclusions = Array.isArray(store?.darkExclusions) 
+            ? store.darkExclusions 
+            : liveSmartDarkState.darkExclusions;
+        let url = '';
+        try { url = childWindow.webContents.getURL() || ''; } catch (_) {}
+        const isExcluded = exclusions.some(d => url && typeof d === 'string' && d.trim() && url.includes(d.trim()));
+
+        console.log('[Electron Main] syncOAuthWindowSmartDark -> url:', url, 'isForceDark:', isForceDark, 'isExcluded:', isExcluded);
+        if (childWindow.webContents && typeof childWindow.webContents.setEmulatedMedia === 'function') {
+            try {
+                childWindow.webContents.setEmulatedMedia({ colorScheme: isForceDark && !isExcluded ? 'dark' : 'light' });
+            } catch (_) {}
+        }
+        childWindow.webContents.send('apply-smart-dark', { isForceDark, isExcluded });
+    } catch (e) {
+        console.error('[Electron Main] syncOAuthWindowSmartDark error:', e);
+    }
+}
+
+function broadcastSmartDarkToOAuthWindows() {
+    for (const win of activeOAuthWindows) {
+        if (win && !win.isDestroyed()) {
+            syncOAuthWindowSmartDark(win);
+        } else {
+            activeOAuthWindows.delete(win);
+        }
+    }
+}
 
 // Internal dialog bridge server for synchronous window.alert, confirm, and prompt calls
 const localDialogServer = http.createServer((req, res) => {
@@ -171,6 +315,7 @@ app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkReq
 
 // Register custom privileged scheme for streaming local media and wallpapers safely
 protocol.registerSchemesAsPrivileged([
+    { scheme: 'qbrowse', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     { scheme: 'qbrowse-media', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
 ]);
 
@@ -702,13 +847,20 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('canvas-oop-rasterization');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+app.commandLine.appendSwitch('enable-blink-features', 'MiddleClickAutoscroll');
 app.commandLine.appendSwitch('enable-picture-in-picture');
 app.commandLine.appendSwitch('enable-fast-unload');
 app.commandLine.appendSwitch('enable-tcp-fastopen');
-app.commandLine.appendSwitch('enable-features', 'DocumentPictureInPictureAPI,MediaSessionAPIs,ParallelDownloading,CanvasOopRasterization,AutomaticLazyImageLoading');
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
+
+// GPU Resilience: Prevents Chromium from permanently blacklisting hardware acceleration
+// and falling back to CPU software rasterization (SwiftShader) after display resolution/mode switches
+app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
+app.commandLine.appendSwitch('disable-gpu-watchdog');
+app.commandLine.appendSwitch('gpu-no-context-lost');
+app.commandLine.appendSwitch('disable-domain-blocking-for-3d-apis');
 
 // Synchronously load user flags from qbrowse://flags before app is ready
 let userFlags = {};
@@ -725,23 +877,33 @@ const isFlagOn = (id, defaultVal = false) => {
     return defaultVal;
 };
 
-// Apply real Chromium flags dynamically based on user configuration
-if (isFlagOn('gpu-rasterization', true)) app.commandLine.appendSwitch('enable-gpu-rasterization');
+// Consolidate all Chromium features into a single enable-features switch to avoid command-line overwrite
+const enabledChromiumFeatures = new Set([
+    'DocumentPictureInPictureAPI',
+    'MediaSessionAPIs',
+    'ParallelDownloading',
+    'CanvasOopRasterization',
+    'AutomaticLazyImageLoading',
+    'BackForwardCache',
+    'BackForwardCacheSameSiteForced',
+    'BackForwardCacheMedia'
+]);
+
+if (isFlagOn('enable-vulkan', false)) enabledChromiumFeatures.add('Vulkan');
+if (isFlagOn('force-dark-contents', false)) enabledChromiumFeatures.add('WebContentsForceDark');
+if (isFlagOn('enable-encrypted-client-hello', true)) enabledChromiumFeatures.add('EncryptedClientHello');
+if (isFlagOn('enable-tls13-kyber', true)) enabledChromiumFeatures.add('PostQuantumKyber');
+if (isFlagOn('overlay-scrollbars', false)) enabledChromiumFeatures.add('OverlayScrollbar');
+if (isFlagOn('enable-drdc', false)) enabledChromiumFeatures.add('DynamicRefreshRateDetection');
+
+app.commandLine.appendSwitch('enable-features', Array.from(enabledChromiumFeatures).join(','));
+
+// Apply other standalone flags
 if (isFlagOn('smooth-scrolling', true)) app.commandLine.appendSwitch('enable-smooth-scrolling');
 if (isFlagOn('enable-quic', true)) app.commandLine.appendSwitch('enable-quic');
-if (isFlagOn('zero-copy-rasterizer', false)) app.commandLine.appendSwitch('enable-zero-copy');
-if (isFlagOn('enable-vulkan', false)) app.commandLine.appendSwitch('enable-features', 'Vulkan');
-if (isFlagOn('back-forward-cache', true)) app.commandLine.appendSwitch('enable-features', 'BackForwardCache');
 if (isFlagOn('enable-webgpu', false)) app.commandLine.appendSwitch('enable-unsafe-webgpu');
-if (isFlagOn('force-dark-contents', false)) app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark');
-if (isFlagOn('enable-encrypted-client-hello', true)) app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello');
-if (isFlagOn('enable-tls13-kyber', true)) app.commandLine.appendSwitch('enable-features', 'PostQuantumKyber');
 if (isFlagOn('strict-origin-isolation', false)) app.commandLine.appendSwitch('site-per-process');
-if (isFlagOn('canvas-oop-rasterization', false)) app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization');
-if (isFlagOn('parallel-download-engine', true)) app.commandLine.appendSwitch('enable-features', 'ParallelDownloading');
-if (isFlagOn('overlay-scrollbars', false)) app.commandLine.appendSwitch('enable-features', 'OverlayScrollbar');
 if (isFlagOn('disable-hyperlink-auditing', true)) app.commandLine.appendSwitch('no-pings');
-if (isFlagOn('enable-drdc', false)) app.commandLine.appendSwitch('enable-features', 'DynamicRefreshRateDetection');
 
 process.on('unhandledRejection', (reason) => {
     const isAborted = reason && (
@@ -752,6 +914,13 @@ process.on('unhandledRejection', (reason) => {
     );
     if (isAborted) return;
     console.warn('[Unhandled Promise Rejection]:', reason);
+});
+
+// GPU Crash Resilience Monitor
+app.on('child-process-gone', (event, details) => {
+    if (details.type === 'GPU') {
+        console.warn(`[GPU Engine] GPU process reset detected (${details.reason}, code: ${details.exitCode}). Seamless hardware acceleration remains active.`);
+    }
 });
 
 // Settings & Vault setup
@@ -895,11 +1064,19 @@ async function toggleMaximizeSmooth(win) {
         const workArea = currentScreen.workArea;
 
         if (win.isMaximized()) {
-            const restoreBounds = normalBoundsMap.get(win) || {
+            const rawBounds = normalBoundsMap.get(win) || {
                 width: 1580,
                 height: 1000,
                 x: Math.max(0, Math.round(workArea.x + (workArea.width - 1580) / 2)),
                 y: Math.max(0, Math.round(workArea.y + (workArea.height - 1000) / 2))
+            };
+            const clampedWidth = Math.min(workArea.width, rawBounds.width);
+            const clampedHeight = Math.min(workArea.height, rawBounds.height);
+            const restoreBounds = {
+                width: clampedWidth,
+                height: clampedHeight,
+                x: Math.max(workArea.x, Math.min(rawBounds.x, workArea.x + workArea.width - clampedWidth)),
+                y: Math.max(workArea.y, Math.min(rawBounds.y, workArea.y + workArea.height - clampedHeight))
             };
 
             win.unmaximize();
@@ -952,6 +1129,11 @@ function createWindow(options = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = win;
   }
+
+  win.on('focus', () => {
+    _cachedDefaultBrowserStatus = null;
+    _cachedDefaultBrowserTimestamp = 0;
+  });
 
   win.webContents.on('console-message', (event) => {
     const level = event?.level ?? 0;
@@ -1057,6 +1239,30 @@ function createWindow(options = {}) {
       }
   });
 
+  const bypassedInsecureHosts = new Set();
+
+  ipcMain.handle('allow-insecure-host', (event, hostname) => {
+      if (hostname && typeof hostname === 'string') {
+          const clean = hostname.toLowerCase().trim();
+          bypassedInsecureHosts.add(clean);
+          bypassedInsecureHosts.add(clean.replace(/^www\./, ''));
+          bypassedInsecureHosts.add('www.' + clean.replace(/^www\./, ''));
+      }
+      return true;
+  });
+
+  app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+      try {
+          const parsed = new URL(url);
+          const host = parsed.hostname.toLowerCase();
+          if (bypassedInsecureHosts.has(host) || bypassedInsecureHosts.has(host.replace(/^www\./, ''))) {
+              event.preventDefault();
+              return callback(true);
+          }
+      } catch (_) {}
+      callback(false);
+  });
+
   const { fromElectronDetails } = require('@ghostery/adblocker-electron');
 
   function applyAdblockerToSession(sess) {
@@ -1071,8 +1277,12 @@ function createWindow(options = {}) {
                   try {
                       const parsed = new URL(url);
                       if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1' && !parsed.hostname.endsWith('.onion')) {
-                          const secureUrl = url.replace(/^http:\/\//i, 'https://');
-                          return callback({ redirectURL: secureUrl });
+                          const host = parsed.hostname.toLowerCase();
+                          const isBypassed = bypassedInsecureHosts.has(host) || bypassedInsecureHosts.has(host.replace(/^www\./, ''));
+                          if (!isBypassed) {
+                              const secureUrl = url.replace(/^http:\/\//i, 'https://');
+                              return callback({ redirectURL: secureUrl });
+                          }
                       }
                   } catch (_) {}
               }
@@ -1226,6 +1436,7 @@ function createWindow(options = {}) {
                         hasShadow: true,
                         autoHideMenuBar: true,
                         backgroundColor: '#121214',
+                        userAgent: cleanChromeUA,
                         webPreferences: {
                             preload: path.join(__dirname, 'webview_preload.cjs'),
                             session: contents.session, // CRITICAL: share session with the caller webview for cookies & auth state
@@ -1244,6 +1455,146 @@ function createWindow(options = {}) {
                 }
             }
             return { action: 'deny' };
+        });
+
+        // Handle child windows created via window.open (e.g. OAuth popup windows)
+        contents.on('did-create-window', (childWindow, details) => {
+            if (!childWindow || childWindow.isDestroyed()) return;
+            try {
+                childWindow.setMenuBarVisibility(false);
+            } catch (_) {}
+
+            childWindow.webContents.setUserAgent(cleanChromeUA);
+
+            activeOAuthWindows.add(childWindow);
+            childWindow.on('closed', () => activeOAuthWindows.delete(childWindow));
+
+            // Force sleek, transparent-track scrollbar at the engine level for child OAuth windows
+            const injectChildScrollbar = () => {
+                if (!childWindow || childWindow.isDestroyed()) return;
+                try {
+                    childWindow.webContents.insertCSS(`
+                        ::-webkit-scrollbar {
+                            width: 6px !important;
+                            height: 6px !important;
+                        }
+                        ::-webkit-scrollbar-track {
+                            background: transparent !important;
+                        }
+                        ::-webkit-scrollbar-thumb {
+                            background: rgba(120, 120, 130, 0.45) !important;
+                            border-radius: 9999px !important;
+                        }
+                        ::-webkit-scrollbar-thumb:hover {
+                            background: rgba(120, 120, 130, 0.75) !important;
+                        }
+                        ::-webkit-scrollbar-corner {
+                            background: transparent !important;
+                        }
+                    `, { cssOrigin: 'user' });
+                } catch (_) {}
+            };
+
+            const onChildReady = () => {
+                injectChildScrollbar();
+                injectOAuthSmartDarkCSS(childWindow);
+                syncOAuthWindowSmartDark(childWindow);
+            };
+
+            childWindow.webContents.on('dom-ready', onChildReady);
+            childWindow.webContents.on('did-finish-load', onChildReady);
+            childWindow.webContents.on('did-navigate', () => {
+                injectOAuthSmartDarkCSS(childWindow);
+                syncOAuthWindowSmartDark(childWindow);
+            });
+            childWindow.webContents.on('did-navigate-in-page', () => {
+                injectOAuthSmartDarkCSS(childWindow);
+                syncOAuthWindowSmartDark(childWindow);
+            });
+
+            // Native right-click context menu for OAuth popup window (Cut/Copy/Paste/Zoom/Navigation)
+            childWindow.webContents.on('context-menu', (event, params) => {
+                try {
+                    const menu = new Menu();
+                    if (params.isEditable) {
+                        menu.append(new MenuItem({ label: 'Undo', role: 'undo' }));
+                        menu.append(new MenuItem({ label: 'Redo', role: 'redo' }));
+                        menu.append(new MenuItem({ type: 'separator' }));
+                        menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
+                        menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+                        menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+                        menu.append(new MenuItem({ label: 'Paste and Match Style', role: 'pasteAndMatchStyle' }));
+                        menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }));
+                    } else if (params.selectionText && params.selectionText.trim().length > 0) {
+                        menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+                        menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }));
+                    } else {
+                        menu.append(new MenuItem({
+                            label: 'Back',
+                            enabled: childWindow.webContents.navigationHistory.canGoBack(),
+                            click: () => childWindow.webContents.navigationHistory.goBack()
+                        }));
+                        menu.append(new MenuItem({
+                            label: 'Forward',
+                            enabled: childWindow.webContents.navigationHistory.canGoForward(),
+                            click: () => childWindow.webContents.navigationHistory.goForward()
+                        }));
+                        menu.append(new MenuItem({
+                            label: 'Reload',
+                            accelerator: 'CmdOrCtrl+R',
+                            click: () => childWindow.webContents.reload()
+                        }));
+                        menu.append(new MenuItem({ type: 'separator' }));
+                        menu.append(new MenuItem({
+                            label: 'Zoom In',
+                            accelerator: 'CmdOrCtrl+Plus',
+                            click: () => {
+                                const z = Math.min(3.0, childWindow.webContents.getZoomFactor() + 0.1);
+                                childWindow.webContents.setZoomFactor(z);
+                                childWindow.webContents.send('oauth-zoom-changed', Math.round(z * 100));
+                            }
+                        }));
+                        menu.append(new MenuItem({
+                            label: 'Zoom Out',
+                            accelerator: 'CmdOrCtrl+-',
+                            click: () => {
+                                const z = Math.max(0.5, childWindow.webContents.getZoomFactor() - 0.1);
+                                childWindow.webContents.setZoomFactor(z);
+                                childWindow.webContents.send('oauth-zoom-changed', Math.round(z * 100));
+                            }
+                        }));
+                        menu.append(new MenuItem({
+                            label: 'Actual Size',
+                            accelerator: 'CmdOrCtrl+0',
+                            click: () => {
+                                childWindow.webContents.setZoomFactor(1.0);
+                                childWindow.webContents.send('oauth-zoom-changed', 100);
+                            }
+                        }));
+                    }
+                    if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+                        menu.append(new MenuItem({ type: 'separator' }));
+                        menu.append(new MenuItem({
+                            label: 'Inspect Element',
+                            click: () => childWindow.webContents.inspectElement(params.x, params.y)
+                        }));
+                    }
+                    menu.popup({ window: childWindow });
+                } catch (e) {
+                    console.warn('[OAuth Window ContextMenu] Error:', e);
+                }
+            });
+
+            // Found-in-page handler for native search results
+            childWindow.webContents.on('found-in-page', (event, result) => {
+                if (childWindow && !childWindow.isDestroyed()) {
+                    childWindow.webContents.send('oauth-found-in-page-result', {
+                        activeMatchOrdinal: result.activeMatchOrdinal,
+                        matches: result.matches,
+                        finalUpdate: result.finalUpdate
+                    });
+                }
+            });
         });
 
         // CRITICAL: Safely wrap executeJavaScript to prevent Ghostery and V8 from throwing fatal Unhandled Rejections during navigation!
@@ -1296,6 +1647,11 @@ function createWindow(options = {}) {
         // Throttle inactive background webviews to prevent CPU/GPU drains and battery drain,
         // but automatically unthrottle whenever media (YouTube, Spotify, etc.) starts playing.
         if (contents.getType() === 'webview') {
+            contents.on('will-navigate', (event, navUrl) => {
+                if (navUrl && navUrl.startsWith('qbrowse://') && !navUrl.startsWith('qbrowse://ai')) {
+                    event.preventDefault();
+                }
+            });
             try {
                 contents.setEmulatedMedia({ colorScheme: 'dark' });
             } catch (_) {}
@@ -1322,10 +1678,7 @@ function createWindow(options = {}) {
 
         // Apply clean Chrome User-Agent for webviews and popup windows
         if (contents.getType() === 'webview' || (contents.getType() === 'window' && contents !== mainWindow?.webContents)) {
-            contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-                if (!isMainFrame) return;
-                contents.setUserAgent(cleanChromeUA);
-            });
+            contents.setUserAgent(cleanChromeUA);
         }
 
         // Track active webview URL for accurate domain resolution in in-tab dialogs
@@ -1528,10 +1881,6 @@ function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl) {
     }
 }
 
-// Clean Google Chrome desktop User-Agent matching underlying Chromium version
-const cleanChromeUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
-app.userAgentFallback = cleanChromeUA;
-
 app.setName('QBrowse');
 app.setAppUserModelId('com.qbrowse.app');
 
@@ -1543,14 +1892,33 @@ function setupHeadersHandler(sess) {
     sess.webRequest.onBeforeSendHeaders((details, callback) => {
         delete details.requestHeaders['X-Electron-Version'];
 
-        // Provide clean Chrome desktop identity for standard web browsing and authentication
+        let isGoogleAuth = isGoogleAuthUrl(details.url) || isGoogleAuthUrl(details.referrer);
+        if (!isGoogleAuth && details.webContentsId) {
+            try {
+                const wc = webContents.fromId(details.webContentsId);
+                if (wc && !wc.isDestroyed()) {
+                    const wcUrl = wc.getURL();
+                    if (isGoogleAuthUrl(wcUrl)) isGoogleAuth = true;
+                }
+            } catch (_) {}
+        }
+
+        // Provide clean Chrome desktop identity for all web browsing and OAuth
         details.requestHeaders['User-Agent'] = cleanChromeUA;
+        const chromeMajor = (process.versions.chrome || '131').split('.')[0];
+        details.requestHeaders['sec-ch-ua'] = `"Google Chrome";v="${chromeMajor}", "Chromium";v="${chromeMajor}", "Not_A Brand";v="24"`;
+        details.requestHeaders['sec-ch-ua-mobile'] = '?0';
+        details.requestHeaders['sec-ch-ua-platform'] = '"Windows"';
+        if (details.requestHeaders['sec-ch-ua-full-version-list']) {
+            details.requestHeaders['sec-ch-ua-full-version-list'] = `"Google Chrome";v="${process.versions.chrome}", "Chromium";v="${process.versions.chrome}", "Not_A Brand";v="24.0.0.0"`;
+        }
 
         if (settingsStore.dnt !== false) {
             details.requestHeaders['DNT'] = '1';
         }
 
-        if (settingsStore.block3rdParty) {
+        // Top-level document navigations and authentication flows must NEVER have cookies blocked
+        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame' && !isGoogleAuth) {
             const is3rd = isThirdPartyCookieRequest(details.url, details.referrer, latestActiveWebviewUrl);
             if (is3rd) {
                 delete details.requestHeaders['Cookie'];
@@ -1563,8 +1931,18 @@ function setupHeadersHandler(sess) {
 
     sess.webRequest.onHeadersReceived((details, callback) => {
         const responseHeaders = { ...details.responseHeaders };
+        let isGoogleAuth = isGoogleAuthUrl(details.url) || isGoogleAuthUrl(details.referrer);
+        if (!isGoogleAuth && details.webContentsId) {
+            try {
+                const wc = webContents.fromId(details.webContentsId);
+                if (wc && !wc.isDestroyed()) {
+                    const wcUrl = wc.getURL();
+                    if (isGoogleAuthUrl(wcUrl)) isGoogleAuth = true;
+                }
+            } catch (_) {}
+        }
 
-        if (settingsStore.block3rdParty) {
+        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame' && !isGoogleAuth) {
             const is3rd = isThirdPartyCookieRequest(details.url, details.referrer, latestActiveWebviewUrl);
             if (is3rd) {
                 delete responseHeaders['set-cookie'];
@@ -1572,7 +1950,7 @@ function setupHeadersHandler(sess) {
             }
         }
 
-        if (localDialogPort) {
+        if (localDialogPort && !isGoogleAuth) {
             for (const headerKey of Object.keys(responseHeaders)) {
                 const lowerKey = headerKey.toLowerCase();
                 if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
@@ -1603,11 +1981,55 @@ ipcMain.on('set-webview-color-scheme', (event, { webContentsId, colorScheme }) =
     try {
         if (!webContentsId) return;
         const targetContents = webContents.fromId(webContentsId);
-        if (targetContents && !targetContents.isDestroyed()) {
-            targetContents.setEmulatedMedia({ colorScheme: colorScheme || 'dark' });
+        if (targetContents && !targetContents.isDestroyed() && typeof targetContents.setEmulatedMedia === 'function') {
+            try {
+                targetContents.setEmulatedMedia({ colorScheme: colorScheme || 'dark' });
+            } catch (_) {}
         }
     } catch (_) {}
 });
+
+// Verification helper that checks file existence, size, and calculates SHA-256 checksum
+async function verifyAndChecksumFile(filePath, expectedBytes = 0) {
+    try {
+        if (!filePath || typeof filePath !== 'string') {
+            return { verified: false, error: 'Invalid file path' };
+        }
+        if (!fsSync.existsSync(filePath)) {
+            return { verified: false, error: 'File does not exist on disk' };
+        }
+        const stat = fsSync.statSync(filePath);
+        if (stat.size === 0 && expectedBytes > 0) {
+            return { verified: false, size: 0, error: 'Downloaded file is empty (0 bytes)' };
+        }
+        if (expectedBytes > 0 && stat.size < expectedBytes) {
+            return { verified: false, size: stat.size, error: `Incomplete download (${stat.size}/${expectedBytes} bytes)` };
+        }
+
+        const hash = crypto.createHash('sha256');
+        const stream = fsSync.createReadStream(filePath);
+        await new Promise((resolve, reject) => {
+            stream.on('data', chunk => hash.update(chunk));
+            stream.on('end', resolve);
+            stream.on('error', reject);
+        });
+        const checksum = hash.digest('hex');
+
+        return {
+            verified: true,
+            size: stat.size,
+            checksum,
+            algorithm: 'SHA-256',
+            verifiedAt: Date.now()
+        };
+    } catch (err) {
+        console.error('[Download Verification] Error:', err);
+        return {
+            verified: false,
+            error: err?.message || 'Verification failed'
+        };
+    }
+}
 
 function setupDownloadHandler(sess) {
     if (!sess) return;
@@ -1656,8 +2078,32 @@ function setupDownloadHandler(sess) {
             });
         }
 
+        const urlChain = typeof item.getURLChain === 'function' ? item.getURLChain() : [url];
+        const webContentsId = webContents ? webContents.id : null;
+        let canGoBack = false;
+        let webContentsUrl = '';
+        if (webContents && !webContents.isDestroyed()) {
+            try {
+                if (webContents.navigationHistory && typeof webContents.navigationHistory.canGoBack === 'function') {
+                    canGoBack = webContents.navigationHistory.canGoBack();
+                } else if (typeof webContents.canGoBack === 'function') {
+                    canGoBack = webContents.canGoBack();
+                }
+                webContentsUrl = typeof webContents.getURL === 'function' ? webContents.getURL() : '';
+            } catch (_) {}
+        }
+
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('download-started', { id, fileName, totalBytes, url });
+            mainWindow.webContents.send('download-started', { 
+                id, 
+                fileName, 
+                totalBytes, 
+                url, 
+                urlChain, 
+                webContentsId, 
+                canGoBack, 
+                webContentsUrl 
+            });
         }
 
         let lastDownloadUpdateTime = Date.now();
@@ -1697,9 +2143,35 @@ function setupDownloadHandler(sess) {
             }
         });
 
-        item.once('done', (event, state) => {
+        item.once('done', async (event, state) => {
+            const savePath = item.getSavePath();
+            let verificationResult = { verified: false };
+            let finalState = state;
+
+            if (state === 'completed' && savePath) {
+                // Short yield to ensure OS file system flush
+                await new Promise(r => setTimeout(r, 60));
+                verificationResult = await verifyAndChecksumFile(savePath, totalBytes);
+                if (!verificationResult.verified) {
+                    console.warn('[Download Verification] File verification failed for:', savePath, verificationResult.error);
+                    finalState = 'interrupted';
+                } else {
+                    console.log(`[Download Verification] Verified: ${fileName} (${verificationResult.size} bytes, SHA-256: ${verificationResult.checksum.slice(0, 12)}...)`);
+                }
+            }
+
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('download-done', { id, state, savePath: item.getSavePath() });
+                mainWindow.webContents.send('download-done', { 
+                    id, 
+                    state: finalState, 
+                    savePath,
+                    verified: verificationResult.verified,
+                    checksum: verificationResult.checksum || null,
+                    algorithm: verificationResult.algorithm || 'SHA-256',
+                    actualBytes: verificationResult.size ?? item.getReceivedBytes(),
+                    error: verificationResult.error || null,
+                    verifiedAt: verificationResult.verifiedAt || null
+                });
             }
         });
     });
@@ -1781,13 +2253,16 @@ try {
     app.commandLine.appendSwitch('enable-smooth-scrolling');
     app.commandLine.appendSwitch('num-raster-threads', String(Math.min(4, Math.max(1, Math.floor(cpuCores / 2)))));
 
-    // Adaptive renderer process limit to keep RAM consumption bounded on lower-spec machines
+    // Chromium Back-Forward Cache (bfcache) flag
+    app.commandLine.appendSwitch('back-forward-cache', 'enabled');
+
+    // Adaptive renderer process limit to keep RAM consumption bounded on lower-spec machines while enabling deep bfcache on high-RAM tiers
     if (totalMemGB <= 6) {
         app.commandLine.appendSwitch('renderer-process-limit', '6');
     } else if (totalMemGB <= 12) {
-        app.commandLine.appendSwitch('renderer-process-limit', '12');
+        app.commandLine.appendSwitch('renderer-process-limit', '16');
     } else {
-        app.commandLine.appendSwitch('renderer-process-limit', '20');
+        app.commandLine.appendSwitch('renderer-process-limit', '32');
     }
 } catch (e) {
     console.warn('[PerformanceEngine] Error setting Chromium flags:', e.message);
@@ -1813,9 +2288,83 @@ function applyPerformanceTierToContents(activeTier) {
     }
 }
 
+// DNS over HTTPS (DoH) & Custom Host Resolver Configuration
+const DOH_PROVIDERS = {
+    cloudflare: 'https://cloudflare-dns.com/dns-query',
+    google: 'https://dns.google/dns-query',
+    quad9: 'https://dns.quad9.net/dns-query',
+    adguard: 'https://dns.adguard-dns.com/dns-query',
+    nextdns: 'https://dns.nextdns.io',
+    opendns: 'https://doh.opendns.com/dns-query'
+};
+
+function formatDohUrl(input) {
+    if (!input || typeof input !== 'string') return '';
+    let trimmed = input.trim();
+    if (!trimmed) return '';
+    // Format raw IPv4 addresses as DoH templates if provided
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(trimmed)) {
+        return `https://${trimmed}/dns-query`;
+    }
+    if (!/^https?:\/\//i.test(trimmed)) {
+        trimmed = 'https://' + trimmed;
+    }
+    return trimmed;
+}
+
+function applyDnsConfiguration(options = {}) {
+    try {
+        const provider = options.provider || options.doh || settingsStore.doh || 'cloudflare';
+        const mode = options.mode || options.dohMode || settingsStore.dohMode || 'automatic';
+        const customUrl = options.customUrl || options.customDohUrl || settingsStore.customDohUrl || '';
+
+        if (mode === 'off' || provider === 'off') {
+            if (typeof app.configureHostResolver === 'function') {
+                app.configureHostResolver({
+                    enableBuiltInResolver: false,
+                    secureDnsMode: 'off',
+                    secureDnsServers: []
+                });
+            }
+            console.log('[DNS] Host resolver disabled: Mode = OFF (OS Default)');
+            return { success: true, mode: 'off', servers: [] };
+        }
+
+        let targetServer = '';
+        if (provider === 'custom') {
+            targetServer = formatDohUrl(customUrl);
+        } else if (DOH_PROVIDERS[provider]) {
+            targetServer = DOH_PROVIDERS[provider];
+        } else if (typeof provider === 'string' && provider.startsWith('http')) {
+            targetServer = provider;
+        } else {
+            targetServer = DOH_PROVIDERS.cloudflare;
+        }
+
+        const secureDnsMode = (mode === 'secure') ? 'secure' : 'automatic';
+        const servers = targetServer ? [targetServer] : [DOH_PROVIDERS.cloudflare];
+
+        if (typeof app.configureHostResolver === 'function') {
+            app.configureHostResolver({
+                enableBuiltInResolver: true,
+                secureDnsMode: secureDnsMode,
+                secureDnsServers: servers
+            });
+        }
+        console.log(`[DNS] Host resolver applied: Mode = ${secureDnsMode}, Server(s) = ${servers.join(', ')}`);
+        return { success: true, mode: secureDnsMode, servers };
+    } catch (err) {
+        console.error('[DNS] Failed to configure host resolver:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 app.whenReady().then(async () => {
   // 1. Immediately create the main browser window so UI rendering starts instantly
   createWindow();
+
+  // 1b. Apply configured Secure DNS (DoH) / Custom DNS host resolver
+  applyDnsConfiguration();
 
   // 2. Register local media streaming protocol for wallpapers and assets
   try {
@@ -1849,11 +2398,52 @@ app.whenReady().then(async () => {
       console.warn('[Protocol] Failed to register qbrowse-media handler:', e.message);
   }
 
+  // 2b. Register internal qbrowse scheme handler and register protocol client with OS
+  try {
+      protocol.handle('qbrowse', async () => {
+          return new Response(
+              `<!DOCTYPE html><html><head><meta charset="utf-8"><title>QBrowse</title><style>body{background:#0e0e11;color:#a1a1aa;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;user-select:none;}</style></head><body><div style="text-align:center"><h2 style="color:#f4f4f5;font-weight:600;margin-bottom:8px">QBrowse Internal Page</h2><p style="font-size:14px;color:#71717a">This internal page is managed by QBrowse.</p></div></body></html>`,
+              { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+          );
+      });
+  } catch (e) {
+      console.warn('[Protocol] Failed to register qbrowse handler:', e.message);
+  }
+
+  try {
+      if (process.defaultApp) {
+          if (process.argv.length >= 2) {
+              app.setAsDefaultProtocolClient('qbrowse', process.execPath, [path.resolve(process.argv[1])]);
+          }
+      } else {
+          app.setAsDefaultProtocolClient('qbrowse');
+      }
+  } catch (_) {}
+
   // 3. Initialize performance settings and permissions
   try {
       performanceEngine.initSettings(app.getPath('userData'));
       ensurePermissionsFile();
   } catch (_) {}
+
+  // 3b. Handle screen resolution / DPI changes to keep compositor and window geometry synchronized
+  try {
+      screen.on('display-metrics-changed', (event, display, changedMetrics) => {
+          console.log('[Display] Screen metrics changed:', changedMetrics);
+          for (const win of browserWindows) {
+              if (win && !win.isDestroyed()) {
+                  win.webContents.send('display-metrics-changed', {
+                      displayId: display.id,
+                      bounds: display.bounds,
+                      scaleFactor: display.scaleFactor,
+                      changedMetrics
+                  });
+              }
+          }
+      });
+  } catch (e) {
+      console.warn('[Display] Screen listener setup warning:', e.message);
+  }
 
   // 4. Configure webview sessions
   try {
@@ -1870,6 +2460,10 @@ app.whenReady().then(async () => {
       if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
           torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
       }
+      torSession.setProxy({
+          proxyRules: `socks5://127.0.0.1:${torEngine.getStatus().socksPort || 9050}`,
+          proxyBypassRules: '<local>'
+      }).catch(() => {});
 
       app.on('session-created', (sess) => {
           setupWebviewSession(sess);
@@ -1950,7 +2544,29 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('open-file', async (event, path) => {
-      if (path) await shell.openPath(path);
+      try {
+          if (path) {
+              const res = await shell.openPath(path);
+              return { success: !res, error: res || null };
+          }
+          return { success: false, error: 'No path provided' };
+      } catch (e) {
+          return { success: false, error: e.message };
+      }
+  });
+
+  ipcMain.handle('copy-image-to-clipboard', async (event, filePath) => {
+      try {
+          if (!filePath) return { success: false, error: 'No path provided' };
+          const img = nativeImage.createFromPath(filePath);
+          if (!img.isEmpty()) {
+              clipboard.writeImage(img);
+              return { success: true };
+          }
+          return { success: false, error: 'Failed to create image from path' };
+      } catch (e) {
+          return { success: false, error: e.message };
+      }
   });
   
   ipcMain.handle('show-item-in-folder', async (event, path) => {
@@ -1965,10 +2581,136 @@ app.whenReady().then(async () => {
       }
   });
 
+  // Download Verification IPC Handlers
+  ipcMain.handle('verify-download-file', async (event, filePath) => {
+      return await verifyAndChecksumFile(filePath, 0);
+  });
+
+  ipcMain.handle('compare-download-checksum', async (event, { filePath, expectedChecksum, algorithm = 'sha256' }) => {
+      try {
+          if (!filePath || !fsSync.existsSync(filePath)) {
+              return { matches: false, error: 'File does not exist' };
+          }
+          const algo = (algorithm || 'sha256').toLowerCase();
+          const hash = crypto.createHash(algo);
+          const stream = fsSync.createReadStream(filePath);
+          await new Promise((resolve, reject) => {
+              stream.on('data', chunk => hash.update(chunk));
+              stream.on('end', resolve);
+              stream.on('error', reject);
+          });
+          const actualChecksum = hash.digest('hex');
+          const cleanExpected = (expectedChecksum || '').trim().toLowerCase();
+          const cleanActual = actualChecksum.toLowerCase();
+          return {
+              matches: cleanExpected === cleanActual,
+              actualChecksum: cleanActual,
+              expectedChecksum: cleanExpected,
+              algorithm: algo.toUpperCase()
+          };
+      } catch (err) {
+          return { matches: false, error: err.message };
+      }
+  });
+
+  ipcMain.handle('get-file-checksum', async (event, { filePath, algorithm = 'sha256' }) => {
+      try {
+          if (!filePath || !fsSync.existsSync(filePath)) {
+              return { success: false, error: 'File does not exist' };
+          }
+          const algo = (algorithm || 'sha256').toLowerCase();
+          const hash = crypto.createHash(algo);
+          const stream = fsSync.createReadStream(filePath);
+          await new Promise((resolve, reject) => {
+              stream.on('data', chunk => hash.update(chunk));
+              stream.on('end', resolve);
+              stream.on('error', reject);
+          });
+          return {
+              success: true,
+              checksum: hash.digest('hex'),
+              algorithm: algo.toUpperCase()
+          };
+      } catch (err) {
+          return { success: false, error: err.message };
+      }
+  });
+
+  ipcMain.handle('delete-download-file', async (event, filePath) => {
+      try {
+          if (!filePath || typeof filePath !== 'string') {
+              return { success: false, error: 'No path specified' };
+          }
+          if (!fsSync.existsSync(filePath)) {
+              return { success: true, removed: false, message: 'File did not exist on disk' };
+          }
+          try {
+              await shell.trashItem(filePath);
+              return { success: true, removed: true, method: 'trash' };
+          } catch (trashErr) {
+              fsSync.unlinkSync(filePath);
+              return { success: true, removed: true, method: 'unlink' };
+          }
+      } catch (err) {
+          console.error('[Download Delete] Error:', err);
+          return { success: false, error: err.message };
+      }
+  });
+
+  // OAuth Popup Window IPC Handlers (Find in page, navigation, reload)
+  ipcMain.on('oauth-find-in-page', (event, { text, forward = true, findNext = false }) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win && !win.isDestroyed() && text) {
+          win.webContents.findInPage(text, { forward, findNext });
+      }
+  });
+
+  ipcMain.on('oauth-stop-find-in-page', (event, action = 'clearSelection') => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win && !win.isDestroyed()) {
+          win.webContents.stopFindInPage(action);
+      }
+  });
+
+  ipcMain.on('oauth-navigate-back', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win && !win.isDestroyed()) {
+          try {
+              if (win.webContents.navigationHistory.canGoBack()) {
+                  win.webContents.navigationHistory.goBack();
+              }
+          } catch (_) {}
+      }
+  });
+
+  ipcMain.on('oauth-navigate-forward', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win && !win.isDestroyed()) {
+          try {
+              if (win.webContents.navigationHistory.canGoForward()) {
+                  win.webContents.navigationHistory.goForward();
+              }
+          } catch (_) {}
+      }
+  });
+
+  ipcMain.on('oauth-reload', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win && !win.isDestroyed()) {
+          win.webContents.reload();
+      }
+  });
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('will-quit', () => {
+  try {
+    torEngine.stopTor();
+  } catch (_) {}
 });
 
 // HTTP Basic & Proxy Authentication Handlers
@@ -2086,6 +2828,13 @@ ipcMain.on('window-close', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
     if (win) win.close();
 });
+ipcMain.on('window-drag-by', (event, { deltaX, deltaY }) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (win && !win.isDestroyed() && !win.isMaximized()) {
+        const [x, y] = win.getPosition();
+        win.setPosition(Math.round(x + deltaX), Math.round(y + deltaY));
+    }
+});
 ipcMain.on('open-devtools', (e) => {
     const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
     if (win) win.webContents.openDevTools();
@@ -2193,6 +2942,24 @@ ipcMain.handle('updater-quit-and-install', () => {
     }
 });
 
+// Navigation History Lookup for middle-click Back/Forward
+ipcMain.handle('get-webview-history-url', (event, { webContentsId, offset }) => {
+    if (!webContentsId) return null;
+    const wc = webContents.fromId(webContentsId);
+    if (!wc) return null;
+    try {
+        if (wc.navigationHistory) {
+            const idx = wc.navigationHistory.getActiveIndex();
+            const targetIdx = idx + (offset || 0);
+            const entry = wc.navigationHistory.getEntryAtIndex(targetIdx);
+            return entry ? entry.url : null;
+        }
+    } catch (e) {
+        console.error('[Electron Main] Error retrieving webview history URL:', e);
+    }
+    return null;
+});
+
 // Vault IPC
 
 ipcMain.handle('fetch-suggestions', async (event, query) => {
@@ -2285,6 +3052,7 @@ function requestWindowsHelloVerification(message = "Verify your identity for QBr
 const pendingPasskeyVerifications = new Map();
 
 ipcMain.handle('vault-verify-passkey-usage', async (event, details) => {
+    // Prompt custom QVault Passkey Verification Modal in mainWindow
     return new Promise((resolve) => {
         const requestId = 'pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
         const timer = setTimeout(() => {
@@ -2952,33 +3720,116 @@ ipcMain.handle('select-folder', async () => {
     }
 });
 
-ipcMain.handle('set-doh', async (event, provider) => {
+ipcMain.handle('set-doh', async (event, payload) => {
     try {
-        let dohUrl = '';
-        if (provider === 'cloudflare') dohUrl = 'https://cloudflare-dns.com/dns-query';
-        else if (provider === 'google') dohUrl = 'https://dns.google/dns-query';
-        else if (provider === 'nextdns' || provider === 'custom') dohUrl = 'https://dns.nextdns.io';
-        
-        if (dohUrl) {
-            const sessions = [session.defaultSession, session.fromPartition('ghost')];
-            sessions.forEach(s => {
-                if (s && s.setModeAndCodeOfDOH) {
-                    s.setModeAndCodeOfDOH('automatic', dohUrl);
-                }
-            });
+        let opts = {};
+        if (typeof payload === 'string') {
+            opts = { provider: payload };
+        } else if (payload && typeof payload === 'object') {
+            opts = payload;
         }
-        return true;
-    } catch {
-        return false;
+
+        if (opts.provider) settingsStore.doh = opts.provider;
+        if (opts.mode) settingsStore.dohMode = opts.mode;
+        if (opts.customUrl !== undefined) settingsStore.customDohUrl = opts.customUrl;
+
+        try {
+            fsSync.writeFileSync(settingsPath, JSON.stringify(settingsStore, null, 2), 'utf8');
+        } catch (_) {}
+
+        return applyDnsConfiguration(opts);
+    } catch (err) {
+        console.error('[DNS] set-doh error:', err);
+        return { success: false, error: err.message };
     }
+});
+
+ipcMain.handle('test-dns', async (event, endpoint) => {
+    try {
+        let url = endpoint;
+        if (!url || typeof url !== 'string') {
+            const provider = settingsStore.doh || 'cloudflare';
+            url = provider === 'custom' ? settingsStore.customDohUrl : (DOH_PROVIDERS[provider] || DOH_PROVIDERS.cloudflare);
+        }
+        url = formatDohUrl(url);
+        if (!url) return { ok: false, error: 'Invalid DNS endpoint URL' };
+
+        const testUrl = url.includes('?') ? `${url}&name=cloudflare.com&type=A` : `${url}?name=cloudflare.com&type=A`;
+        const start = Date.now();
+        const response = await net.fetch(testUrl, {
+            headers: { 'accept': 'application/dns-json, application/dns-message, text/html' },
+            method: 'GET'
+        });
+        const latency = Date.now() - start;
+        return {
+            ok: response.ok || response.status === 400 || response.status === 405,
+            status: response.status,
+            latency,
+            server: url
+        };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+ipcMain.handle('get-settings', () => {
+    return getSettingsStore();
+});
+
+ipcMain.handle('get-smart-dark-state', (event, url) => {
+    try {
+        const store = getSettingsStore();
+        let isForceDark = (store && typeof store.isForceDark === 'boolean') 
+            ? store.isForceDark 
+            : (liveSmartDarkState.isForceDark !== null ? liveSmartDarkState.isForceDark : false);
+        const exclusions = Array.isArray(store?.darkExclusions) 
+            ? store.darkExclusions 
+            : liveSmartDarkState.darkExclusions;
+        const isExcluded = exclusions.some(d => url && typeof d === 'string' && d.trim() && url.includes(d.trim()));
+        console.log('[Electron Main] get-smart-dark-state for', url, '-> isForceDark:', isForceDark, 'isExcluded:', isExcluded);
+        return { isForceDark, isExcluded };
+    } catch (_) {
+        return { isForceDark: false, isExcluded: false };
+    }
+});
+
+ipcMain.on('sync-smart-dark-state', (event, { isForceDark, darkExclusions }) => {
+    if (typeof isForceDark === 'boolean') {
+        liveSmartDarkState.isForceDark = isForceDark;
+        settingsStore['isForceDark'] = isForceDark;
+    }
+    if (Array.isArray(darkExclusions)) {
+        liveSmartDarkState.darkExclusions = darkExclusions;
+        settingsStore['darkExclusions'] = darkExclusions;
+    }
+    if (!settingsPath) {
+        settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    }
+    try {
+        fsSync.writeFileSync(settingsPath, JSON.stringify(settingsStore, null, 2), 'utf8');
+    } catch (_) {}
+    console.log('[Electron Main] sync-smart-dark-state received:', { isForceDark, darkExclusions });
+    broadcastSmartDarkToOAuthWindows();
 });
 
 ipcMain.handle('save-setting', (event, data) => {
     if (data && data.key) {
+        if (!settingsPath) {
+            settingsPath = path.join(app.getPath('userData'), 'settings.json');
+        }
         settingsStore[data.key] = data.value;
+        if (data.key === 'isForceDark' && typeof data.value === 'boolean') {
+            liveSmartDarkState.isForceDark = data.value;
+        }
+        if (data.key === 'darkExclusions' && Array.isArray(data.value)) {
+            liveSmartDarkState.darkExclusions = data.value;
+        }
         try {
             fsSync.writeFileSync(settingsPath, JSON.stringify(settingsStore, null, 2), 'utf8');
         } catch (_) {}
+        if (data.key === 'isForceDark' || data.key === 'darkExclusions') {
+            broadcastSmartDarkToOAuthWindows();
+        }
     }
     return true;
 });
@@ -3157,6 +4008,10 @@ ipcMain.handle('ai-download-model', async (event, { url, filename }) => {
     });
 });
 
+ipcMain.handle('ai-cancel-download', async () => {
+    return aiEngine.cancelModelDownload();
+});
+
 ipcMain.handle('ai-generate-completion', async (event, options) => {
     aiEngine.processPromptStream(
         options,
@@ -3267,7 +4122,7 @@ ipcMain.handle('tor-start', async () => {
         const torSession = session.fromPartition('tor');
         const socksPort = torEngine.getStatus().socksPort || 9050;
         await torSession.setProxy({
-            proxyRules: `socks5h://127.0.0.1:${socksPort}`,
+            proxyRules: `socks5://127.0.0.1:${socksPort}`,
             proxyBypassRules: '<local>'
         });
         if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
@@ -3285,8 +4140,12 @@ ipcMain.handle('tor-stop', async () => {
     torEngine.stopTor();
     try {
         const torSession = session.fromPartition('tor');
-        await torSession.setProxy({ proxyRules: '' });
+        await torSession.setProxy({
+            proxyRules: 'socks5://127.0.0.1:9050',
+            proxyBypassRules: '<local>'
+        });
         await torSession.clearStorageData();
+        await torSession.closeAllConnections();
     } catch (_) {}
     return { success: true };
 });
@@ -3475,6 +4334,7 @@ function registerWindowsBrowser() {
 [HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML]
 @="QBrowse HTML Document"
 "AppUserModelId"="com.qbrowse.app"
+"URL Protocol"=""
 
 [HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML\\Application]
 "AppUserModelId"="com.qbrowse.app"
@@ -3493,6 +4353,16 @@ function registerWindowsBrowser() {
 [HKEY_CURRENT_USER\\Software\\Classes\\QBrowseHTML\\shell\\open\\command]
 @=${formatReg(openCmd)}
 
+[HKEY_CURRENT_USER\\Software\\Classes\\qbrowse]
+@="URL:QBrowse Protocol"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\\Software\\Classes\\qbrowse\\DefaultIcon]
+@=${formatReg(iconCmd)}
+
+[HKEY_CURRENT_USER\\Software\\Classes\\qbrowse\\shell\\open\\command]
+@=${formatReg(openCmd)}
+
 [HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse]
 @="QBrowse"
 
@@ -3500,9 +4370,9 @@ function registerWindowsBrowser() {
 @=${formatReg(iconCmd)}
 
 [HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\InstallInfo]
-"ReinstallCommand"=${formatReg(`"${exePath}" --make-default-browser`)}
-"HideIconsCommand"=${formatReg(`"${exePath}" --hide-icons`)}
-"ShowIconsCommand"=${formatReg(`"${exePath}" --show-icons`)}
+"ReinstallCommand"=${formatReg(isPackaged ? `"${exePath}" --make-default-browser` : `"${exePath}" "${mainScript}" --make-default-browser`)}
+"HideIconsCommand"=${formatReg(isPackaged ? `"${exePath}" --hide-icons` : `"${exePath}" "${mainScript}" --hide-icons`)}
+"ShowIconsCommand"=${formatReg(isPackaged ? `"${exePath}" --show-icons` : `"${exePath}" "${mainScript}" --show-icons`)}
 "IconsVisible"=dword:00000001
 
 [HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\shell]
@@ -3532,6 +4402,7 @@ function registerWindowsBrowser() {
 [HKEY_CURRENT_USER\\Software\\Clients\\StartMenuInternet\\QBrowse\\Capabilities\\URLAssociations]
 "http"="QBrowseHTML"
 "https"="QBrowseHTML"
+"qbrowse"="qbrowse"
 
 [HKEY_CURRENT_USER\\Software\\RegisteredApplications]
 "QBrowse"="Software\\\\Clients\\\\StartMenuInternet\\\\QBrowse\\\\Capabilities"
@@ -3621,9 +4492,9 @@ Exec=${execCmd} --incognito %U
 let _cachedDefaultBrowserStatus = null;
 let _cachedDefaultBrowserTimestamp = 0;
 
-function checkIsDefaultBrowserAsync() {
+function checkIsDefaultBrowserAsync(forceFresh = false) {
     const now = Date.now();
-    if (_cachedDefaultBrowserStatus !== null && (now - _cachedDefaultBrowserTimestamp < 15000)) {
+    if (!forceFresh && _cachedDefaultBrowserStatus !== null && (now - _cachedDefaultBrowserTimestamp < 3000)) {
         return Promise.resolve(_cachedDefaultBrowserStatus);
     }
 
@@ -3633,15 +4504,41 @@ function checkIsDefaultBrowserAsync() {
                 const { exec } = require('child_process');
                 exec('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice" /v "ProgId"', {
                     encoding: 'utf8',
-                    timeout: 2000
+                    timeout: 2500
                 }, (err, stdout) => {
-                    if (err || !stdout) {
-                        _cachedDefaultBrowserStatus = false;
-                        _cachedDefaultBrowserTimestamp = Date.now();
-                        return resolve(false);
+                    let isDefault = false;
+                    if (!err && stdout) {
+                        const match = stdout.match(/ProgId\s+REG_SZ\s+(\S+)/i);
+                        if (match && match[1] && /qbrowse/i.test(match[1].trim())) {
+                            isDefault = true;
+                        }
                     }
-                    const match = stdout.match(/ProgId\s+REG_SZ\s+(\S+)/i);
-                    const isDefault = match && match[1] ? /qbrowse/i.test(match[1].trim()) : false;
+
+                    if (!isDefault) {
+                        exec('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice" /v "ProgId"', {
+                            encoding: 'utf8',
+                            timeout: 2500
+                        }, (err2, stdout2) => {
+                            if (!err2 && stdout2) {
+                                const match2 = stdout2.match(/ProgId\s+REG_SZ\s+(\S+)/i);
+                                if (match2 && match2[1] && /qbrowse/i.test(match2[1].trim())) {
+                                    isDefault = true;
+                                }
+                            }
+                            if (!isDefault && typeof app.isDefaultProtocolClient === 'function') {
+                                try {
+                                    if (app.isDefaultProtocolClient('http') || app.isDefaultProtocolClient('https')) {
+                                        isDefault = true;
+                                    }
+                                } catch (_) {}
+                            }
+                            _cachedDefaultBrowserStatus = isDefault;
+                            _cachedDefaultBrowserTimestamp = Date.now();
+                            resolve(isDefault);
+                        });
+                        return;
+                    }
+
                     _cachedDefaultBrowserStatus = isDefault;
                     _cachedDefaultBrowserTimestamp = Date.now();
                     resolve(isDefault);
@@ -3674,7 +4571,7 @@ function checkIsDefaultBrowserAsync() {
 }
 
 function checkIsDefaultBrowser() {
-    if (_cachedDefaultBrowserStatus !== null && (Date.now() - _cachedDefaultBrowserTimestamp < 15000)) {
+    if (_cachedDefaultBrowserStatus !== null && (Date.now() - _cachedDefaultBrowserTimestamp < 3000)) {
         return _cachedDefaultBrowserStatus;
     }
     const isHttp = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('http');
@@ -3683,9 +4580,10 @@ function checkIsDefaultBrowser() {
 }
 
 // Default Browser Handlers
-ipcMain.handle('system-check-default-browser', async () => {
+ipcMain.handle('system-check-default-browser', async (event, options = {}) => {
     try {
-        const isDefault = await checkIsDefaultBrowserAsync();
+        const forceFresh = Boolean(options && options.force);
+        const isDefault = await checkIsDefaultBrowserAsync(forceFresh);
         return { isDefault };
     } catch (e) {
         return { isDefault: false, error: e.message };
@@ -3694,16 +4592,22 @@ ipcMain.handle('system-check-default-browser', async () => {
 
 ipcMain.handle('system-set-default-browser', async () => {
     try {
+        _cachedDefaultBrowserStatus = null;
+        _cachedDefaultBrowserTimestamp = 0;
+
         if (typeof app.setAsDefaultProtocolClient === 'function') {
             try { app.setAsDefaultProtocolClient('http'); } catch (_) {}
             try { app.setAsDefaultProtocolClient('https'); } catch (_) {}
+            try { app.setAsDefaultProtocolClient('qbrowse'); } catch (_) {}
         }
 
         if (process.platform === 'win32') {
             registerWindowsBrowser();
-            if (!checkIsDefaultBrowser()) {
+            
+            const alreadyDefault = await checkIsDefaultBrowserAsync(true);
+            if (!alreadyDefault) {
                 try {
-                    await shell.openExternal('ms-settings:defaultapps?registeredAppMachine=QBrowse');
+                    await shell.openExternal('ms-settings:defaultapps?registeredAppUser=QBrowse');
                 } catch (_) {
                     try {
                         await shell.openExternal('ms-settings:defaultapps');
@@ -3719,7 +4623,7 @@ ipcMain.handle('system-set-default-browser', async () => {
             } catch (_) {}
         }
 
-        const isDefault = checkIsDefaultBrowser();
+        const isDefault = await checkIsDefaultBrowserAsync(true);
         return { success: true, isDefault };
     } catch (e) {
         return { success: false, error: e.message };
@@ -3731,7 +4635,7 @@ ipcMain.handle('system-open-default-apps-settings', async () => {
         if (process.platform === 'win32') {
             registerWindowsBrowser();
             try {
-                await shell.openExternal('ms-settings:defaultapps?registeredAppMachine=QBrowse');
+                await shell.openExternal('ms-settings:defaultapps?registeredAppUser=QBrowse');
             } catch (_) {
                 await shell.openExternal('ms-settings:defaultapps');
             }
@@ -3988,10 +4892,10 @@ ipcMain.handle('capture-and-save', async (event, { webContentsId, rect, title = 
         let img;
         if (rect && typeof rect.width === 'number' && typeof rect.height === 'number' && rect.width > 0 && rect.height > 0) {
             img = await targetWc.capturePage({
-                x: Math.round(rect.x),
-                y: Math.round(rect.y),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height)
+                x: Math.max(0, Math.round(rect.x)),
+                y: Math.max(0, Math.round(rect.y)),
+                width: Math.max(1, Math.round(rect.width)),
+                height: Math.max(1, Math.round(rect.height))
             });
         } else {
             img = await targetWc.capturePage();
@@ -4016,8 +4920,9 @@ ipcMain.handle('capture-and-save', async (event, { webContentsId, rect, title = 
         const fileName = `Screenshot_${cleanTitle}_${timestamp}.png`;
         const filePath = path.join(downloadsPath, fileName);
 
-        await fs.writeFile(filePath, img.toPNG());
-        return { success: true, filePath, fileName };
+        const pngBuffer = img.toPNG();
+        await fs.writeFile(filePath, pngBuffer);
+        return { success: true, filePath, fileName, fileSize: pngBuffer.length };
     } catch (e) {
         console.error('[CaptureAndSave] Error:', e);
         return { success: false, error: e.message };
@@ -4080,7 +4985,7 @@ ipcMain.handle('save-screenshot-dataurl', async (event, { dataUrl, title, copyTo
         const filePath = path.join(downloadsPath, fileName);
 
         await fs.writeFile(filePath, buffer);
-        return { success: true, filePath, fileName };
+        return { success: true, filePath, fileName, fileSize: buffer.length };
     } catch (e) {
         console.error('[SaveScreenshotDataUrl] Error:', e);
         return { success: false, error: e.message };

@@ -33,7 +33,7 @@ const loadInitialProfiles = () => {
                 parsed = parsed.map(p => {
                     const newAvatar = getAvatarEmoji(p.avatar);
                     let newColor = p.color;
-                    if (p.id === DEFAULT_PROFILE_ID && (!p.color || p.color === '#06b6d4' || p.color === '#3b82f6')) {
+                    if (!newColor) {
                         newColor = '#d4bc94';
                     }
                     if (newAvatar !== p.avatar || newColor !== p.color) {
@@ -107,9 +107,12 @@ const useProfileStore = create((set, get) => ({
             const next = state.profiles.map(p => {
                 if (p.id === id) {
                     const updated = { ...p, ...updates };
+                    delete updated.silent;
                     // If updating active profile, sync accent color
                     if (id === state.activeProfileId && updates.color) {
-                        useUIStore.getState().setAccentColor(updates.color);
+                        if (useUIStore.getState().accentColor !== updates.color) {
+                            useUIStore.getState().setAccentColor(updates.color);
+                        }
                     }
                     return updated;
                 }
@@ -118,7 +121,9 @@ const useProfileStore = create((set, get) => ({
             localStorage.setItem('qbrowse_profiles', JSON.stringify(next));
             return { profiles: next };
         });
-        useUIStore.getState().showToast('Profile updated');
+        if (!updates?.silent) {
+            useUIStore.getState().showToast('Profile updated');
+        }
     },
 
     deleteProfile: async (id) => {
@@ -231,8 +236,11 @@ const useProfileStore = create((set, get) => ({
 if (typeof window !== 'undefined') {
     window.__profileStore = useProfileStore;
     try {
+        const storedAccent = localStorage.getItem('qbrowse_accent_color');
         const initialActive = useProfileStore.getState().getActiveProfile();
-        if (initialActive && initialActive.color) {
+        if (storedAccent && storedAccent.startsWith('#')) {
+            useUIStore.getState().setAccentColor(storedAccent);
+        } else if (initialActive && initialActive.color) {
             useUIStore.getState().setAccentColor(initialActive.color);
         }
     } catch (e) {}

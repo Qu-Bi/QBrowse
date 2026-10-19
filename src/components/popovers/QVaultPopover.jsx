@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-    Lock, Unlock, KeyRound, Eye, EyeOff, Copy, Plus, Search, 
-    ShieldCheck, Check, X, RefreshCw, Globe, Fingerprint, 
+import {
+    Lock, Unlock, KeyRound, Eye, EyeOff, Copy, Plus, Search,
+    ShieldCheck, Check, X, RefreshCw, Globe, Fingerprint,
     Zap, Settings, ArrowLeft, Shield, Sparkles, Pencil, Trash2,
     CreditCard, MapPin, Building2, Phone, Mail, Calendar, Hash,
     ChevronLeft, ChevronRight, UploadCloud, Download
@@ -12,10 +12,10 @@ import useTabStore from '../../store/useTabStore';
 import { parseVaultContent } from '../../utils/vaultImporter';
 
 export default function QVaultPopover({ isClosing }) {
-    const { 
-        isUnlocked, masterPassword, pinCode, unlock, unlockWithPin, 
-        setPin, lock, passwords, fetchPasswords, addNewItem, deleteItem, updateItem, 
-        importBatchItems, exportVaultData, isLoading, error 
+    const {
+        isUnlocked, masterPassword, pinCode, unlock, unlockWithPin,
+        setPin, lock, passwords, fetchPasswords, addNewItem, deleteItem, updateItem,
+        importBatchItems, exportVaultData, isLoading, error
     } = useVaultStore();
 
     const showToast = useUIStore(state => state.showToast);
@@ -318,7 +318,7 @@ export default function QVaultPopover({ isClosing }) {
         setUrl(item.url || '');
         setPasskeyRpId(item.passkeyData?.rpId || item.url || '');
         setPasskeyCredId(item.passkeyData?.credentialId || '');
-        
+
         if (item.cardData) {
             setCardholderName(item.cardData.cardholderName || '');
             setCardNumber(formatCardNumberInput(item.cardData.cardNumber || item.password || ''));
@@ -393,7 +393,7 @@ export default function QVaultPopover({ isClosing }) {
                         const parsed = JSON.parse(password);
                         if (parsed.publicKey) pubKey = parsed.publicKey;
                     }
-                } catch {}
+                } catch { }
 
                 passkeyData = {
                     rpId: passkeyRpId || url || title,
@@ -645,8 +645,8 @@ export default function QVaultPopover({ isClosing }) {
 
     // Process stored items
     const parsedItems = passwords.map(p => {
-        let meta = { 
-            type: p.itemType || 'login', 
+        let meta = {
+            type: p.itemType || 'login',
             passkeyData: p.passkeyData || null,
             cardData: p.cardData || null,
             addressData: p.addressData || null
@@ -657,13 +657,13 @@ export default function QVaultPopover({ isClosing }) {
             cleanTitle = parts[0];
             try {
                 const parsed = JSON.parse(parts[1]);
-                meta = { 
-                    type: parsed.type || meta.type, 
+                meta = {
+                    type: parsed.type || meta.type,
                     passkeyData: parsed.passkeyData || meta.passkeyData,
                     cardData: parsed.cardData || meta.cardData,
                     addressData: parsed.addressData || meta.addressData
                 };
-            } catch {}
+            } catch { }
         }
         return {
             ...p,
@@ -730,24 +730,23 @@ export default function QVaultPopover({ isClosing }) {
     });
 
     return (
-        <div 
-            id="qvault-popover"
-            onClick={e => e.stopPropagation()} 
+        <div
+            id="popover-vault-container"
+            data-testid="qvault-popover"
+            onClick={e => e.stopPropagation()}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
-            className={`absolute top-4 right-4 z-[70000] w-[440px] max-w-[calc(100vw-32px)] rounded-2xl backdrop-blur-3xl overflow-hidden p-4 transition-all duration-200 border ${
-                isBright
+            className={`absolute top-4 right-4 z-[70000] w-[440px] max-w-[calc(100vw-32px)] rounded-2xl backdrop-blur-3xl overflow-hidden p-4 transition-all duration-200 border ${isBright
                     ? 'bg-white/60 border-black/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.12)] text-zinc-900'
                     : 'bg-[#0c0d14]/78 border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-zinc-200'
-            } ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}
+                } ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}
         >
             {/* Header */}
             <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
                 <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${
-                        isUnlocked 
-                            ? (isBright ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-xs' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25') 
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${isUnlocked
+                            ? (isBright ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-xs' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25')
                             : (isBright ? 'bg-black/[0.04] text-zinc-700 border-black/10 shadow-xs' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]')
-                    }`}>
+                        }`}>
                         {isUnlocked ? <Unlock size={14} /> : <Lock size={14} />}
                     </div>
                     <div>
@@ -758,25 +757,22 @@ export default function QVaultPopover({ isClosing }) {
 
                 {isUnlocked && (
                     <div className="flex items-center gap-1.5">
-                        <button onClick={() => setViewMode(viewMode === 'settings' ? 'vault' : 'settings')} className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                            viewMode === 'settings' 
-                                ? (isBright ? 'bg-accent/20 text-zinc-900 border-accent/40 font-bold' : 'bg-accent/15 text-accent border-accent/30') 
+                        <button onClick={() => setViewMode(viewMode === 'settings' ? 'vault' : 'settings')} className={`p-1.5 rounded-lg border transition cursor-pointer ${viewMode === 'settings'
+                                ? (isBright ? 'bg-accent/20 text-zinc-900 border-accent/40 font-bold' : 'bg-accent/15 text-accent border-accent/30')
                                 : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]' : 'bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08]')
-                        }`} title="Vault Settings">
+                            }`} title="Vault Settings">
                             <Settings size={14} />
                         </button>
-                        <button onClick={() => handleOpenAddForm('login')} className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
-                            isBright 
-                                ? 'bg-white/80 hover:bg-white text-zinc-900 border-black/[0.08] shadow-xs' 
+                        <button onClick={() => handleOpenAddForm('login')} className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${isBright
+                                ? 'bg-white/80 hover:bg-white text-zinc-900 border-black/[0.08] shadow-xs'
                                 : 'bg-accent/15 hover:bg-accent/25 border-accent/30 text-accent'
-                        }`} title="Add to Vault">
+                            }`} title="Add to Vault">
                             <Plus size={13} strokeWidth={2.5} /> Add
                         </button>
-                        <button onClick={lock} className={`p-1.5 rounded-lg border text-xs transition cursor-pointer ${
-                            isBright 
-                                ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]' 
+                        <button onClick={lock} className={`p-1.5 rounded-lg border text-xs transition cursor-pointer ${isBright
+                                ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]'
                                 : 'bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08]'
-                        }`} title="Lock Vault">
+                            }`} title="Lock Vault">
                             <Lock size={14} />
                         </button>
                     </div>
@@ -788,18 +784,16 @@ export default function QVaultPopover({ isClosing }) {
                 <div className="flex flex-col gap-3.5 py-1">
                     {/* Unlock Mode Selector */}
                     {pinCode && (
-                        <div className={`relative flex p-1 rounded-full border shadow-xs ${
-                            isBright 
-                                ? 'bg-black/[0.03] border-black/[0.05]' 
+                        <div className={`relative flex p-1 rounded-full border shadow-xs ${isBright
+                                ? 'bg-black/[0.03] border-black/[0.05]'
                                 : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-                        }`}>
-                            <div 
-                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                    isBright
+                            }`}>
+                            <div
+                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isBright
                                         ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                                         : 'border shadow-xs'
-                                }`} 
-                                style={{ 
+                                    }`}
+                                style={{
                                     transform: unlockMode === 'password' ? 'translateX(100%)' : 'translateX(0)',
                                     ...(!isBright ? {
                                         borderColor: 'var(--accent-30)',
@@ -807,25 +801,23 @@ export default function QVaultPopover({ isClosing }) {
                                     } : {})
                                 }}
                             />
-                            <button 
+                            <button
                                 type="button"
-                                onClick={() => setUnlockMode('pin')} 
-                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
-                                    unlockMode === 'pin' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                onClick={() => setUnlockMode('pin')}
+                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-300 cursor-pointer ${unlockMode === 'pin'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 Quick PIN
                             </button>
-                            <button 
+                            <button
                                 type="button"
-                                onClick={() => setUnlockMode('password')} 
-                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
-                                    unlockMode === 'password' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                onClick={() => setUnlockMode('password')}
+                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-300 cursor-pointer ${unlockMode === 'password'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 Master Password
                             </button>
@@ -849,11 +841,10 @@ export default function QVaultPopover({ isClosing }) {
                                     value={masterPassInput}
                                     onChange={(e) => setMasterPassInput(e.target.value)}
                                     placeholder="Enter master password..."
-                                    className={`w-full h-9 rounded-lg px-3 text-xs font-mono outline-none transition-all border ${
-                                        isBright 
-                                            ? 'bg-white/80 border-black/[0.12] focus:border-accent text-zinc-900 placeholder-zinc-400 shadow-xs' 
+                                    className={`w-full h-9 rounded-lg px-3 text-xs font-mono outline-none transition-all border ${isBright
+                                            ? 'bg-white/80 border-black/[0.12] focus:border-accent text-zinc-900 placeholder-zinc-400 shadow-xs'
                                             : 'bg-white/[0.03] border-white/[0.06] focus:border-accent/40 text-zinc-100 placeholder-zinc-600'
-                                    }`}
+                                        }`}
                                 />
                             </div>
                         ) : (
@@ -866,11 +857,10 @@ export default function QVaultPopover({ isClosing }) {
                                     value={pinInput}
                                     onChange={(e) => setPinInput(e.target.value)}
                                     placeholder="••••"
-                                    className={`w-full h-10 rounded-lg px-4 text-center text-lg font-mono tracking-[0.5em] outline-none transition-all border ${
-                                        isBright 
-                                            ? 'bg-white/80 border-black/[0.12] focus:border-accent text-zinc-900 placeholder-zinc-400 shadow-xs' 
+                                    className={`w-full h-10 rounded-lg px-4 text-center text-lg font-mono tracking-[0.5em] outline-none transition-all border ${isBright
+                                            ? 'bg-white/80 border-black/[0.12] focus:border-accent text-zinc-900 placeholder-zinc-400 shadow-xs'
                                             : 'bg-white/[0.03] border-white/[0.06] focus:border-accent/40 text-zinc-100 placeholder-zinc-600'
-                                    }`}
+                                        }`}
                                 />
                             </div>
                         )}
@@ -884,11 +874,10 @@ export default function QVaultPopover({ isClosing }) {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className={`w-full h-9 mt-1 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.99] disabled:opacity-40 shadow-sm cursor-pointer border ${
-                                isBright 
-                                    ? 'bg-accent hover:opacity-95 text-zinc-950 border-accent/40 shadow-md font-bold' 
+                            className={`w-full h-9 mt-1 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.99] disabled:opacity-40 shadow-sm cursor-pointer border ${isBright
+                                    ? 'bg-accent hover:opacity-95 text-zinc-950 border-accent/40 shadow-md font-bold'
                                     : 'bg-accent/20 hover:bg-accent/30 border-accent/35 text-white'
-                            }`}
+                                }`}
                         >
                             {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
                             Unlock Vault
@@ -956,9 +945,8 @@ export default function QVaultPopover({ isClosing }) {
                     </form>
 
                     {/* Vault Migration & Backups */}
-                    <div className={`p-3 rounded-xl flex flex-col gap-2.5 border ${
-                        isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'
-                    }`}>
+                    <div className={`p-3 rounded-xl flex flex-col gap-2.5 border ${isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'
+                        }`}>
                         <div className="flex items-center justify-between">
                             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-zinc-200'}`}>
                                 <UploadCloud size={13} className="text-accent" /> Vault Migration & Backups
@@ -971,12 +959,12 @@ export default function QVaultPopover({ isClosing }) {
                             Transition from external password managers by importing your CSV or JSON vault export directly into QVault.
                         </p>
 
-                        <input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            onChange={handleImportFile} 
-                            accept=".csv,.json,text/csv,application/json" 
-                            className="hidden" 
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImportFile}
+                            accept=".csv,.json,text/csv,application/json"
+                            className="hidden"
                         />
 
                         <div className="grid grid-cols-2 gap-2 mt-0.5">
@@ -984,11 +972,10 @@ export default function QVaultPopover({ isClosing }) {
                                 type="button"
                                 disabled={isImporting}
                                 onClick={() => fileInputRef.current?.click()}
-                                className={`h-8 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-40 border ${
-                                    isBright 
-                                        ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/40 shadow-xs' 
+                                className={`h-8 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-40 border ${isBright
+                                        ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/40 shadow-xs'
                                         : 'bg-accent/15 hover:bg-accent/25 border-accent/30 text-accent'
-                                }`}
+                                    }`}
                             >
                                 {isImporting ? <RefreshCw size={12} className="animate-spin" /> : <UploadCloud size={12} />}
                                 <span>{isImporting ? 'Importing...' : 'Import Vault'}</span>
@@ -1000,11 +987,10 @@ export default function QVaultPopover({ isClosing }) {
                                         exportVaultData('json');
                                         showToast('Exported QVault backup (.JSON)');
                                     }}
-                                    className={`flex-1 h-8 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer border ${
-                                        isBright 
-                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10' 
+                                    className={`flex-1 h-8 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer border ${isBright
+                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
                                             : 'bg-white/5 hover:bg-white/10 text-zinc-200 border-white/10'
-                                    }`}
+                                        }`}
                                     title="Export backup as JSON"
                                 >
                                     <Download size={11} /> .JSON
@@ -1015,11 +1001,10 @@ export default function QVaultPopover({ isClosing }) {
                                         exportVaultData('csv');
                                         showToast('Exported QVault backup (.CSV)');
                                     }}
-                                    className={`flex-1 h-8 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer border ${
-                                        isBright 
-                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10' 
+                                    className={`flex-1 h-8 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer border ${isBright
+                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
                                             : 'bg-white/5 hover:bg-white/10 text-zinc-200 border-white/10'
-                                    }`}
+                                        }`}
                                     title="Export backup as CSV"
                                 >
                                     <Download size={11} /> .CSV
@@ -1039,22 +1024,20 @@ export default function QVaultPopover({ isClosing }) {
                     </div>
 
                     {/* Type Selector (4 Types) */}
-                    <div className={`relative grid grid-cols-4 p-1 rounded-full border shadow-xs ${
-                        isBright 
-                            ? 'bg-black/[0.03] border-black/[0.05]' 
+                    <div className={`relative grid grid-cols-4 p-1 rounded-full border shadow-xs ${isBright
+                            ? 'bg-black/[0.03] border-black/[0.05]'
                             : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-                    }`}>
-                        <div 
-                            className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                isBright
+                        }`}>
+                        <div
+                            className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isBright
                                     ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                                     : 'border shadow-xs'
-                            }`} 
-                            style={{ 
+                                }`}
+                            style={{
                                 transform: newItemType === 'login' ? 'translateX(0)' :
-                                           newItemType === 'card' ? 'translateX(100%)' :
-                                           newItemType === 'address' ? 'translateX(200%)' :
-                                           'translateX(300%)',
+                                    newItemType === 'card' ? 'translateX(100%)' :
+                                        newItemType === 'address' ? 'translateX(200%)' :
+                                            'translateX(300%)',
                                 ...(!isBright ? {
                                     borderColor: 'var(--accent-30)',
                                     backgroundColor: 'var(--accent-15)'
@@ -1338,18 +1321,17 @@ export default function QVaultPopover({ isClosing }) {
                 <div className="flex flex-col gap-3">
                     {/* Category Filter Pills with Side Scrolling, Wheel & Drag Support */}
                     <div className="relative flex items-center gap-1">
-                        <button 
+                        <button
                             type="button"
-                            onClick={() => scrollCategories(-100)} 
-                            className={`flex items-center justify-center w-6 h-6 rounded-lg border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${
-                                isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
-                            }`}
+                            onClick={() => scrollCategories(-100)}
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
+                                }`}
                             title="Scroll left"
                         >
                             <ChevronLeft size={13} />
                         </button>
 
-                        <div 
+                        <div
                             ref={categoryScrollRef}
                             onMouseDown={handleCategoryMouseDown}
                             onMouseLeave={handleCategoryMouseLeave}
@@ -1360,20 +1342,18 @@ export default function QVaultPopover({ isClosing }) {
                                     e.currentTarget.scrollLeft += e.deltaY;
                                 }
                             }}
-                            className={`relative flex-1 flex items-center gap-1 p-1 rounded-full border overflow-x-auto hide-scroll scroll-smooth select-none cursor-grab active:cursor-grabbing ${
-                                isBright 
-                                    ? 'bg-black/[0.03] border-black/[0.05]' 
+                            className={`relative flex-1 flex items-center gap-1 p-1 rounded-full border overflow-x-auto hide-scroll scroll-smooth select-none cursor-grab active:cursor-grabbing ${isBright
+                                    ? 'bg-black/[0.03] border-black/[0.05]'
                                     : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-                            }`}
+                                }`}
                         >
                             {/* Sliding Indicator Pill matching Spaces Switcher */}
-                            <div 
-                                className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
-                                    isBright
+                            <div
+                                className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${isBright
                                         ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                                         : 'border shadow-xs'
-                                }`} 
-                                style={{ 
+                                    }`}
+                                style={{
                                     left: `${categoryPillStyle.left}px`,
                                     width: `${categoryPillStyle.width}px`,
                                     opacity: categoryPillStyle.opacity,
@@ -1384,98 +1364,91 @@ export default function QVaultPopover({ isClosing }) {
                                 }}
                             />
 
-                            <button 
+                            <button
                                 ref={el => { categoryTabRefs.current['all'] = el; }}
                                 onClick={() => {
                                     setCategoryFilter('all');
                                     categoryTabRefs.current['all']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }} 
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 cursor-pointer flex-shrink-0 ${
-                                    categoryFilter === 'all' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                }}
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 cursor-pointer flex-shrink-0 ${categoryFilter === 'all'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 All ({parsedItems.length})
                             </button>
-                            <button 
+                            <button
                                 ref={el => { categoryTabRefs.current['logins'] = el; }}
                                 onClick={() => {
                                     setCategoryFilter('logins');
                                     categoryTabRefs.current['logins']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }} 
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                    categoryFilter === 'logins' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') 
+                                }}
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'logins'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 <Globe size={11} className={categoryFilter === 'logins' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-sky-600' : 'text-sky-400')} /> Logins ({parsedItems.filter(p => p.itemType === 'login').length})
                             </button>
-                            <button 
+                            <button
                                 ref={el => { categoryTabRefs.current['cards'] = el; }}
                                 onClick={() => {
                                     setCategoryFilter('cards');
                                     categoryTabRefs.current['cards']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }} 
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                    categoryFilter === 'cards' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') 
+                                }}
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'cards'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 <CreditCard size={11} className={categoryFilter === 'cards' ? (isBright ? 'text-blue-700' : 'text-blue-300') : (isBright ? 'text-blue-600' : 'text-blue-400')} /> Cards ({parsedItems.filter(p => p.itemType === 'card').length})
                             </button>
-                            <button 
+                            <button
                                 ref={el => { categoryTabRefs.current['addresses'] = el; }}
                                 onClick={() => {
                                     setCategoryFilter('addresses');
                                     categoryTabRefs.current['addresses']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }} 
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                    categoryFilter === 'addresses' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') 
+                                }}
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'addresses'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 <MapPin size={11} className={categoryFilter === 'addresses' ? (isBright ? 'text-amber-700' : 'text-amber-300') : (isBright ? 'text-amber-600' : 'text-amber-400')} /> Addresses ({parsedItems.filter(p => p.itemType === 'address').length})
                             </button>
-                            <button 
+                            <button
                                 ref={el => { categoryTabRefs.current['passkeys'] = el; }}
                                 onClick={() => {
                                     setCategoryFilter('passkeys');
                                     categoryTabRefs.current['passkeys']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }} 
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                    categoryFilter === 'passkeys' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') 
+                                }}
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'passkeys'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 <Fingerprint size={11} className={categoryFilter === 'passkeys' ? (isBright ? 'text-purple-700' : 'text-purple-300') : (isBright ? 'text-purple-600' : 'text-purple-400')} /> Passkeys ({parsedItems.filter(p => p.itemType === 'passkey').length})
                             </button>
-                            <button 
+                            <button
                                 ref={el => { categoryTabRefs.current['generator'] = el; }}
                                 onClick={() => {
                                     setCategoryFilter('generator');
                                     categoryTabRefs.current['generator']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }} 
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                                    categoryFilter === 'generator' 
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold') 
+                                }}
+                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-colors duration-300 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'generator'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
-                                }`}
+                                    }`}
                             >
                                 <Sparkles size={11} className={categoryFilter === 'generator' ? (isBright ? 'text-emerald-700' : 'text-emerald-300') : (isBright ? 'text-emerald-600' : 'text-emerald-400')} /> Gen
                             </button>
                         </div>
 
-                        <button 
+                        <button
                             type="button"
-                            onClick={() => scrollCategories(100)} 
-                            className={`flex items-center justify-center w-6 h-6 rounded-lg border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${
-                                isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
-                            }`}
+                            onClick={() => scrollCategories(100)}
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
+                                }`}
                             title="Scroll right"
                         >
                             <ChevronRight size={13} />
@@ -1498,11 +1471,11 @@ export default function QVaultPopover({ isClosing }) {
                             <div className="flex flex-col gap-2.5 p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl">
                                 <div className="flex justify-between items-center">
                                     <span className="text-xs font-mono text-zinc-300">Length: {genLength}</span>
-                                    <input 
-                                        type="range" 
-                                        min={8} 
-                                        max={32} 
-                                        value={genLength} 
+                                    <input
+                                        type="range"
+                                        min={8}
+                                        max={32}
+                                        value={genLength}
                                         onChange={e => setGenLength(Number(e.target.value))}
                                         className="w-28 accent-accent cursor-pointer"
                                     />
@@ -1562,11 +1535,10 @@ export default function QVaultPopover({ isClosing }) {
                                     placeholder="Search credentials, cards, addresses..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className={`w-full h-8 pl-8 pr-3 rounded-lg text-xs outline-none font-mono transition-colors ${
-                                        isBright 
-                                            ? 'bg-black/[0.04] border border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent' 
+                                    className={`w-full h-8 pl-8 pr-3 rounded-lg text-xs outline-none font-mono transition-colors ${isBright
+                                            ? 'bg-black/[0.04] border border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent'
                                             : 'bg-white/[0.03] border border-white/[0.06] text-zinc-200 placeholder-zinc-500 focus:border-accent/40'
-                                    }`}
+                                        }`}
                                 />
                             </div>
 
@@ -1576,13 +1548,12 @@ export default function QVaultPopover({ isClosing }) {
                                     <div className="text-center text-zinc-500 text-xs py-8 font-mono flex flex-col items-center gap-2.5">
                                         <span>{searchQuery ? 'No matching vault items.' : (passwords.length === 0 ? 'Your vault is currently empty.' : 'Category is empty. Click + Add to store credentials.')}</span>
                                         {!searchQuery && passwords.length === 0 && (
-                                            <button 
-                                                onClick={() => setViewMode('settings')} 
-                                                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer active:scale-95 ${
-                                                    isBright 
-                                                        ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/40 shadow-xs font-bold' 
+                                            <button
+                                                onClick={() => setViewMode('settings')}
+                                                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer active:scale-95 ${isBright
+                                                        ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/40 shadow-xs font-bold'
                                                         : 'bg-accent/15 hover:bg-accent/25 border-accent/30 text-accent font-semibold'
-                                                }`}
+                                                    }`}
                                             >
                                                 <UploadCloud size={12} /> Import from Bitwarden or Proton Pass
                                             </button>
@@ -1596,30 +1567,28 @@ export default function QVaultPopover({ isClosing }) {
                                         const isPasskey = item.itemType === 'passkey';
 
                                         return (
-                                            <div key={item.id} className={`p-2.5 rounded-xl flex flex-col gap-2 transition-all group border ${
-                                                isBright 
-                                                    ? 'bg-white/60 hover:bg-white/85 border-black/[0.06] hover:border-black/[0.12] shadow-xs' 
+                                            <div key={item.id} className={`p-2.5 rounded-xl flex flex-col gap-2 transition-all group border ${isBright
+                                                    ? 'bg-white/60 hover:bg-white/85 border-black/[0.06] hover:border-black/[0.12] shadow-xs'
                                                     : 'bg-white/[0.02] hover:bg-white/[0.035] border-white/[0.05] hover:border-white/[0.09]'
-                                            }`}>
+                                                }`}>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2.5 min-w-0">
-                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center border shrink-0 transition-colors ${
-                                                            isPasskey ? (isBright ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-purple-500/10 text-purple-400 border-purple-500/20') :
-                                                            isCard ? (isBright ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-400 border-blue-500/20') :
-                                                            isAddress ? (isBright ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-400 border-amber-500/20') :
-                                                            (isBright ? 'bg-sky-100 text-sky-700 border-sky-200' : 'bg-sky-500/10 text-sky-400 border-sky-500/20')
-                                                        }`}>
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center border shrink-0 transition-colors ${isPasskey ? (isBright ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-purple-500/10 text-purple-400 border-purple-500/20') :
+                                                                isCard ? (isBright ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-400 border-blue-500/20') :
+                                                                    isAddress ? (isBright ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-400 border-amber-500/20') :
+                                                                        (isBright ? 'bg-sky-100 text-sky-700 border-sky-200' : 'bg-sky-500/10 text-sky-400 border-sky-500/20')
+                                                            }`}>
                                                             {isPasskey ? <Fingerprint size={13} /> :
-                                                             isCard ? <CreditCard size={13} /> :
-                                                             isAddress ? <MapPin size={13} /> :
-                                                             <Globe size={13} />}
+                                                                isCard ? <CreditCard size={13} /> :
+                                                                    isAddress ? <MapPin size={13} /> :
+                                                                        <Globe size={13} />}
                                                         </div>
                                                         <div className="flex flex-col truncate">
                                                             <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-zinc-200'}`}>{item.title}</span>
                                                             <span className={`text-[10px] truncate font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-500'}`}>
                                                                 {isCard ? (item.cardData?.cardholderName || item.username || 'Payment Card') :
-                                                                 isAddress ? (item.addressData?.fullName || [item.addressData?.city, item.addressData?.country].filter(Boolean).join(', ') || 'Address') :
-                                                                 (item.username || item.url || 'Login')}
+                                                                    isAddress ? (item.addressData?.fullName || [item.addressData?.city, item.addressData?.country].filter(Boolean).join(', ') || 'Address') :
+                                                                        (item.username || item.url || 'Login')}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -1627,50 +1596,43 @@ export default function QVaultPopover({ isClosing }) {
                                                     {/* Quick Actions (Hover revealed for clean density) */}
                                                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
                                                         {/* Autofill button */}
-                                                        <button onClick={() => handleAutofillPage(item)} className={`px-2 py-1 rounded-md border text-[10px] flex items-center gap-1 transition cursor-pointer ${
-                                                            isBright ? 'bg-accent/20 hover:bg-accent/30 text-zinc-900 font-bold border-accent/40' : 'bg-accent/15 hover:bg-accent/25 border-accent/30 text-accent font-medium'
-                                                        }`} title="Autofill on active page">
+                                                        <button onClick={() => handleAutofillPage(item)} className={`px-2 py-1 rounded-md border text-[10px] flex items-center gap-1 transition cursor-pointer ${isBright ? 'bg-accent/20 hover:bg-accent/30 text-zinc-900 font-bold border-accent/40' : 'bg-accent/15 hover:bg-accent/25 border-accent/30 text-accent font-medium'
+                                                            }`} title="Autofill on active page">
                                                             <Zap size={11} strokeWidth={2.5} /> Autofill
                                                         </button>
 
                                                         {/* Copy actions */}
                                                         {isCard && item.cardData?.cardNumber && (
-                                                            <button onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id)} className={`p-1 rounded-md border transition cursor-pointer ${
-                                                                isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
-                                                            }`} title="Copy Card Number">
+                                                            <button onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id)} className={`p-1 rounded-md border transition cursor-pointer ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
+                                                                }`} title="Copy Card Number">
                                                                 {copiedId === `card number-${item.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                                                             </button>
                                                         )}
                                                         {isAddress && item.addressData && (
-                                                            <button onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id)} className={`p-1 rounded-md border transition cursor-pointer ${
-                                                                isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
-                                                            }`} title="Copy Address">
+                                                            <button onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id)} className={`p-1 rounded-md border transition cursor-pointer ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
+                                                                }`} title="Copy Address">
                                                                 {copiedId === `address-${item.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                                                             </button>
                                                         )}
                                                         {!isCard && !isAddress && !isPasskey && item.password && (
                                                             <>
-                                                                <button onClick={() => toggleReveal(item.id)} className={`p-1 rounded-md transition cursor-pointer ${
-                                                                    isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200'
-                                                                }`} title={isRevealed ? 'Hide Password' : 'Show Password'}>
+                                                                <button onClick={() => toggleReveal(item.id)} className={`p-1 rounded-md transition cursor-pointer ${isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                                                                    }`} title={isRevealed ? 'Hide Password' : 'Show Password'}>
                                                                     {isRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
                                                                 </button>
-                                                                <button onClick={() => copyToClipboard(item.password, 'password', item.id)} className={`p-1 rounded-md border transition cursor-pointer ${
-                                                                    isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
-                                                                }`} title="Copy Password">
+                                                                <button onClick={() => copyToClipboard(item.password, 'password', item.id)} className={`p-1 rounded-md border transition cursor-pointer ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
+                                                                    }`} title="Copy Password">
                                                                     {copiedId === `password-${item.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                                                                 </button>
                                                             </>
                                                         )}
 
-                                                        <button onClick={() => handleOpenEditForm(item)} className={`p-1 rounded-md transition cursor-pointer ${
-                                                            isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200'
-                                                        }`} title="Edit Item">
+                                                        <button onClick={() => handleOpenEditForm(item)} className={`p-1 rounded-md transition cursor-pointer ${isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                                                            }`} title="Edit Item">
                                                             <Pencil size={12} />
                                                         </button>
-                                                        <button onClick={() => handleDeleteItem(item.id, item.title)} className={`p-1 rounded-md transition cursor-pointer ${
-                                                            isBright ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-600' : 'hover:bg-red-500/20 text-zinc-400 hover:text-red-400'
-                                                        }`} title="Delete Item">
+                                                        <button onClick={() => handleDeleteItem(item.id, item.title)} className={`p-1 rounded-md transition cursor-pointer ${isBright ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-600' : 'hover:bg-red-500/20 text-zinc-400 hover:text-red-400'
+                                                            }`} title="Delete Item">
                                                             <Trash2 size={12} />
                                                         </button>
                                                     </div>
@@ -1678,9 +1640,8 @@ export default function QVaultPopover({ isClosing }) {
 
                                                 {/* Details subrow */}
                                                 {isCard ? (
-                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-2.5 py-1 rounded-lg border ${
-                                                        isBright ? 'bg-black/[0.025] border-black/5 text-zinc-600' : 'bg-white/[0.02] border-white/[0.04] text-zinc-400'
-                                                    }`}>
+                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-2.5 py-1 rounded-lg border ${isBright ? 'bg-black/[0.025] border-black/5 text-zinc-600' : 'bg-white/[0.02] border-white/[0.04] text-zinc-400'
+                                                        }`}>
                                                         <div className="flex items-center gap-2">
                                                             <span className={`font-semibold ${isBright ? 'text-blue-700' : 'text-blue-300'}`}>{item.cardData?.cardBrand || 'Card'}:</span>
                                                             <span>•••• •••• •••• {item.cardData?.cardNumber?.slice(-4) || item.password?.slice(-4) || '••••'}</span>
@@ -1688,18 +1649,16 @@ export default function QVaultPopover({ isClosing }) {
                                                         <div className="flex items-center gap-2 text-zinc-500">
                                                             <span>{item.cardData?.expMonth || '••'}/{item.cardData?.expYear?.slice(-2) || '••'}</span>
                                                             {item.cardData?.cvv && (
-                                                                <button onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id)} className={`px-1.5 py-0.5 rounded text-[9px] transition cursor-pointer ${
-                                                                    isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white'
-                                                                }`}>
+                                                                <button onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id)} className={`px-1.5 py-0.5 rounded text-[9px] transition cursor-pointer ${isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white'
+                                                                    }`}>
                                                                     {copiedId === `CVV-${item.id}` ? 'Copied' : 'CVV'}
                                                                 </button>
                                                             )}
                                                         </div>
                                                     </div>
                                                 ) : isAddress ? (
-                                                    <div className={`flex flex-col gap-0.5 text-[10px] font-mono px-2.5 py-1.5 rounded-lg border leading-snug ${
-                                                        isBright ? 'bg-black/[0.025] border-black/5 text-zinc-600' : 'bg-white/[0.02] border-white/[0.04] text-zinc-400'
-                                                    }`}>
+                                                    <div className={`flex flex-col gap-0.5 text-[10px] font-mono px-2.5 py-1.5 rounded-lg border leading-snug ${isBright ? 'bg-black/[0.025] border-black/5 text-zinc-600' : 'bg-white/[0.02] border-white/[0.04] text-zinc-400'
+                                                        }`}>
                                                         <div className={`font-semibold truncate ${isBright ? 'text-amber-800' : 'text-amber-300'}`}>
                                                             {item.addressData?.streetAddress} {item.addressData?.unit ? `(${item.addressData.unit})` : ''}
                                                         </div>
@@ -1708,20 +1667,17 @@ export default function QVaultPopover({ isClosing }) {
                                                         </div>
                                                     </div>
                                                 ) : isPasskey ? (
-                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-2.5 py-1 rounded-lg border ${
-                                                        isBright ? 'bg-purple-500/[0.06] border-purple-500/15 text-purple-900' : 'bg-white/[0.02] border-white/[0.04] text-zinc-400'
-                                                    }`}>
-                                                        <span>Passkey: <span className={isBright ? 'text-purple-700 font-semibold' : 'text-purple-300'}>{item.passkeyData?.rpId || item.url || 'WebAuthn'}</span></span>
-                                                        <button onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id)} className={`text-[9px] font-medium hover:underline transition cursor-pointer ${
-                                                            isBright ? 'text-purple-700' : 'text-purple-400'
+                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-2.5 py-1 rounded-lg border ${isBright ? 'bg-purple-500/[0.06] border-purple-500/15 text-purple-900' : 'bg-white/[0.02] border-white/[0.04] text-zinc-400'
                                                         }`}>
+                                                        <span>Passkey: <span className={isBright ? 'text-purple-700 font-semibold' : 'text-purple-300'}>{item.passkeyData?.rpId || item.url || 'WebAuthn'}</span></span>
+                                                        <button onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id)} className={`text-[9px] font-medium hover:underline transition cursor-pointer ${isBright ? 'text-purple-700' : 'text-purple-400'
+                                                            }`}>
                                                             {copiedId === `passkey credential-${item.id}` ? 'Copied' : 'Copy Credential'}
                                                         </button>
                                                     </div>
                                                 ) : (
-                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-2.5 py-1 rounded-lg border ${
-                                                        isBright ? 'bg-black/[0.03] border-black/5 text-zinc-600' : 'bg-black/30 border-white/[0.04] text-zinc-400'
-                                                    }`}>
+                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-2.5 py-1 rounded-lg border ${isBright ? 'bg-black/[0.03] border-black/5 text-zinc-600' : 'bg-black/30 border-white/[0.04] text-zinc-400'
+                                                        }`}>
                                                         <span className={`truncate font-mono ${isBright ? 'text-zinc-700 font-medium' : 'text-zinc-400'}`}>
                                                             {isRevealed ? item.password : '••••••••••••'}
                                                         </span>

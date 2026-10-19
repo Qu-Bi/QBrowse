@@ -54,6 +54,7 @@ export default function AddPinModal() {
             onClick={closeModal}
         >
             <div 
+                id="add-pin-modal"
                 className={`w-full max-w-md rounded-3xl p-6 flex flex-col gap-6 relative ${
                     isBright 
                         ? 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900' 

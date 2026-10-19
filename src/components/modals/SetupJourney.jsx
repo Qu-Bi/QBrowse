@@ -3,7 +3,8 @@ import {
     Globe, Moon, Sun, ShieldCheck, ArrowRight, Check, X, 
     Download, Compass, Lock, User, Sparkles, Layers,
     CheckCircle2, FolderInput, FileCode, Sliders, ChevronRight,
-    KeyRound, UploadCloud, Shield, RefreshCw
+    KeyRound, UploadCloud, Shield, RefreshCw, Mail, Eye, EyeOff,
+    AlertCircle, UserCheck
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -11,6 +12,44 @@ import useSyncStore from '../../store/useSyncStore';
 import useVaultStore from '../../store/useVaultStore';
 import { parseVaultContent } from '../../utils/vaultImporter';
 import qbrowseLogo from '../../assets/icon.png';
+
+// Apple/Tesla-style synthesized unlock chime using Web Audio API
+const playUnlockChime = () => {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = 'sine';
+        osc2.type = 'triangle';
+
+        // Crisp multi-tone harmonic chime (E5 -> A5 -> E6)
+        osc1.frequency.setValueAtTime(659.25, now);
+        osc1.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+        osc1.frequency.exponentialRampToValueAtTime(1318.51, now + 0.16);
+
+        osc2.frequency.setValueAtTime(1318.51, now);
+        osc2.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.12, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.36);
+        osc2.stop(now + 0.36);
+    } catch(e) {}
+};
 
 const ACCENT_PRESETS = [
     { name: 'Amber Gold', hex: '#d4bc94', rgb: '212, 188, 148' },
@@ -33,10 +72,75 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     const [importedStats, setImportedStats] = useState({});
     const [isDefault, setIsDefault] = useState(false);
     const [isSettingDefault, setIsSettingDefault] = useState(false);
+
+    // Cloud Sync & Profile Setup State
+    const { 
+        user: syncUser, 
+        signIn: syncSignIn, 
+        signUp: syncSignUp, 
+        logout: syncLogout, 
+        isSyncing: isCloudSyncing, 
+        authError: cloudAuthError 
+    } = useSyncStore();
+
+    const [profileMode, setProfileMode] = useState(syncUser ? 'sync' : 'local'); // 'local' | 'sync'
+    const [syncAuthTab, setSyncAuthTab] = useState('login'); // 'login' | 'register'
     const [syncEmail, setSyncEmail] = useState('');
     const [syncPassword, setSyncPassword] = useState('');
-    const [showSyncForm, setShowSyncForm] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncConfirmPassword, setSyncConfirmPassword] = useState('');
+    const [syncShowPass, setSyncShowPass] = useState(false);
+    const [syncShowConfirmPass, setSyncShowConfirmPass] = useState(false);
+    const [syncUseAccountPassAsMaster, setSyncUseAccountPassAsMaster] = useState(true);
+    const [syncCustomMasterPass, setSyncCustomMasterPass] = useState('');
+    const [syncShowCustomMasterPass, setSyncShowCustomMasterPass] = useState(false);
+    const [syncLocalError, setSyncLocalError] = useState(null);
+    const [syncSuccessJustHappened, setSyncSuccessJustHappened] = useState(false);
+
+    const handleSyncSubmit = async (e) => {
+        e?.preventDefault();
+        setSyncLocalError(null);
+
+        const emailTrimmed = syncEmail.trim();
+        if (!emailTrimmed) {
+            setSyncLocalError('Please enter an email address.');
+            return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+            setSyncLocalError('Please enter a valid email address (e.g. name@domain.com).');
+            return;
+        }
+        if (!syncPassword || syncPassword.length < 6) {
+            setSyncLocalError('Password must be at least 6 characters.');
+            return;
+        }
+        if (syncAuthTab === 'register') {
+            if (!syncConfirmPassword) {
+                setSyncLocalError('Please confirm your password.');
+                return;
+            }
+            if (syncPassword !== syncConfirmPassword) {
+                setSyncLocalError('Passwords do not match. Please re-enter.');
+                return;
+            }
+        }
+
+        const masterPassToUse = syncUseAccountPassAsMaster 
+            ? syncPassword 
+            : (syncCustomMasterPass.trim() || syncPassword);
+
+        let success = false;
+        if (syncAuthTab === 'login') {
+            success = await syncSignIn(emailTrimmed, syncPassword, masterPassToUse);
+        } else {
+            success = await syncSignUp(emailTrimmed, syncPassword, masterPassToUse);
+        }
+
+        if (success) {
+            playUnlockChime();
+            setSyncSuccessJustHappened(true);
+            showToast(syncAuthTab === 'login' ? 'Signed in to QBrowse Cloud Sync!' : 'Account registered & Cloud Sync active!');
+        }
+    };
 
     // Vault migration state
     const vaultFileInputRef = useRef(null);
@@ -58,7 +162,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         }
 
         if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
-            window.electronAPI.checkDefaultBrowser().then(res => {
+            window.electronAPI.checkDefaultBrowser({ force: true }).then(res => {
                 if (res) setIsDefault(!!res.isDefault);
             }).catch(() => {});
         }
@@ -188,6 +292,34 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         }
     };
 
+    const checkDefaultStatus = useCallback(async () => {
+        if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
+            try {
+                const res = await window.electronAPI.checkDefaultBrowser({ force: true });
+                if (res && res.isDefault) {
+                    setIsDefault(true);
+                    return true;
+                }
+            } catch (_) {}
+        }
+        return false;
+    }, []);
+
+    useEffect(() => {
+        if (currentStep === 3) {
+            checkDefaultStatus();
+
+            const handleFocus = () => {
+                checkDefaultStatus().then(isDef => {
+                    if (isDef) showToast('QBrowse is now your default browser!');
+                });
+            };
+
+            window.addEventListener('focus', handleFocus);
+            return () => window.removeEventListener('focus', handleFocus);
+        }
+    }, [currentStep, checkDefaultStatus, showToast]);
+
     const handleSetDefault = async () => {
         if (!window.electronAPI || !window.electronAPI.setDefaultBrowser) return;
         setIsSettingDefault(true);
@@ -197,7 +329,17 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 setIsDefault(true);
                 showToast('QBrowse is now your default browser!');
             } else {
-                showToast('System Settings opened. Choose QBrowse as default.');
+                showToast('Opening Windows Default Apps. Click "Set default" for QBrowse.');
+                let attempts = 0;
+                const pollTimer = setInterval(async () => {
+                    attempts++;
+                    const isDef = await checkDefaultStatus();
+                    if (isDef) {
+                        clearInterval(pollTimer);
+                        showToast('QBrowse is now your default browser!');
+                    }
+                    if (attempts >= 14) clearInterval(pollTimer);
+                }, 1500);
             }
         } catch (_) {
             showToast('Could not open default browser settings.');
@@ -207,6 +349,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     };
 
     const handleFinishSetup = (startTour = false) => {
+        try {
+            sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
+            sessionStorage.setItem('qbrowse_default_browser_prompted', 'true');
+        } catch (_) {}
         localStorage.setItem('qbrowse_setup_complete', 'true');
         useUIStore.getState().setSetupComplete(true);
         if (startTour) {
@@ -223,7 +369,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         { label: 'Import', desc: 'Bookmarks & Passwords' },
         { label: 'Privacy', desc: 'Shields & Tor' },
         { label: 'Default', desc: 'System Integration' },
-        { label: 'Ready', desc: 'Profile Setup' }
+        { label: 'Sync & Account', desc: 'Cloud or Local' }
     ];
 
     return (
@@ -678,95 +824,478 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         </div>
                     )}
 
-                    {/* SLIDE 4: PROFILE & FINISH */}
+                    {/* SLIDE 4: PROFILE & CLOUD SYNC */}
                     {currentStep === 4 && (
-                        <div className="animate-pop-in space-y-8">
+                        <div className="animate-pop-in space-y-6">
                             <div>
-                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 5 of 5</span>
-                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Ready to Explore</h2>
+                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 5 of 5 • Profile & Cloud Sync</span>
+                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Choose How You Browse</h2>
                                 <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                    Choose how you want to use QBrowse. No account or email is required.
+                                    QBrowse gives you total sovereignty. Browse completely offline with local hardware encryption, or create a free Cloud Sync account to sync your vault, spaces, and bookmarks across multiple devices.
                                 </p>
                             </div>
 
-                            {/* PRIMARY PATH: NO ACCOUNT LOCAL PROFILE */}
-                            <div className="p-6 rounded-3xl bg-accent/10 border-2 border-accent/40 shadow-xl shadow-accent/10 space-y-4">
-                                <div className="flex items-start gap-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-accent text-black flex items-center justify-center shrink-0 shadow-md">
-                                        <User size={24} />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <h4 className="text-base font-bold text-white">Continue with Local Profile</h4>
-                                            <span className="text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-2 py-0.5 rounded-full">
-                                                Recommended
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-white/70 mt-1 leading-relaxed">
-                                            All passwords, history, and workspace tabs remain 100% on your machine, encrypted under local machine keys. Zero telemetry.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                                    <button
-                                        onClick={() => handleFinishSetup(true)}
-                                        className="flex-1 py-3 px-5 bg-accent text-black font-bold text-xs rounded-xl hover:scale-102 active:scale-98 transition shadow-lg shadow-accent/25 flex items-center justify-center gap-2 cursor-pointer"
-                                    >
-                                        <span>Take the Living Tour</span>
-                                        <Sparkles size={14} />
-                                    </button>
-                                    <button
-                                        onClick={() => handleFinishSetup(false)}
-                                        className="py-3 px-5 bg-white/10 hover:bg-white/15 text-white font-semibold text-xs rounded-xl transition cursor-pointer"
-                                    >
-                                        Start Browsing Directly
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* OPTIONAL PATH: CLOUD SYNC */}
-                            <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+                            {/* TWO-CARD PROFILE MODE SELECTOR */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Option 1: Local Profile */}
                                 <div 
-                                    onClick={() => setShowSyncForm(!showSyncForm)}
-                                    className="flex items-center justify-between cursor-pointer"
+                                    onClick={() => {
+                                        setProfileMode('local');
+                                        setSyncLocalError(null);
+                                    }}
+                                    className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer text-left relative overflow-hidden group ${
+                                        profileMode === 'local'
+                                            ? 'bg-emerald-500/10 border-emerald-400/50 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/30'
+                                            : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.06] hover:border-white/20'
+                                    }`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/60">
-                                            <Lock size={15} />
+                                    <div className="flex items-start justify-between">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                                            profileMode === 'local' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 text-white/50 border border-white/10'
+                                        }`}>
+                                            <ShieldCheck size={22} />
                                         </div>
-                                        <div>
-                                            <h5 className="text-xs font-bold text-white/90">Connect Encrypted Cloud Sync (Optional)</h5>
-                                            <p className="text-[11px] text-white/40">Sync vault and spaces across multiple devices via Firebase</p>
-                                        </div>
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                            profileMode === 'local' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-white/40 border-white/5'
+                                        }`}>
+                                            Zero Telemetry
+                                        </span>
                                     </div>
-                                    <ChevronRight size={16} className={`text-white/40 transition-transform ${showSyncForm ? 'rotate-90' : ''}`} />
-                                </div>
-
-                                {showSyncForm && (
-                                    <div className="pt-3 border-t border-white/10 space-y-3 animate-pop-in">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <input 
-                                                type="email"
-                                                placeholder="Email address"
-                                                value={syncEmail}
-                                                onChange={e => setSyncEmail(e.target.value)}
-                                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
-                                            />
-                                            <input 
-                                                type="password"
-                                                placeholder="Master password"
-                                                value={syncPassword}
-                                                onChange={e => setSyncPassword(e.target.value)}
-                                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-accent"
-                                            />
-                                        </div>
-                                        <p className="text-[10px] text-white/40 leading-snug">
-                                            Passwords are client-side encrypted with AES-256 before leaving your computer.
+                                    <div className="mt-3">
+                                        <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
+                                            <span>Local Profile</span>
+                                            {profileMode === 'local' && <Check size={14} className="text-emerald-400 stroke-[3]" />}
+                                        </h4>
+                                        <p className="text-xs text-white/50 mt-1 leading-snug">
+                                            100% offline. All passwords, history, and workspace tabs remain encrypted on this machine with local hardware keys. No account needed.
                                         </p>
                                     </div>
-                                )}
+                                </div>
+
+                                {/* Option 2: Cloud Sync Account */}
+                                <div 
+                                    onClick={() => {
+                                        setProfileMode('sync');
+                                        setSyncLocalError(null);
+                                    }}
+                                    className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer text-left relative overflow-hidden group ${
+                                        profileMode === 'sync'
+                                            ? 'bg-accent/10 border-accent/50 shadow-lg shadow-accent/15 ring-1 ring-accent/30'
+                                            : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.06] hover:border-white/20'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                                            profileMode === 'sync' ? 'bg-accent/20 text-accent border border-accent/30' : 'bg-white/5 text-white/50 border border-white/10'
+                                        }`}>
+                                            <UploadCloud size={22} />
+                                        </div>
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                            profileMode === 'sync' ? 'bg-accent/20 text-accent border-accent/30' : 'bg-white/5 text-white/40 border-white/5'
+                                        }`}>
+                                            E2E Encrypted
+                                        </span>
+                                    </div>
+                                    <div className="mt-3">
+                                        <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
+                                            <span>QBrowse Cloud Sync</span>
+                                            {profileMode === 'sync' && <Check size={14} className="text-accent stroke-[3]" />}
+                                        </h4>
+                                        <p className="text-xs text-white/50 mt-1 leading-snug">
+                                            Sync your password vault, workspaces, pinned tabs, and bookmarks seamlessly across all your computers via Firebase.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
+
+                            {/* DYNAMIC CONTENT FOR LOCAL PROFILE */}
+                            {profileMode === 'local' && (
+                                <div className="p-6 rounded-3xl bg-white/[0.03] border border-white/10 space-y-5 animate-fade-in text-center sm:text-left">
+                                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+                                            <CheckCircle2 size={26} />
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <h4 className="text-base font-bold text-white">Local Profile is Ready to Launch</h4>
+                                            <p className="text-xs text-white/60 leading-relaxed">
+                                                All bookmarks, vault credentials, and workspaces will remain strictly on this computer with zero telemetry. You can easily enable Cloud Sync at any time in the future from Settings or the Profile menu.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleFinishSetup(true)}
+                                            className="flex-1 py-3 px-5 bg-accent hover:bg-accent/90 text-black font-extrabold text-xs rounded-xl hover:scale-[1.02] active:scale-[0.98] transition shadow-lg shadow-accent/25 flex items-center justify-center gap-2 cursor-pointer"
+                                        >
+                                            <Sparkles size={15} />
+                                            <span>Take the Living Tour</span>
+                                            <ArrowRight size={13} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleFinishSetup(false)}
+                                            className="py-3 px-5 bg-white/10 hover:bg-white/15 text-white font-semibold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+                                        >
+                                            <span>Start Browsing Directly</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* DYNAMIC CONTENT FOR CLOUD SYNC */}
+                            {profileMode === 'sync' && (
+                                syncUser ? (
+                                    /* User Already Signed In */
+                                    <div className="p-6 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/30 shadow-xl shadow-emerald-500/10 space-y-5 animate-fade-in text-left">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3.5">
+                                                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-lg">
+                                                    {syncUser.email ? syncUser.email.charAt(0).toUpperCase() : 'U'}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="font-bold text-sm text-white">{syncUser.email}</h4>
+                                                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                                                            <Check size={10} strokeWidth={3} /> Active Sync
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-emerald-300/70 mt-0.5">
+                                                        End-to-End Encrypted Cloud Storage Linked
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={syncLogout}
+                                                className="text-xs text-red-400/80 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-1.5 rounded-xl transition cursor-pointer"
+                                            >
+                                                Sign Out
+                                            </button>
+                                        </div>
+
+                                        <p className="text-xs text-white/60 leading-relaxed">
+                                            Your bookmarks, workspace tabs, and encrypted password vault are continuously synchronized across all authorized devices in real-time.
+                                        </p>
+
+                                        <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleFinishSetup(true)}
+                                                className="flex-1 py-3 px-5 bg-accent hover:bg-accent/90 text-black font-extrabold text-xs rounded-xl hover:scale-[1.02] active:scale-[0.98] transition shadow-lg shadow-accent/25 flex items-center justify-center gap-2 cursor-pointer"
+                                            >
+                                                <Sparkles size={15} />
+                                                <span>Take the Living Tour</span>
+                                                <ArrowRight size={13} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleFinishSetup(false)}
+                                                className="py-3 px-5 bg-white/10 hover:bg-white/15 text-white font-semibold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+                                            >
+                                                <span>Start Browsing Directly</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* Interactive Sign In / Register Widget */
+                                    <form onSubmit={handleSyncSubmit} className="p-6 rounded-3xl bg-white/[0.04] border border-white/10 space-y-5 animate-fade-in text-left">
+                                        {/* Mode Switcher: Sign In vs Register */}
+                                        <div className="space-y-1.5">
+                                            <div className="flex p-1 rounded-2xl bg-black/40 border border-white/10">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSyncAuthTab('login');
+                                                        setSyncLocalError(null);
+                                                    }}
+                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                                                        syncAuthTab === 'login'
+                                                            ? 'bg-accent text-black shadow-md'
+                                                            : 'text-white/60 hover:text-white'
+                                                    }`}
+                                                >
+                                                    <KeyRound size={13} />
+                                                    <span>Sign In</span>
+                                                    <span className="hidden sm:inline text-[10px] opacity-75 font-normal">(Existing Account)</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSyncAuthTab('register');
+                                                        setSyncLocalError(null);
+                                                    }}
+                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                                                        syncAuthTab === 'register'
+                                                            ? 'bg-accent text-black shadow-md'
+                                                            : 'text-white/60 hover:text-white'
+                                                    }`}
+                                                >
+                                                    <Sparkles size={13} />
+                                                    <span>Register</span>
+                                                    <span className="hidden sm:inline text-[10px] opacity-75 font-normal">(New Account)</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Explanatory subtitle */}
+                                            <p className="text-[11px] text-white/50 text-center pt-1">
+                                                {syncAuthTab === 'register' 
+                                                    ? '✨ Create a new QBrowse account to sync data across your devices.'
+                                                    : '🔐 Sign in to synchronize your existing bookmarks, spaces, and vault.'}
+                                            </p>
+                                        </div>
+
+                                        {/* Inline Validation / Firebase Error Banner */}
+                                        {(syncLocalError || cloudAuthError) && (
+                                            <div className="p-3 bg-red-500/10 border border-red-500/25 rounded-2xl text-xs text-red-300 flex items-center justify-between gap-2 animate-pop-in">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <AlertCircle size={15} className="shrink-0 text-red-400" />
+                                                    <span className="truncate">{syncLocalError || cloudAuthError}</span>
+                                                </div>
+                                                {cloudAuthError && cloudAuthError.includes('already exists') && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSyncAuthTab('login');
+                                                            setSyncLocalError(null);
+                                                        }}
+                                                        className="shrink-0 text-[11px] font-bold text-accent underline hover:opacity-80"
+                                                    >
+                                                        Switch to Sign In
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Form Fields */}
+                                        <div className="space-y-3.5">
+                                            {/* Email Address */}
+                                            <div>
+                                                <label className="text-xs font-semibold text-white/80 block mb-1">
+                                                    Email Address
+                                                </label>
+                                                <div className="relative flex items-center">
+                                                    <Mail size={15} className="absolute left-3.5 text-white/40 pointer-events-none" />
+                                                    <input 
+                                                        type="email"
+                                                        required
+                                                        value={syncEmail}
+                                                        onChange={e => {
+                                                            setSyncEmail(e.target.value);
+                                                            setSyncLocalError(null);
+                                                        }}
+                                                        placeholder="name@example.com"
+                                                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 pl-10 pr-3 text-xs text-white placeholder-white/30 outline-none focus:border-accent transition"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Password */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-xs font-semibold text-white/80 block">
+                                                        {syncAuthTab === 'register' ? 'Create Password (min. 6 characters)' : 'Account Password'}
+                                                    </label>
+                                                    {syncAuthTab === 'register' && syncPassword.length > 0 && syncPassword.length < 6 && (
+                                                        <span className="text-[10px] text-amber-400">At least 6 characters</span>
+                                                    )}
+                                                </div>
+                                                <div className="relative flex items-center">
+                                                    <Lock size={15} className="absolute left-3.5 text-white/40 pointer-events-none" />
+                                                    <input 
+                                                        type={syncShowPass ? 'text' : 'password'}
+                                                        required
+                                                        value={syncPassword}
+                                                        onChange={e => {
+                                                            setSyncPassword(e.target.value);
+                                                            setSyncLocalError(null);
+                                                        }}
+                                                        placeholder="••••••••••••"
+                                                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 pl-10 pr-10 text-xs text-white placeholder-white/30 outline-none focus:border-accent transition"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSyncShowPass(!syncShowPass)}
+                                                        className="absolute right-3 p-1 text-white/40 hover:text-white transition cursor-pointer"
+                                                    >
+                                                        {syncShowPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Confirm Password (Register Mode Only) */}
+                                            {syncAuthTab === 'register' && (
+                                                <div className="animate-pop-in">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-xs font-semibold text-white/80 block">
+                                                            Confirm Password
+                                                        </label>
+                                                        {syncConfirmPassword.length > 0 && (
+                                                            syncPassword === syncConfirmPassword ? (
+                                                                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                                                    <Check size={11} strokeWidth={3} /> Passwords match
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] text-red-400">Passwords do not match</span>
+                                                            )
+                                                        )}
+                                                    </div>
+                                                    <div className="relative flex items-center">
+                                                        <Lock size={15} className="absolute left-3.5 text-white/40 pointer-events-none" />
+                                                        <input 
+                                                            type={syncShowConfirmPass ? 'text' : 'password'}
+                                                            required
+                                                            value={syncConfirmPassword}
+                                                            onChange={e => {
+                                                                setSyncConfirmPassword(e.target.value);
+                                                                setSyncLocalError(null);
+                                                            }}
+                                                            placeholder="••••••••••••"
+                                                            className={`w-full bg-black/40 border rounded-xl py-2.5 pl-10 pr-10 text-xs text-white placeholder-white/30 outline-none transition ${
+                                                                syncConfirmPassword.length > 0 && syncPassword !== syncConfirmPassword
+                                                                    ? 'border-red-500/50 focus:border-red-400'
+                                                                    : 'border-white/10 focus:border-accent'
+                                                            }`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSyncShowConfirmPass(!syncShowConfirmPass)}
+                                                            className="absolute right-3 p-1 text-white/40 hover:text-white transition cursor-pointer"
+                                                        >
+                                                            {syncShowConfirmPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Master Key Security Option */}
+                                            <div className="pt-1">
+                                                <div 
+                                                    onClick={() => setSyncUseAccountPassAsMaster(!syncUseAccountPassAsMaster)}
+                                                    className="p-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition cursor-pointer flex items-center justify-between gap-3 select-none"
+                                                >
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                                                            <KeyRound size={13} />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-white leading-tight">
+                                                                Use account password as Master Encryption Key
+                                                            </p>
+                                                            <p className="text-[10px] text-white/40 leading-snug">
+                                                                {syncUseAccountPassAsMaster 
+                                                                    ? 'Derives AES-GCM 256-bit client keys directly from your login password.'
+                                                                    : 'Using a separate custom encryption passphrase.'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`w-9 h-5 rounded-full transition-colors relative flex items-center p-0.5 shrink-0 ${
+                                                        syncUseAccountPassAsMaster ? 'bg-accent' : 'bg-white/20'
+                                                    }`}>
+                                                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                                                            syncUseAccountPassAsMaster ? 'translate-x-4' : 'translate-x-0'
+                                                        }`} />
+                                                    </div>
+                                                </div>
+
+                                                {!syncUseAccountPassAsMaster && (
+                                                    <div className="mt-2.5 p-3 rounded-xl border border-accent/30 bg-black/50 space-y-1.5 animate-pop-in">
+                                                        <label className="text-[11px] font-semibold text-accent block">
+                                                            Custom Master Encryption Passphrase
+                                                        </label>
+                                                        <div className="relative flex items-center">
+                                                            <input 
+                                                                type={syncShowCustomMasterPass ? 'text' : 'password'}
+                                                                value={syncCustomMasterPass}
+                                                                onChange={e => setSyncCustomMasterPass(e.target.value)}
+                                                                placeholder="Enter unique vault encryption passphrase..."
+                                                                className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-3 pr-8 text-xs text-white font-mono placeholder-white/30 outline-none focus:border-accent"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSyncShowCustomMasterPass(!syncShowCustomMasterPass)}
+                                                                className="absolute right-2.5 p-1 text-white/40 hover:text-white"
+                                                            >
+                                                                {syncShowCustomMasterPass ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Primary Submit Button */}
+                                        <button
+                                            type="submit"
+                                            disabled={isCloudSyncing}
+                                            className="w-full py-3.5 bg-accent hover:bg-accent/90 text-black font-extrabold text-xs rounded-xl transition shadow-lg shadow-accent/25 hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                        >
+                                            {isCloudSyncing ? (
+                                                <>
+                                                    <RefreshCw size={15} className="animate-spin" />
+                                                    <span>{syncAuthTab === 'register' ? 'Creating Encrypted Account...' : 'Signing In & Syncing...'}</span>
+                                                </>
+                                            ) : syncAuthTab === 'register' ? (
+                                                <>
+                                                    <Sparkles size={15} />
+                                                    <span>Create Account & Enable Cloud Sync</span>
+                                                    <ArrowRight size={14} />
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <KeyRound size={15} />
+                                                    <span>Sign In & Enable Cloud Sync</span>
+                                                    <ArrowRight size={14} />
+                                                </>
+                                            )}
+                                        </button>
+
+                                        {/* Helper Switcher Links */}
+                                        <div className="text-center pt-1 space-y-1.5">
+                                            {syncAuthTab === 'register' ? (
+                                                <p className="text-xs text-white/50">
+                                                    Already registered with QBrowse?{' '}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSyncAuthTab('login');
+                                                            setSyncLocalError(null);
+                                                        }}
+                                                        className="text-accent hover:underline font-bold cursor-pointer"
+                                                    >
+                                                        Sign In here
+                                                    </button>
+                                                </p>
+                                            ) : (
+                                                <p className="text-xs text-white/50">
+                                                    New to QBrowse Cloud Sync?{' '}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSyncAuthTab('register');
+                                                            setSyncLocalError(null);
+                                                        }}
+                                                        className="text-accent hover:underline font-bold cursor-pointer"
+                                                    >
+                                                        Create a free account (Register)
+                                                    </button>
+                                                </p>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setProfileMode('local');
+                                                    setSyncLocalError(null);
+                                                }}
+                                                className="text-[11px] text-white/40 hover:text-white/80 transition cursor-pointer underline block mx-auto pt-0.5"
+                                            >
+                                                Skip cloud sync and continue with Local Profile (No account needed)
+                                            </button>
+                                        </div>
+                                    </form>
+                                )
+                            )}
                         </div>
                     )}
                 </div>
@@ -794,9 +1323,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     ) : (
                         <button
                             onClick={() => handleFinishSetup(false)}
-                            className="px-6 py-2.5 bg-accent text-black font-bold text-xs rounded-xl hover:scale-105 active:scale-95 transition shadow-lg shadow-accent/20 cursor-pointer"
+                            className="px-6 py-2.5 bg-accent text-black font-bold text-xs rounded-xl hover:scale-105 active:scale-95 transition shadow-lg shadow-accent/20 flex items-center gap-1.5 cursor-pointer"
                         >
-                            Complete Setup
+                            <span>{profileMode === 'sync' && !syncUser ? 'Skip Sync & Complete' : 'Complete Setup & Launch'}</span>
+                            <ArrowRight size={13} />
                         </button>
                     )}
                 </div>

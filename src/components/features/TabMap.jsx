@@ -106,6 +106,14 @@ export default function TabMap() {
                                 style={{ animation: `cinematic-enter 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards ${i * 0.08}s` }}
                                 onMouseEnter={() => { isOrbitHoveredRef.current = true; }}
                                 onMouseLeave={() => { isOrbitHoveredRef.current = false; }}
+                                onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                onAuxClick={(e) => {
+                                    if (e.button === 1) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleCloseTab(tab.id);
+                                    }
+                                }}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     const setList = activeSpace === 'personal' ? setPrivateTabs : (activeSpace === 'work' ? setWorkTabs : setGhostTabs);

@@ -223,7 +223,8 @@ function setupLocalStoreWatchers() {
             const current = useSyncStore.getState();
             if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
             if (state.settings !== prevState?.settings) {
-                current.triggerDebouncedSync(15000);
+                // Responsive 1.5s debounce for settings changes
+                current.triggerDebouncedSync(1500);
             }
         });
 
@@ -320,6 +321,17 @@ const useSyncStore = create((set, get) => ({
                 state.syncNow({ silent: true }).catch(() => {});
             }
         }, delayMs);
+    },
+
+    flushDebouncedSync: () => {
+        if (debounceSyncTimer) {
+            clearTimeout(debounceSyncTimer);
+            debounceSyncTimer = null;
+            const state = get();
+            if (state.autoSyncEnabled && state.user && state.masterPassword && !state.isSyncing && !isApplyingCloudUpdate) {
+                state.syncNow({ silent: true }).catch(() => {});
+            }
+        }
     },
 
     toggleAutoSync: () => {
@@ -550,6 +562,9 @@ const useSyncStore = create((set, get) => ({
                 }
                 await get().syncDataToCloud('settings', uiSettings);
                 totalItems += Object.keys(uiSettings).length;
+                try {
+                    localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+                } catch (_) {}
             }
 
             // 2. Sync Vault (Passwords, Passkeys, Cards, Addresses & Notes)
@@ -663,7 +678,7 @@ const useSyncStore = create((set, get) => ({
 
             // 2. Gather browser state (with safe bounds on history)
             const payload = {
-                version: "1.3.1",
+                version: "1.3.2",
                 createdAt: new Date().toISOString(),
                 label: customLabel.trim() || `Manual Backup (${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
                 settings: cleanSettings,
@@ -983,7 +998,7 @@ const useSyncStore = create((set, get) => ({
 
             const payload = {
                 app: "QBrowse",
-                version: "1.3.1",
+                version: "1.3.2",
                 exportedAt: new Date().toISOString(),
                 settings: cleanSettings,
                 vault: await (async () => {
@@ -1085,26 +1100,40 @@ const useSyncStore = create((set, get) => ({
                     set({ cloudBackups: merged });
                 }
 
-                // Sync Settings
+                // Sync Settings with Last-Write-Wins Timestamp Resolution
                 if (syncCategories?.settings !== false && data.settings?.encrypted) {
                     try {
-                        const decrypted = await decryptData(data.settings.encrypted, masterPassword);
-                        const currentSettings = useUIStore.getState().settings;
-                        Object.keys(decrypted).forEach(key => {
-                            if (key !== 'syncedCloudSettings' && currentSettings[key] !== decrypted[key]) {
-                                if (key === 'customWallpaper' && decrypted.customWallpaper && decrypted.customWallpaperSource === 'url') {
-                                    if (window.electronAPI && window.electronAPI.importWallpaperUrl) {
-                                        window.electronAPI.importWallpaperUrl(decrypted.customWallpaper).then(res => {
-                                            if (res && res.success) {
-                                                useUIStore.getState().setCustomWallpaper(res.url, 'url', decrypted.customWallpaper);
-                                            }
-                                        }).catch(() => {});
+                        const remoteIso = data.settings?.updatedAt;
+                        const remoteUpdatedAtMs = remoteIso ? new Date(remoteIso).getTime() : 0;
+                        const localSettingsUpdatedAt = parseInt(localStorage.getItem('qbrowse_settings_updated_at') || '0', 10);
+
+                        // If local settings were changed AFTER cloud snapshot, local changes win!
+                        if (localSettingsUpdatedAt > remoteUpdatedAtMs) {
+                            get().triggerDebouncedSync(1000);
+                        } else {
+                            const decrypted = await decryptData(data.settings.encrypted, masterPassword);
+                            const currentSettings = useUIStore.getState().settings;
+                            Object.keys(decrypted).forEach(key => {
+                                if (key !== 'syncedCloudSettings' && decrypted[key] !== undefined && currentSettings[key] !== decrypted[key]) {
+                                    if (key === 'customWallpaper' && decrypted.customWallpaper && decrypted.customWallpaperSource === 'url') {
+                                        if (window.electronAPI && window.electronAPI.importWallpaperUrl) {
+                                            window.electronAPI.importWallpaperUrl(decrypted.customWallpaper).then(res => {
+                                                if (res && res.success) {
+                                                    useUIStore.getState().setCustomWallpaper(res.url, 'url', decrypted.customWallpaper);
+                                                }
+                                            }).catch(() => {});
+                                        }
+                                    } else {
+                                        useUIStore.getState().setSettingValue(key, decrypted[key]);
                                     }
-                                } else {
-                                    useUIStore.getState().setSettingValue(key, decrypted[key]);
                                 }
+                            });
+                            if (remoteUpdatedAtMs > 0) {
+                                try {
+                                    localStorage.setItem('qbrowse_settings_updated_at', String(remoteUpdatedAtMs));
+                                } catch (_) {}
                             }
-                        });
+                        }
                     } catch(e) {}
                 }
 

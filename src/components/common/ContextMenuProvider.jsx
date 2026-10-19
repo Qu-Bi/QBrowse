@@ -6,41 +6,33 @@ import {
     Download, Image as ImageIcon, Sparkles, Globe, FileText, MessageSquare,
     HelpCircle, RotateCcw, RotateCw, Scissors, Clipboard, CheckSquare,
     Code, Terminal, Briefcase, User, EyeOff, Shield, FolderOpen, Plus,
-    CornerDownLeft, ChevronRight, ArrowRightLeft, Bookmark, Check
+    CornerDownLeft, ChevronRight, ArrowRightLeft, Bookmark, Check, ShieldCheck
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useAIStore from '../../store/useAIStore';
 import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { isTabForPin } from '../layout/PinnedStackPopup';
+import { buildSearchEngineUrl, getSearchEngineById } from '../../utils/searchEngines';
+import { isLikelyDownloadUrl } from '../../utils/downloadHelpers';
 
 // Helper: Search URL generation based on active space and user settings
 const getSearchUrl = (query) => {
     const activeSpace = useTabStore.getState().activeSpace;
-    const q = encodeURIComponent(query.trim());
-    if (activeSpace === 'tor') {
-        return `https://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/?q=${q}`;
-    }
-    const engine = useUIStore.getState().settings?.searchEngine || 'google';
-    if (engine === 'duckduckgo') return `https://duckduckgo.com/?q=${q}`;
-    if (engine === 'bing') return `https://www.bing.com/search?q=${q}`;
-    if (engine === 'brave') return `https://search.brave.com/search?q=${q}`;
-    if (engine === 'ecosia') return `https://www.ecosia.org/search?q=${q}`;
-    return `https://www.google.com/search?q=${q}`;
+    const settings = useUIStore.getState().settings || {};
+    const customEngines = settings.customSearchEngines || [];
+    const searchEngine = settings.searchEngine || 'google';
+    return buildSearchEngineUrl(searchEngine, query, customEngines, activeSpace === 'tor');
 };
 
 const getEngineName = () => {
     const activeSpace = useTabStore.getState().activeSpace;
     if (activeSpace === 'tor') return 'DuckDuckGo Onion';
-    const engine = useUIStore.getState().settings?.searchEngine || 'google';
-    const names = {
-        google: 'Google',
-        duckduckgo: 'DuckDuckGo',
-        bing: 'Bing',
-        brave: 'Brave Search',
-        ecosia: 'Ecosia'
-    };
-    return names[engine] || 'Google';
+    const settings = useUIStore.getState().settings || {};
+    const customEngines = settings.customSearchEngines || [];
+    const searchEngine = settings.searchEngine || 'google';
+    const engine = getSearchEngineById(searchEngine, customEngines);
+    return engine ? engine.name : 'Google';
 };
 
 // Context for theme support in context menus
@@ -169,9 +161,7 @@ function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {
                 } ${isClosing ? 'animate-pop-out' : 'animate-pop-in'} ${className}`}
                 style={{
                     top: `${pos.y}px`,
-                    left: `${pos.x}px`,
-                    backdropFilter: 'blur(30px)',
-                    WebkitBackdropFilter: 'blur(30px)'
+                    left: `${pos.x}px`
                 }}
                 onClick={(e) => e.stopPropagation()}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -708,7 +698,12 @@ export default function ContextMenuProvider({ children }) {
                                     icon={ExternalLink}
                                     label="Open Link in New Tab"
                                     onClick={() => {
-                                        handleNewTab(linkURL);
+                                        const isLikelyDownload = isLikelyDownloadUrl(linkURL);
+                                        handleNewTab(linkURL, !isLikelyDownload, {
+                                            isOpenedByNewWindow: true,
+                                            openerTabId: tabId,
+                                            isDownloadTab: isLikelyDownload
+                                        });
                                         closeContextMenu();
                                     }}
                                 />
@@ -716,7 +711,11 @@ export default function ContextMenuProvider({ children }) {
                                     icon={Layers}
                                     label="Open in Background Tab"
                                     onClick={() => {
-                                        handleNewTab(linkURL, false);
+                                        handleNewTab(linkURL, false, {
+                                            isOpenedByNewWindow: true,
+                                            openerTabId: tabId,
+                                            isDownloadTab: isLikelyDownloadUrl(linkURL)
+                                        });
                                         closeContextMenu();
                                     }}
                                 />
@@ -1581,58 +1580,112 @@ export default function ContextMenuProvider({ children }) {
                         onClose={closeToolHubContextMenu}
                         className="w-56"
                     >
-                        {type === 'download' && (
-                            <>
-                                <MenuSectionHeader>
-                                    {item.filename || 'Download'}
-                                </MenuSectionHeader>
-                                {item.savePath && (
-                                    <>
+                        {type === 'download' && (() => {
+                            const fileName = item.fileName || item.filename || 'Download';
+                            const ext = (fileName.split('.').pop() || '').toLowerCase();
+                            const isImg = item.isScreenshot || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
+
+                            return (
+                                <>
+                                    <MenuSectionHeader>
+                                        {fileName}
+                                    </MenuSectionHeader>
+                                    {item.savePath && (
+                                        <>
+                                            <MenuItem
+                                                icon={ExternalLink}
+                                                label="Open File"
+                                                onClick={() => {
+                                                    if (window.electronAPI?.openFile) {
+                                                        window.electronAPI.openFile(item.savePath);
+                                                    }
+                                                    closeToolHubContextMenu();
+                                                }}
+                                            />
+                                            <MenuItem
+                                                icon={FolderOpen}
+                                                label="Show in Folder"
+                                                onClick={() => {
+                                                    if (window.electronAPI?.showItemInFolder) {
+                                                        window.electronAPI.showItemInFolder(item.savePath);
+                                                    }
+                                                    closeToolHubContextMenu();
+                                                }}
+                                            />
+                                            <MenuItem
+                                                icon={ShieldCheck}
+                                                label={item.checksum ? "Copy SHA-256 Checksum" : "Verify & Copy Checksum"}
+                                                onClick={async () => {
+                                                    let hash = item.checksum;
+                                                    if (!hash && window.electronAPI?.verifyDownloadFile && item.savePath) {
+                                                        const res = await window.electronAPI.verifyDownloadFile(item.savePath);
+                                                        if (res?.verified && res.checksum) {
+                                                            hash = res.checksum;
+                                                            useUIStore.getState().updateDownload(item.id, { verified: true, checksum: hash });
+                                                        }
+                                                    }
+                                                    if (hash) {
+                                                        navigator.clipboard.writeText(hash);
+                                                        showToast('SHA-256 checksum copied to clipboard');
+                                                    } else {
+                                                        showToast('Verification failed - file not found');
+                                                    }
+                                                    closeToolHubContextMenu();
+                                                }}
+                                            />
+                                        </>
+                                    )}
+                                    {item.savePath && isImg && (
                                         <MenuItem
-                                            icon={ExternalLink}
-                                            label="Open File"
-                                            onClick={() => {
-                                                if (window.electronAPI?.openFile) {
-                                                    window.electronAPI.openFile(item.savePath);
+                                            icon={Copy}
+                                            label="Copy Image to Clipboard"
+                                            onClick={async () => {
+                                                if (window.electronAPI?.copyImageToClipboard) {
+                                                    await window.electronAPI.copyImageToClipboard(item.savePath);
+                                                    showToast('Image copied to clipboard');
+                                                } else {
+                                                    showToast('Image copied');
                                                 }
                                                 closeToolHubContextMenu();
                                             }}
                                         />
+                                    )}
+                                    {item.url && !item.url.startsWith('file://') && (
                                         <MenuItem
-                                            icon={FolderOpen}
-                                            label="Show in Folder"
+                                            icon={Copy}
+                                            label="Copy Download Link"
                                             onClick={() => {
-                                                if (window.electronAPI?.showItemInFolder) {
-                                                    window.electronAPI.showItemInFolder(item.savePath);
-                                                }
+                                                navigator.clipboard.writeText(item.url);
+                                                showToast('Download link copied');
                                                 closeToolHubContextMenu();
                                             }}
                                         />
-                                    </>
-                                )}
-                                {item.url && (
+                                    )}
+                                    <MenuDivider />
+                                    {item.savePath && (
+                                        <MenuItem
+                                            icon={Trash2}
+                                            label="Delete File from Disk"
+                                            danger
+                                            onClick={async () => {
+                                                await useUIStore.getState().removeDownload?.(item.id, true);
+                                                showToast('File deleted from disk');
+                                                closeToolHubContextMenu();
+                                            }}
+                                        />
+                                    )}
                                     <MenuItem
-                                        icon={Copy}
-                                        label="Copy Download Link"
+                                        icon={X}
+                                        label="Remove from List Only"
                                         onClick={() => {
-                                            navigator.clipboard.writeText(item.url);
-                                            showToast('Download link copied');
+                                            useUIStore.getState().removeDownload?.(item.id, false);
+                                            showToast('Removed from history');
                                             closeToolHubContextMenu();
                                         }}
                                     />
-                                )}
-                                <MenuDivider />
-                                <MenuItem
-                                    icon={Trash2}
-                                    label="Remove from List"
-                                    danger
-                                    onClick={() => {
-                                        useUIStore.getState().removeDownload?.(item.id);
-                                        closeToolHubContextMenu();
-                                    }}
-                                />
-                            </>
-                        )}
+                                </>
+                            );
+                        })()}
 
                         {type === 'note' && (
                             <>
