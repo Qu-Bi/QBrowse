@@ -36,6 +36,40 @@ export const getCleanTabTitle = (tab) => {
   return 'Web Page';
 };
 
+export const getSpaceListName = (space) => {
+  if (space === 'work') return 'workTabs';
+  if (space === 'ghost') return 'ghostTabs';
+  if (space === 'tor') return 'torTabs';
+  return 'privateTabs';
+};
+
+export const getFallbackTabForSpace = (space) => {
+  const isGhost = space === 'ghost';
+  const isTor = space === 'tor';
+  const prefix = isGhost ? 'g' : (isTor ? 'tor' : (space === 'work' ? 'w' : 't'));
+  const title = isGhost ? 'New Incognito Tab' : (isTor ? 'New Tor Tab' : 'New Tab');
+  return {
+    id: `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    title,
+    url: '',
+    active: true,
+    folderId: null,
+    lastActiveAt: Date.now(),
+    suspended: false
+  };
+};
+
+export const uuidv4 = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 const useTabStore = create((set, get) => ({
   activeSpace: 'personal',
   getActiveTab: () => {
@@ -111,6 +145,46 @@ const useTabStore = create((set, get) => ({
   dragOverItem: null,
   setDragOverItem: (item) => set({ dragOverItem: item }),
 
+  tabNodeOffsets: {},
+  setTabNodeOffset: (tabId, offset) => {
+    if (!tabId) return;
+    set(state => {
+      if (!offset) {
+        if (!state.tabNodeOffsets || !state.tabNodeOffsets[tabId]) return {};
+        const next = { ...state.tabNodeOffsets };
+        delete next[tabId];
+        return { tabNodeOffsets: next };
+      }
+      return {
+        tabNodeOffsets: {
+          ...state.tabNodeOffsets,
+          [tabId]: { dx: Number(offset.dx) || 0, dy: Number(offset.dy) || 0 }
+        }
+      };
+    });
+  },
+  setBatchTabNodeOffsets: (updatesMap) => {
+    if (!updatesMap || typeof updatesMap !== 'object') return;
+    set(state => {
+      const next = { ...(state.tabNodeOffsets || {}) };
+      let changed = false;
+      for (const [tabId, offset] of Object.entries(updatesMap)) {
+        if (!tabId) continue;
+        if (!offset) {
+          if (tabId in next) {
+            delete next[tabId];
+            changed = true;
+          }
+        } else {
+          next[tabId] = { dx: Number(offset.dx) || 0, dy: Number(offset.dy) || 0 };
+          changed = true;
+        }
+      }
+      return changed ? { tabNodeOffsets: next } : {};
+    });
+  },
+  clearAllTabNodeOffsets: () => set({ tabNodeOffsets: {} }),
+
   folders: [],
   renamingFolderId: null,
   setRenamingFolderId: (id) => set({ renamingFolderId: id }),
@@ -168,9 +242,25 @@ const useTabStore = create((set, get) => ({
           { id: 'pin-3', title: 'Gemini', domain: 'gemini.google.com' }
       ];
   })(),
+  pinnedDomains: (() => {
+      try {
+          const profileId = (() => {
+              try { return localStorage.getItem('qbrowse_active_profile_id') || 'default'; } catch (_) { return 'default'; }
+          })();
+          const stored = localStorage.getItem(`qbrowse_pins_${profileId}`) || localStorage.getItem('qbrowse_pinned_tabs');
+          if (stored !== null) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed)) {
+                  return parsed.map(p => p.domain).filter(Boolean);
+              }
+          }
+      } catch(e) {}
+      return ['github.com', 'youtube.com', 'gemini.google.com'];
+  })(),
   setPinnedTabs: (tabs) => {
       const list = Array.isArray(tabs) ? tabs : [];
-      set({ pinnedTabs: list });
+      const domains = list.map(p => p.domain).filter(Boolean);
+      set({ pinnedTabs: list, pinnedDomains: domains });
       try {
           localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(list));
           const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
@@ -191,12 +281,13 @@ const useTabStore = create((set, get) => ({
       };
       set(state => {
           const updated = [...state.pinnedTabs, newPin];
+          const domains = updated.map(p => p.domain).filter(Boolean);
           try {
               localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
               const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
               localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
           } catch(e) {}
-          return { pinnedTabs: updated };
+          return { pinnedTabs: updated, pinnedDomains: domains };
       });
       useUIStore.getState().showToast(`Pinned "${newPin.title}" to sidebar`);
       if (typeof window !== 'undefined' && window.__syncStore) {
@@ -208,18 +299,22 @@ const useTabStore = create((set, get) => ({
       const pinId = pin?.id || pin;
       set(state => {
           const updated = state.pinnedTabs.filter(p => p.id !== pinId);
+          const domains = updated.map(p => p.domain).filter(Boolean);
           try {
               localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
               const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
               localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
           } catch(e) {}
-          return { pinnedTabs: updated };
+          return { pinnedTabs: updated, pinnedDomains: domains };
       });
       useUIStore.getState().showToast(`Unpinned "${pin?.title || 'app'}"`);
       if (typeof window !== 'undefined' && window.__syncStore) {
           window.__syncStore.getState().triggerDebouncedSync?.(3000);
       }
   },
+
+  getSpaceListName: (space) => getSpaceListName(space),
+  getFallbackTabForSpace: (space) => getFallbackTabForSpace(space),
 
   privateTabs: [
     { id: 't1', title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
@@ -348,30 +443,70 @@ const useTabStore = create((set, get) => ({
     setList(newList);
   },
 
-  addTab: (tabObj) => {
-    const space = get().activeSpace;
+  addTab: (arg1, arg2, arg3) => {
+    let space;
+    let tabObj;
+
+    if (typeof arg1 === 'string' && (['personal', 'work', 'ghost', 'tor'].includes(arg1) || typeof arg2 === 'string')) {
+      space = ['personal', 'work', 'ghost', 'tor'].includes(arg1) ? arg1 : get().activeSpace;
+      const url = typeof arg2 === 'string' ? arg2 : '';
+      const customProps = (typeof arg3 === 'object' && arg3 !== null) ? arg3 : {};
+      tabObj = {
+        url,
+        ...customProps
+      };
+    } else if (typeof arg1 === 'object' && arg1 !== null) {
+      tabObj = { ...arg1 };
+      space = tabObj.space || tabObj.spaceType || get().activeSpace;
+    } else {
+      tabObj = {};
+      space = get().activeSpace;
+    }
+
     const isGhost = space === 'ghost';
     const isTor = space === 'tor';
-    const defaultTitle = isGhost ? 'New Incognito Tab' : 'New Tab';
+    const defaultTitle = isGhost ? 'New Incognito Tab' : (isTor ? 'New Tor Tab' : 'New Tab');
     const safeTitle = (typeof tabObj.title === 'string' && tabObj.title.trim()) ? tabObj.title : defaultTitle;
     const safeUrl = (typeof tabObj.url === 'string') ? tabObj.url : '';
-    const setList = get().getActiveSetList();
     const shouldBeActive = tabObj.active !== undefined ? tabObj.active : true;
+
+    // Preserve or auto-populate openerTabId
+    let resolvedOpenerId = null;
+    if (tabObj.openerTabId !== undefined) {
+      resolvedOpenerId = tabObj.openerTabId;
+    } else if (safeUrl && !safeUrl.startsWith('qbrowse://newtab') && safeUrl !== 'about:blank') {
+      const activeTab = get().getActiveTab();
+      resolvedOpenerId = activeTab?.id || null;
+    }
+
     const newTab = {
       ...tabObj,
       title: safeTitle,
       url: safeUrl,
       active: shouldBeActive,
       lastActiveAt: Date.now(),
-      suspended: false
+      suspended: false,
+      openerTabId: resolvedOpenerId
     };
+
+    const getSetList = (sp) => {
+      if (sp === 'personal') return get().setPrivateTabs;
+      if (sp === 'work') return get().setWorkTabs;
+      if (sp === 'ghost') return get().setGhostTabs;
+      if (sp === 'tor') return get().setTorTabs;
+      return get().getActiveSetList();
+    };
+    const setList = getSetList(space);
+
     if (shouldBeActive) {
       setList(prev => [...(Array.isArray(prev) ? prev : []).map(t => ({ ...t, active: false })), newTab]);
-      const ui = useUIStore.getState();
-      ui.setCurrentUrl(safeUrl);
-      ui.setIsReaderAvailable(false);
-      if (ui.isReaderOpen || ui.isReaderClosing) {
+      if (space === get().activeSpace) {
+        const ui = useUIStore.getState();
+        ui.setCurrentUrl(safeUrl);
+        ui.setIsReaderAvailable(false);
+        if (ui.isReaderOpen || ui.isReaderClosing) {
           ui.closeReaderMode(true);
+        }
       }
     } else {
       setList(prev => [...(Array.isArray(prev) ? prev : []), newTab]);
@@ -386,6 +521,13 @@ const useTabStore = create((set, get) => ({
     const isGhost = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
     const cleanUrl = (typeof url === 'string') ? url.trim() : '';
+
+    // Direct app protocol redirect: launch external app without creating a blank/failing tab
+    if (cleanUrl && window.electronAPI?.isAppProtocol?.(cleanUrl)) {
+        window.electronAPI.openAppProtocol(cleanUrl);
+        return;
+    }
+
     const list = get().getActiveList();
     const now = Date.now();
     // Prevent duplicate tab opening if same URL was opened within the last 800ms
@@ -592,18 +734,97 @@ const useTabStore = create((set, get) => ({
     }
   },
 
+  closeTabsBatch: (tabIds) => {
+      const ids = (Array.isArray(tabIds) ? tabIds : [tabIds]).filter(Boolean);
+      if (ids.length === 0) return 0;
+      const idSet = new Set(ids);
+      const state = get();
+      const validSpaces = ['personal', 'work', 'ghost', 'tor'];
+      const updates = {};
+      const nextOffsets = { ...(state.tabNodeOffsets || {}) };
+      const newlyClosedForRestore = [];
+      let closedCount = 0;
+
+      const uiStore = useUIStore.getState();
+      if (uiStore.isSplitView && uiStore.splitRightTabId && idSet.has(uiStore.splitRightTabId)) {
+          uiStore.setSplitRightTabId(null);
+          uiStore.toggleSplitView();
+      }
+
+      validSpaces.forEach(space => {
+          const listName = space === 'personal' ? 'privateTabs' : (space === 'work' ? 'workTabs' : (space === 'ghost' ? 'ghostTabs' : 'torTabs'));
+          const list = state[listName] || [];
+          const removed = [];
+          const remaining = [];
+
+          list.forEach(t => {
+              if (idSet.has(t.id)) {
+                  removed.push(t);
+              } else {
+                  remaining.push(t);
+              }
+          });
+
+          if (removed.length > 0) {
+              closedCount += removed.length;
+              removed.forEach(t => {
+                  delete nextOffsets[t.id];
+                  if (space !== 'ghost' && space !== 'tor' && t.url && t.url !== 'about:blank' && !t.url.includes('.onion')) {
+                      newlyClosedForRestore.push({ url: t.url, title: t.title, space });
+                  }
+              });
+
+              if (remaining.length === 0) {
+                  const fallback = get().getFallbackTabForSpace(space);
+                  updates[listName] = [fallback];
+                  if (space === state.activeSpace) {
+                      uiStore.setCurrentUrl('');
+                  }
+              } else {
+                  if (!remaining.some(t => t.active)) {
+                      const nextActiveIdx = Math.max(0, remaining.length - 1);
+                      remaining[nextActiveIdx] = {
+                          ...remaining[nextActiveIdx],
+                          active: true,
+                          suspended: false,
+                          lastActiveAt: Date.now()
+                      };
+                      if (space === state.activeSpace) {
+                          uiStore.setCurrentUrl(remaining[nextActiveIdx].url || '');
+                      }
+                  }
+                  updates[listName] = remaining;
+              }
+          }
+      });
+
+      if (closedCount > 0) {
+          updates.tabNodeOffsets = nextOffsets;
+          if (newlyClosedForRestore.length > 0) {
+              updates.recentlyClosedTabs = [
+                  ...(state.recentlyClosedTabs || []).slice(-19),
+                  ...newlyClosedForRestore
+              ].slice(-20);
+          }
+          set(updates);
+          get().saveSession();
+      }
+      return closedCount;
+  },
+
   closeTabById: (tabId) => {
-      const { privateTabs, workTabs, ghostTabs, torTabs, handleCloseTab, setActiveSpace, activeSpace } = get();
+      const { privateTabs, workTabs, ghostTabs, torTabs, handleCloseTab, activeSpace } = get();
       let targetSpace = activeSpace;
       if (privateTabs.some(t => t.id === tabId)) targetSpace = 'personal';
       else if (workTabs.some(t => t.id === tabId)) targetSpace = 'work';
       else if (ghostTabs.some(t => t.id === tabId)) targetSpace = 'ghost';
-      else if (torTabs.some(t => t.id === tabId)) targetSpace = 'tor';
+      else if ((torTabs || []).some(t => t.id === tabId)) targetSpace = 'tor';
 
-      if (activeSpace !== targetSpace) {
-          setActiveSpace(targetSpace);
+      if (activeSpace === targetSpace) {
+          handleCloseTab(tabId);
+      } else {
+          get().closeTabsBatch([tabId]);
       }
-      handleCloseTab(tabId);
   },
 
   recentlyClosedTabs: [],
@@ -942,6 +1163,511 @@ const useTabStore = create((set, get) => ({
     ui.showToast(`Moved "${tabToMove.title}" to ${spaceLabel} space`);
   },
 
+  saveSession: () => {
+    try {
+      const profileId = (typeof window !== 'undefined' && window.__profileStore?.getState()?.activeProfileId) || 
+        (() => { try { return localStorage.getItem('qbrowse_active_profile_id') || 'default'; } catch (_) { return 'default'; } })();
+      get().serializeCurrentProfileTabs(profileId);
+    } catch (_) {}
+    if (typeof window !== 'undefined' && window.__syncStore) {
+      window.__syncStore.getState().triggerDebouncedSync?.(3000);
+    }
+  },
+
+  moveTabsToZone: (tabIds, targetSpace, targetFolderId = null) => {
+    const ids = (Array.isArray(tabIds) ? tabIds : [tabIds]).filter(Boolean);
+    if (ids.length === 0) return;
+    const validSpaces = ['personal', 'work', 'ghost', 'tor'];
+    if (!validSpaces.includes(targetSpace)) return;
+
+    const state = get();
+    const idSet = new Set(ids);
+
+    // Verify at least one tab exists across spaces
+    let totalFound = 0;
+    validSpaces.forEach(sp => {
+      const listName = sp === 'personal' ? 'privateTabs' : (sp === 'work' ? 'workTabs' : (sp === 'ghost' ? 'ghostTabs' : 'torTabs'));
+      const list = state[listName] || [];
+      list.forEach(t => {
+        if (idSet.has(t.id)) totalFound++;
+      });
+    });
+
+    if (totalFound === 0) return;
+
+    const updates = {};
+    const movedFromOtherSpaces = [];
+
+    // Process source spaces that are NOT targetSpace
+    validSpaces.forEach(sp => {
+      if (sp === targetSpace) return;
+      const listName = sp === 'personal' ? 'privateTabs' : (sp === 'work' ? 'workTabs' : (sp === 'ghost' ? 'ghostTabs' : 'torTabs'));
+      const currentList = state[listName] || [];
+      const removedTabs = [];
+      const remainingTabs = [];
+
+      currentList.forEach(t => {
+        if (idSet.has(t.id)) {
+          removedTabs.push(t);
+        } else {
+          remainingTabs.push(t);
+        }
+      });
+
+      if (removedTabs.length > 0) {
+        movedFromOtherSpaces.push(...removedTabs);
+        if (remainingTabs.length === 0) {
+          const fallback = get().getFallbackTabForSpace(sp);
+          updates[listName] = [fallback];
+          if (sp === state.activeSpace) {
+            useUIStore.getState().setCurrentUrl('');
+          }
+        } else {
+          const wasActiveMoved = removedTabs.some(t => t.active);
+          if (wasActiveMoved && !remainingTabs.some(t => t.active)) {
+            const lastIdx = remainingTabs.length - 1;
+            remainingTabs[lastIdx] = {
+              ...remainingTabs[lastIdx],
+              active: true
+            };
+            if (sp === state.activeSpace) {
+              useUIStore.getState().setCurrentUrl(remainingTabs[lastIdx].url || '');
+            }
+          }
+          updates[listName] = remainingTabs;
+        }
+      }
+    });
+
+    // Process targetSpace
+    const targetListName = targetSpace === 'personal' ? 'privateTabs' : (targetSpace === 'work' ? 'workTabs' : (targetSpace === 'ghost' ? 'ghostTabs' : 'torTabs'));
+    const targetList = state[targetListName] || [];
+
+    // Tabs already in targetSpace: simply update folderId in place
+    let updatedTargetList = targetList.map(t => {
+      if (idSet.has(t.id)) {
+        return {
+          ...t,
+          folderId: targetFolderId
+        };
+      }
+      return t;
+    });
+
+    // Tabs moving in from different spaces: append with folderId and active: false (unless targetSpace had no active tab)
+    if (movedFromOtherSpaces.length > 0) {
+      let targetHasActive = updatedTargetList.some(t => t.active);
+      const tabsToAppend = movedFromOtherSpaces.map((tab, idx) => {
+        let makeActive = false;
+        if (!targetHasActive && idx === 0) {
+          makeActive = true;
+          targetHasActive = true;
+        }
+        return {
+          ...tab,
+          folderId: targetFolderId,
+          active: makeActive,
+          lastActiveAt: Date.now()
+        };
+      });
+      updatedTargetList = [...updatedTargetList, ...tabsToAppend];
+    }
+
+    updates[targetListName] = updatedTargetList;
+
+    // Clear tabNodeOffsets for moved tabIds so they snap cleanly into their new zone/folder
+    const currentOffsets = state.tabNodeOffsets || {};
+    let offsetsChanged = false;
+    const nextOffsets = { ...currentOffsets };
+    ids.forEach(id => {
+      if (id in nextOffsets) {
+        delete nextOffsets[id];
+        offsetsChanged = true;
+      }
+    });
+    if (offsetsChanged) {
+      updates.tabNodeOffsets = nextOffsets;
+    }
+
+    set(updates);
+    get().saveSession();
+  },
+
+  mergeTabsIntoNewFolder: (sourceTabIds, targetTabId, targetSpace = null, customName = null) => {
+    const sourceArr = Array.isArray(sourceTabIds) ? sourceTabIds : [sourceTabIds];
+    const combinedIds = [...new Set([targetTabId, ...sourceArr].filter(Boolean))];
+    if (combinedIds.length === 0) return null;
+
+    const state = get();
+    const validSpaces = ['personal', 'work', 'ghost', 'tor'];
+    let destSpace = targetSpace;
+    if (!destSpace || !validSpaces.includes(destSpace)) {
+      if (state.privateTabs.some(t => t.id === targetTabId)) destSpace = 'personal';
+      else if (state.workTabs.some(t => t.id === targetTabId)) destSpace = 'work';
+      else if (state.ghostTabs.some(t => t.id === targetTabId)) destSpace = 'ghost';
+      else if ((state.torTabs || []).some(t => t.id === targetTabId)) destSpace = 'tor';
+      else {
+        for (const sp of validSpaces) {
+          const listName = sp === 'personal' ? 'privateTabs' : (sp === 'work' ? 'workTabs' : (sp === 'ghost' ? 'ghostTabs' : 'torTabs'));
+          if ((state[listName] || []).some(t => combinedIds.includes(t.id))) {
+            destSpace = sp;
+            break;
+          }
+        }
+      }
+    }
+    if (!destSpace || !validSpaces.includes(destSpace)) {
+      destSpace = state.activeSpace || 'personal';
+    }
+
+    // Determine smart folder name
+    let folderName = (typeof customName === 'string' && customName.trim()) ? customName.trim() : null;
+
+    if (!folderName) {
+      const allTabs = [
+        ...state.privateTabs,
+        ...state.workTabs,
+        ...state.ghostTabs,
+        ...(state.torTabs || [])
+      ];
+      const targetTab = allTabs.find(t => t.id === targetTabId);
+      const candidateTabs = targetTab 
+        ? [targetTab, ...allTabs.filter(t => t.id !== targetTabId && combinedIds.includes(t.id))]
+        : allTabs.filter(t => combinedIds.includes(t.id));
+
+      const brandMap = {
+        'github': 'GitHub',
+        'youtube': 'YouTube',
+        'google': 'Google',
+        'reddit': 'Reddit',
+        'twitter': 'Twitter',
+        'x': 'X',
+        'wikipedia': 'Wikipedia',
+        'linkedin': 'LinkedIn',
+        'facebook': 'Facebook',
+        'instagram': 'Instagram',
+        'netflix': 'Netflix',
+        'amazon': 'Amazon',
+        'gemini': 'Gemini',
+        'chatgpt': 'ChatGPT'
+      };
+
+      for (const tab of candidateTabs) {
+        if (!tab || !tab.url) continue;
+        try {
+          let u = tab.url.trim();
+          if (!u.includes('://')) u = 'https://' + u;
+          const parsed = new URL(u);
+          if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            const hostname = parsed.hostname.toLowerCase().replace(/^www\./i, '');
+            if (hostname) {
+              const base = hostname.split('.')[0];
+              if (brandMap[base]) {
+                folderName = brandMap[base];
+              } else {
+                folderName = base.charAt(0).toUpperCase() + base.slice(1);
+              }
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!folderName) {
+        folderName = 'Tab Group';
+      }
+    }
+
+    const newFolder = {
+      id: uuidv4(),
+      name: folderName,
+      spaceType: destSpace,
+      isOpen: true
+    };
+
+    set(s => ({ folders: [...(s.folders || []), newFolder] }));
+
+    // Move tabs into destSpace with folderId: newFolder.id
+    get().moveTabsToZone(combinedIds, destSpace, newFolder.id);
+    get().saveSession();
+
+    return newFolder;
+  },
+
+  autoClusterByDomain: (targetSpace = null) => {
+    const validSpaces = ['personal', 'work', 'ghost', 'tor'];
+    const spacesToScan = targetSpace && validSpaces.includes(targetSpace) ? [targetSpace] : validSpaces;
+
+    const state = get();
+    let clusteredTabCount = 0;
+    let createdFolderCount = 0;
+
+    let currentFolders = [...(state.folders || [])];
+    const nextOffsets = { ...(state.tabNodeOffsets || {}) };
+    const updates = {};
+
+    const getCleanHostname = (url) => {
+      if (!url || typeof url !== 'string') return null;
+      try {
+        let u = url.trim();
+        if (!u.includes('://')) u = 'https://' + u;
+        const parsed = new URL(u);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        return parsed.hostname.toLowerCase().replace(/^www\./i, '');
+      } catch (_) {
+        return null;
+      }
+    };
+
+    spacesToScan.forEach(space => {
+      const listName = space === 'personal' ? 'privateTabs' : (space === 'work' ? 'workTabs' : (space === 'ghost' ? 'ghostTabs' : 'torTabs'));
+      const list = state[listName] || [];
+
+      // Group ungrouped tabs with valid HTTP/HTTPS URLs by normalized hostname
+      const domainGroups = new Map();
+      list.forEach(tab => {
+        if (!tab || tab.folderId) return;
+        const hostname = getCleanHostname(tab.url);
+        if (!hostname) return;
+        if (!domainGroups.has(hostname)) {
+          domainGroups.set(hostname, []);
+        }
+        domainGroups.get(hostname).push(tab);
+      });
+
+      const updatedTabsMap = new Map();
+
+      domainGroups.forEach((tabs, hostname) => {
+        if (tabs.length < 2) return;
+
+        const baseName = hostname.split('.')[0];
+        let matchingFolder = currentFolders.find(f => {
+          if (f.spaceType !== space) return false;
+          const fn = (f.name || '').toLowerCase().trim();
+          return fn === hostname || fn === baseName;
+        });
+
+        if (!matchingFolder) {
+          matchingFolder = {
+            id: uuidv4(),
+            name: hostname,
+            spaceType: space,
+            isOpen: true
+          };
+          currentFolders.push(matchingFolder);
+          createdFolderCount++;
+        }
+
+        tabs.forEach(tab => {
+          updatedTabsMap.set(tab.id, matchingFolder.id);
+          delete nextOffsets[tab.id];
+          clusteredTabCount++;
+        });
+      });
+
+      if (updatedTabsMap.size > 0) {
+        updates[listName] = list.map(t => {
+          if (updatedTabsMap.has(t.id)) {
+            return {
+              ...t,
+              folderId: updatedTabsMap.get(t.id)
+            };
+          }
+          return t;
+        });
+      }
+    });
+
+    if (createdFolderCount > 0) {
+      updates.folders = currentFolders;
+    }
+    if (clusteredTabCount > 0) {
+      updates.tabNodeOffsets = nextOffsets;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      set(updates);
+    }
+
+    get().saveSession();
+    return { clusteredTabCount, createdFolderCount };
+  },
+
+  closeDuplicateTabs: (targetSpace = null) => {
+    const validSpaces = ['personal', 'work', 'ghost', 'tor'];
+    const spacesToScan = targetSpace && validSpaces.includes(targetSpace) ? [targetSpace] : validSpaces;
+
+    const state = get();
+    let closedCount = 0;
+    const updates = {};
+    const nextOffsets = { ...(state.tabNodeOffsets || {}) };
+
+    const normalizeUrlForDedup = (url) => {
+      if (!url || typeof url !== 'string') return '';
+      const trimmed = url.trim();
+      if (!trimmed || trimmed === 'about:blank') return '';
+      if (trimmed.startsWith('qbrowse://newtab') || trimmed.startsWith('qbrowse://home') || trimmed.startsWith('qbrowse://blank')) {
+        return 'qbrowse://newtab';
+      }
+      try {
+        let u = trimmed;
+        if (!u.includes('://')) u = 'https://' + u;
+        const parsed = new URL(u);
+        parsed.hash = '';
+        let res = parsed.toString();
+        if (res.endsWith('/') && !res.endsWith('://')) {
+          res = res.slice(0, -1);
+        }
+        return res.toLowerCase();
+      } catch (_) {
+        let res = trimmed.split('#')[0];
+        if (res.endsWith('/') && res.length > 1) {
+          res = res.slice(0, -1);
+        }
+        return res.toLowerCase();
+      }
+    };
+
+    spacesToScan.forEach(space => {
+      const listName = space === 'personal' ? 'privateTabs' : (space === 'work' ? 'workTabs' : (space === 'ghost' ? 'ghostTabs' : 'torTabs'));
+      const list = state[listName] || [];
+      if (list.length <= 1) return;
+
+      const urlGroups = new Map();
+      list.forEach(tab => {
+        const norm = normalizeUrlForDedup(tab.url);
+        if (!urlGroups.has(norm)) {
+          urlGroups.set(norm, []);
+        }
+        urlGroups.get(norm).push(tab);
+      });
+
+      const idsToRemove = new Set();
+
+      urlGroups.forEach((groupTabs) => {
+        if (groupTabs.length <= 1) return;
+
+        let keepTab = groupTabs.find(t => t.active);
+        if (!keepTab) {
+          keepTab = groupTabs.reduce((best, cur) => {
+            const bestTime = best.lastActiveAt || best.createdAt || 0;
+            const curTime = cur.lastActiveAt || cur.createdAt || 0;
+            return curTime > bestTime ? cur : best;
+          }, groupTabs[0]);
+        }
+
+        groupTabs.forEach(t => {
+          if (t.id !== keepTab.id) {
+            idsToRemove.add(t.id);
+          }
+        });
+      });
+
+      if (idsToRemove.size > 0) {
+        let filtered = list.filter(t => !idsToRemove.has(t.id));
+
+        if (filtered.length === 0) {
+          filtered = [get().getFallbackTabForSpace(space)];
+        } else if (!filtered.some(t => t.active)) {
+          filtered[0] = { ...filtered[0], active: true };
+        }
+
+        idsToRemove.forEach(id => {
+          delete nextOffsets[id];
+        });
+
+        closedCount += idsToRemove.size;
+        updates[listName] = filtered;
+      }
+    });
+
+    if (closedCount > 0) {
+      updates.tabNodeOffsets = nextOffsets;
+      set(updates);
+    }
+
+    get().saveSession();
+    return closedCount;
+  },
+
+  suspendAllInactiveTabs: (targetSpace = null, pinnedDomains = []) => {
+    const validSpaces = ['personal', 'work', 'ghost', 'tor'];
+    const spacesToScan = targetSpace && validSpaces.includes(targetSpace) ? [targetSpace] : validSpaces;
+
+    const state = get();
+    let suspendedCount = 0;
+    const updates = {};
+
+    const pinnedHostSet = new Set();
+    const addHost = (val) => {
+      if (!val) return;
+      if (typeof val === 'string') {
+        const clean = val.toLowerCase().trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0];
+        if (clean) pinnedHostSet.add(clean);
+      } else if (typeof val === 'object' && val !== null) {
+        if (val.domain) addHost(val.domain);
+        if (val.url) addHost(val.url);
+      }
+    };
+
+    if (Array.isArray(pinnedDomains)) pinnedDomains.forEach(addHost);
+    const storePinnedTabs = state.pinnedTabs || [];
+    if (Array.isArray(storePinnedTabs)) storePinnedTabs.forEach(addHost);
+    const storePinnedDomains = state.pinnedDomains || [];
+    if (Array.isArray(storePinnedDomains)) storePinnedDomains.forEach(addHost);
+
+    const isTabPinned = (tab) => {
+      if (!tab || !tab.url) return false;
+      let host = '';
+      try {
+        let u = tab.url.trim();
+        if (!u.includes('://')) u = 'https://' + u;
+        host = new URL(u).hostname.toLowerCase().replace(/^www\./i, '');
+      } catch (_) {
+        host = tab.url.toLowerCase().trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0];
+      }
+      if (!host) return false;
+      for (const p of pinnedHostSet) {
+        if (host === p || host.endsWith('.' + p)) return true;
+      }
+      return false;
+    };
+
+    spacesToScan.forEach(space => {
+      const listName = space === 'personal' ? 'privateTabs' : (space === 'work' ? 'workTabs' : (space === 'ghost' ? 'ghostTabs' : 'torTabs'));
+      const list = state[listName] || [];
+      let spaceChanged = false;
+
+      const nextList = list.map(tab => {
+        if (!tab) return tab;
+        if (tab.active) return tab;
+        if (tab.suspended) return tab;
+        if (tab.isAudible || tab.isAudioPlaying || tab.hasAudio) return tab;
+        if (tab.isDownloading) return tab;
+        if (tab.url && tab.url.startsWith('qbrowse://')) return tab;
+        if (isTabPinned(tab)) return tab;
+
+        spaceChanged = true;
+        suspendedCount++;
+        return {
+          ...tab,
+          suspended: true,
+          suspendedAt: Date.now()
+        };
+      });
+
+      if (spaceChanged) {
+        updates[listName] = nextList;
+      }
+    });
+
+    if (suspendedCount > 0) {
+      set(updates);
+    }
+
+    return suspendedCount;
+  },
+
   reloadTab: (tabId) => {
     const wv = window.qbrowseWebviews ? window.qbrowseWebviews[tabId] : null;
     if (wv && typeof wv.reload === 'function') {
@@ -1186,6 +1912,10 @@ const useTabStore = create((set, get) => ({
 
   handleNavigateTab: (tabId, url, title) => {
     let targetUrl = url || '';
+    if (targetUrl && window.electronAPI?.isAppProtocol?.(targetUrl)) {
+      window.electronAPI.openAppProtocol(targetUrl);
+      return;
+    }
     if (targetUrl && !targetUrl.includes('://') && !targetUrl.startsWith('about:')) {
       targetUrl = `https://${targetUrl}`;
     }
@@ -1338,6 +2068,7 @@ const useTabStore = create((set, get) => ({
         ghostTabs: defaultGhost,
         torTabs: defaultTor,
         pinnedTabs: pins,
+        pinnedDomains: pins.map(p => p.domain).filter(Boolean),
         folders: folders,
         activeSpace: 'personal'
       });

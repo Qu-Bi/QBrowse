@@ -984,6 +984,17 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 }
                 return;
             }
+            if (e.errorCode === -302 || (e.validatedURL && window.electronAPI?.isAppProtocol?.(e.validatedURL))) {
+                // net::ERR_UNKNOWN_URL_SCHEME (-302): Handled via desktop application protocol handoff
+                console.log(`[WebView ${tab.id}] Suppressed ERR_UNKNOWN_URL_SCHEME for app protocol:`, e.validatedURL);
+                if (e.validatedURL && window.electronAPI?.openAppProtocol) {
+                    window.electronAPI.openAppProtocol(e.validatedURL);
+                }
+                if (tab.isOpenedByNewWindow) {
+                    useTabStore.getState().closeTab(tab.id, space);
+                }
+                return;
+            }
             console.error(`[WebView ${tab.id}] did-fail-load or crashed. Code:`, e.errorCode, 'Desc:', e.errorDescription, 'URL:', e.validatedURL);
             handleFailLoad(e);
             updateNavState();
@@ -999,6 +1010,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             console.log(`[WebView ${tab.id}] new-window intercepted:`, e.url, e.disposition);
             try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
             if (e.url && e.url !== 'about:blank') {
+                if (window.electronAPI?.isAppProtocol?.(e.url)) {
+                    window.electronAPI.openAppProtocol(e.url);
+                    return;
+                }
                 const isLikelyDownload = isLikelyDownloadUrl(e.url);
                 // Direct download files stay in the background so the user's active page is not interrupted
                 const makeActive = !isLikelyDownload && (e.disposition !== 'background-tab');
@@ -1007,6 +1022,13 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     openerTabId: tab.id,
                     isDownloadTab: isLikelyDownload
                 });
+            }
+        };
+
+        const handleWillNavigate = (e) => {
+            if (e.url && window.electronAPI?.isAppProtocol?.(e.url)) {
+                try { if (e.preventDefault) e.preventDefault(); } catch(_) {}
+                window.electronAPI.openAppProtocol(e.url);
             }
         };
 
@@ -1080,6 +1102,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('ipc-message', handleIpcMessage);
         wv.addEventListener('new-window', handleNewWindow);
         wv.addEventListener('did-create-window', handleNewWindow);
+        wv.addEventListener('will-navigate', handleWillNavigate);
 
         return () => {
             wv.removeEventListener('did-attach', registerWcId);
@@ -1102,6 +1125,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('found-in-page', handleFoundInPage);
             wv.removeEventListener('new-window', handleNewWindow);
             wv.removeEventListener('did-create-window', handleNewWindow);
+            wv.removeEventListener('will-navigate', handleWillNavigate);
         };
     }, [isActive, isSpaceActive, setSpaceTabs, tab.id]);
 

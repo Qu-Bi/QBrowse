@@ -3571,3 +3571,34 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 })();
 
+// Link-to-App Redirect & Custom Protocol Click Interceptor
+(function setupAppProtocolInterceptors() {
+    const INTERNAL_SCHEMES = new Set([
+        'http:', 'https:', 'qbrowse:', 'about:', 'chrome:', 'data:', 'blob:', 'javascript:', 'file:', 'ws:', 'wss:'
+    ]);
+    const DANGEROUS_SCHEMES = new Set([
+        'file:', 'javascript:', 'data:', 'vbscript:', 'powershell:', 'cmd:', 'ms-msdt:', 'search-ms:', 'shell:', 'disk:', 'con:', 'prn:', 'aux:', 'nul:'
+    ]);
+
+    function isAppProtocol(urlStr) {
+        if (!urlStr || typeof urlStr !== 'string' || /[\r\n\0]/.test(urlStr)) return false;
+        const match = urlStr.trim().match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+        if (!match) return false;
+        const proto = match[1].toLowerCase() + ':';
+        return !INTERNAL_SCHEMES.has(proto) && !DANGEROUS_SCHEMES.has(proto);
+    }
+
+    // Capture clicks on <a href="custom-protocol:..."> before navigation triggers ERR_UNKNOWN_URL_SCHEME
+    document.addEventListener('click', (e) => {
+        try {
+            const anchor = e.target && e.target.closest ? e.target.closest('a') : null;
+            if (anchor && anchor.href && isAppProtocol(anchor.href)) {
+                e.preventDefault();
+                e.stopPropagation();
+                ipcRenderer.invoke('open-app-protocol', { protocolUrl: anchor.href });
+            }
+        } catch (_) {}
+    }, true);
+})();
+
+

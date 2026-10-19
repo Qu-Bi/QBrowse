@@ -228,6 +228,10 @@ export default function App() {
                     const disposition = typeof data === 'object' ? data?.disposition : undefined;
                     console.log("[App] Intercepted new window request from Electron:", { targetUrl, disposition });
                     if (targetUrl && targetUrl !== 'about:blank') {
+                        if (window.electronAPI?.isAppProtocol?.(targetUrl)) {
+                            window.electronAPI.openAppProtocol(targetUrl);
+                            return;
+                        }
                         const isLikelyDownload = isLikelyDownloadUrl(targetUrl);
                         const makeActive = !isLikelyDownload && (disposition !== 'background-tab');
                         useTabStore.getState().handleNewTab(targetUrl, makeActive, {
@@ -235,6 +239,12 @@ export default function App() {
                             isDownloadTab: isLikelyDownload
                         });
                     }
+                });
+            }
+
+            if (window.electronAPI.onAppProtocolLaunched) {
+                window.electronAPI.onAppProtocolLaunched((data) => {
+                    useUIStore.getState().showToast(`Opening ${data.name || 'External App'}...`);
                 });
             }
 

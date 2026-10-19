@@ -252,6 +252,7 @@ const SettingsModal = () => {
 
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
     const [updateData, setUpdateData] = useState(null);
+    const currentAppVersion = updateData?.currentVersion || '1.3.3';
     const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
     const [isCheckingDefault, setIsCheckingDefault] = useState(false);
     const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
@@ -259,21 +260,36 @@ const SettingsModal = () => {
     });
 
     useEffect(() => {
+        if (window.electronAPI?.getUpdaterState) {
+            window.electronAPI.getUpdaterState().then((state) => {
+                if (state) {
+                    setUpdateData(prev => ({ ...(prev || {}), ...state }));
+                    setIsCheckingUpdates(state.status === 'checking');
+                }
+            }).catch(() => {});
+        }
         if (!window.electronAPI?.onUpdaterEvent) return;
         const unsub = window.electronAPI.onUpdaterEvent((data) => {
-            setUpdateData(data);
+            setUpdateData(prev => ({
+                ...(prev || {}),
+                ...data,
+                version: data.version || data.latestVersion || prev?.version || prev?.latestVersion
+            }));
             if (data.status === 'checking') {
                 setIsCheckingUpdates(true);
             } else {
                 setIsCheckingUpdates(false);
             }
-            if (data.status === 'not-available') {
-                showToast(`QBrowse is up to date! (${data.version || 'v1.3.2'})`);
+            if (data.status === 'not-available' && !data.silent) {
+                const ver = data.currentVersion || data.version || '1.3.3';
+                showToast(`QBrowse is up to date! (v${String(ver).replace(/^v/i, '')})`);
             } else if (data.status === 'available') {
-                showToast(`New update found: v${data.version}! Downloading update...`);
+                const nextVer = String(data.latestVersion || data.version || '').replace(/^v/i, '');
+                showToast(`New GitHub Release found: v${nextVer}! Downloading update...`);
             } else if (data.status === 'downloaded') {
-                showToast(`Update v${data.version} ready! Click Restart to apply.`);
-            } else if (data.status === 'error') {
+                const nextVer = String(data.latestVersion || data.version || '').replace(/^v/i, '');
+                showToast(`Update v${nextVer} ready! Click Restart & Update to apply.`);
+            } else if (data.status === 'error' && !data.silent) {
                 showToast(`Update notice: ${data.message || 'Check failed'}`);
             }
         });
@@ -424,6 +440,14 @@ const SettingsModal = () => {
     useEffect(() => {
         // Only query default browser if on the about or privacy tab, and defer past entrance animation
         if (settingsTab === 'about' || settingsTab === 'privacy') {
+            if (settingsTab === 'about' && window.electronAPI?.getUpdaterState) {
+                window.electronAPI.getUpdaterState().then((state) => {
+                    if (state) {
+                        setUpdateData(prev => ({ ...(prev || {}), ...state }));
+                        setIsCheckingUpdates(state.status === 'checking');
+                    }
+                }).catch(() => {});
+            }
             const timer = setTimeout(() => {
                 refreshDefaultBrowserStatus();
             }, 350);
@@ -527,7 +551,7 @@ const SettingsModal = () => {
                         </h2>
                         <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
                             isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'
-                        }`}>v1.3.2</span>
+                        }`}>v{String(currentAppVersion).replace(/^v/i, '')}</span>
                     </div>
 
                     {/* Live Search Input */}
@@ -2738,81 +2762,149 @@ const SettingsModal = () => {
                                 </div>
                             </div>
 
-                            {/* App Banner */}
-                            <div className="p-4 px-5 bg-white/[0.025] border border-white/[0.05] rounded-xl flex items-center justify-between">
-                                <div className="flex items-center gap-3.5">
-                                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm overflow-hidden">
-                                        <img 
-                                            src={qbrowseLogo} 
-                                            alt="QBrowse" 
-                                            className="w-full h-full object-contain rounded-lg drop-shadow" 
-                                            onError={(e) => {
-                                                e.currentTarget.style.display = 'none';
-                                                if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
-                                            }}
-                                        />
-                                        <span className="hidden text-white font-bold text-sm">QB</span>
+                            {/* App Banner & GitHub Releases Auto-Updater */}
+                            <div className="p-4 px-5 bg-white/[0.025] border border-white/[0.05] rounded-xl flex flex-col gap-3">
+                                <div className="flex items-center justify-between gap-4 flex-wrap">
+                                    <div className="flex items-center gap-3.5">
+                                        <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm overflow-hidden">
+                                            <img 
+                                                src={qbrowseLogo} 
+                                                alt="QBrowse" 
+                                                className="w-full h-full object-contain rounded-lg drop-shadow" 
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
+                                                }}
+                                            />
+                                            <span className="hidden text-white font-bold text-sm">QB</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-semibold text-white flex items-center gap-2 flex-wrap">
+                                                QBrowse
+                                                <span className="text-[10px] font-mono font-medium bg-white/[0.06] text-zinc-300 px-2 py-0.5 rounded border border-white/[0.06]">
+                                                    v{String(currentAppVersion).replace(/^v/i, '')}
+                                                </span>
+                                                {updateData?.syncedWithGitHub && updateData?.latestVersion && (
+                                                    <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border flex items-center gap-1 ${
+                                                        updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
+                                                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                                            : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                                                    }`}>
+                                                        <CheckCircle2 size={10} />
+                                                        {updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
+                                                            ? `GitHub Release: v${String(updateData.latestVersion).replace(/^v/i, '')}`
+                                                            : `Synced with GitHub (v${String(updateData.latestVersion).replace(/^v/i, '')})`}
+                                                    </span>
+                                                )}
+                                            </h4>
+                                            <p className="text-[11px] text-zinc-400 mt-0.5">
+                                                {updateData?.status === 'error' && updateData?.message
+                                                    ? `Update check notice: ${updateData.message}`
+                                                    : updateData?.status === 'available'
+                                                    ? `New version v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} is available on GitHub Releases.`
+                                                    : updateData?.status === 'downloaded'
+                                                    ? `Update v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} verified and ready to install.`
+                                                    : 'Privacy-first multi-space desktop browser'}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h4 className="text-xs font-semibold text-white flex items-center gap-2">
-                                            QBrowse
-                                            <span className="text-[10px] font-mono font-medium bg-white/[0.06] text-zinc-300 px-2 py-0.5 rounded border border-white/[0.06]">
-                                                v1.3.2
-                                            </span>
-                                        </h4>
-                                        <p className="text-[11px] text-zinc-400 mt-0.5">Privacy-first multi-space desktop browser</p>
+
+                                    <div className="flex items-center gap-2">
+                                        {updateData?.status === 'downloaded' ? (
+                                            <button 
+                                                onClick={async () => {
+                                                    if (window.electronAPI?.quitAndInstallUpdate) {
+                                                        showToast('Launching update installer...');
+                                                        const res = await window.electronAPI.quitAndInstallUpdate();
+                                                        if (res?.status === 'error') {
+                                                            showToast('Install failed: ' + (res.message || 'Unknown error'));
+                                                        }
+                                                    } else {
+                                                        showToast('Restarting to install update...');
+                                                    }
+                                                }}
+                                                className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-emerald-400/30 shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95 animate-pulse"
+                                            >
+                                                <CheckCircle2 size={13} />
+                                                Restart & Update (v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')})
+                                            </button>
+                                        ) : updateData?.status === 'downloading' ? (
+                                            <div className="flex items-center gap-2.5 bg-white/10 px-3 py-1.5 rounded-lg border border-white/10">
+                                                <RefreshCw size={12} className="animate-spin text-accent" />
+                                                <span className="text-xs text-white/90 font-mono">
+                                                    Downloading v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')} ({updateData.percent || 0}%)
+                                                </span>
+                                            </div>
+                                        ) : updateData?.status === 'available' ? (
+                                            <button 
+                                                onClick={async () => {
+                                                    if (window.electronAPI?.downloadUpdate) {
+                                                        showToast(`Downloading QBrowse v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}...`);
+                                                        await window.electronAPI.downloadUpdate();
+                                                    }
+                                                }}
+                                                className="px-3.5 py-1.5 bg-accent text-black font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-accent/20 hover:scale-105 active:scale-95"
+                                            >
+                                                <Download size={13} />
+                                                Download v{String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}
+                                            </button>
+                                        ) : null}
+
+                                        {updateData?.status !== 'downloading' && (
+                                            <button 
+                                                onClick={async () => {
+                                                    setIsCheckingUpdates(true);
+                                                    if (window.electronAPI?.checkForUpdates) {
+                                                        try {
+                                                            const res = await window.electronAPI.checkForUpdates();
+                                                            if (res) {
+                                                                setUpdateData(prev => ({ ...(prev || {}), ...res }));
+                                                            }
+                                                            setIsCheckingUpdates(false);
+                                                        } catch (e) {
+                                                            setIsCheckingUpdates(false);
+                                                            showToast('Update check failed: ' + (e?.message || e));
+                                                        }
+                                                    } else {
+                                                        setTimeout(() => {
+                                                            setIsCheckingUpdates(false);
+                                                            showToast(`QBrowse is up to date! (v${String(currentAppVersion).replace(/^v/i, '')})`);
+                                                        }, 1200);
+                                                    }
+                                                }}
+                                                disabled={isCheckingUpdates}
+                                                className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95 disabled:opacity-50"
+                                            >
+                                                <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
+                                                {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
+                                            </button>
+                                        )}
+
+                                        <button
+                                            onClick={() => {
+                                                const targetUrl = updateData?.releaseUrl || 'https://github.com/Qu-Bi/QBrowse/releases';
+                                                if (window.electronAPI?.openExternal) {
+                                                    window.electronAPI.openExternal(targetUrl);
+                                                } else {
+                                                    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                                                }
+                                            }}
+                                            className="p-1.5 px-2.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 border border-white/[0.06]"
+                                            title="View QBrowse Releases on GitHub"
+                                        >
+                                            <ExternalLink size={12} />
+                                            GitHub
+                                        </button>
                                     </div>
                                 </div>
 
-                                {updateData?.status === 'downloaded' ? (
-                                    <button 
-                                        onClick={() => {
-                                            if (window.electronAPI?.quitAndInstallUpdate) {
-                                                window.electronAPI.quitAndInstallUpdate();
-                                            } else {
-                                                showToast('Restarting to install update...');
-                                            }
-                                        }}
-                                        className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-emerald-400/30 shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95 animate-pulse"
-                                    >
-                                        <CheckCircle2 size={13} />
-                                        Restart & Update (v{updateData.version})
-                                    </button>
-                                ) : updateData?.status === 'downloading' ? (
-                                    <div className="flex items-center gap-2.5 bg-white/10 px-3 py-1.5 rounded-lg border border-white/10">
-                                        <RefreshCw size={12} className="animate-spin text-accent" />
-                                        <span className="text-xs text-white/90 font-mono">
-                                            Downloading v{updateData.version} ({updateData.percent || 0}%)
-                                        </span>
+                                {updateData?.status === 'downloading' && (
+                                    <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                                        <div 
+                                            className="bg-accent h-full transition-all duration-200 rounded-full"
+                                            style={{ width: `${Math.max(2, Math.min(100, updateData.percent || 0))}%` }}
+                                        />
                                     </div>
-                                ) : (
-                                    <button 
-                                        onClick={async () => {
-                                            setIsCheckingUpdates(true);
-                                            if (window.electronAPI?.checkForUpdates) {
-                                                try {
-                                                    const res = await window.electronAPI.checkForUpdates();
-                                                    if (res?.status === 'dev') {
-                                                        setIsCheckingUpdates(false);
-                                                        showToast('Development environment. Auto-updates active in packaged builds.');
-                                                    }
-                                                } catch (e) {
-                                                    setIsCheckingUpdates(false);
-                                                    showToast('Update check failed: ' + (e?.message || e));
-                                                }
-                                            } else {
-                                                setTimeout(() => {
-                                                    setIsCheckingUpdates(false);
-                                                    showToast('QBrowse is up to date! (v1.3.2)');
-                                                }, 1200);
-                                            }
-                                        }}
-                                        disabled={isCheckingUpdates}
-                                        className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95 disabled:opacity-50"
-                                    >
-                                        <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
-                                        {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
-                                    </button>
                                 )}
                             </div>
 
@@ -2822,15 +2914,21 @@ const SettingsModal = () => {
                                 <div className="grid grid-cols-2 gap-3 text-xs">
                                     <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
                                         <span className="text-white/40">Chromium Engine</span>
-                                        <span className="font-mono font-semibold text-white">130.0.6723.117</span>
+                                        <span className="font-mono font-semibold text-white">
+                                            {updateData?.runtimeVersions?.chrome || '130.0.6723.117'}
+                                        </span>
                                     </div>
                                     <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
                                         <span className="text-white/40">Electron Platform</span>
-                                        <span className="font-mono font-semibold text-white">32.2.6</span>
+                                        <span className="font-mono font-semibold text-white">
+                                            {updateData?.runtimeVersions?.electron || '43.1.1'}
+                                        </span>
                                     </div>
                                     <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
                                         <span className="text-white/40">Node.js Runtime</span>
-                                        <span className="font-mono font-semibold text-white">20.18.0</span>
+                                        <span className="font-mono font-semibold text-white">
+                                            {updateData?.runtimeVersions?.node || '20.18.0'}
+                                        </span>
                                     </div>
                                     <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
                                         <span className="text-white/40">Architecture</span>

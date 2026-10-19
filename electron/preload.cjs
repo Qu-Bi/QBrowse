@@ -17,7 +17,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
     writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
-    openAppProtocol: (protocolUrl, fallbackUrl) => ipcRenderer.invoke('open-app-protocol', { protocolUrl, fallbackUrl }),
+    openAppProtocol: (protocolUrl, fallbackUrl) => {
+        if (typeof protocolUrl === 'object' && protocolUrl !== null) {
+            return ipcRenderer.invoke('open-app-protocol', protocolUrl);
+        }
+        return ipcRenderer.invoke('open-app-protocol', { protocolUrl, fallbackUrl });
+    },
+    isAppProtocol: (url) => {
+        if (!url || typeof url !== 'string' || /[\r\n\0]/.test(url)) return false;
+        const match = url.trim().match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+        if (!match) return false;
+        const proto = match[1].toLowerCase() + ':';
+        const internal = ['http:', 'https:', 'qbrowse:', 'about:', 'chrome:', 'data:', 'blob:', 'javascript:', 'file:', 'ws:', 'wss:'];
+        const dangerous = ['file:', 'javascript:', 'data:', 'vbscript:', 'powershell:', 'cmd:', 'ms-msdt:', 'search-ms:', 'shell:', 'disk:', 'con:', 'prn:', 'aux:', 'nul:'];
+        return !internal.includes(proto) && !dangerous.includes(proto);
+    },
+    onAppProtocolLaunched: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('app-protocol-launched', handler);
+        return () => ipcRenderer.removeListener('app-protocol-launched', handler);
+    },
     openWithDialog: (url) => ipcRenderer.invoke('open-with-dialog', url),
 
     // Vault
@@ -260,6 +279,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pickAndParseHtmlBookmarks: () => ipcRenderer.invoke('import-pick-html-bookmarks'),
 
     // Auto-Updater
+    getUpdaterState: () => ipcRenderer.invoke('updater-get-state'),
     checkForUpdates: () => ipcRenderer.invoke('updater-check'),
     downloadUpdate: () => ipcRenderer.invoke('updater-download'),
     quitAndInstallUpdate: () => ipcRenderer.invoke('updater-quit-and-install'),

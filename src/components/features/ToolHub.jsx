@@ -33,6 +33,8 @@ export default function ToolHub() {
     const rightPanelTab = useUIStore(state => state.rightPanelTab);
     const setRightPanelTab = useUIStore(state => state.setRightPanelTab);
     const openModal = useUIStore(state => state.openModal);
+    const activeModal = useUIStore(state => state.activeModal);
+    const isModalClosing = useUIStore(state => state.isModalClosing);
     const setSettingsTab = useUIStore(state => state.setSettingsTab);
     const currentUrl = useUIStore(state => state.currentUrl);
     const downloads = useUIStore(state => state.downloads) || [];
@@ -417,6 +419,7 @@ export default function ToolHub() {
     };
 
     const activePresetName = MODEL_PRESETS.find(m => m.id === activeModelId)?.name || 'Gemma 4 E2B Instruct (Q4_K_M)';
+    const isHandleHidden = Boolean(activeModal || isModalClosing || isRightPanelOpen);
 
     return (
         <>
@@ -435,10 +438,22 @@ export default function ToolHub() {
             
             <div
                 id="tour-toolhub-trigger"
-                className="fixed right-0 top-1/2 -translate-y-1/2 w-4 h-40 z-[40000] cursor-pointer group flex items-center justify-end pr-1"
-                onClick={() => setIsRightPanelOpen(true)}
+                className={`fixed right-0 top-1/2 -translate-y-1/2 w-4 h-40 z-[40000] cursor-pointer group flex items-center justify-end pr-1 transition-all duration-300 ease-out ${
+                    isHandleHidden 
+                        ? 'opacity-0 pointer-events-none translate-x-4 select-none' 
+                        : 'opacity-100 pointer-events-auto translate-x-0'
+                }`}
+                onClick={() => {
+                    if (!isHandleHidden) {
+                        setIsRightPanelOpen(true);
+                    }
+                }}
             >
-                <div className={`w-1 h-12 rounded-full transition-all duration-300 ease-out group-hover:h-24 ${isRightPanelOpen ? 'bg-transparent' : 'bg-white/10 group-hover:bg-accent/60 group-hover:shadow-[0_0_15px_var(--accent-30)]'}`}></div>
+                <div className={`w-1 h-12 rounded-full transition-all duration-300 ease-out group-hover:h-24 ${
+                    isHandleHidden 
+                        ? 'bg-transparent' 
+                        : 'bg-white/10 group-hover:bg-accent/60 group-hover:shadow-[0_0_15px_var(--accent-30)]'
+                }`}></div>
             </div>
 
             <div 

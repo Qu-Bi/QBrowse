@@ -1098,7 +1098,7 @@ const useUIStore = create((set, get) => ({
   activeModal: null,
   isModalClosing: false,
   closingModal: null,
-  openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null }),
+  openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null, isRightPanelOpen: false }),
   closeModal: () => {
     set(state => ({ isModalClosing: true, closingModal: state.activeModal }));
     setTimeout(() => set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 }), 200);
@@ -1108,7 +1108,7 @@ const useUIStore = create((set, get) => ({
   setSettingsTab: (tab) => set({ settingsTab: tab }),
   openSettings: (tab = 'appearance') => {
     const targetTab = (tab === 'performance' || tab === 'perf') ? 'engine' : tab;
-    set({ activeModal: 'settings', settingsTab: targetTab, isModalClosing: false, closingModal: null });
+    set({ activeModal: 'settings', settingsTab: targetTab, isModalClosing: false, closingModal: null, isRightPanelOpen: false });
   },
 
   // Read Aloud Floating Player

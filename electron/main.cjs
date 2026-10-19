@@ -687,17 +687,91 @@ ipcMain.handle('open-path', async (event, dirUrlOrPath) => {
     }
 });
 
+const INTERNAL_BROWSER_SCHEMES = new Set([
+    'http:', 'https:', 'qbrowse:', 'about:', 'chrome:', 'data:', 'blob:', 'javascript:', 'file:', 'ws:', 'wss:'
+]);
+
+const DANGEROUS_EXTERNAL_SCHEMES = new Set([
+    'file:', 'javascript:', 'data:', 'vbscript:', 'powershell:', 'cmd:', 'ms-msdt:', 'search-ms:', 'shell:', 'disk:', 'con:', 'prn:', 'aux:', 'nul:'
+]);
+
 const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+
+const APP_PROTOCOL_NAMES = {
+    'zoommtg:': 'Zoom Meetings',
+    'zoomus:': 'Zoom Meetings',
+    'slack:': 'Slack',
+    'discord:': 'Discord',
+    'discord-canary:': 'Discord Canary',
+    'discord-ptb:': 'Discord PTB',
+    'spotify:': 'Spotify',
+    'tg:': 'Telegram',
+    'telegram:': 'Telegram',
+    'whatsapp:': 'WhatsApp',
+    'signal:': 'Signal',
+    'steam:': 'Steam',
+    'epicgames:': 'Epic Games Launcher',
+    'battlenet:': 'Battle.net',
+    'vscode:': 'Visual Studio Code',
+    'vscode-insiders:': 'VS Code Insiders',
+    'cursor:': 'Cursor',
+    'vscodium:': 'VSCodium',
+    'figma:': 'Figma',
+    'notion:': 'Notion',
+    'linear:': 'Linear',
+    'obsidian:': 'Obsidian',
+    'msteams:': 'Microsoft Teams',
+    'teams:': 'Microsoft Teams',
+    'skype:': 'Skype',
+    'webex:': 'Cisco Webex',
+    'magnet:': 'BitTorrent Client',
+    'mailto:': 'Default Email Client',
+    'tel:': 'Default Phone App',
+    'facetime:': 'FaceTime',
+    'ms-windows-store:': 'Microsoft Store',
+    'itms-apps:': 'App Store'
+};
+
+function getAppProtocol(urlStr) {
+    if (!urlStr || typeof urlStr !== 'string' || /[\r\n\0]/.test(urlStr)) return null;
+    const match = urlStr.trim().match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+    if (!match) return null;
+    return match[1].toLowerCase() + ':';
+}
+
+function isAppProtocolUrl(urlStr) {
+    const proto = getAppProtocol(urlStr);
+    if (!proto) return false;
+    if (INTERNAL_BROWSER_SCHEMES.has(proto)) return false;
+    if (DANGEROUS_EXTERNAL_SCHEMES.has(proto)) return false;
+    return true;
+}
+
+function getAppProtocolDisplayName(urlStr) {
+    const proto = getAppProtocol(urlStr);
+    if (!proto) return 'External Application';
+    return APP_PROTOCOL_NAMES[proto] || `${proto.replace(':', '').toUpperCase()} App`;
+}
+
+function notifyAppProtocolLaunched(urlStr) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        const name = getAppProtocolDisplayName(urlStr);
+        mainWindow.webContents.send('app-protocol-launched', {
+            url: urlStr,
+            protocol: getAppProtocol(urlStr),
+            name
+        });
+    }
+}
 
 function isSafeExternalUrl(urlStr) {
     if (!urlStr || typeof urlStr !== 'string') return false;
     if (/[\r\n\0]/.test(urlStr)) return false;
-    try {
-        const parsed = new URL(urlStr);
-        return SAFE_EXTERNAL_PROTOCOLS.has(parsed.protocol.toLowerCase());
-    } catch {
-        return false;
-    }
+    const proto = getAppProtocol(urlStr);
+    if (!proto) return false;
+    if (DANGEROUS_EXTERNAL_SCHEMES.has(proto)) return false;
+    if (SAFE_EXTERNAL_PROTOCOLS.has(proto)) return true;
+    return isAppProtocolUrl(urlStr);
 }
 
 ipcMain.handle('open-external', async (event, url) => {
@@ -707,6 +781,9 @@ ipcMain.handle('open-external', async (event, url) => {
             return false;
         }
         await shell.openExternal(url);
+        if (isAppProtocolUrl(url)) {
+            notifyAppProtocolLaunched(url);
+        }
         return true;
     } catch (e) {
         console.warn('[Main] Failed to open external URL:', e.message);
@@ -714,20 +791,17 @@ ipcMain.handle('open-external', async (event, url) => {
     }
 });
 
-ipcMain.handle('open-app-protocol', async (event, { protocolUrl, fallbackUrl } = {}) => {
-    const dangerousSchemes = ['file:', 'javascript:', 'data:', 'vbscript:', 'powershell:', 'cmd:', 'ms-msdt:', 'search-ms:'];
-    const isDangerous = (u) => {
-        if (!u || typeof u !== 'string' || /[\r\n\0]/.test(u)) return true;
-        const lower = u.toLowerCase().trim();
-        return dangerousSchemes.some(s => lower.startsWith(s));
-    };
+ipcMain.handle('open-app-protocol', async (event, args = {}) => {
+    const protocolUrl = typeof args === 'string' ? args : args?.protocolUrl;
+    const fallbackUrl = typeof args === 'object' ? args?.fallbackUrl : undefined;
 
-    if (protocolUrl && !isDangerous(protocolUrl)) {
+    if (protocolUrl && isAppProtocolUrl(protocolUrl)) {
         try {
             await shell.openExternal(protocolUrl);
+            notifyAppProtocolLaunched(protocolUrl);
             return true;
         } catch (e) {
-            console.warn('[Main] App protocol launch failed, falling back to external browser:', e.message);
+            console.warn('[Main] App protocol launch failed:', e.message);
         }
     }
     if (fallbackUrl && isSafeExternalUrl(fallbackUrl)) {
@@ -1396,6 +1470,14 @@ function createWindow(options = {}) {
         contents.setWindowOpenHandler(({ url, frameName, disposition, features }) => {
             console.log('[Electron Main] setWindowOpenHandler intercepted:', { url, disposition, features, frameName });
 
+            // Detect external app protocol links (e.g. slack://, zoommtg://, discord://, spotify://)
+            if (isAppProtocolUrl(url)) {
+                console.log('[Electron Main] setWindowOpenHandler launching app protocol:', url);
+                shell.openExternal(url).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
+                notifyAppProtocolLaunched(url);
+                return { action: 'deny' };
+            }
+
             // Detect OAuth / authentication popups or explicit dialog windows
             const isPopupWithDims = Boolean(features && (features.includes('width=') || features.includes('height=')));
             const isAuthUrl = Boolean(url && (
@@ -1650,6 +1732,33 @@ function createWindow(options = {}) {
             contents.on('will-navigate', (event, navUrl) => {
                 if (navUrl && navUrl.startsWith('qbrowse://') && !navUrl.startsWith('qbrowse://ai')) {
                     event.preventDefault();
+                    return;
+                }
+                if (isAppProtocolUrl(navUrl)) {
+                    event.preventDefault();
+                    console.log('[Electron Main] webview will-navigate launching app protocol:', navUrl);
+                    shell.openExternal(navUrl).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
+                    notifyAppProtocolLaunched(navUrl);
+                    return;
+                }
+            });
+            contents.on('will-redirect', (event, redirectUrl) => {
+                if (isAppProtocolUrl(redirectUrl)) {
+                    event.preventDefault();
+                    console.log('[Electron Main] webview will-redirect launching app protocol:', redirectUrl);
+                    shell.openExternal(redirectUrl).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
+                    notifyAppProtocolLaunched(redirectUrl);
+                    return;
+                }
+            });
+            contents.on('will-frame-navigate', (event) => {
+                const targetUrl = event.url;
+                if (isAppProtocolUrl(targetUrl)) {
+                    event.preventDefault();
+                    console.log('[Electron Main] webview will-frame-navigate launching app protocol:', targetUrl);
+                    shell.openExternal(targetUrl).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
+                    notifyAppProtocolLaunched(targetUrl);
+                    return;
                 }
             });
             try {
@@ -2526,14 +2635,16 @@ app.whenReady().then(async () => {
           }
       } catch (_) {}
 
-      // Silent background check for auto-updates when packaged
-      if (app.isPackaged && autoUpdater) {
-          setTimeout(() => {
-              autoUpdater.checkForUpdates().catch((err) => {
-                  console.log('[AutoUpdater] Silent background check skipped/failed:', err?.message || err);
-              });
-          }, 8000);
-      }
+      // Silent background sync with GitHub Releases on startup and every 4 hours
+      setTimeout(() => {
+          performGitHubUpdateCheck({ silent: true, autoDownload: app.isPackaged }).catch((err) => {
+              console.log('[AutoUpdater] Silent startup check skipped/failed:', err?.message || err);
+          });
+      }, 6000);
+
+      setInterval(() => {
+          performGitHubUpdateCheck({ silent: true, autoDownload: app.isPackaged }).catch(() => {});
+      }, 4 * 60 * 60 * 1000);
   }, 100);
 });
 
@@ -2848,98 +2959,877 @@ ipcMain.handle('get-hardware-specs', () => {
     };
 });
 
-// Auto-Updater Events & IPC Handlers
-function broadcastUpdaterEvent(eventName, payload = {}) {
+// Auto-Updater & GitHub Releases Synchronization Engine
+const https = require('https');
+
+const GITHUB_OWNER = 'Qu-Bi';
+const GITHUB_REPO = 'QBrowse';
+const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
+const GITHUB_LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const GITHUB_RELEASES_WEB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
+
+const updaterState = {
+    status: 'idle', // 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+    currentVersion: app.getVersion(),
+    latestVersion: null,
+    version: app.getVersion(),
+    releaseName: null,
+    releaseDate: null,
+    releaseNotes: null,
+    releaseUrl: GITHUB_RELEASES_WEB_URL,
+    assetName: null,
+    assetUrl: null,
+    assetSize: 0,
+    expectedSha512: null,
+    percent: 0,
+    bytesPerSecond: 0,
+    transferred: 0,
+    total: 0,
+    downloadedFilePath: null,
+    downloadMethod: null, // 'github-direct' | 'electron-updater'
+    lastCheckedAt: null,
+    syncedWithGitHub: false,
+    message: null,
+    silent: false,
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    runtimeVersions: {
+        app: app.getVersion(),
+        electron: process.versions.electron || '',
+        chrome: process.versions.chrome || '',
+        node: process.versions.node || '',
+        v8: process.versions.v8 || ''
+    }
+};
+
+let activeCheckPromise = null;
+let activeDownloadPromise = null;
+let isInstallingUpdate = false;
+
+function normalizeSemver(ver) {
+    if (!ver || typeof ver !== 'string') return '0.0.0';
+    return ver.trim().replace(/^[vV]+/, '');
+}
+
+function compareSemver(verA, verB) {
+    const cleanA = normalizeSemver(verA);
+    const cleanB = normalizeSemver(verB);
+    const [mainA, preA] = cleanA.split('-');
+    const [mainB, preB] = cleanB.split('-');
+    const partsA = mainA.split('.').map(n => parseInt(n, 10) || 0);
+    const partsB = mainB.split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(partsA.length, partsB.length, 3);
+    for (let i = 0; i < len; i++) {
+        const a = partsA[i] || 0;
+        const b = partsB[i] || 0;
+        if (a > b) return 1;
+        if (a < b) return -1;
+    }
+    if (!preA && preB) return 1;
+    if (preA && !preB) return -1;
+    if (preA && preB && preA !== preB) return preA > preB ? 1 : -1;
+    return 0;
+}
+
+function updateAndBroadcastState(eventName, patch = {}) {
+    Object.assign(updaterState, patch, {
+        currentVersion: app.getVersion(),
+        runtimeVersions: {
+            app: app.getVersion(),
+            electron: process.versions.electron || '',
+            chrome: process.versions.chrome || '',
+            node: process.versions.node || '',
+            v8: process.versions.v8 || ''
+        }
+    });
+    const payload = { event: eventName, ...updaterState };
     for (const win of browserWindows) {
         if (win && !win.isDestroyed()) {
-            win.webContents.send('updater-event', { event: eventName, ...payload });
+            try {
+                win.webContents.send('updater-event', payload);
+            } catch (_) {}
         }
     }
+    return payload;
+}
+
+function httpGetBuffer(targetUrl, { timeoutMs = 15000, maxRedirects = 5, headers = {} } = {}) {
+    return new Promise((resolve, reject) => {
+        const requestUrl = (urlStr, redirectsLeft) => {
+            let parsed;
+            try {
+                parsed = new URL(urlStr);
+            } catch (err) {
+                return reject(new Error(`Invalid URL: ${urlStr}`));
+            }
+            const client = parsed.protocol === 'http:' ? http : https;
+            const req = client.get(urlStr, {
+                headers: {
+                    'User-Agent': `QBrowse-Updater/${app.getVersion()} (${process.platform}; ${process.arch})`,
+                    'Accept': 'application/vnd.github+json, application/octet-stream, text/plain, */*',
+                    ...headers
+                },
+                timeout: timeoutMs
+            }, (res) => {
+                if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+                    res.resume();
+                    if (redirectsLeft <= 0) {
+                        return reject(new Error('Too many redirects while contacting GitHub Releases'));
+                    }
+                    const nextUrl = new URL(res.headers.location, urlStr).toString();
+                    return requestUrl(nextUrl, redirectsLeft - 1);
+                }
+                if (res.statusCode < 200 || res.statusCode >= 300) {
+                    const chunks = [];
+                    res.on('data', c => chunks.push(c));
+                    res.on('end', () => {
+                        const bodyText = Buffer.concat(chunks).toString('utf8').slice(0, 300);
+                        const err = new Error(`HTTP ${res.statusCode} from ${parsed.hostname}${bodyText ? `: ${bodyText}` : ''}`);
+                        err.statusCode = res.statusCode;
+                        reject(err);
+                    });
+                    return;
+                }
+                const chunks = [];
+                res.on('data', chunk => chunks.push(chunk));
+                res.on('end', () => resolve({
+                    buffer: Buffer.concat(chunks),
+                    finalUrl: urlStr,
+                    headers: res.headers
+                }));
+                res.on('error', reject);
+            });
+            req.on('timeout', () => {
+                req.destroy(new Error(`Request timed out (${timeoutMs}ms)`));
+            });
+            req.on('error', reject);
+        };
+        requestUrl(targetUrl, maxRedirects);
+    });
+}
+
+function parseReleaseYaml(yamlText) {
+    if (!yamlText || typeof yamlText !== 'string') return null;
+    const result = {
+        version: null,
+        path: null,
+        sha512: null,
+        releaseDate: null,
+        files: []
+    };
+    const lines = yamlText.split(/\r?\n/);
+    let currentFile = null;
+
+    for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) continue;
+
+        if (line.startsWith('- url:')) {
+            if (currentFile) result.files.push(currentFile);
+            currentFile = {
+                url: line.replace(/^- url:\s*/, '').replace(/^['"]|['"]$/g, '').trim(),
+                sha512: null,
+                size: 0
+            };
+            continue;
+        }
+        if (currentFile && (rawLine.startsWith('  ') || rawLine.startsWith('\t'))) {
+            const shaMatch = line.match(/^sha512:\s*(.+)$/);
+            if (shaMatch) {
+                currentFile.sha512 = shaMatch[1].replace(/^['"]|['"]$/g, '').trim();
+                continue;
+            }
+            const sizeMatch = line.match(/^size:\s*(\d+)/);
+            if (sizeMatch) {
+                currentFile.size = parseInt(sizeMatch[1], 10) || 0;
+                continue;
+            }
+        } else if (currentFile) {
+            result.files.push(currentFile);
+            currentFile = null;
+        }
+
+        const verMatch = line.match(/^version:\s*(.+)$/);
+        if (verMatch) {
+            result.version = normalizeSemver(verMatch[1].replace(/^['"]|['"]$/g, ''));
+            continue;
+        }
+        const pathMatch = line.match(/^path:\s*(.+)$/);
+        if (pathMatch) {
+            result.path = pathMatch[1].replace(/^['"]|['"]$/g, '').trim();
+            continue;
+        }
+        const rootShaMatch = line.match(/^sha512:\s*(.+)$/);
+        if (rootShaMatch) {
+            result.sha512 = rootShaMatch[1].replace(/^['"]|['"]$/g, '').trim();
+            continue;
+        }
+        const dateMatch = line.match(/^releaseDate:\s*(.+)$/);
+        if (dateMatch) {
+            result.releaseDate = dateMatch[1].replace(/^['"]|['"]$/g, '').trim();
+        }
+    }
+    if (currentFile) result.files.push(currentFile);
+    return result.version ? result : null;
+}
+
+function detectLinuxPackagePreference() {
+    if (process.env.APPIMAGE) return 'AppImage';
+    try {
+        if (fsSync.existsSync('/etc/arch-release') || fsSync.existsSync('/usr/bin/pacman')) {
+            return 'pacman';
+        }
+        if (fsSync.existsSync('/etc/debian_version') || fsSync.existsSync('/usr/bin/dpkg')) {
+            return 'deb';
+        }
+    } catch (_) {}
+    return 'AppImage';
+}
+
+function selectBestPlatformAsset(assets = [], version = '', ymlData = null) {
+    const validAssets = Array.isArray(assets) ? assets.filter(a => a && a.name && a.browser_download_url) : [];
+
+    if (process.platform === 'win32') {
+        const exeAssets = validAssets.filter(a => {
+            const n = a.name.toLowerCase();
+            return n.endsWith('.exe') && !n.endsWith('.blockmap') && !n.includes('uninstall');
+        });
+        const preferred = exeAssets.find(a => /setup/i.test(a.name)) || exeAssets[0] || null;
+        let expectedSha512 = ymlData?.sha512 || null;
+        if (ymlData?.files?.length && preferred) {
+            const matchedFile = ymlData.files.find(f =>
+                f.url === preferred.name ||
+                f.url.replace(/[-.\s]+/g, '').toLowerCase() === preferred.name.replace(/[-.\s]+/g, '').toLowerCase()
+            );
+            if (matchedFile?.sha512) expectedSha512 = matchedFile.sha512;
+        }
+        if (preferred) {
+            return {
+                name: preferred.name,
+                url: preferred.browser_download_url,
+                size: preferred.size || 0,
+                sha512: expectedSha512
+            };
+        }
+        return null;
+    }
+
+    if (process.platform === 'linux') {
+        const pref = detectLinuxPackagePreference();
+        const findByExt = (ext) => validAssets.find(a => a.name.toLowerCase().endsWith(ext.toLowerCase()) && !a.name.toLowerCase().endsWith('.blockmap'));
+        let chosen = null;
+        if (pref === 'AppImage') {
+            chosen = findByExt('.AppImage') || findByExt('.deb') || findByExt('.pacman') || findByExt('.tar.gz');
+        } else if (pref === 'deb') {
+            chosen = findByExt('.deb') || findByExt('.AppImage') || findByExt('.tar.gz');
+        } else if (pref === 'pacman') {
+            chosen = findByExt('.pacman') || findByExt('.AppImage') || findByExt('.tar.gz');
+        } else {
+            chosen = findByExt('.AppImage') || findByExt('.deb') || findByExt('.tar.gz');
+        }
+        if (chosen) {
+            let expectedSha512 = null;
+            if (ymlData?.files?.length) {
+                const matched = ymlData.files.find(f =>
+                    f.url === chosen.name ||
+                    f.url.replace(/[-.\s]+/g, '').toLowerCase() === chosen.name.replace(/[-.\s]+/g, '').toLowerCase()
+                );
+                if (matched?.sha512) expectedSha512 = matched.sha512;
+            }
+            if (!expectedSha512 && chosen.name.toLowerCase().endsWith('.appimage') && ymlData?.sha512) {
+                expectedSha512 = ymlData.sha512;
+            }
+            return {
+                name: chosen.name,
+                url: chosen.browser_download_url,
+                size: chosen.size || 0,
+                sha512: expectedSha512
+            };
+        }
+        return null;
+    }
+
+    // Fallback for macOS / other platforms
+    const dmgOrZip = validAssets.find(a => /\.(dmg|zip|pkg)$/i.test(a.name));
+    if (dmgOrZip) {
+        return {
+            name: dmgOrZip.name,
+            url: dmgOrZip.browser_download_url,
+            size: dmgOrZip.size || 0,
+            sha512: ymlData?.sha512 || null
+        };
+    }
+    return null;
+}
+
+async function fetchGitHubReleaseSyncData() {
+    const ymlFileName = process.platform === 'linux' ? 'latest-linux.yml' : 'latest.yml';
+    let releaseObj = null;
+
+    // 1. Primary: Query GitHub Releases REST API
+    try {
+        const { buffer } = await httpGetBuffer(`${GITHUB_RELEASES_API}?per_page=10`, { timeoutMs: 12000 });
+        const releases = JSON.parse(buffer.toString('utf8'));
+        if (Array.isArray(releases) && releases.length > 0) {
+            const published = releases.filter(r => r && !r.draft && !r.prerelease && r.tag_name);
+            published.sort((a, b) => compareSemver(b.tag_name, a.tag_name));
+            releaseObj = published[0] || releases.find(r => r && !r.draft && r.tag_name) || null;
+        }
+    } catch (apiErr) {
+        console.warn('[AutoUpdater] GitHub /releases API query warning:', apiErr.message);
+        try {
+            const { buffer } = await httpGetBuffer(GITHUB_LATEST_RELEASE_API, { timeoutMs: 10000 });
+            const latest = JSON.parse(buffer.toString('utf8'));
+            if (latest && latest.tag_name) releaseObj = latest;
+        } catch (latestErr) {
+            console.warn('[AutoUpdater] GitHub /releases/latest fallback warning:', latestErr.message);
+        }
+    }
+
+    // 2. If GitHub REST API succeeded, also fetch latest.yml / latest-linux.yml for SHA-512 verification
+    if (releaseObj && releaseObj.tag_name) {
+        const latestVersion = normalizeSemver(releaseObj.tag_name);
+        const assets = Array.isArray(releaseObj.assets) ? releaseObj.assets : [];
+        let ymlData = null;
+
+        const ymlAsset = assets.find(a => a && a.name === ymlFileName);
+        if (ymlAsset && ymlAsset.browser_download_url) {
+            try {
+                const { buffer } = await httpGetBuffer(ymlAsset.browser_download_url, { timeoutMs: 10000 });
+                ymlData = parseReleaseYaml(buffer.toString('utf8'));
+            } catch (e) {
+                console.warn(`[AutoUpdater] Could not fetch ${ymlFileName}:`, e.message);
+            }
+        }
+
+        const bestAsset = selectBestPlatformAsset(assets, latestVersion, ymlData);
+
+        return {
+            latestVersion,
+            tagName: releaseObj.tag_name,
+            releaseName: releaseObj.name || `QBrowse v${latestVersion}`,
+            releaseDate: releaseObj.published_at || releaseObj.created_at || ymlData?.releaseDate || null,
+            releaseNotes: releaseObj.body || '',
+            releaseUrl: releaseObj.html_url || `${GITHUB_RELEASES_WEB_URL}/tag/${releaseObj.tag_name}`,
+            asset: bestAsset,
+            allAssets: assets.map(a => ({
+                name: a.name,
+                url: a.browser_download_url,
+                size: a.size || 0
+            }))
+        };
+    }
+
+    // 3. Rate-limit resilient fallback: Fetch latest.yml / latest-linux.yml directly via github.com release redirect
+    const directYmlUrl = `${GITHUB_RELEASES_WEB_URL}/latest/download/${ymlFileName}`;
+    const { buffer, finalUrl } = await httpGetBuffer(directYmlUrl, { timeoutMs: 12000 });
+    const ymlData = parseReleaseYaml(buffer.toString('utf8'));
+    if (!ymlData || !ymlData.version) {
+        throw new Error('Unable to parse release metadata from GitHub Releases');
+    }
+
+    const latestVersion = normalizeSemver(ymlData.version);
+    const tagMatch = finalUrl.match(/\/releases\/download\/([^/]+)\//);
+    const tagName = tagMatch ? tagMatch[1] : `v${latestVersion}`;
+
+    // Build candidate asset names (supports both hyphenated QBrowse-Setup-X.Y.Z.exe and dotted QBrowse.Setup.X.Y.Z.exe)
+    const candidateNames = [];
+    if (ymlData.path) {
+        candidateNames.push(ymlData.path);
+        const dotted = ymlData.path.replace(/-Setup-/g, '.Setup.').replace(/\s+/g, '.');
+        if (dotted !== ymlData.path) candidateNames.push(dotted);
+        const hyphenated = ymlData.path.replace(/\.Setup\./g, '-Setup-').replace(/\s+/g, '-');
+        if (hyphenated !== ymlData.path && !candidateNames.includes(hyphenated)) candidateNames.push(hyphenated);
+    } else if (process.platform === 'win32') {
+        candidateNames.push(`QBrowse-Setup-${latestVersion}.exe`, `QBrowse.Setup.${latestVersion}.exe`);
+    } else if (process.platform === 'linux') {
+        candidateNames.push(`QBrowse-${latestVersion}.AppImage`, `qbrowse_${latestVersion}_amd64.deb`);
+    }
+
+    const chosenName = candidateNames[0] || `QBrowse-${latestVersion}`;
+    const chosenUrl = `${GITHUB_RELEASES_WEB_URL}/download/${tagName}/${chosenName}`;
+
+    return {
+        latestVersion,
+        tagName,
+        releaseName: `QBrowse v${latestVersion}`,
+        releaseDate: ymlData.releaseDate || null,
+        releaseNotes: '',
+        releaseUrl: `${GITHUB_RELEASES_WEB_URL}/tag/${tagName}`,
+        asset: {
+            name: chosenName,
+            url: chosenUrl,
+            size: ymlData.files?.[0]?.size || 0,
+            sha512: ymlData.sha512 || null,
+            alternateUrls: candidateNames.slice(1).map(n => `${GITHUB_RELEASES_WEB_URL}/download/${tagName}/${n}`)
+        },
+        allAssets: []
+    };
+}
+
+async function computeFileSha512Base64(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha512');
+        const stream = fsSync.createReadStream(filePath);
+        stream.on('data', chunk => hash.update(chunk));
+        stream.on('end', () => resolve(hash.digest('base64')));
+        stream.on('error', reject);
+    });
+}
+
+async function downloadGitHubUpdateAsset({ silent = false } = {}) {
+    if (activeDownloadPromise) return activeDownloadPromise;
+
+    activeDownloadPromise = (async () => {
+        try {
+            if (!updaterState.assetUrl || !updaterState.assetName) {
+                await performGitHubUpdateCheck({ silent: true, autoDownload: false });
+            }
+            if (!updaterState.assetUrl || !updaterState.assetName) {
+                throw new Error('No compatible installer asset found on GitHub Release');
+            }
+
+            const updatesDir = path.join(app.getPath('userData'), 'updates');
+            await fs.mkdir(updatesDir, { recursive: true });
+
+            const safeFileName = path.basename(updaterState.assetName);
+            const finalFilePath = path.join(updatesDir, safeFileName);
+            const partFilePath = `${finalFilePath}.part`;
+
+            // Check if already downloaded and verified on disk
+            if (fsSync.existsSync(finalFilePath)) {
+                try {
+                    const stat = await fs.stat(finalFilePath);
+                    const sizeMatches = !updaterState.assetSize || stat.size === updaterState.assetSize;
+                    let hashMatches = true;
+                    if (sizeMatches && updaterState.expectedSha512) {
+                        const actualSha = await computeFileSha512Base64(finalFilePath);
+                        hashMatches = (actualSha === updaterState.expectedSha512);
+                    }
+                    if (stat.size > 1024 * 1024 && sizeMatches && hashMatches) {
+                        if (process.platform === 'linux' && finalFilePath.toLowerCase().endsWith('.appimage')) {
+                            try { await fs.chmod(finalFilePath, 0o755); } catch (_) {}
+                        }
+                        updateAndBroadcastState('update-downloaded', {
+                            status: 'downloaded',
+                            version: updaterState.latestVersion || updaterState.version,
+                            percent: 100,
+                            transferred: stat.size,
+                            total: stat.size,
+                            downloadedFilePath: finalFilePath,
+                            downloadMethod: 'github-direct',
+                            silent
+                        });
+                        return { status: 'downloaded', filePath: finalFilePath };
+                    }
+                } catch (_) {}
+            }
+
+            updateAndBroadcastState('download-progress', {
+                status: 'downloading',
+                version: updaterState.latestVersion || updaterState.version,
+                percent: 0,
+                bytesPerSecond: 0,
+                transferred: 0,
+                total: updaterState.assetSize || 0,
+                silent
+            });
+
+            const urlsToTry = [updaterState.assetUrl];
+            // Also add hyphen/dot fallback URL in case asset name differs
+            if (updaterState.assetUrl.includes('-Setup-')) {
+                urlsToTry.push(updaterState.assetUrl.replace(/-Setup-/g, '.Setup.'));
+            } else if (updaterState.assetUrl.includes('.Setup.')) {
+                urlsToTry.push(updaterState.assetUrl.replace(/\.Setup\./g, '-Setup-'));
+            }
+
+            let downloadedOk = false;
+            let lastErr = null;
+
+            for (const candidateUrl of urlsToTry) {
+                try {
+                    await streamDownloadToFile(candidateUrl, partFilePath, updaterState.expectedSha512, silent);
+                    downloadedOk = true;
+                    break;
+                } catch (err) {
+                    lastErr = err;
+                    console.warn('[AutoUpdater] Download attempt failed for', candidateUrl, ':', err.message);
+                }
+            }
+
+            if (!downloadedOk) {
+                throw lastErr || new Error('Failed to download update installer from GitHub Releases');
+            }
+
+            try {
+                if (fsSync.existsSync(finalFilePath)) {
+                    await fs.unlink(finalFilePath);
+                }
+            } catch (_) {}
+            await fs.rename(partFilePath, finalFilePath);
+
+            if (process.platform === 'linux' && finalFilePath.toLowerCase().endsWith('.appimage')) {
+                try { await fs.chmod(finalFilePath, 0o755); } catch (_) {}
+            }
+
+            const finalStat = await fs.stat(finalFilePath);
+            updateAndBroadcastState('update-downloaded', {
+                status: 'downloaded',
+                version: updaterState.latestVersion || updaterState.version,
+                percent: 100,
+                bytesPerSecond: 0,
+                transferred: finalStat.size,
+                total: finalStat.size,
+                downloadedFilePath: finalFilePath,
+                downloadMethod: 'github-direct',
+                message: null,
+                silent
+            });
+
+            console.log('[AutoUpdater] Update downloaded and verified at:', finalFilePath);
+            return { status: 'downloaded', filePath: finalFilePath, version: updaterState.latestVersion };
+        } catch (err) {
+            console.error('[AutoUpdater] Download error:', err);
+            updateAndBroadcastState('error', {
+                status: 'error',
+                message: err?.message || String(err),
+                silent
+            });
+            return { status: 'error', message: err?.message || String(err) };
+        } finally {
+            activeDownloadPromise = null;
+        }
+    })();
+
+    return activeDownloadPromise;
+}
+
+function streamDownloadToFile(targetUrl, destinationPath, expectedSha512, silent = false) {
+    return new Promise((resolve, reject) => {
+        const downloadWithRedirects = (urlStr, redirectsLeft) => {
+            let parsed;
+            try {
+                parsed = new URL(urlStr);
+            } catch (e) {
+                return reject(new Error(`Invalid asset URL: ${urlStr}`));
+            }
+            const client = parsed.protocol === 'http:' ? http : https;
+            const req = client.get(urlStr, {
+                headers: {
+                    'User-Agent': `QBrowse-Updater/${app.getVersion()} (${process.platform}; ${process.arch})`,
+                    'Accept': 'application/octet-stream, */*'
+                },
+                timeout: 30000
+            }, (res) => {
+                if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+                    res.resume();
+                    if (redirectsLeft <= 0) {
+                        return reject(new Error('Too many redirects while downloading update'));
+                    }
+                    const nextUrl = new URL(res.headers.location, urlStr).toString();
+                    return downloadWithRedirects(nextUrl, redirectsLeft - 1);
+                }
+
+                if (res.statusCode < 200 || res.statusCode >= 300) {
+                    res.resume();
+                    const err = new Error(`GitHub asset download returned HTTP ${res.statusCode}`);
+                    err.statusCode = res.statusCode;
+                    return reject(err);
+                }
+
+                const totalBytes = parseInt(res.headers['content-length'] || '0', 10) || updaterState.assetSize || 0;
+                let transferredBytes = 0;
+                const startTime = Date.now();
+                let lastBroadcastTime = 0;
+                const hash = crypto.createHash('sha512');
+                const fileStream = fsSync.createWriteStream(destinationPath);
+
+                res.on('data', (chunk) => {
+                    transferredBytes += chunk.length;
+                    hash.update(chunk);
+                    const now = Date.now();
+                    if (now - lastBroadcastTime >= 150 || (totalBytes > 0 && transferredBytes >= totalBytes)) {
+                        lastBroadcastTime = now;
+                        const elapsedSec = Math.max((now - startTime) / 1000, 0.1);
+                        const speed = Math.round(transferredBytes / elapsedSec);
+                        const pct = totalBytes > 0 ? Math.min(99, Math.round((transferredBytes / totalBytes) * 100)) : 0;
+                        updateAndBroadcastState('download-progress', {
+                            status: 'downloading',
+                            version: updaterState.latestVersion || updaterState.version,
+                            percent: pct,
+                            bytesPerSecond: speed,
+                            transferred: transferredBytes,
+                            total: totalBytes,
+                            silent
+                        });
+                    }
+                });
+
+                res.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close(() => {
+                        const actualSha512 = hash.digest('base64');
+                        if (expectedSha512 && actualSha512 !== expectedSha512) {
+                            try { fsSync.unlinkSync(destinationPath); } catch (_) {}
+                            return reject(new Error('Downloaded update failed SHA-512 integrity check'));
+                        }
+                        resolve({ transferredBytes, actualSha512 });
+                    });
+                });
+
+                fileStream.on('error', (err) => {
+                    res.destroy();
+                    try { fsSync.unlinkSync(destinationPath); } catch (_) {}
+                    reject(err);
+                });
+
+                res.on('error', (err) => {
+                    fileStream.destroy();
+                    try { fsSync.unlinkSync(destinationPath); } catch (_) {}
+                    reject(err);
+                });
+            });
+
+            req.on('timeout', () => {
+                req.destroy(new Error('Update download connection timed out'));
+            });
+            req.on('error', reject);
+        };
+
+        downloadWithRedirects(targetUrl, 6);
+    });
+}
+
+async function performGitHubUpdateCheck({ silent = false, autoDownload = true } = {}) {
+    if (activeCheckPromise) return activeCheckPromise;
+    if (updaterState.status === 'downloading') {
+        return updaterState;
+    }
+
+    activeCheckPromise = (async () => {
+        try {
+            updateAndBroadcastState('checking-for-update', {
+                status: 'checking',
+                message: null,
+                silent
+            });
+
+            const syncData = await fetchGitHubReleaseSyncData();
+            const currentVer = app.getVersion();
+            const latestVer = syncData.latestVersion;
+            const isNewer = compareSemver(latestVer, currentVer) > 0;
+
+            const commonMeta = {
+                currentVersion: currentVer,
+                latestVersion: latestVer,
+                version: latestVer,
+                releaseName: syncData.releaseName,
+                releaseDate: syncData.releaseDate,
+                releaseNotes: syncData.releaseNotes,
+                releaseUrl: syncData.releaseUrl,
+                assetName: syncData.asset?.name || null,
+                assetUrl: syncData.asset?.url || null,
+                assetSize: syncData.asset?.size || 0,
+                expectedSha512: syncData.asset?.sha512 || null,
+                lastCheckedAt: Date.now(),
+                syncedWithGitHub: true,
+                message: null,
+                silent
+            };
+
+            if (isNewer) {
+                // Check if already downloaded on disk
+                if (updaterState.downloadedFilePath && fsSync.existsSync(updaterState.downloadedFilePath) && updaterState.version === latestVer) {
+                    return updateAndBroadcastState('update-downloaded', {
+                        ...commonMeta,
+                        status: 'downloaded',
+                        percent: 100
+                    });
+                }
+
+                updateAndBroadcastState('update-available', {
+                    ...commonMeta,
+                    status: 'available',
+                    percent: 0
+                });
+
+                if (autoDownload && syncData.asset?.url) {
+                    downloadGitHubUpdateAsset({ silent }).catch((err) => {
+                        console.warn('[AutoUpdater] Auto-download failed:', err?.message || err);
+                    });
+                }
+
+                return { ...updaterState };
+            } else {
+                updateAndBroadcastState('update-not-available', {
+                    ...commonMeta,
+                    status: 'not-available',
+                    version: currentVer
+                });
+                return { ...updaterState };
+            }
+        } catch (err) {
+            console.warn('[AutoUpdater] GitHub Release check error:', err?.message || err);
+            updateAndBroadcastState('error', {
+                status: 'error',
+                message: err?.message || 'Unable to sync with GitHub Releases',
+                silent
+            });
+            return { ...updaterState };
+        } finally {
+            activeCheckPromise = null;
+        }
+    })();
+
+    return activeCheckPromise;
+}
+
+async function installDownloadedUpdate() {
+    if (isInstallingUpdate) return { status: 'installing' };
+
+    const filePath = updaterState.downloadedFilePath;
+    if (filePath && fsSync.existsSync(filePath)) {
+        isInstallingUpdate = true;
+        try {
+            if (process.platform === 'win32') {
+                const args = ['--updated', '--force-run'];
+                const launchInstaller = () => new Promise((resolve, reject) => {
+                    const child = spawn(filePath, args, {
+                        detached: true,
+                        stdio: 'ignore',
+                        windowsHide: false
+                    });
+                    child.once('error', reject);
+                    child.once('spawn', () => {
+                        child.unref();
+                        resolve(true);
+                    });
+                });
+
+                try {
+                    await launchInstaller();
+                } catch (spawnErr) {
+                    console.warn('[AutoUpdater] Direct NSIS spawn failed, trying elevate/shell:', spawnErr.message);
+                    const elevatePath = path.join(process.resourcesPath || '', 'elevate.exe');
+                    if (fsSync.existsSync(elevatePath)) {
+                        const elevated = spawn(elevatePath, [filePath, ...args], {
+                            detached: true,
+                            stdio: 'ignore'
+                        });
+                        elevated.unref();
+                    } else {
+                        await shell.openPath(filePath);
+                    }
+                }
+
+                setTimeout(() => {
+                    try {
+                        app.removeAllListeners('window-all-closed');
+                        for (const win of BrowserWindow.getAllWindows()) {
+                            if (win && !win.isDestroyed()) win.destroy();
+                        }
+                    } catch (_) {}
+                    app.quit();
+                }, 250);
+                return { status: 'installing' };
+            }
+
+            if (process.platform === 'linux') {
+                const targetAppImage = process.env.APPIMAGE;
+                if (targetAppImage && filePath.toLowerCase().endsWith('.appimage')) {
+                    try {
+                        await fs.chmod(filePath, 0o755);
+                        await fs.copyFile(filePath, targetAppImage);
+                        await fs.chmod(targetAppImage, 0o755);
+                        const child = spawn(targetAppImage, [], {
+                            detached: true,
+                            stdio: 'ignore'
+                        });
+                        child.unref();
+                        setTimeout(() => app.quit(), 200);
+                        return { status: 'installing' };
+                    } catch (linuxErr) {
+                        console.warn('[AutoUpdater] AppImage self-replace failed, opening folder:', linuxErr.message);
+                        shell.showItemInFolder(filePath);
+                        return { status: 'opened-folder' };
+                    }
+                } else {
+                    const openErr = await shell.openPath(filePath);
+                    if (openErr) {
+                        shell.showItemInFolder(filePath);
+                    }
+                    return { status: 'opened-installer' };
+                }
+            }
+
+            await shell.openPath(filePath);
+            return { status: 'opened-installer' };
+        } catch (err) {
+            isInstallingUpdate = false;
+            console.error('[AutoUpdater] Failed to launch installer:', err);
+            return { status: 'error', message: err.message };
+        }
+    }
+
+    if (autoUpdater && app.isPackaged) {
+        try {
+            autoUpdater.quitAndInstall(false, true);
+            return { status: 'installing' };
+        } catch (err) {
+            return { status: 'error', message: err.message };
+        }
+    }
+
+    return { status: 'error', message: 'No downloaded update file available to install' };
 }
 
 if (autoUpdater) {
     try {
-        autoUpdater.autoDownload = true;
-        autoUpdater.autoInstallOnAppQuit = true;
+        // Disable electron-updater's uncoordinated autoDownload so our GitHub Releases sync engine
+        // resolves exact asset names (both hyphenated and dotted) without 404 or unsigned rejection.
+        autoUpdater.autoDownload = false;
+        autoUpdater.autoInstallOnAppQuit = false;
         autoUpdater.allowPrerelease = false;
-
-        autoUpdater.on('checking-for-update', () => {
-            broadcastUpdaterEvent('checking-for-update', { status: 'checking' });
-        });
-
-        autoUpdater.on('update-available', (info) => {
-            broadcastUpdaterEvent('update-available', {
-                status: 'available',
-                version: info?.version,
-                releaseDate: info?.releaseDate,
-                releaseNotes: info?.releaseNotes
+        autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
+        try {
+            autoUpdater.setFeedURL({
+                provider: 'github',
+                owner: GITHUB_OWNER,
+                repo: GITHUB_REPO,
+                releaseType: 'release'
             });
-        });
-
-        autoUpdater.on('update-not-available', (info) => {
-            broadcastUpdaterEvent('update-not-available', {
-                status: 'not-available',
-                version: app.getVersion()
-            });
-        });
-
-        autoUpdater.on('download-progress', (progress) => {
-            broadcastUpdaterEvent('download-progress', {
-                status: 'downloading',
-                percent: Math.round(progress?.percent || 0),
-                bytesPerSecond: progress?.bytesPerSecond,
-                transferred: progress?.transferred,
-                total: progress?.total
-            });
-        });
-
-        autoUpdater.on('update-downloaded', (info) => {
-            broadcastUpdaterEvent('update-downloaded', {
-                status: 'downloaded',
-                version: info?.version
-            });
-        });
-
-        autoUpdater.on('error', (err) => {
-            broadcastUpdaterEvent('error', {
-                status: 'error',
-                message: err ? (err.message || String(err)) : 'Unknown update error'
-            });
-        });
+        } catch (_) {}
     } catch (e) {
-        console.warn('[AutoUpdater] Initialization failed:', e.message);
+        console.warn('[AutoUpdater] Initialization warning:', e.message);
     }
 }
 
+ipcMain.handle('updater-get-state', () => {
+    return {
+        ...updaterState,
+        currentVersion: app.getVersion(),
+        runtimeVersions: {
+            app: app.getVersion(),
+            electron: process.versions.electron || '',
+            chrome: process.versions.chrome || '',
+            node: process.versions.node || '',
+            v8: process.versions.v8 || ''
+        }
+    };
+});
+
 ipcMain.handle('updater-check', async () => {
-    if (!autoUpdater) {
-        return { status: 'error', message: 'AutoUpdater module not loaded' };
-    }
-    if (!app.isPackaged) {
-        return { status: 'dev', version: app.getVersion(), message: 'Auto-updates are active in packaged releases.' };
-    }
-    try {
-        const result = await autoUpdater.checkForUpdates();
-        return { status: 'checking', updateInfo: result?.updateInfo };
-    } catch (err) {
-        return { status: 'error', message: err?.message || String(err) };
-    }
+    return await performGitHubUpdateCheck({ silent: false, autoDownload: true });
 });
 
 ipcMain.handle('updater-download', async () => {
-    if (!autoUpdater || !app.isPackaged) return { status: 'dev' };
-    try {
-        await autoUpdater.downloadUpdate();
-        return { status: 'downloading' };
-    } catch (err) {
-        return { status: 'error', message: err?.message || String(err) };
-    }
+    return await downloadGitHubUpdateAsset({ silent: false });
 });
 
-ipcMain.handle('updater-quit-and-install', () => {
-    if (autoUpdater && app.isPackaged) {
-        autoUpdater.quitAndInstall(false, true);
-    }
+ipcMain.handle('updater-quit-and-install', async () => {
+    return await installDownloadedUpdate();
 });
 
 // Navigation History Lookup for middle-click Back/Forward
