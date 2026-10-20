@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
     Globe, Moon, Sun, ShieldCheck, ArrowRight, Check, X, 
     Download, Compass, Lock, User, Sparkles, Layers,
