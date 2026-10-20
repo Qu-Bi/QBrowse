@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     ArrowLeft, ArrowRight, RefreshCw, Copy, MonitorPlay, Pin, Minus, 
     VolumeX, Volume2, Layers, X, Pencil, Trash2, Moon, Search,
@@ -37,6 +38,19 @@ const getEngineName = () => {
 
 // Context for theme support in context menus
 const ContextMenuThemeContext = React.createContext({ isBright: false });
+
+// Shared Liquid Glass surface styling for context menus & submenus
+const getLiquidGlassMenuClasses = (isBright) =>
+    `p-1.5 rounded-2xl border backdrop-blur-2xl select-none outline-none transition-colors ${
+        isBright
+            ? 'liquid-glass-bright bg-white/78 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.14),0_1px_3px_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.9)]'
+            : 'liquid-glass-dark bg-[#12131a]/78 border-white/[0.12] text-white/90 shadow-[0_24px_64px_rgba(0,0,0,0.75),0_0_1px_1px_rgba(255,255,255,0.08),inset_0_1px_0_0_rgba(255,255,255,0.16)]'
+    }`;
+
+const liquidGlassInlineStyle = {
+    backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
+    WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
+};
 
 // Reusable Glassmorphic Menu Container with Smart Edge Collision Detection & Keyboard Navigation
 function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {
@@ -154,14 +168,11 @@ function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {
                 ref={containerRef}
                 data-context-menu
                 tabIndex={-1}
-                className={`fixed z-[30000] flex flex-col max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden backdrop-blur-2xl rounded-2xl p-1.5 select-none outline-none ${
-                    isBright 
-                        ? 'bg-white/80 border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] text-zinc-900' 
-                        : 'bg-[#0c0c0f]/94 border border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] text-white/90'
-                } ${isClosing ? 'animate-pop-out' : 'animate-pop-in'} ${className}`}
+                className={`fixed z-[30000] flex flex-col max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${getLiquidGlassMenuClasses(isBright)} ${isClosing ? 'animate-pop-out' : 'animate-pop-in'} ${className}`}
                 style={{
                     top: `${pos.y}px`,
-                    left: `${pos.x}px`
+                    left: `${pos.x}px`,
+                    ...liquidGlassInlineStyle
                 }}
                 onClick={(e) => e.stopPropagation()}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -287,47 +298,95 @@ function MenuDivider() {
 }
 
 // Section Header for context menus
-function MenuSectionHeader({ children, className = '' }) {
+function MenuSectionHeader({ children, label, icon: Icon, className = '' }) {
     const { isBright } = React.useContext(ContextMenuThemeContext);
+    const content = label || children;
     return (
-        <div className={`px-2.5 py-1 text-xs font-semibold border-b mb-1 truncate ${
+        <div className={`px-2.5 py-1 text-xs font-semibold border-b mb-1 truncate flex items-center gap-1.5 ${
             isBright ? 'text-zinc-500 border-black/[0.06]' : 'text-white/50 border-white/[0.06]'
         } ${className}`}>
-            {children}
+            {Icon && <Icon size={12} className="opacity-70 shrink-0" />}
+            <span className="truncate">{content}</span>
         </div>
     );
 }
 
 // Flyout Submenu for AI and Space Moving
-function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false }) {
-    const { isBright } = React.useContext(ContextMenuThemeContext);
+function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disabled = false }) {
+    const themeCtx = React.useContext(ContextMenuThemeContext);
+    const uiThemeBright = useUIStore(s => s.theme === 'light' || s.settings?.theme === 'bright');
+    const isBright = themeCtx ? themeCtx.isBright : uiThemeBright;
+
     const [isOpen, setIsOpen] = useState(false);
     const itemRef = useRef(null);
-    const [flyoutStyle, setFlyoutStyle] = useState({ top: '0px', left: 'calc(100% + 6px)' });
+    const closeTimeoutRef = useRef(null);
+    const [coords, setCoords] = useState({ top: 0, left: 0, openLeft: false });
 
-    const handleMouseEnter = () => {
-        setIsOpen(true);
-        if (itemRef.current) {
-            const itemRect = itemRef.current.getBoundingClientRect();
-            const submenuWidth = 220;
-            const submenuHeight = 220;
-            const pad = 12;
-            let leftStyle = 'calc(100% + 6px)';
-            if (itemRect.right + submenuWidth > window.innerWidth - pad) {
-                leftStyle = 'calc(-100% - 6px)';
-            }
-            let topStyle = '0px';
-            if (itemRect.top + submenuHeight > window.innerHeight - pad) {
-                const diff = (itemRect.top + submenuHeight) - (window.innerHeight - pad);
-                topStyle = `-${Math.max(0, diff)}px`;
-            }
-            setFlyoutStyle({ top: topStyle, left: leftStyle });
+    const updateCoords = useCallback(() => {
+        if (!itemRef.current) return;
+        const rect = itemRef.current.getBoundingClientRect();
+        const childrenCount = React.Children.count(children);
+        const submenuHeight = Math.min(320, childrenCount * 38 + 24);
+        const submenuWidth = 216;
+
+        let openLeft = false;
+        let left = rect.right + 6;
+        if (rect.right + 224 > window.innerWidth) {
+            left = Math.max(8, rect.left - submenuWidth - 6);
+            openLeft = true;
         }
-    };
 
-    const handleMouseLeave = () => {
-        setIsOpen(false);
-    };
+        let top = rect.top - 6;
+        if (top + submenuHeight > window.innerHeight - 12) {
+            top = Math.max(12, window.innerHeight - submenuHeight - 12);
+        }
+
+        setCoords({ top: Math.round(top), left: Math.round(left), openLeft });
+    }, [children]);
+
+    const handleMouseEnter = useCallback(() => {
+        if (disabled) return;
+        if (closeTimeoutRef.current) {
+            clearTimeout(closeTimeoutRef.current);
+            closeTimeoutRef.current = null;
+        }
+        updateCoords();
+        setIsOpen(true);
+    }, [disabled, updateCoords]);
+
+    const handleMouseLeave = useCallback(() => {
+        if (closeTimeoutRef.current) {
+            clearTimeout(closeTimeoutRef.current);
+        }
+        closeTimeoutRef.current = setTimeout(() => {
+            setIsOpen(false);
+        }, 160);
+    }, []);
+
+    useLayoutEffect(() => {
+        if (isOpen) {
+            updateCoords();
+        }
+    }, [isOpen, updateCoords]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleReposition = () => updateCoords();
+        window.addEventListener('resize', handleReposition);
+        window.addEventListener('scroll', handleReposition, true);
+        return () => {
+            window.removeEventListener('resize', handleReposition);
+            window.removeEventListener('scroll', handleReposition, true);
+        };
+    }, [isOpen, updateCoords]);
+
+    useEffect(() => {
+        return () => {
+            if (closeTimeoutRef.current) {
+                clearTimeout(closeTimeoutRef.current);
+            }
+        };
+    }, []);
 
     return (
         <div 
@@ -338,17 +397,38 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false }) {
         >
             <button
                 data-menu-item
+                disabled={disabled}
                 className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer text-left w-full group outline-none ${
                     isBright
-                        ? (isOpen ? 'bg-black/5 text-zinc-950' : accent ? 'text-accent hover:bg-accent/15' : 'text-zinc-700 hover:text-zinc-950 hover:bg-black/5')
-                        : (isOpen ? 'bg-white/10 text-white' : accent ? 'text-accent hover:bg-accent/15' : 'text-white/80 hover:text-white hover:bg-white/10')
+                        ? (disabled 
+                            ? 'opacity-30 cursor-not-allowed pointer-events-none text-zinc-400' 
+                            : isOpen 
+                            ? 'bg-black/5 text-zinc-950' 
+                            : accent 
+                            ? 'text-accent hover:bg-accent/15' 
+                            : 'text-zinc-700 hover:text-zinc-950 hover:bg-black/5')
+                        : (disabled 
+                            ? 'opacity-30 cursor-not-allowed pointer-events-none text-white/30' 
+                            : isOpen 
+                            ? 'bg-white/10 text-white' 
+                            : accent 
+                            ? 'text-accent hover:bg-accent/15' 
+                            : 'text-white/80 hover:text-white hover:bg-white/10')
                 }`}
                 onClick={(e) => {
                     e.stopPropagation();
-                    setIsOpen(prev => !prev);
+                    if (disabled) return;
+                    if (closeTimeoutRef.current) {
+                        clearTimeout(closeTimeoutRef.current);
+                        closeTimeoutRef.current = null;
+                    }
+                    setIsOpen(prev => {
+                        if (!prev) updateCoords();
+                        return !prev;
+                    });
                 }}
             >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                     {Icon && (
                         <Icon 
                             size={14} 
@@ -359,27 +439,44 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false }) {
                             } 
                         />
                     )}
-                    <span>{label}</span>
+                    <span className="truncate">{label}</span>
                 </div>
-                <ChevronRight size={13} className={`transition-transform ${
+                <ChevronRight size={13} className={`transition-transform duration-150 ${
                     isBright
                         ? (isOpen ? 'translate-x-0.5 text-zinc-950' : 'text-zinc-400 group-hover:text-zinc-950')
                         : (isOpen ? 'translate-x-0.5 text-white' : 'text-white/40 group-hover:text-white')
                 }`} />
             </button>
 
-            {isOpen && (
+            {isOpen && !disabled && typeof document !== 'undefined' && createPortal(
                 <div
-                    className={`absolute z-10 w-52 max-h-[calc(100vh-48px)] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex flex-col backdrop-blur-2xl rounded-2xl p-1.5 animate-pop-in select-none ${
-                        isBright
-                            ? 'bg-white/85 border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] text-zinc-900'
-                            : 'bg-[#0c0c0f]/95 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] text-white/90'
-                    }`}
-                    style={flyoutStyle}
+                    data-context-menu="true"
+                    data-context-menu-portal="true"
+                    className="fixed"
+                    style={{
+                        position: 'fixed',
+                        top: `${coords.top}px`,
+                        left: `${coords.left}px`,
+                        width: '224px',
+                        zIndex: 30050
+                    }}
+                    onMouseEnter={handleMouseEnter}
+                    onMouseLeave={handleMouseLeave}
                     onClick={(e) => e.stopPropagation()}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
-                    {children}
-                </div>
+                    <div 
+                        className="absolute inset-y-0 -left-3 -right-3 pointer-events-auto" 
+                        aria-hidden="true" 
+                    />
+                    <div
+                        className={`w-full flex flex-col max-h-[320px] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden animate-pop-in ${getLiquidGlassMenuClasses(isBright)}`}
+                        style={liquidGlassInlineStyle}
+                    >
+                        {children}
+                    </div>
+                </div>,
+                document.getElementById('root') || document.body
             )}
         </div>
     );
@@ -476,6 +573,17 @@ export default function ContextMenuProvider({ children }) {
     const suspendTab = useTabStore(state => state.suspendTab);
     const reloadTab = useTabStore(state => state.reloadTab);
 
+    const closeAll = useCallback(() => {
+        useUIStore.getState().closeContextMenus();
+    }, []);
+
+    const spaces = [
+        { id: 'personal', name: 'Personal Space', icon: User, count: (privateTabs || []).length },
+        { id: 'work', name: 'Work Space', icon: Briefcase, count: (workTabs || []).length },
+        { id: 'ghost', name: 'Ghost Space', icon: EyeOff, count: (ghostTabs || []).length },
+        { id: 'tor', name: 'Tor Space', icon: Shield, count: (torTabs || []).length },
+    ];
+
     // Webview reference resolver
     const getActiveWebview = () => {
         const activeTabId = useTabStore.getState().activeTabId;
@@ -557,7 +665,7 @@ export default function ContextMenuProvider({ children }) {
     // Global listener to close context menus when clicking outside
     useEffect(() => {
         const handleGlobalDismiss = (e) => {
-            if (e && e.target && e.target.closest && e.target.closest('[data-context-menu]')) return;
+            if (e && e.target && e.target.closest && (e.target.closest('[data-context-menu]') || e.target.closest('[data-context-menu-portal="true"]'))) return;
             useUIStore.getState().closeContextMenus();
         };
         window.addEventListener('mousedown', handleGlobalDismiss);
@@ -940,6 +1048,48 @@ export default function ContextMenuProvider({ children }) {
                                         closeContextMenu();
                                     }}
                                 />
+                                {activeTab && (
+                                    <>
+                                        <MenuItem
+                                            icon={activeTab.isMuted ? Volume2 : VolumeX}
+                                            label={activeTab.isMuted ? "Unmute Tab" : "Mute Tab"}
+                                            onClick={() => {
+                                                handleToggleMute(activeTab.id, activeSpace);
+                                                closeContextMenu();
+                                            }}
+                                        />
+                                        <MenuItem
+                                            icon={Layers}
+                                            label="Duplicate Tab"
+                                            onClick={() => {
+                                                duplicateTab(activeTab.id, activeSpace);
+                                                closeContextMenu();
+                                            }}
+                                        />
+                                        <MenuItemWithSubmenu
+                                            icon={ArrowRightLeft}
+                                            label="Move Tab to Space"
+                                        >
+                                            <MenuSectionHeader label="Destination Space" icon={ArrowRightLeft} />
+                                            {spaces.map(sp => {
+                                                const isCurrent = sp.id === activeSpace;
+                                                return (
+                                                    <MenuItem
+                                                        key={sp.id}
+                                                        icon={sp.icon}
+                                                        label={sp.name}
+                                                        shortcut={isCurrent ? 'Current' : `${sp.count} tab${sp.count === 1 ? '' : 's'}`}
+                                                        disabled={isCurrent}
+                                                        onClick={() => {
+                                                            moveTabToSpace(activeTab.id, activeSpace, sp.id);
+                                                            closeAll();
+                                                        }}
+                                                    />
+                                                );
+                                            })}
+                                        </MenuItemWithSubmenu>
+                                    </>
+                                )}
                                 <MenuItem
                                     icon={FileDown}
                                     label="Save as Clean PDF..."
@@ -1118,42 +1268,23 @@ export default function ContextMenuProvider({ children }) {
                             icon={ArrowRightLeft}
                             label="Move to Space"
                         >
-                            <MenuItem
-                                icon={User}
-                                label="Personal Space"
-                                disabled={spaceType === 'personal'}
-                                onClick={() => {
-                                    moveTabToSpace(tab.id, spaceType, 'personal');
-                                    closeTabContextMenu();
-                                }}
-                            />
-                            <MenuItem
-                                icon={Briefcase}
-                                label="Work Space"
-                                disabled={spaceType === 'work'}
-                                onClick={() => {
-                                    moveTabToSpace(tab.id, spaceType, 'work');
-                                    closeTabContextMenu();
-                                }}
-                            />
-                            <MenuItem
-                                icon={EyeOff}
-                                label="Ghost Space"
-                                disabled={spaceType === 'ghost'}
-                                onClick={() => {
-                                    moveTabToSpace(tab.id, spaceType, 'ghost');
-                                    closeTabContextMenu();
-                                }}
-                            />
-                            <MenuItem
-                                icon={Shield}
-                                label="Tor Space"
-                                disabled={spaceType === 'tor'}
-                                onClick={() => {
-                                    moveTabToSpace(tab.id, spaceType, 'tor');
-                                    closeTabContextMenu();
-                                }}
-                            />
+                            <MenuSectionHeader label="Destination Space" icon={ArrowRightLeft} />
+                            {spaces.map(sp => {
+                                const isCurrent = sp.id === spaceType;
+                                return (
+                                    <MenuItem
+                                        key={sp.id}
+                                        icon={sp.icon}
+                                        label={sp.name}
+                                        shortcut={isCurrent ? 'Current' : `${sp.count} tab${sp.count === 1 ? '' : 's'}`}
+                                        disabled={isCurrent}
+                                        onClick={() => {
+                                            moveTabToSpace(tab.id, spaceType, sp.id);
+                                            closeAll();
+                                        }}
+                                    />
+                                );
+                            })}
                         </MenuItemWithSubmenu>
 
                         <MenuDivider />

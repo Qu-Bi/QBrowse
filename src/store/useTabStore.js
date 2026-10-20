@@ -1131,36 +1131,91 @@ const useTabStore = create((set, get) => ({
   },
 
   moveTabToSpace: (tabId, sourceSpace, targetSpace) => {
-    if (!sourceSpace || !targetSpace || sourceSpace === targetSpace) return;
-    const srcList = sourceSpace === 'personal' ? get().privateTabs : (sourceSpace === 'work' ? get().workTabs : (sourceSpace === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setSrcList = sourceSpace === 'personal' ? get().setPrivateTabs : (sourceSpace === 'work' ? get().setWorkTabs : (sourceSpace === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    if (!tabId || !targetSpace) return;
 
-    const dstList = targetSpace === 'personal' ? get().privateTabs : (targetSpace === 'work' ? get().workTabs : (targetSpace === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setDstList = targetSpace === 'personal' ? get().setPrivateTabs : (targetSpace === 'work' ? get().setWorkTabs : (targetSpace === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    const spaces = ['personal', 'work', 'ghost', 'tor'];
+    const listKeyBySpace = {
+      personal: 'privateTabs',
+      work: 'workTabs',
+      ghost: 'ghostTabs',
+      tor: 'torTabs'
+    };
 
-    const tabToMove = srcList.find(t => t.id === tabId);
-    if (!tabToMove) return;
+    const state = get();
+    let resolvedSourceSpace = null;
+    let tabToMove = null;
 
-    // Remove from source space
-    let nextSrc = srcList.filter(t => t.id !== tabId);
-    if (nextSrc.length === 0) {
-      nextSrc = [{ id: `t-${Date.now()}`, title: sourceSpace === 'ghost' ? 'New Incognito Tab' : 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
-    } else if (!nextSrc.some(t => t.active)) {
-      nextSrc[0].active = true;
+    // Check sourceSpace first if provided
+    if (sourceSpace && spaces.includes(sourceSpace)) {
+      const list = state[listKeyBySpace[sourceSpace]] || [];
+      const found = list.find(t => t && t.id === tabId);
+      if (found) {
+        resolvedSourceSpace = sourceSpace;
+        tabToMove = found;
+      }
     }
-    setSrcList(nextSrc);
 
-    // Add to target space and activate it
+    // If not found in sourceSpace (or if sourceSpace was not passed), search across all spaces
+    if (!tabToMove) {
+      for (const sp of spaces) {
+        const list = state[listKeyBySpace[sp]] || [];
+        const found = list.find(t => t && t.id === tabId);
+        if (found) {
+          resolvedSourceSpace = sp;
+          tabToMove = found;
+          break;
+        }
+      }
+    }
+
+    if (!tabToMove || !resolvedSourceSpace || resolvedSourceSpace === targetSpace) return;
+
+    const srcKey = listKeyBySpace[resolvedSourceSpace];
+    const dstKey = listKeyBySpace[targetSpace];
+    if (!srcKey || !dstKey) return;
+
+    const srcList = state[srcKey] || [];
+    const dstList = state[dstKey] || [];
+
+    // Remove tabToMove from resolvedSourceSpace's list
+    let nextSrc = srcList.filter(t => t && t.id !== tabId);
+    if (nextSrc.length === 0) {
+      nextSrc = [get().getFallbackTabForSpace(resolvedSourceSpace)];
+    } else if (!nextSrc.some(t => t && t.active)) {
+      nextSrc = nextSrc.map((t, idx) => idx === 0 ? { ...t, active: true } : t);
+    }
+
+    // Add movedTab to targetSpace's list (marking existing tabs in targetSpace as active: false)
     const movedTab = { ...tabToMove, folderId: null, active: true, lastActiveAt: Date.now() };
     const nextDst = [...dstList.map(t => ({ ...t, active: false })), movedTab];
-    setDstList(nextDst);
+
+    const updates = {
+      [srcKey]: nextSrc,
+      [dstKey]: nextDst
+    };
+
+    // Clear any tabNodeOffsets for tabId so the Spatial Tab Map stays in sync
+    const currentOffsets = state.tabNodeOffsets || {};
+    if (tabId in currentOffsets) {
+      const nextOffsets = { ...currentOffsets };
+      delete nextOffsets[tabId];
+      updates.tabNodeOffsets = nextOffsets;
+    }
+
+    set(updates);
 
     // Switch active space to target
     get().setActiveSpace(targetSpace);
+    if (targetSpace === 'ghost' || targetSpace === 'tor') {
+      set({ [dstKey]: nextDst });
+    }
+
     const ui = useUIStore.getState();
     ui.setCurrentUrl(movedTab.url || '');
+    get().saveSession();
+
     const spaceLabel = targetSpace.charAt(0).toUpperCase() + targetSpace.slice(1);
-    ui.showToast(`Moved "${tabToMove.title}" to ${spaceLabel} space`);
+    ui.showToast(`Moved "${tabToMove.title || 'Tab'}" to ${spaceLabel} space`);
   },
 
   saveSession: () => {

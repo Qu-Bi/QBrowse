@@ -42,6 +42,14 @@ const defaultSettings = {
     blockAutoplay: false,
     cosmetic: true,
     social: true,
+    adblockLevel: 'standard',
+    adblockAnnoyances: true,
+    adblockTelemetry: true,
+    adblockMalware: true,
+    adblockYoutubeAds: true,
+    adblockFilterLists: { easylist: true, easyprivacy: true, annoyances: true, malware: true, peterlowe: true },
+    adblockAllowlist: [],
+    adblockCustomBlockedDomains: [],
     searchEngine: 'google',
     customSearchEngines: [],
     smartCalc: true,
@@ -1138,11 +1146,51 @@ const useUIStore = create((set, get) => ({
       }
   },
   isAdblockActive: true,
+  isAdblockEnabled: true,
   setIsAdblockActive: (val) => {
-      set({ isAdblockActive: val });
+      const active = Boolean(val);
+      set({ isAdblockActive: active, isAdblockEnabled: active });
+      try {
+          if (window.electronAPI?.setAdblock) window.electronAPI.setAdblock(active);
+          if (window.electronAPI?.saveSetting) {
+              window.electronAPI.saveSetting('adblockEnabled', active);
+              window.electronAPI.saveSetting({ key: 'adblockEnabled', value: active });
+          }
+      } catch (_) {}
       try {
           const { ipcRenderer } = require('electron');
-          ipcRenderer.send('set-adblock', val);
+          ipcRenderer.send('set-adblock', active);
+      } catch(e) {}
+  },
+  setAdblockEnabled: (val) => {
+      const active = Boolean(val);
+      set({ isAdblockEnabled: active, isAdblockActive: active });
+      try {
+          if (window.electronAPI?.setAdblock) window.electronAPI.setAdblock(active);
+          if (window.electronAPI?.saveSetting) {
+              window.electronAPI.saveSetting('adblockEnabled', active);
+              window.electronAPI.saveSetting({ key: 'adblockEnabled', value: active });
+          }
+      } catch (_) {}
+      try {
+          const { ipcRenderer } = require('electron');
+          ipcRenderer.send('set-adblock', active);
+      } catch(e) {}
+  },
+  toggleAdblock: () => {
+      const current = get().isAdblockEnabled ?? get().isAdblockActive ?? true;
+      const nextVal = !current;
+      set({ isAdblockEnabled: nextVal, isAdblockActive: nextVal });
+      try {
+          if (window.electronAPI?.setAdblock) window.electronAPI.setAdblock(nextVal);
+          if (window.electronAPI?.saveSetting) {
+              window.electronAPI.saveSetting('adblockEnabled', nextVal);
+              window.electronAPI.saveSetting({ key: 'adblockEnabled', value: nextVal });
+          }
+      } catch (_) {}
+      try {
+          const { ipcRenderer } = require('electron');
+          ipcRenderer.send('set-adblock', nextVal);
       } catch(e) {}
   },
   
@@ -1239,6 +1287,12 @@ const useUIStore = create((set, get) => ({
           if (typeof diskSettings.isSwipeEnabled === 'boolean') {
             get().setIsSwipeEnabled(diskSettings.isSwipeEnabled);
           }
+          if (typeof diskSettings.adblockEnabled === 'boolean') {
+            set({ isAdblockEnabled: diskSettings.adblockEnabled, isAdblockActive: diskSettings.adblockEnabled });
+            try {
+              window.electronAPI?.setAdblock?.(diskSettings.adblockEnabled);
+            } catch (_) {}
+          }
 
           // Ensure disk store has all current merged fields
           Object.entries(merged).forEach(([k, v]) => {
@@ -1279,6 +1333,7 @@ const useUIStore = create((set, get) => ({
           return { settings: newSettings };
       });
   },
+  setSetting: (key, value) => get().setSettingValue(key, value),
   setSettingValue: (key, value) => {
       set((state) => {
           const newSettings = { ...state.settings, [key]: value };

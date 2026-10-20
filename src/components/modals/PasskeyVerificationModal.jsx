@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Globe, Check } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import useVaultStore, { enrichPasswords } from '../../store/useVaultStore';
 
 // Apple-style synthesized unlock chime using Web Audio API
 const playUnlockChime = () => {
@@ -44,6 +45,7 @@ const playUnlockChime = () => {
 const PasskeyVerificationModal = () => {
     const { passkeyPrompt, setPasskeyPrompt, showToast, theme } = useUIStore();
     const activeSpace = useTabStore(state => state.activeSpace);
+    const { pinEnabled, biometricsEnabled, isUnlocked, lockoutUntil } = useVaultStore();
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const [passwordInput, setPasswordInput] = useState('');
@@ -63,6 +65,8 @@ const PasskeyVerificationModal = () => {
             setPasswordInput('');
             setErrorMessage('');
             setAuthStatus('idle');
+            // Refresh fresh QVault security status (PIN, biometrics, lockout)
+            useVaultStore.getState().syncVaultStatus?.();
         } else if (displayedPrompt && !isClosing) {
             setIsClosing(true);
             closeTimerRef.current = setTimeout(() => {
@@ -111,8 +115,18 @@ const PasskeyVerificationModal = () => {
         if (window.electronAPI && window.electronAPI.respondPasskeyVerification && activePrompt?.requestId) {
             await window.electronAPI.respondPasskeyVerification(activePrompt.requestId, true);
         }
-        showToast(`Passkey verified for ${activePrompt?.rpId || activePrompt?.hostname || 'Website'}!`);
+        const domain = activePrompt?.rpId || activePrompt?.hostname || 'Website';
+        const isAutofill = activePrompt?.mode === 'autofill';
+        showToast(isAutofill ? `Vault unlocked & credentials autofilled for ${domain}!` : `Passkey verified for ${domain}!`);
         setPasskeyPrompt(null);
+    };
+
+    const completeVerification = async (success = true) => {
+        if (success) {
+            await triggerSuccessSequence();
+        } else {
+            await handleCancel();
+        }
     };
 
     const handleWindowsHello = async () => {
@@ -120,15 +134,53 @@ const PasskeyVerificationModal = () => {
         setAuthStatus('scanning');
         setErrorMessage('');
         try {
-            const domain = activePrompt?.rpId || activePrompt?.hostname || 'the website';
-            const res = await window.electronAPI.verifyWindowsHello(`Sign in to ${domain} with your QVault passkey`);
-            if (res && (res.verified || res.success)) {
-                await triggerSuccessSequence();
+            const vaultState = useVaultStore.getState();
+            let verified = false;
+
+            // If QVault has biometrics enabled and is currently locked, unlockWithWindowsHello
+            // will run ONE single Windows Hello prompt to unwrap the vault key AND verify identity.
+            if (vaultState.biometricsEnabled && !vaultState.isUnlocked) {
+                const unlocked = await vaultState.unlockWithWindowsHello();
+                if (unlocked) {
+                    verified = true;
+                } else {
+                    const currentErr = useVaultStore.getState().error;
+                    if (currentErr && !currentErr.toLowerCase().includes('cancel')) {
+                        setErrorMessage(currentErr);
+                    }
+                }
+            } else {
+                // If biometrics not bound to vault or vault already unlocked, verify identity directly
+                const domain = activePrompt?.rpId || activePrompt?.hostname || 'the website';
+                if (window.electronAPI?.verifyWindowsHello) {
+                    const isAutofill = activePrompt?.mode === 'autofill';
+                    const promptMsg = isAutofill
+                        ? `Verify your identity to autofill credentials for ${domain}`
+                        : `Sign in to ${domain} with your QVault passkey`;
+                    const res = await window.electronAPI.verifyWindowsHello(promptMsg);
+                    if (res && (res.verified || res.success)) {
+                        verified = true;
+                        if (res.unlockedVault) {
+                            const rawPasswords = await window.electronAPI.getPasswords?.();
+                            if (Array.isArray(rawPasswords) && rawPasswords.length > 0) {
+                                useVaultStore.setState({
+                                    isUnlocked: true,
+                                    masterPassword: res.masterPassword || useVaultStore.getState().masterPassword || '',
+                                    passwords: enrichPasswords(rawPasswords)
+                                });
+                            }
+                        }
+                        vaultState.syncVaultStatus?.();
+                    } else if (res && res.error && !res.error.toLowerCase().includes('cancel')) {
+                        setErrorMessage(res.error);
+                    }
+                }
+            }
+
+            if (verified) {
+                await completeVerification(true);
             } else {
                 setAuthStatus('idle');
-                if (res && res.error && !res.error.includes('canceled') && !res.error.includes('cancelled')) {
-                    setErrorMessage(res.error);
-                }
             }
         } catch (e) {
             setAuthStatus('idle');
@@ -137,30 +189,58 @@ const PasskeyVerificationModal = () => {
     };
 
     const handlePasswordSubmit = async (e) => {
-        e.preventDefault();
-        if (!passwordInput.trim() || authStatus !== 'idle') return;
+        e?.preventDefault?.();
+        const trimmed = passwordInput.trim();
+        if (!trimmed || authStatus !== 'idle') return;
+
+        const vaultState = useVaultStore.getState();
+
+        // Check if vault is locked out from failed PIN attempts
+        if (vaultState.lockoutUntil && Date.now() < vaultState.lockoutUntil) {
+            const remainingSec = Math.max(1, Math.ceil((vaultState.lockoutUntil - Date.now()) / 1000));
+            setErrorMessage(`Vault locked due to failed attempts. Try again in ${remainingSec}s.`);
+            return;
+        }
+
         setAuthStatus('checking-pass');
         setErrorMessage('');
 
         try {
-            // Check 4-digit Quick PIN first
-            const savedPin = localStorage.getItem('qvault_quick_pin');
-            if (savedPin && passwordInput.trim() === savedPin) {
-                await triggerSuccessSequence();
-                return;
+            let pinFailedError = null;
+
+            // Step 1 (Quick PIN Check): cryptographically verified against vault.json
+            if (vaultState.pinEnabled && /^\d{4,8}$/.test(trimmed)) {
+                const pinOk = await vaultState.unlockWithPin(trimmed);
+                if (pinOk) {
+                    await completeVerification(true);
+                    return;
+                } else {
+                    const updatedState = useVaultStore.getState();
+                    pinFailedError = updatedState.error;
+                    if (updatedState.lockoutUntil && Date.now() < updatedState.lockoutUntil) {
+                        setAuthStatus('idle');
+                        const remainingSec = Math.max(1, Math.ceil((updatedState.lockoutUntil - Date.now()) / 1000));
+                        setErrorMessage(`Vault locked due to failed attempts. Try again in ${remainingSec}s.`);
+                        return;
+                    }
+                }
             }
 
-            // Check Master Password with main process
+            // Step 2 (Master Password Check): verify password and unlock vault
             if (window.electronAPI && window.electronAPI.checkVaultPassword) {
-                const isValid = await window.electronAPI.checkVaultPassword(passwordInput.trim());
+                const res = await window.electronAPI.checkVaultPassword(trimmed);
+                const isValid = res === true || res?.valid === true || res?.success === true;
                 if (isValid) {
-                    await triggerSuccessSequence();
+                    if (!useVaultStore.getState().isUnlocked) {
+                        await useVaultStore.getState().unlock(trimmed);
+                    }
+                    await completeVerification(true);
                     return;
                 }
             }
 
             setAuthStatus('idle');
-            setErrorMessage('Incorrect master password or PIN.');
+            setErrorMessage(pinFailedError || useVaultStore.getState().error || 'Incorrect Master Password or Quick PIN. Please try again.');
         } catch (e) {
             setAuthStatus('idle');
             setErrorMessage('Verification failed: ' + (e.message || e));
@@ -176,13 +256,17 @@ const PasskeyVerificationModal = () => {
         >
             <div 
                 id="passkey-modal"
-                className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 ${
+                className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 border ${
                     authStatus === 'success' 
                         ? 'border-emerald-500/40 shadow-[0_0_90px_rgba(16,185,129,0.35)]' 
                         : (isBright 
-                            ? 'bg-white/60 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.12)] text-zinc-900' 
-                            : 'bg-[#0d0e12]/95 border border-white/10 shadow-[0_30px_90px_rgba(0,0,0,0.9)] text-white')
+                            ? 'liquid-glass-bright bg-white/78 border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14),0_1px_3px_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.9)] text-zinc-900' 
+                            : 'liquid-glass-dark bg-[#12131a]/78 border-white/[0.12] shadow-[0_30px_90px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08),inset_0_1px_0_0_rgba(255,255,255,0.16)] text-white')
                 }`} 
+                style={{
+                    backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
+                }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Ambient Glows */}
@@ -257,14 +341,14 @@ const PasskeyVerificationModal = () => {
                             ? 'Identity Verified!' 
                             : authStatus === 'scanning'
                                 ? 'Scanning Windows Hello...'
-                                : 'Passkey Authentication'}
+                                : (activePrompt?.mode === 'autofill' ? 'Autofill Saved Password' : 'Passkey Authentication')}
                     </h2>
                     <p className={`text-xs mt-1 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
                         {authStatus === 'success'
-                            ? 'Passkey released and signed successfully'
+                            ? (activePrompt?.mode === 'autofill' ? 'Vault unlocked and credentials autofilled' : 'Passkey released and signed successfully')
                             : authStatus === 'scanning'
                                 ? 'Touch your fingerprint sensor or enter your Windows PIN'
-                                : 'Verification required to sign in with your passkey'}
+                                : (activePrompt?.mode === 'autofill' ? 'Verification required to unlock vault & autofill' : 'Verification required to sign in with your passkey')}
                     </p>
                 </div>
 
@@ -281,11 +365,11 @@ const PasskeyVerificationModal = () => {
                                 {activePrompt?.rpId || activePrompt?.hostname || 'Website'}
                             </span>
                             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
-                                Passkey
+                                {activePrompt?.mode === 'autofill' ? 'Password' : 'Passkey'}
                             </span>
                         </div>
                         <p className={`text-xs truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                            Account: <span className={`font-medium ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{activePrompt?.username || 'Passkey User'}</span>
+                            Account: <span className={`font-medium ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{activePrompt?.username || (activePrompt?.mode === 'autofill' ? 'Saved Login' : 'Passkey User')}</span>
                         </p>
                     </div>
                 </div>
@@ -332,7 +416,9 @@ const PasskeyVerificationModal = () => {
                     {/* Divider */}
                     <div className="flex items-center gap-3">
                         <div className={`flex-1 h-px ${isBright ? 'bg-black/10' : 'bg-white/10'}`}></div>
-                        <span className={`text-[10px] tracking-wider uppercase font-semibold ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>Or with Master Password / PIN</span>
+                        <span className={`text-[10px] tracking-wider uppercase font-semibold ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
+                            {pinEnabled ? 'Or with Master Password / PIN' : 'Or with Master Password'}
+                        </span>
                         <div className={`flex-1 h-px ${isBright ? 'bg-black/10' : 'bg-white/10'}`}></div>
                     </div>
 
@@ -344,7 +430,7 @@ const PasskeyVerificationModal = () => {
                                 type={showPass ? 'text' : 'password'}
                                 value={passwordInput}
                                 onChange={e => setPasswordInput(e.target.value)}
-                                placeholder="Master Password or 4-digit PIN"
+                                placeholder={pinEnabled ? 'Enter Master Password or 4–8 digit Quick PIN' : 'Enter QVault Master Password'}
                                 disabled={authStatus !== 'idle'}
                                 autoFocus
                                 className={`w-full border rounded-xl pl-9 pr-10 py-2.5 text-sm transition disabled:opacity-40 focus:outline-none focus:border-accent ${

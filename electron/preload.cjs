@@ -51,6 +51,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkVaultPassword: (password) => ipcRenderer.invoke('vault-check-password', password),
     verifyWindowsHello: (message) => ipcRenderer.invoke('verify-windows-hello', message),
     respondPasskeyVerification: (requestId, verified) => ipcRenderer.invoke('respond-passkey-verification', { requestId, verified }),
+    lockVault: () => ipcRenderer.invoke('vault-lock'),
+    getVaultStatus: () => ipcRenderer.invoke('vault-get-status'),
+    setupVaultPin: (pin, masterPassword) => ipcRenderer.invoke('vault-setup-pin', { pin, masterPassword }),
+    unlockVaultWithPin: (pin) => ipcRenderer.invoke('vault-unlock-pin', pin),
+    removeVaultPin: () => ipcRenderer.invoke('vault-remove-pin'),
+    setupVaultWindowsHello: (enable, masterPassword) => ipcRenderer.invoke('vault-setup-windows-hello', { enable, masterPassword }),
+    resetVault: () => ipcRenderer.invoke('vault-reset'),
+    wrapSyncSecret: (secret) => ipcRenderer.invoke('vault-wrap-sync-secret', secret),
+    unwrapSyncSecret: (wrapped) => ipcRenderer.invoke('vault-unwrap-sync-secret', wrapped),
     onPasskeyPrompt: (callback) => {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('prompt-passkey-verification', handler);

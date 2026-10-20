@@ -13,9 +13,10 @@ import { parseVaultContent } from '../../utils/vaultImporter';
 
 export default function QVaultPopover({ isClosing }) {
     const {
-        isUnlocked, masterPassword, pinCode, unlock, unlockWithPin,
-        setPin, lock, passwords, fetchPasswords, addNewItem, deleteItem, updateItem,
-        importBatchItems, exportVaultData, isLoading, error
+        isUnlocked, isInitialized, masterPassword, pinEnabled, biometricsEnabled,
+        unlock, unlockWithPin, unlockWithWindowsHello, enablePin, disablePin, setBiometrics,
+        lock, passwords, fetchPasswords, addNewItem, deleteItem, updateItem,
+        importBatchItems, exportVaultData, resetVault, isLoading, error
     } = useVaultStore();
 
     const showToast = useUIStore(state => state.showToast);
@@ -24,10 +25,19 @@ export default function QVaultPopover({ isClosing }) {
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
+    // Sync vault status on mount
+    useEffect(() => {
+        useVaultStore.getState().syncVaultStatus?.().then(status => {
+            if (status?.hasPin) {
+                setUnlockMode(prev => prev === 'password' && !masterPassInput ? 'pin' : prev);
+            }
+        }).catch(() => {});
+    }, []);
+
     // View Modes: 'vault' | 'add' | 'settings'
     const [viewMode, setViewMode] = useState('vault');
     const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'logins' | 'cards' | 'addresses' | 'passkeys' | 'generator'
-    const [unlockMode, setUnlockMode] = useState(pinCode ? 'pin' : 'password');
+    const [unlockMode, setUnlockMode] = useState(pinEnabled ? 'pin' : 'password');
     const [editingItemId, setEditingItemId] = useState(null);
 
     // Inputs & UX State
@@ -38,7 +48,10 @@ export default function QVaultPopover({ isClosing }) {
     const [copiedId, setCopiedId] = useState(null);
 
     // Settings View Inputs
-    const [newPinInput, setNewPinInput] = useState(pinCode || '');
+    const [newPinInput, setNewPinInput] = useState('');
+    const [isSavingPin, setIsSavingPin] = useState(false);
+    const [isTogglingBio, setIsTogglingBio] = useState(false);
+    const [confirmReset, setConfirmReset] = useState(false);
     const [oldPassInput, setOldPassInput] = useState('');
     const [newMasterPass, setNewMasterPass] = useState('');
     const [confirmMasterPass, setConfirmMasterPass] = useState('');
@@ -216,24 +229,66 @@ export default function QVaultPopover({ isClosing }) {
             if (!masterPassInput.trim()) return;
             const success = await unlock(masterPassInput);
             if (success) {
-                sessionStorage.setItem('qbrowse_vault_mp', masterPassInput);
                 setMasterPassInput('');
             }
         } else {
             if (!pinInput.trim()) return;
-            await unlockWithPin(pinInput);
-            setPinInput('');
+            const success = await unlockWithPin(pinInput);
+            if (success) {
+                setPinInput('');
+            }
         }
     };
 
-    const handleSavePin = (e) => {
+    const handleSavePin = async (e) => {
         e.preventDefault();
-        if (newPinInput && newPinInput.length < 4) {
-            showToast('PIN must be at least 4 digits', 'error');
+        if (!newPinInput || newPinInput.length < 4) {
+            showToast('PIN must be 4 to 6 digits', 'error');
             return;
         }
-        setPin(newPinInput);
-        showToast(newPinInput ? 'Quick PIN updated!' : 'Quick PIN disabled');
+        setIsSavingPin(true);
+        try {
+            const ok = await enablePin(newPinInput);
+            if (ok) {
+                showToast('Quick PIN configured securely');
+                setNewPinInput('');
+            } else {
+                showToast('Failed to configure PIN', 'error');
+            }
+        } catch (err) {
+            showToast(err.message || 'Failed to save PIN', 'error');
+        } finally {
+            setIsSavingPin(false);
+        }
+    };
+
+    const handleDisablePin = async () => {
+        try {
+            const ok = await disablePin();
+            if (ok) {
+                showToast('Quick PIN removed');
+                setNewPinInput('');
+            }
+        } catch (err) {
+            showToast('Failed to remove PIN', 'error');
+        }
+    };
+
+    const handleToggleBiometrics = async () => {
+        setIsTogglingBio(true);
+        try {
+            const target = !biometricsEnabled;
+            const ok = await setBiometrics(target);
+            if (ok) {
+                showToast(target ? 'Windows Hello biometric unlock enabled' : 'Windows Hello biometric unlock disabled');
+            } else {
+                showToast('Windows Hello verification cancelled or failed', 'error');
+            }
+        } catch (err) {
+            showToast(err.message || 'Windows Hello error', 'error');
+        } finally {
+            setIsTogglingBio(false);
+        }
     };
 
     const handleChangeMasterPassword = async (e) => {
@@ -248,20 +303,31 @@ export default function QVaultPopover({ isClosing }) {
         }
         setIsChangingPass(true);
         try {
-            const success = await window.electronAPI.changeMasterPassword(oldPassInput, newMasterPass);
-            if (success) {
-                showToast('Master password changed successfully!');
+            const res = await useVaultStore.getState().changeMasterPassword(oldPassInput, newMasterPass);
+            if (res?.success) {
+                showToast('Master Password updated & synced across QVault');
                 setOldPassInput('');
                 setNewMasterPass('');
                 setConfirmMasterPass('');
                 setViewMode('vault');
             } else {
-                showToast('Current password incorrect', 'error');
+                showToast(res?.error || 'Current master password is incorrect', 'error');
             }
-        } catch {
-            showToast('Failed to change password', 'error');
+        } catch (err) {
+            showToast(err.message || 'Failed to change password', 'error');
         } finally {
             setIsChangingPass(false);
+        }
+    };
+
+    const handleConfirmResetVault = async () => {
+        try {
+            await resetVault();
+            setConfirmReset(false);
+            setViewMode('vault');
+            showToast('Local vault reset. You can now set a new Master Password.');
+        } catch (err) {
+            showToast(err.message || 'Failed to reset vault', 'error');
         }
     };
 
@@ -783,7 +849,7 @@ export default function QVaultPopover({ isClosing }) {
             {!isUnlocked ? (
                 <div className="flex flex-col gap-3.5 py-1">
                     {/* Unlock Mode Selector */}
-                    {pinCode && (
+                    {pinEnabled && (
                         <div className={`relative flex p-1 rounded-full border shadow-xs ${isBright
                                 ? 'bg-black/[0.03] border-black/[0.05]'
                                 : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
@@ -828,19 +894,25 @@ export default function QVaultPopover({ isClosing }) {
                         <div className={`p-3 rounded-xl flex items-center gap-3 border ${isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'}`}>
                             <Shield size={18} className="text-accent shrink-0" />
                             <div className={`text-[11px] leading-relaxed ${isBright ? 'text-zinc-600 font-medium' : 'text-zinc-400'}`}>
-                                {unlockMode === 'pin' ? 'Enter your quick PIN to unlock QVault.' : 'Enter your Master Password to decrypt passwords, cards, and addresses.'}
+                                {!isInitialized
+                                    ? 'Set a Master Password to initialize your encrypted QVault.'
+                                    : unlockMode === 'pin'
+                                        ? 'Enter your quick PIN to unlock QVault.'
+                                        : 'Enter your Master Password to decrypt passwords, cards, and addresses.'}
                             </div>
                         </div>
 
                         {unlockMode === 'password' ? (
                             <div className="flex flex-col gap-1.5">
-                                <label className={`text-[10px] font-mono uppercase tracking-wider ${isBright ? 'text-zinc-600 font-semibold' : 'text-zinc-500'}`}>Master Password</label>
+                                <label className={`text-[10px] font-mono uppercase tracking-wider ${isBright ? 'text-zinc-600 font-semibold' : 'text-zinc-500'}`}>
+                                    {isInitialized ? 'Master Password' : 'Create Master Password'}
+                                </label>
                                 <input
                                     type="password"
                                     autoFocus
                                     value={masterPassInput}
                                     onChange={(e) => setMasterPassInput(e.target.value)}
-                                    placeholder="Enter master password..."
+                                    placeholder={isInitialized ? "Enter master password..." : "Create master password..."}
                                     className={`w-full h-9 rounded-lg px-3 text-xs font-mono outline-none transition-all border ${isBright
                                             ? 'bg-white/80 border-black/[0.12] focus:border-accent text-zinc-900 placeholder-zinc-400 shadow-xs'
                                             : 'bg-white/[0.03] border-white/[0.06] focus:border-accent/40 text-zinc-100 placeholder-zinc-600'
@@ -866,8 +938,22 @@ export default function QVaultPopover({ isClosing }) {
                         )}
 
                         {error && (
-                            <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg font-mono font-medium">
-                                {error}
+                            <div className="flex flex-col gap-1.5">
+                                <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg font-mono font-medium">
+                                    {error}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        if (window.confirm("Reset local vault? This will erase locally stored credentials on this device so you can initialize a fresh vault.")) {
+                                            await resetVault();
+                                            showToast("Local vault reset. You can now set a new Master Password.");
+                                        }
+                                    }}
+                                    className="text-[11px] text-zinc-500 hover:text-red-400 underline font-mono text-center cursor-pointer transition py-0.5"
+                                >
+                                    Forgot password? Reset local vault
+                                </button>
                             </div>
                         )}
 
@@ -880,8 +966,25 @@ export default function QVaultPopover({ isClosing }) {
                                 }`}
                         >
                             {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                            Unlock Vault
+                            {!isInitialized ? 'Initialize Vault' : 'Unlock Vault'}
                         </button>
+
+                        {biometricsEnabled && (
+                            <button
+                                type="button"
+                                disabled={isLoading}
+                                onClick={async () => {
+                                    const ok = await unlockWithWindowsHello();
+                                    if (ok) showToast('Unlocked via Windows Hello');
+                                }}
+                                className={`w-full h-9 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition active:scale-[0.99] cursor-pointer border ${isBright
+                                        ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10 shadow-xs'
+                                        : 'bg-white/[0.04] hover:bg-white/[0.08] text-zinc-200 border-white/10'
+                                    }`}
+                            >
+                                <Fingerprint size={14} className="text-accent" /> Unlock with Windows Hello
+                            </button>
+                        )}
                     </form>
                 </div>
             ) : viewMode === 'settings' ? (
@@ -895,22 +998,59 @@ export default function QVaultPopover({ isClosing }) {
 
                     {/* Quick PIN Settings */}
                     <form onSubmit={handleSavePin} className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col gap-2">
-                        <span className="text-xs font-medium text-zinc-200">Quick PIN Unlock</span>
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-zinc-200">Quick PIN Unlock</span>
+                            {pinEnabled && (
+                                <button
+                                    type="button"
+                                    onClick={handleDisablePin}
+                                    className="text-[10px] text-red-400 hover:text-red-300 font-mono transition cursor-pointer"
+                                >
+                                    Remove PIN
+                                </button>
+                            )}
+                        </div>
                         <p className="text-[11px] text-zinc-500">Set a 4-6 digit PIN for fast vault access.</p>
                         <div className="flex gap-2 mt-1">
                             <input
                                 type="password"
                                 maxLength={6}
-                                placeholder="Set PIN (e.g. 1234)"
+                                placeholder={pinEnabled ? "Change PIN (4-6 digits)" : "Set PIN (4-6 digits)"}
                                 value={newPinInput}
-                                onChange={e => setNewPinInput(e.target.value)}
+                                onChange={e => setNewPinInput(e.target.value.replace(/\D/g, ''))}
                                 className="flex-1 h-8 bg-white/[0.03] border border-white/[0.06] focus:border-accent/40 rounded-lg px-3 text-center text-xs font-mono tracking-widest text-zinc-100 outline-none"
                             />
-                            <button type="submit" className="px-3 h-8 rounded-lg bg-accent/15 hover:bg-accent/25 border border-accent/30 text-accent font-medium text-xs transition cursor-pointer">
-                                Save PIN
+                            <button
+                                type="submit"
+                                disabled={isSavingPin || !newPinInput}
+                                className="px-3 h-8 rounded-lg bg-accent/15 hover:bg-accent/25 border border-accent/30 text-accent font-medium text-xs transition cursor-pointer disabled:opacity-40"
+                            >
+                                {isSavingPin ? 'Saving...' : 'Save PIN'}
                             </button>
                         </div>
                     </form>
+
+                    {/* Windows Hello Biometrics */}
+                    <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex items-center justify-between">
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                                <Fingerprint size={14} className="text-accent" /> Windows Hello Biometrics
+                            </span>
+                            <p className="text-[11px] text-zinc-500">Use fingerprint, facial recognition, or PIN.</p>
+                        </div>
+                        <button
+                            type="button"
+                            disabled={isTogglingBio}
+                            onClick={handleToggleBiometrics}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
+                                biometricsEnabled
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
+                                    : 'bg-white/5 text-zinc-300 border-white/10 hover:bg-white/10'
+                            }`}
+                        >
+                            {isTogglingBio ? 'Updating...' : (biometricsEnabled ? 'Enabled' : 'Enable')}
+                        </button>
+                    </div>
 
                     {/* Master Password Settings */}
                     <form onSubmit={handleChangeMasterPassword} className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col gap-2.5">
@@ -1011,6 +1151,42 @@ export default function QVaultPopover({ isClosing }) {
                                 </button>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Reset Local Vault Section */}
+                    <div className="p-3 bg-red-500/[0.03] border border-red-500/15 rounded-xl flex flex-col gap-2">
+                        <span className="text-xs font-semibold text-red-400 flex items-center gap-1.5">
+                            <Trash2 size={13} /> Reset Local Vault
+                        </span>
+                        <p className="text-[11px] text-zinc-400">
+                            Permanently wipe locally cached credentials on this device.
+                        </p>
+                        {confirmReset ? (
+                            <div className="flex items-center gap-2 mt-1">
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmResetVault}
+                                    className="flex-1 h-8 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium text-xs transition cursor-pointer"
+                                >
+                                    Yes, Wipe Everything
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmReset(false)}
+                                    className="px-3 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs transition cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setConfirmReset(true)}
+                                className="w-full h-8 mt-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 font-medium text-xs transition cursor-pointer"
+                            >
+                                Reset Local Vault
+                            </button>
+                        )}
                     </div>
                 </div>
             ) : viewMode === 'add' ? (

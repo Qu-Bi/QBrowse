@@ -1480,20 +1480,32 @@ function applyWebviewA11yStyles(config) {
         `;
     }
 
-    // 2. Dyslexia-Friendly Font (OpenDyslexic with sans-serif fallback)
+    // 2. Dyslexia-Friendly Font (OpenDyslexic with dyslexia-legible fallback)
     if (currentA11yConfig.a11yDyslexiaFont) {
         css += `
             @font-face {
                 font-family: 'OpenDyslexic';
-                src: url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Regular.otf') format('opentype');
-                font-weight: normal;
+                src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff'),
+                     url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Regular.ttf') format('truetype'),
+                     url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Regular.otf') format('opentype');
+                font-weight: 400;
                 font-style: normal;
                 font-display: swap;
             }
-            body, p, span, a, li, input, textarea, select, button, div, h1, h2, h3, h4, h5, h6 {
-                font-family: 'OpenDyslexic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-                letter-spacing: 0.02em !important;
-                line-height: 1.6 !important;
+            @font-face {
+                font-family: 'OpenDyslexic';
+                src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff'),
+                     url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Bold.ttf') format('truetype'),
+                     url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Bold.otf') format('opentype');
+                font-weight: 700;
+                font-style: normal;
+                font-display: swap;
+            }
+            html, body, body *:not(code):not(pre):not(kbd):not([class*="icon"]):not([class*="fa-"]):not(.material-icons):not(.material-symbols-outlined) {
+                font-family: 'OpenDyslexic', 'Comic Sans MS', 'Trebuchet MS', Verdana, sans-serif !important;
+                letter-spacing: 0.03em !important;
+                word-spacing: 0.08em !important;
+                line-height: 1.65 !important;
             }
         `;
     }
@@ -2407,8 +2419,28 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         return { passwordField, usernameField };
     }
 
-    function fillAccountCredentials(cred, sourceInput) {
+    async function fillAccountCredentials(cred, sourceInput) {
         if (!cred) return;
+
+        if (cred.locked || !cred.password) {
+            closeAutofillDropdown();
+            const verifyRes = await ipcRenderer.invoke('vault-verify-passkey-usage', {
+                hostname: window.location.hostname,
+                rpId: window.location.hostname,
+                username: cred.username || cred.title || 'Saved Login',
+                credentialId: String(cred.id || ''),
+                mode: 'autofill'
+            });
+            if (!verifyRes || !verifyRes.verified) return;
+
+            const freshMatches = await ipcRenderer.invoke('vault-get-matching', window.location.hostname);
+            const unlockedLogins = (freshMatches || []).filter(m => m.itemType !== 'passkey' && !m.passkeyData && m.password);
+            qvaultMatches = unlockedLogins;
+            const unlockedCred = unlockedLogins.find(m => (cred.id && String(m.id) === String(cred.id)) || (cred.username && m.username === cred.username)) || unlockedLogins[0];
+            if (!unlockedCred) return;
+            cred = unlockedCred;
+        }
+
         const { passwordField, usernameField } = findAssociatedFields(sourceInput);
 
         if (usernameField && cred.username) {
@@ -2490,9 +2522,12 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             row.style.gap = '2px';
 
             const userText = item.username || item.title || 'Saved Account';
+            const secondLine = (item.locked || !item.password)
+                ? `<div style="font-size: 10px; color: rgba(212, 188, 148, 0.85); display: flex; align-items: center; gap: 4px;">🔒 Locked • Click to verify & autofill</div>`
+                : `<div style="font-size: 10px; font-family: monospace; color: rgba(212, 188, 148, 0.7); letter-spacing: 0.1em;">••••••••</div>`;
             row.innerHTML = `
                 <div style="font-weight: 500; color: rgba(255, 255, 255, 0.95); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(userText)}</div>
-                <div style="font-size: 10px; font-family: monospace; color: rgba(212, 188, 148, 0.7); letter-spacing: 0.1em;">••••••••</div>
+                ${secondLine}
             `;
 
             row.onmouseenter = () => { row.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'; };
@@ -2533,7 +2568,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         btn.type = 'button';
         btn.tabIndex = -1;
         btn.className = 'qvault-inline-key-btn';
-        btn.title = 'Autofill with QVault';
+        btn.title = qvaultMatches.some(m => m.locked) ? 'Unlock & Autofill with QVault' : 'Autofill with QVault';
         btn.style.position = 'fixed';
         btn.style.zIndex = '2147483640';
         btn.style.width = '22px';
@@ -2636,6 +2671,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
                 activeBadgeMap.set(input, badge);
             }
 
+            badge.title = qvaultMatches.some(m => m.locked) ? 'Unlock & Autofill with QVault' : 'Autofill with QVault';
             badge.style.display = 'flex';
             const top = rect.top + (rect.height - 22) / 2;
             const left = rect.right - 22 - 6;
@@ -2748,6 +2784,34 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             if (qvaultMatches.length > 0) updateBadgePositions();
         });
     }
+
+    // Self-query matching credentials from main on page load & focus
+    async function refreshMatchingCredentialsFromMain() {
+        if (!window.location.hostname || window.location.protocol === 'about:') return;
+        try {
+            const res = await ipcRenderer.invoke('vault-get-matching', window.location.hostname);
+            const loginMatches = (res || []).filter(m => m.itemType !== 'passkey' && !m.passkeyData);
+            if (loginMatches.length > 0 && qvaultMatches.length === 0) {
+                qvaultMatches = loginMatches;
+                updateBadgePositions();
+            }
+        } catch (e) {
+            console.warn('[QVault] refreshMatchingCredentialsFromMain error:', e);
+        }
+    }
+
+    if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        refreshMatchingCredentialsFromMain();
+    } else {
+        document.addEventListener('DOMContentLoaded', refreshMatchingCredentialsFromMain);
+    }
+    window.addEventListener('load', refreshMatchingCredentialsFromMain);
+
+    document.addEventListener('focusin', (e) => {
+        if (qvaultMatches.length === 0 && e.target && e.target.tagName === 'INPUT') {
+            refreshMatchingCredentialsFromMain();
+        }
+    }, true);
 })();
 
 // ==========================================

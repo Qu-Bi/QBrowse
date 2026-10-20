@@ -285,24 +285,42 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         }
     }, [showSwitcher, isActive, isSpaceActive, tab.id, tab.isClosing, tab.url]);
 
-    // Push matching credentials to webview when vault unlocks or URL/space changes
-    useEffect(() => {
-        const wv = wvRef.current;
+    // Helper to push matching credentials (locked or unlocked) to webview
+    const pushVaultMatchesToWebview = async (targetWv = wvRef.current) => {
+        const wv = targetWv;
         if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
         const vaultState = useVaultStore.getState();
         const isGhostOrTor = space === 'ghost' || space === 'tor';
         if (isGhostOrTor && !vaultState.allowVaultInGhostTor) {
-            try { wv.send('qvault-matching-credentials', []); } catch(_) {}
+            try { wv.send('qvault-matching-credentials', []); } catch (_) {}
             return;
         }
-        if (!vaultState.isUnlocked) {
-            try { wv.send('qvault-matching-credentials', []); } catch(_) {}
-            return;
+        if (vaultState.isUnlocked) {
+            const matches = vaultState.getMatchingCredentials(tab.url);
+            try {
+                wv.send('qvault-matching-credentials', matches);
+            } catch (_) {}
+        } else {
+            try {
+                const res = await window.electronAPI?.getMatchingCredentials?.(tab.url);
+                const lockedLogins = (res || [])
+                    .filter(m => m.itemType !== 'passkey' && !m.passkeyData)
+                    .map(m => ({
+                        id: m.id,
+                        title: m.title || '',
+                        url: m.url || '',
+                        username: m.username || '',
+                        password: '',
+                        locked: true
+                    }));
+                wv.send('qvault-matching-credentials', lockedLogins);
+            } catch (_) {}
         }
-        const matches = vaultState.getMatchingCredentials(tab.url);
-        try {
-            wv.send('qvault-matching-credentials', matches);
-        } catch (_) {}
+    };
+
+    // Push matching credentials to webview when vault unlocks or URL/space changes
+    useEffect(() => {
+        pushVaultMatchesToWebview();
     }, [isVaultUnlocked, vaultPasswords, allowVaultInGhostTor, tab.url, space]);
 
     // CSS for custom scrollbars
@@ -536,21 +554,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const sendVaultMatchesToWebview = () => {
-            if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
-            try {
-                const vaultState = useVaultStore.getState();
-                const isGhostOrTor = space === 'ghost' || space === 'tor';
-                if (isGhostOrTor && !vaultState.allowVaultInGhostTor) {
-                    wv.send('qvault-matching-credentials', []);
-                    return;
-                }
-                if (!vaultState.isUnlocked) {
-                    wv.send('qvault-matching-credentials', []);
-                    return;
-                }
-                const matches = vaultState.getMatchingCredentials(tab.url);
-                wv.send('qvault-matching-credentials', matches);
-            } catch (_) {}
+            pushVaultMatchesToWebview(wv);
         };
 
         const handleDomReady = () => {

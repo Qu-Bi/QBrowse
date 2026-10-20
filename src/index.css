@@ -1065,21 +1065,33 @@ html.a11y-high-contrast.theme-light [role="button"] {
   outline: 1px solid rgba(0, 0, 0, 0.2) !important;
 }
 
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff'),
+       url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Regular.ttf') format('truetype'),
+       url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff'),
+       url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Bold.ttf') format('truetype'),
+       url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 html.a11y-dyslexia-font,
 html.a11y-dyslexia-font body,
-html.a11y-dyslexia-font button,
-html.a11y-dyslexia-font input,
-html.a11y-dyslexia-font p,
-html.a11y-dyslexia-font span,
-html.a11y-dyslexia-font h1,
-html.a11y-dyslexia-font h2,
-html.a11y-dyslexia-font h3,
-html.a11y-dyslexia-font h4,
-html.a11y-dyslexia-font h5,
-html.a11y-dyslexia-font h6 {
-  font-family: 'OpenDyslexic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-  letter-spacing: 0.02em !important;
-  line-height: 1.5 !important;
+html.a11y-dyslexia-font *:not(.font-mono):not(code):not(pre):not(kbd) {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', 'Trebuchet MS', Verdana, sans-serif !important;
+  letter-spacing: 0.03em !important;
+  word-spacing: 0.08em !important;
+  line-height: 1.65 !important;
 }
 
 html.a11y-reduced-motion,

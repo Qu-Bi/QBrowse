@@ -1,16 +1,9 @@
 import { create } from 'zustand';
 import { unlockVault, unlockVaultWindowsHello, getPasswords, addPassword, deletePassword, updatePassword } from '../services/electronIPC';
 
-const triggerVaultSync = () => {
-    const { isUnlocked, passwords } = useVaultStore.getState();
-    if (!isUnlocked) return;
-    import('./useSyncStore').then(m => {
-        const syncStore = m.default.getState();
-        if (syncStore.syncCategories?.vault !== false && syncStore.user && syncStore.masterPassword) {
-            syncStore.syncDataToCloud('vault', passwords || []);
-        }
-    }).catch(() => {});
-};
+export function isRawCiphertextString(str) {
+    return typeof str === 'string' && /^[0-9a-fA-F]{24}:[0-9a-fA-F]{32}:[0-9a-fA-F]+$/.test(str.trim());
+}
 
 export function extractDomain(input) {
     if (!input) return '';
@@ -32,11 +25,94 @@ export function matchDomains(d1, d2) {
     return false;
 }
 
+export const enrichPasswords = (rawList) => {
+    if (!Array.isArray(rawList)) return [];
+    return rawList.map(p => {
+        let meta = {
+            type: p.itemType || 'login',
+            notes: p.notes || '',
+            passkeyData: p.passkeyData || null,
+            cardData: p.cardData || null,
+            addressData: p.addressData || null
+        };
+        let cleanTitle = p.title || '';
+        if (cleanTitle.includes('|||')) {
+            const parts = cleanTitle.split('|||');
+            cleanTitle = parts[0];
+            try {
+                const parsed = JSON.parse(parts[1]);
+                meta = {
+                    type: parsed.type || meta.type,
+                    notes: parsed.notes !== undefined ? parsed.notes : meta.notes,
+                    passkeyData: parsed.passkeyData || meta.passkeyData,
+                    cardData: parsed.cardData || meta.cardData,
+                    addressData: parsed.addressData || meta.addressData
+                };
+            } catch (_) {}
+        }
+        return {
+            ...p,
+            rawTitle: p.title,
+            title: cleanTitle,
+            itemType: p.itemType || meta.type || 'login',
+            notes: p.notes || meta.notes || '',
+            passkeyData: p.passkeyData || meta.passkeyData || null,
+            cardData: p.cardData || meta.cardData || null,
+            addressData: p.addressData || meta.addressData || null
+        };
+    });
+};
+
+const syncMasterPasswordToCloud = (mp) => {
+    if (!mp) return;
+    try {
+        if (typeof window !== 'undefined' && window.__syncStore) {
+            const syncState = window.__syncStore.getState();
+            if (syncState.user && !syncState.masterPassword) {
+                syncState.receiveVaultMasterPassword?.(mp);
+            }
+        }
+    } catch (e) {
+        console.warn('[VaultStore] syncMasterPasswordToCloud notice:', e);
+    }
+};
+
+const triggerVaultSync = () => {
+    const { isUnlocked, passwords } = useVaultStore.getState();
+    if (!isUnlocked) return;
+    import('./useSyncStore').then(m => {
+        const syncStore = m.default.getState();
+        if (syncStore.syncCategories?.vault !== false && syncStore.user && syncStore.masterPassword) {
+            const cleanVault = (passwords || []).filter(item => !isRawCiphertextString(item.password));
+            syncStore.syncDataToCloud('vault', cleanVault);
+        }
+    }).catch(() => {});
+};
+
+let inactivityTimer = null;
+
+// Immediately purge legacy plaintext PIN and session password keys
+try {
+    localStorage.removeItem('qbrowse_vault_pin');
+    sessionStorage.removeItem('qbrowse_vault_mp');
+    Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('qbrowse_vault_pin_')) {
+            localStorage.removeItem(k);
+        }
+    });
+} catch (_) {}
+
 const useVaultStore = create((set, get) => ({
+    isInitialized: localStorage.getItem('qbrowse_vault_init') === 'true',
     isUnlocked: false,
     masterPassword: '',
-    pinCode: localStorage.getItem('qbrowse_vault_pin') || '',
+    pinEnabled: localStorage.getItem('qbrowse_vault_pin_enabled') === 'true',
+    biometricsEnabled: localStorage.getItem('qbrowse_vault_bio') === 'true',
     passwords: [],
+    selectedItemId: null,
+    failedAttempts: 0,
+    lockoutUntil: null,
+    autoLockMinutes: 15,
     cloudVaultBackup: (() => {
         try {
             const pending = localStorage.getItem('qbrowse_vault_cloud_pending');
@@ -48,13 +124,75 @@ const useVaultStore = create((set, get) => ({
     isLoading: false,
     error: null,
 
+    // Sync vault status with Electron main process
+    syncVaultStatus: async () => {
+        try {
+            if (!window.electronAPI?.getVaultStatus) return null;
+            const status = await window.electronAPI.getVaultStatus();
+            if (status) {
+                set({
+                    isInitialized: Boolean(status.isInitialized),
+                    pinEnabled: Boolean(status.hasPin),
+                    biometricsEnabled: Boolean(status.hasWindowsHello),
+                    failedAttempts: status.failedPinAttempts || 0,
+                    lockoutUntil: status.pinLockUntil || null
+                });
+                try {
+                    localStorage.setItem('qbrowse_vault_init', Boolean(status.isInitialized) ? 'true' : 'false');
+                    localStorage.setItem('qbrowse_vault_pin_enabled', Boolean(status.hasPin) ? 'true' : 'false');
+                    localStorage.setItem('qbrowse_vault_bio', Boolean(status.hasWindowsHello) ? 'true' : 'false');
+                } catch (_) {}
+                return status;
+            }
+        } catch (err) {
+            console.warn('[VaultStore] syncVaultStatus failed:', err);
+        }
+        return null;
+    },
+
+    resetInactivityTimer: () => {
+        if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = null;
+        }
+        const mins = get().autoLockMinutes || 15;
+        if (mins > 0) {
+            inactivityTimer = setTimeout(() => {
+                get().lock();
+            }, mins * 60 * 1000);
+        }
+    },
+
+    clearInactivityTimer: () => {
+        if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = null;
+        }
+    },
+
     unlock: async (password) => {
         set({ isLoading: true, error: null });
         try {
-            const unlocked = await unlockVault(password);
-            if (unlocked) {
-                set({ isUnlocked: true, masterPassword: password, isLoading: false });
-                await get().fetchPasswords();
+            const success = await unlockVault(password);
+            if (success) {
+                const rawPasswords = await getPasswords(password);
+                set({
+                    isUnlocked: true,
+                    isInitialized: true,
+                    masterPassword: password,
+                    passwords: enrichPasswords(rawPasswords),
+                    error: null,
+                    failedAttempts: 0,
+                    lockoutUntil: null,
+                    isLoading: false
+                });
+                try {
+                    localStorage.setItem('qbrowse_vault_init', 'true');
+                } catch (_) {}
+                await get().syncVaultStatus();
+                syncMasterPasswordToCloud(password);
+                get().resetInactivityTimer();
+
                 const pendingRemote = get().cloudVaultBackup || (() => {
                     try {
                         const p = localStorage.getItem('qbrowse_vault_cloud_pending');
@@ -81,10 +219,27 @@ const useVaultStore = create((set, get) => ({
     unlockWithWindowsHello: async () => {
         set({ isLoading: true, error: null });
         try {
-            const success = await unlockVaultWindowsHello();
-            if (success) {
-                set({ isUnlocked: true, isLoading: false });
-                await get().fetchPasswords();
+            const res = await unlockVaultWindowsHello();
+            const ok = res === true || res?.success === true;
+            if (ok) {
+                const rawPasswords = await getPasswords();
+                const unwrappedMp = (typeof res === 'object' ? res.masterPassword : null) || get().masterPassword || '';
+                set({
+                    isUnlocked: true,
+                    isInitialized: true,
+                    masterPassword: unwrappedMp,
+                    passwords: enrichPasswords(rawPasswords),
+                    error: null,
+                    failedAttempts: 0,
+                    lockoutUntil: null,
+                    isLoading: false
+                });
+
+                if (unwrappedMp) {
+                    syncMasterPasswordToCloud(unwrappedMp);
+                }
+                get().resetInactivityTimer();
+
                 const pendingRemote = get().cloudVaultBackup || (() => {
                     try {
                         const p = localStorage.getItem('qbrowse_vault_cloud_pending');
@@ -99,7 +254,10 @@ const useVaultStore = create((set, get) => ({
                 triggerVaultSync();
                 return true;
             } else {
-                set({ error: 'Windows Security authentication failed', isLoading: false });
+                const errMsg = (typeof res === 'object' && res?.error)
+                    ? res.error
+                    : 'Windows Hello verification failed — unlock with Master Password first';
+                set({ error: errMsg, isLoading: false });
                 return false;
             }
         } catch (err) {
@@ -108,20 +266,41 @@ const useVaultStore = create((set, get) => ({
         }
     },
 
-    unlockWithPin: async (pin) => {
-        const { pinCode } = get();
-        if (!pinCode) {
-            set({ error: 'No PIN set yet' });
-            return false;
-        }
-        if (pin === pinCode) {
-            // Retrieve stored session master pass if available or unlock
-            const storedPass = sessionStorage.getItem('qbrowse_vault_mp');
-            if (storedPass) {
-                return await get().unlock(storedPass);
-            } else {
-                set({ isUnlocked: true });
-                await get().fetchPasswords();
+    unlockWithPin: async (enteredPin) => {
+        set({ isLoading: true, error: null });
+        try {
+            const res = await window.electronAPI?.unlockVaultWithPin?.(enteredPin);
+
+            if (res?.lockedOut || (res?.lockUntil && res.lockUntil > Date.now())) {
+                const remainingSec = Math.max(1, Math.ceil(((res.lockUntil || Date.now()) - Date.now()) / 1000));
+                set({
+                    lockoutUntil: res.lockUntil,
+                    failedAttempts: res.failedAttempts || 5,
+                    error: `Too many failed attempts. Vault locked for ${remainingSec}s.`,
+                    isLoading: false
+                });
+                return false;
+            }
+
+            if (res?.success) {
+                const rawPasswords = await getPasswords();
+                const unwrappedMp = res.masterPassword || get().masterPassword || '';
+                set({
+                    isUnlocked: true,
+                    isInitialized: true,
+                    masterPassword: unwrappedMp,
+                    passwords: enrichPasswords(rawPasswords),
+                    error: null,
+                    failedAttempts: 0,
+                    lockoutUntil: null,
+                    isLoading: false
+                });
+
+                if (unwrappedMp) {
+                    syncMasterPasswordToCloud(unwrappedMp);
+                }
+                get().resetInactivityTimer();
+
                 const pendingRemote = get().cloudVaultBackup || (() => {
                     try {
                         const p = localStorage.getItem('qbrowse_vault_cloud_pending');
@@ -135,50 +314,196 @@ const useVaultStore = create((set, get) => ({
                 }
                 triggerVaultSync();
                 return true;
+            } else {
+                set({
+                    failedAttempts: res?.failedAttempts || (get().failedAttempts + 1),
+                    lockoutUntil: res?.lockUntil || null,
+                    error: res?.error || 'Incorrect PIN',
+                    isLoading: false
+                });
+                return false;
             }
-        } else {
-            set({ error: 'Incorrect PIN code' });
+        } catch (err) {
+            set({ error: err.message, isLoading: false });
             return false;
         }
     },
 
-    setPin: (pin) => {
-        const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
-        const key = (!profileId || profileId === 'default') ? 'qbrowse_vault_pin' : `qbrowse_vault_pin_${profileId}`;
-        localStorage.setItem(key, pin);
-        set({ pinCode: pin });
-    },
-
-    serializeCurrentProfileVault: (profileId) => {
+    enablePin: async (pin) => {
         try {
-            const key = (!profileId || profileId === 'default') ? 'qbrowse_vault_pin' : `qbrowse_vault_pin_${profileId}`;
-            if (get().pinCode) {
-                localStorage.setItem(key, get().pinCode);
+            const mp = get().masterPassword;
+            const res = await window.electronAPI?.setupVaultPin?.(pin, mp);
+            if (res?.success) {
+                set({ pinEnabled: true });
+                try {
+                    localStorage.setItem('qbrowse_vault_pin_enabled', 'true');
+                } catch (_) {}
+                await get().syncVaultStatus();
+                return true;
             }
-        } catch (e) {
-            console.error('Failed to serialize profile vault pin', e);
+            return false;
+        } catch (err) {
+            console.error('[VaultStore] enablePin error:', err);
+            return false;
         }
     },
 
-    loadProfileVault: (profileId) => {
+    disablePin: async () => {
         try {
-            const key = (!profileId || profileId === 'default') ? 'qbrowse_vault_pin' : `qbrowse_vault_pin_${profileId}`;
-            const pin = localStorage.getItem(key) || '';
+            const res = await window.electronAPI?.removeVaultPin?.();
+            if (res?.success || res === true) {
+                set({ pinEnabled: false });
+                try {
+                    localStorage.setItem('qbrowse_vault_pin_enabled', 'false');
+                } catch (_) {}
+                await get().syncVaultStatus();
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.error('[VaultStore] disablePin error:', err);
+            return false;
+        }
+    },
+
+    setPin: async (pin) => {
+        if (!pin) {
+            return await get().disablePin();
+        }
+        return await get().enablePin(pin);
+    },
+
+    setBiometrics: async (val) => {
+        try {
+            const mp = get().masterPassword;
+            const res = await window.electronAPI?.setupVaultWindowsHello?.(Boolean(val), mp);
+            const ok = res === true || res?.success === true;
+            if (ok) {
+                set({ biometricsEnabled: Boolean(val) });
+                try {
+                    localStorage.setItem('qbrowse_vault_bio', val ? 'true' : 'false');
+                } catch (_) {}
+                await get().syncVaultStatus();
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.error('[VaultStore] setBiometrics error:', err);
+            return false;
+        }
+    },
+
+    changeMasterPassword: async (oldPass, newPass) => {
+        set({ isLoading: true, error: null });
+        try {
+            const res = await window.electronAPI?.changeMasterPassword?.(oldPass, newPass);
+            const ok = res === true || res?.success === true;
+            if (!ok) {
+                const errMsg = res?.error || 'Current master password is incorrect';
+                set({ error: errMsg, isLoading: false });
+                return { success: false, error: errMsg };
+            }
+
+            const rawPasswords = await getPasswords(newPass);
             set({
+                masterPassword: newPass,
+                passwords: enrichPasswords(rawPasswords),
+                error: null,
+                isLoading: false
+            });
+
+            // Synchronize with useSyncStore
+            if (typeof window !== 'undefined' && window.__syncStore) {
+                try {
+                    await window.__syncStore.getState().updateMasterPasswordAndResync?.(newPass);
+                } catch (syncErr) {
+                    console.warn('[VaultStore] sync updateMasterPasswordAndResync notice:', syncErr);
+                }
+            }
+
+            await get().syncVaultStatus();
+            return { success: true };
+        } catch (err) {
+            const errMsg = err.message || 'Failed to change master password';
+            set({ error: errMsg, isLoading: false });
+            return { success: false, error: errMsg };
+        }
+    },
+
+    resetVault: async () => {
+        set({ isLoading: true, error: null });
+        try {
+            if (window.electronAPI?.resetVault) {
+                await window.electronAPI.resetVault();
+            }
+            try {
+                localStorage.removeItem('qbrowse_vault_init');
+                localStorage.removeItem('qbrowse_vault_pin_enabled');
+                localStorage.removeItem('qbrowse_vault_bio');
+                localStorage.removeItem('qbrowse_vault_pin');
+                localStorage.removeItem('qbrowse_vault_cloud_pending');
+                sessionStorage.removeItem('qbrowse_vault_mp');
+            } catch (_) {}
+
+            if (inactivityTimer) {
+                clearTimeout(inactivityTimer);
+                inactivityTimer = null;
+            }
+
+            set({
+                isInitialized: false,
                 isUnlocked: false,
                 masterPassword: '',
                 passwords: [],
+                selectedItemId: null,
+                pinEnabled: false,
+                biometricsEnabled: false,
+                failedAttempts: 0,
+                lockoutUntil: null,
                 cloudVaultBackup: null,
-                pinCode: pin,
+                isLoading: false,
                 error: null
             });
-        } catch (e) {
-            console.error('Failed to load profile vault', e);
+
+            await get().syncVaultStatus();
+            return { success: true };
+        } catch (err) {
+            set({ error: err.message, isLoading: false });
+            return { success: false, error: err.message };
         }
     },
 
-    lock: () => {
-        set({ isUnlocked: false, masterPassword: '', passwords: [] });
+    serializeCurrentProfileVault: () => {
+        // Kept for backward compatibility without saving plaintext PINs
+    },
+
+    loadProfileVault: () => {
+        // Kept for backward compatibility
+        set({
+            isUnlocked: false,
+            masterPassword: '',
+            passwords: [],
+            cloudVaultBackup: null,
+            error: null
+        });
+        get().syncVaultStatus();
+    },
+
+    lock: async () => {
+        if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = null;
+        }
+        try {
+            await window.electronAPI?.lockVault?.();
+        } catch (_) {}
+        set({
+            isUnlocked: false,
+            masterPassword: '',
+            passwords: [],
+            selectedItemId: null,
+            error: null
+        });
     },
 
     fetchPasswords: async () => {
@@ -188,55 +513,86 @@ const useVaultStore = create((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             const list = await getPasswords(masterPassword);
-            set({ passwords: list || [], isLoading: false });
+            set({ passwords: enrichPasswords(list || []), isLoading: false });
         } catch (err) {
             set({ error: err.message, isLoading: false });
         }
     },
 
+    refreshPasswords: async () => {
+        await get().fetchPasswords();
+    },
+
     mergeRemoteVault: async (remoteVault) => {
         if (!Array.isArray(remoteVault) || remoteVault.length === 0) return;
-        let { isUnlocked, masterPassword, passwords } = get();
+        let { isUnlocked, passwords } = get();
 
-        // If not unlocked, check if stored session pass from an active session is available
-        if (!isUnlocked) {
-            const sessionPass = sessionStorage.getItem('qbrowse_vault_mp');
-            if (sessionPass) {
-                try {
-                    const unlocked = await unlockVault(sessionPass);
-                    if (unlocked) {
-                        set({ isUnlocked: true, masterPassword: sessionPass });
-                        await get().fetchPasswords();
-                        isUnlocked = true;
-                        masterPassword = sessionPass;
-                        passwords = get().passwords;
-                    }
-                } catch(_) {}
-            }
-        }
+        // Guard against corrupted ciphertext strings
+        const cleanRemote = remoteVault.filter(item => item && !isRawCiphertextString(item.password));
+        if (cleanRemote.length === 0) return;
 
         if (!isUnlocked) {
-            set({ cloudVaultBackup: remoteVault });
+            set({ cloudVaultBackup: cleanRemote });
             try {
-                localStorage.setItem('qbrowse_vault_cloud_pending', JSON.stringify(remoteVault));
+                localStorage.setItem('qbrowse_vault_cloud_pending', JSON.stringify(cleanRemote));
             } catch(e) {}
             return;
         }
+
         let addedAny = false;
-        for (const remoteItem of remoteVault) {
-            const exists = passwords.some(p => String(p.id) === String(remoteItem.id) || (p.title === remoteItem.title && p.username === remoteItem.username && p.itemType === remoteItem.itemType));
-            if (!exists) {
+        const norm = (s) => (s ? String(s).trim().toLowerCase() : '');
+
+        for (const remoteItem of cleanRemote) {
+            const remoteUrl = norm(remoteItem.url);
+            const remoteUser = norm(remoteItem.username);
+            const remoteTitle = norm(remoteItem.title);
+
+            const existing = passwords.find(p => {
+                if (String(p.id) === String(remoteItem.id)) return true;
+                const pUrl = norm(p.url);
+                const pUser = norm(p.username);
+                const pTitle = norm(p.title);
+                const sameUser = (pUser === remoteUser);
+                const sameUrl = (remoteUrl && pUrl && (pUrl === remoteUrl || matchDomains(pUrl, remoteUrl)));
+                const sameTitle = (remoteTitle && pTitle && pTitle === remoteTitle);
+                return sameUser && (sameUrl || sameTitle);
+            });
+
+            if (existing) {
+                const remoteUpdated = new Date(remoteItem.updatedAt || 0).getTime();
+                const localUpdated = new Date(existing.updatedAt || 0).getTime();
+                if (remoteUpdated > localUpdated && remoteItem.password && remoteItem.password !== existing.password) {
+                    try {
+                        await get().updateItem({
+                            id: existing.id,
+                            type: remoteItem.itemType || 'login',
+                            title: remoteItem.title,
+                            username: remoteItem.username || '',
+                            password: remoteItem.password || '',
+                            url: remoteItem.url || '',
+                            notes: remoteItem.notes || '',
+                            passkeyData: remoteItem.passkeyData || null,
+                            cardData: remoteItem.cardData || null,
+                            addressData: remoteItem.addressData || null
+                        });
+                        addedAny = true;
+                    } catch (e) {
+                        console.warn("[VaultStore] Failed to update merged item:", remoteItem.title, e);
+                    }
+                }
+            } else {
                 try {
-                    const payload = {
+                    await get().addNewItem({
                         type: remoteItem.itemType || 'login',
+                        title: remoteItem.title || 'Synced Account',
+                        username: remoteItem.username || '',
+                        password: remoteItem.password || '',
+                        url: remoteItem.url || '',
                         notes: remoteItem.notes || '',
                         passkeyData: remoteItem.passkeyData || null,
                         cardData: remoteItem.cardData || null,
                         addressData: remoteItem.addressData || null
-                    };
-                    const jsonPayload = JSON.stringify(payload);
-                    const combinedTitle = `${remoteItem.title}|||${jsonPayload}`;
-                    await addPassword(combinedTitle, remoteItem.username || '', remoteItem.password || '', remoteItem.url || '', masterPassword);
+                    });
                     addedAny = true;
                 } catch (e) {
                     console.warn("[VaultStore] Failed to merge remote item:", remoteItem.title, e);
@@ -251,7 +607,6 @@ const useVaultStore = create((set, get) => ({
 
     addNewItem: async ({ type = 'login', title, username = '', password = '', url = '', passkeyData = null, cardData = null, addressData = null, notes = '' }) => {
         const { isUnlocked, masterPassword } = get();
-        console.log("[VaultStore Debug] addNewItem called:", { type, title, username, url, isUnlocked });
 
         set({ isLoading: true });
         try {
@@ -266,28 +621,24 @@ const useVaultStore = create((set, get) => ({
             const combinedTitle = `${title}|||${jsonPayload}`;
 
             await addPassword(combinedTitle, username, password, url, masterPassword);
-            console.log("[VaultStore Debug] addPassword IPC resolved successfully for:", title);
             if (isUnlocked) {
                 await get().fetchPasswords();
             }
             set({ isLoading: false });
             triggerVaultSync();
         } catch (err) {
-            console.error("[VaultStore Debug] addNewItem error:", err);
+            console.error("[VaultStore] addNewItem error:", err);
             set({ error: err.message, isLoading: false });
             throw err;
         }
     },
 
     deleteItem: async (id) => {
-        console.log('[VaultStore Debug] deleteItem called with id:', id);
         set({ isLoading: true, error: null });
         try {
             const res = await deletePassword(id);
-            console.log('[VaultStore Debug] deletePassword IPC returned:', res);
             set(state => {
                 const updated = state.passwords.filter(p => String(p.id) !== String(id));
-                console.log('[VaultStore Debug] Passwords before:', state.passwords.length, 'after:', updated.length);
                 return {
                     passwords: updated,
                     isLoading: false
@@ -296,7 +647,7 @@ const useVaultStore = create((set, get) => ({
             triggerVaultSync();
             return res;
         } catch (err) {
-            console.error('[VaultStore Debug] deleteItem error:', err);
+            console.error('[VaultStore] deleteItem error:', err);
             set({ error: err.message, isLoading: false });
             throw err;
         }
@@ -334,6 +685,7 @@ const useVaultStore = create((set, get) => ({
 
         try {
             for (const item of itemsList) {
+                if (isRawCiphertextString(item.password)) continue;
                 const payload = {
                     type: item.type || 'login',
                     notes: item.notes || '',
@@ -375,28 +727,30 @@ const useVaultStore = create((set, get) => ({
 
     exportVaultData: (format = 'json') => {
         const { passwords } = get();
-        const exportable = (passwords || []).map(p => {
-            let meta = {};
-            let rawTitle = p.title || '';
-            if (rawTitle.includes('|||')) {
-                const parts = rawTitle.split('|||');
-                rawTitle = parts[0];
-                try { meta = JSON.parse(parts[1]); } catch (_) {}
-            }
-            return {
-                title: rawTitle,
-                type: meta.type || 'login',
-                username: p.username || '',
-                password: p.password || '',
-                url: p.url || '',
-                notes: meta.notes || '',
-                cardData: meta.cardData || null,
-                addressData: meta.addressData || null
-            };
-        });
+        const exportable = (passwords || [])
+            .filter(p => !isRawCiphertextString(p.password))
+            .map(p => {
+                let meta = {};
+                let rawTitle = p.title || '';
+                if (rawTitle.includes('|||')) {
+                    const parts = rawTitle.split('|||');
+                    rawTitle = parts[0];
+                    try { meta = JSON.parse(parts[1]); } catch (_) {}
+                }
+                return {
+                    title: rawTitle,
+                    type: p.itemType || meta.type || 'login',
+                    username: p.username || '',
+                    password: p.password || '',
+                    url: p.url || '',
+                    notes: p.notes || meta.notes || '',
+                    cardData: p.cardData || meta.cardData || null,
+                    addressData: p.addressData || meta.addressData || null
+                };
+            });
 
         if (format === 'json') {
-            const dataStr = JSON.stringify({ qvault_version: '1.3.3', exported_at: new Date().toISOString(), items: exportable }, null, 2);
+            const dataStr = JSON.stringify({ qvault_version: '1.3.4', exported_at: new Date().toISOString(), items: exportable }, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -476,7 +830,7 @@ const useVaultStore = create((set, get) => ({
             .filter(p => {
                 const isLogin = !p.itemType || p.itemType === 'login';
                 if (!isLogin) return false;
-                if (!p.username || !p.password) return false;
+                if (!p.username || !p.password || isRawCiphertextString(p.password)) return false;
 
                 const itemDomain = extractDomain(p.url || p.title);
                 if (matchDomains(targetDomain, itemDomain)) return true;

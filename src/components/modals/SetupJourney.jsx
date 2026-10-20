@@ -72,6 +72,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     const [importedStats, setImportedStats] = useState({});
     const [isDefault, setIsDefault] = useState(false);
     const [isSettingDefault, setIsSettingDefault] = useState(false);
+    const [defaultBrowserHint, setDefaultBrowserHint] = useState('');
+    const defaultPollRef = useRef(null);
+    const isDefaultBrowser = isDefault;
+    const setIsDefaultBrowser = setIsDefault;
 
     // Cloud Sync & Profile Setup State
     const { 
@@ -161,11 +165,18 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             }).catch(() => {});
         }
 
-        if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
-            window.electronAPI.checkDefaultBrowser({ force: true }).then(res => {
-                if (res) setIsDefault(!!res.isDefault);
-            }).catch(() => {});
-        }
+        const checkInitialDefault = async () => {
+            try {
+                let res = null;
+                if (window.electronAPI?.systemCheckDefaultBrowser) {
+                    res = await window.electronAPI.systemCheckDefaultBrowser(true);
+                } else if (window.electronAPI?.checkDefaultBrowser) {
+                    res = await window.electronAPI.checkDefaultBrowser({ force: true });
+                }
+                if (res) setIsDefault(Boolean(res.isDefault));
+            } catch (_) {}
+        };
+        checkInitialDefault();
     }, []);
 
     const handleApplyAccent = (preset) => {
@@ -292,53 +303,89 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         }
     };
 
-    const checkDefaultStatus = useCallback(async () => {
-        if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
-            try {
-                const res = await window.electronAPI.checkDefaultBrowser({ force: true });
-                if (res && res.isDefault) {
-                    setIsDefault(true);
-                    return true;
+    const checkDefaultStatus = useCallback(async (force = true) => {
+        try {
+            let res = null;
+            if (window.electronAPI && window.electronAPI.systemCheckDefaultBrowser) {
+                res = await window.electronAPI.systemCheckDefaultBrowser(force);
+            } else if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
+                res = await window.electronAPI.checkDefaultBrowser({ force });
+            }
+            const isDef = Boolean(res?.isDefault);
+            setIsDefault(isDef);
+            if (isDef) {
+                setDefaultBrowserHint('');
+                if (defaultPollRef.current) {
+                    clearInterval(defaultPollRef.current);
+                    defaultPollRef.current = null;
                 }
-            } catch (_) {}
+            }
+            return isDef;
+        } catch (_) {
+            return false;
         }
-        return false;
     }, []);
 
     useEffect(() => {
         if (currentStep === 3) {
-            checkDefaultStatus();
+            checkDefaultStatus(true);
 
             const handleFocus = () => {
-                checkDefaultStatus().then(isDef => {
-                    if (isDef) showToast('QBrowse is now your default browser!');
+                checkDefaultStatus(true).then(isDef => {
+                    if (isDef) {
+                        showToast('QBrowse is now your default browser!');
+                    }
                 });
             };
 
             window.addEventListener('focus', handleFocus);
-            return () => window.removeEventListener('focus', handleFocus);
+            return () => {
+                window.removeEventListener('focus', handleFocus);
+                if (defaultPollRef.current) {
+                    clearInterval(defaultPollRef.current);
+                    defaultPollRef.current = null;
+                }
+            };
         }
     }, [currentStep, checkDefaultStatus, showToast]);
 
     const handleSetDefault = async () => {
-        if (!window.electronAPI || !window.electronAPI.setDefaultBrowser) return;
         setIsSettingDefault(true);
         try {
-            const res = await window.electronAPI.setDefaultBrowser();
-            if (res.isDefault) {
+            let res = null;
+            if (window.electronAPI && window.electronAPI.systemSetDefaultBrowser) {
+                res = await window.electronAPI.systemSetDefaultBrowser();
+            } else if (window.electronAPI && window.electronAPI.setDefaultBrowser) {
+                res = await window.electronAPI.setDefaultBrowser();
+            }
+
+            if (res?.isDefault) {
                 setIsDefault(true);
+                setDefaultBrowserHint('');
                 showToast('QBrowse is now your default browser!');
             } else {
+                setDefaultBrowserHint('Windows Default Apps opened — select QBrowse in the system window to confirm.');
                 showToast('Opening Windows Default Apps. Click "Set default" for QBrowse.');
+
+                if (defaultPollRef.current) clearInterval(defaultPollRef.current);
                 let attempts = 0;
-                const pollTimer = setInterval(async () => {
+                defaultPollRef.current = setInterval(async () => {
                     attempts++;
-                    const isDef = await checkDefaultStatus();
+                    const isDef = await checkDefaultStatus(true);
                     if (isDef) {
-                        clearInterval(pollTimer);
+                        if (defaultPollRef.current) {
+                            clearInterval(defaultPollRef.current);
+                            defaultPollRef.current = null;
+                        }
+                        setDefaultBrowserHint('');
                         showToast('QBrowse is now your default browser!');
                     }
-                    if (attempts >= 14) clearInterval(pollTimer);
+                    if (attempts >= 20) {
+                        if (defaultPollRef.current) {
+                            clearInterval(defaultPollRef.current);
+                            defaultPollRef.current = null;
+                        }
+                    }
                 }, 1500);
             }
         } catch (_) {
@@ -349,6 +396,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     };
 
     const handleFinishSetup = (startTour = false) => {
+        if (defaultPollRef.current) {
+            clearInterval(defaultPollRef.current);
+            defaultPollRef.current = null;
+        }
         try {
             sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
             sessionStorage.setItem('qbrowse_default_browser_prompted', 'true');
@@ -788,12 +839,35 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                                 <div>
                                     <h4 className="text-base font-bold text-white">
-                                        {isDefault ? 'QBrowse is already your default browser!' : 'Make QBrowse your primary web gateway'}
+                                        {isDefault ? 'QBrowse is Your Default Browser!' : 'Make QBrowse your primary web gateway'}
                                     </h4>
                                     <p className="text-xs text-white/50 max-w-md mx-auto mt-1">
-                                        Handles all http://, https://, and HTML files with deep OS system integration.
+                                        {isDefault ? 'All desktop links and web files will automatically open in QBrowse.' : 'Handles all http://, https://, and HTML files with deep OS system integration.'}
                                     </p>
                                 </div>
+
+                                {defaultBrowserHint && !isDefault && (
+                                    <div className="mx-auto max-w-md p-3.5 rounded-2xl bg-accent/10 border border-accent/25 text-accent text-xs leading-relaxed flex flex-col items-center gap-2.5 animate-fade-in shadow-inner">
+                                        <div className="flex items-center gap-2 font-medium text-center">
+                                            <AlertCircle size={16} className="flex-shrink-0 text-accent" />
+                                            <span>{defaultBrowserHint}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (window.electronAPI && window.electronAPI.systemOpenDefaultAppsSettings) {
+                                                    window.electronAPI.systemOpenDefaultAppsSettings();
+                                                } else if (window.electronAPI && window.electronAPI.openDefaultAppsSettings) {
+                                                    window.electronAPI.openDefaultAppsSettings();
+                                                }
+                                            }}
+                                            className="px-3.5 py-1.5 text-[11px] font-semibold rounded-xl bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 transition cursor-pointer flex items-center gap-1.5"
+                                        >
+                                            <Compass size={13} />
+                                            <span>Open Windows Default Apps</span>
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
                                     <button

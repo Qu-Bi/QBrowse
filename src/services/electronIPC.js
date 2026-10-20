@@ -10,9 +10,13 @@ export const listenToEvent = async (event, handler) => {
   
   export const unlockVaultWindowsHello = async () => {
     if (window.electronAPI && window.electronAPI.unlockVaultWindowsHello) {
-        return await window.electronAPI.unlockVaultWindowsHello();
+        const res = await window.electronAPI.unlockVaultWindowsHello();
+        if (typeof res === 'object' && res !== null && 'success' in res) {
+            return res.success ? res : false;
+        }
+        return res;
     }
-    return true;
+    return false;
   };
   
   export const addPassword = async (title, username, passwordPlaintext, url, masterPassword) => {
@@ -31,7 +35,7 @@ export const listenToEvent = async (event, handler) => {
     return true;
   };
   
-  export const updatePassword = async (id, title, username, passwordPlaintext, url) => {
+  export const updatePassword = async (id, title, url, username, passwordPlaintext) => {
     if (window.electronAPI && window.electronAPI.updatePassword) {
         return await window.electronAPI.updatePassword(id, title, url, username, passwordPlaintext);
     }
@@ -41,6 +45,16 @@ export const listenToEvent = async (event, handler) => {
   export const getPasswords = async (masterPassword) => {
     return await window.electronAPI.getPasswords();
   };
+
+  export const lockVault = async () => window.electronAPI?.lockVault ? await window.electronAPI.lockVault() : true;
+  export const getVaultStatus = async () => window.electronAPI?.getVaultStatus ? await window.electronAPI.getVaultStatus() : null;
+  export const setupVaultPin = async (pin, masterPassword) => window.electronAPI?.setupVaultPin ? await window.electronAPI.setupVaultPin(pin, masterPassword) : false;
+  export const unlockVaultWithPin = async (pin) => window.electronAPI?.unlockVaultWithPin ? await window.electronAPI.unlockVaultWithPin(pin) : { success: false };
+  export const removeVaultPin = async () => window.electronAPI?.removeVaultPin ? await window.electronAPI.removeVaultPin() : false;
+  export const setupVaultWindowsHello = async (enable, masterPassword) => window.electronAPI?.setupVaultWindowsHello ? await window.electronAPI.setupVaultWindowsHello(enable, masterPassword) : false;
+  export const resetVault = async () => window.electronAPI?.resetVault ? await window.electronAPI.resetVault() : false;
+  export const wrapSyncSecret = async (secret) => window.electronAPI?.wrapSyncSecret ? await window.electronAPI.wrapSyncSecret(secret) : null;
+  export const unwrapSyncSecret = async (wrapped) => window.electronAPI?.unwrapSyncSecret ? await window.electronAPI.unwrapSyncSecret(wrapped) : null;
   
   export const sendAIMessage = async (message, contextEnabled, currentUrl) => {
     // To be implemented in Electron

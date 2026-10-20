@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme, screen, Menu, MenuItem } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme, screen, Menu, MenuItem, safeStorage } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -1014,23 +1014,77 @@ if (settingsStore.isolation === true) {
     try { app.commandLine.appendSwitch('site-per-process'); } catch (_) {}
 }
 let masterKey = null;
+let activeMasterPassword = null;
 
-// Ensure vault exists
+// Ensure vault exists and is initialized
 async function ensureVault() {
     try {
         await fs.access(vaultPath);
     } catch {
-        await fs.writeFile(vaultPath, JSON.stringify({ passwords: [] }));
+        await fs.writeFile(vaultPath, JSON.stringify({ canary: null, vaultSalt: null, passwords: [] }, null, 2));
     }
 }
 
-function deriveKey(password) {
-    // We use a static salt for simplicity, but ideally this should be stored per user
-    const salt = Buffer.from('QBrowseSecureSalt2026', 'utf-8');
-    return crypto.scryptSync(password, salt, 32);
+function readVaultSync() {
+    try {
+        if (fsSync.existsSync(vaultPath)) {
+            const data = fsSync.readFileSync(vaultPath, 'utf8');
+            const parsed = JSON.parse(data);
+            if (!parsed.passwords || !Array.isArray(parsed.passwords)) {
+                parsed.passwords = [];
+            }
+            // Support legacy testEncryption as canary
+            if (!parsed.canary && parsed.testEncryption) {
+                parsed.canary = parsed.testEncryption;
+            }
+            return parsed;
+        }
+    } catch (e) {
+        console.error('[Vault] Error reading vault.json:', e);
+    }
+    return { canary: null, vaultSalt: null, passwords: [] };
+}
+
+function writeVaultSync(vault) {
+    try {
+        fsSync.writeFileSync(vaultPath, JSON.stringify(vault, null, 2), 'utf8');
+        return true;
+    } catch (e) {
+        console.error('[Vault] Error writing vault.json:', e);
+        return false;
+    }
+}
+
+function deriveKey(password, saltHex) {
+    if (!password) return null;
+    if (saltHex) {
+        try {
+            const salt = Buffer.isBuffer(saltHex) ? saltHex : Buffer.from(saltHex, 'hex');
+            return crypto.scryptSync(password, salt, 32);
+        } catch (e) {
+            console.warn('[Vault] deriveKey with saltHex failed:', e.message);
+        }
+    }
+    return deriveLegacyKey(password);
+}
+
+function deriveLegacyKey(password) {
+    if (!password) return null;
+    return crypto.scryptSync(password, 'QBrowseSalt', 32);
+}
+
+function deriveLegacyKey2026(password) {
+    if (!password) return null;
+    return crypto.scryptSync(password, 'QBrowseSecureSalt2026', 32);
+}
+
+function isEncryptedPayload(str) {
+    return typeof str === 'string' && /^[0-9a-fA-F]{24}:[0-9a-fA-F]{32}:[0-9a-fA-F]+$/.test(str.trim());
 }
 
 function encrypt(text, key) {
+    if (text === null || text === undefined) text = '';
+    text = String(text);
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     let encrypted = cipher.update(text, 'utf8', 'hex');
@@ -1039,15 +1093,250 @@ function encrypt(text, key) {
     return `${iv.toString('hex')}:${authTag}:${encrypted}`;
 }
 
+function safeDecrypt(ciphertext, key) {
+    if (!ciphertext || !key || !isEncryptedPayload(ciphertext)) return null;
+    try {
+        const parts = ciphertext.trim().split(':');
+        if (parts.length !== 3) return null;
+        const [ivHex, authTagHex, encryptedHex] = parts;
+        const iv = Buffer.from(ivHex, 'hex');
+        const authTag = Buffer.from(authTagHex, 'hex');
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(authTag);
+        let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (e) {
+        return null;
+    }
+}
+
 function decrypt(text, key) {
-    const [ivHex, authTagHex, encryptedHex] = text.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-    decipher.setAuthTag(authTag);
-    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    const res = safeDecrypt(text, key);
+    if (res === null) {
+        throw new Error('Decryption failed');
+    }
+    return res;
+}
+
+function extractVaultItemMeta(p) {
+    if (!p || typeof p !== 'object') {
+        return {
+            cleanTitle: '',
+            itemType: 'login',
+            type: 'login',
+            passkeyData: null,
+            cardData: null,
+            addressData: null,
+            notes: ''
+        };
+    }
+
+    let cleanTitle = p.title || '';
+    let meta = {
+        itemType: p.itemType || 'login',
+        type: p.itemType || 'login',
+        passkeyData: p.passkeyData || null,
+        notes: p.notes || '',
+        cardData: p.cardData || null,
+        addressData: p.addressData || null
+    };
+
+    if (cleanTitle.includes('|||')) {
+        const parts = cleanTitle.split('|||');
+        cleanTitle = parts[0];
+        try {
+            const parsed = JSON.parse(parts[1]);
+            meta = {
+                itemType: parsed.type || meta.itemType,
+                type: parsed.type || meta.itemType,
+                notes: parsed.notes || meta.notes || '',
+                passkeyData: parsed.passkeyData || meta.passkeyData,
+                cardData: parsed.cardData || meta.cardData,
+                addressData: parsed.addressData || meta.addressData
+            };
+        } catch (e) {}
+    }
+
+    return {
+        cleanTitle,
+        itemType: meta.itemType,
+        type: meta.itemType,
+        passkeyData: meta.passkeyData,
+        cardData: meta.cardData,
+        addressData: meta.addressData,
+        notes: meta.notes
+    };
+}
+
+function healAndDecryptVaultItems(vault, primaryKey, candidatePasswords = []) {
+    if (!vault) return [];
+    if (!Array.isArray(vault.passwords)) {
+        vault.passwords = [];
+        return [];
+    }
+    if (!primaryKey) return [];
+
+    let vaultModified = false;
+
+    // Build unique candidate keys for self-healing
+    const candidateKeys = [];
+    const seenKeyHexes = new Set();
+    const addCandidateKey = (k) => {
+        if (k && Buffer.isBuffer(k)) {
+            const hex = k.toString('hex');
+            if (!seenKeyHexes.has(hex)) {
+                seenKeyHexes.add(hex);
+                candidateKeys.push(k);
+            }
+        }
+    };
+
+    // 1. Primary key first
+    addCandidateKey(primaryKey);
+
+    // 2. Candidate passwords with current salt and legacy salts
+    const allCandidatePasswords = [...candidatePasswords];
+    if (activeMasterPassword && !allCandidatePasswords.includes(activeMasterPassword)) {
+        allCandidatePasswords.push(activeMasterPassword);
+    }
+    for (const pw of allCandidatePasswords) {
+        if (typeof pw === 'string' && pw.length > 0) {
+            if (vault.vaultSalt) {
+                addCandidateKey(deriveKey(pw, vault.vaultSalt));
+            }
+            addCandidateKey(deriveLegacyKey(pw));
+            addCandidateKey(deriveLegacyKey2026(pw));
+        }
+    }
+
+    // 3. Fallback default and Windows Hello keys
+    addCandidateKey(deriveLegacyKey('QBrowseDefaultVaultKey'));
+    addCandidateKey(deriveLegacyKey2026('QBrowseDefaultVaultKey'));
+    addCandidateKey(deriveLegacyKey('QBrowseWindowsHelloVaultKey'));
+    addCandidateKey(deriveLegacyKey2026('QBrowseWindowsHelloVaultKey'));
+
+    const decryptedResults = [];
+
+    for (const p of vault.passwords) {
+        if (!p || typeof p !== 'object') continue;
+
+        let cleanTitle = p.title || '';
+        let meta = {
+            type: p.itemType || 'login',
+            passkeyData: p.passkeyData || null,
+            notes: p.notes || '',
+            cardData: p.cardData || null,
+            addressData: p.addressData || null
+        };
+        if (cleanTitle.includes('|||')) {
+            const parts = cleanTitle.split('|||');
+            cleanTitle = parts[0];
+            try {
+                const parsed = JSON.parse(parts[1]);
+                meta = {
+                    type: parsed.type || meta.type,
+                    notes: parsed.notes || meta.notes || '',
+                    passkeyData: parsed.passkeyData || meta.passkeyData,
+                    cardData: parsed.cardData || meta.cardData,
+                    addressData: parsed.addressData || meta.addressData
+                };
+            } catch (e) {}
+        }
+
+        let rawDecryptedPassword = null;
+        let needsReencrypt = false;
+
+        const rawPasswordProp = p.password;
+
+        if (rawPasswordProp === null || rawPasswordProp === undefined || rawPasswordProp === '') {
+            rawDecryptedPassword = '';
+        } else if (!isEncryptedPayload(rawPasswordProp)) {
+            // Raw unencrypted string was stored directly
+            rawDecryptedPassword = String(rawPasswordProp);
+            needsReencrypt = true;
+        } else {
+            // It is an encrypted payload: try primaryKey first
+            const decPrimary = safeDecrypt(rawPasswordProp, primaryKey);
+            if (decPrimary !== null) {
+                rawDecryptedPassword = decPrimary;
+            } else {
+                // Try fallback candidate keys
+                for (const fallbackKey of candidateKeys) {
+                    if (fallbackKey.equals(primaryKey)) continue;
+                    const decFallback = safeDecrypt(rawPasswordProp, fallbackKey);
+                    if (decFallback !== null) {
+                        rawDecryptedPassword = decFallback;
+                        needsReencrypt = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Repair parameter swap bug from electronIPC.updatePassword
+        // In the bug:
+        // p.username got url (e.g. 'https://...')
+        // p.url got plaintext password
+        // p.password got encrypted username
+        if (rawDecryptedPassword !== null) {
+            const userStr = typeof p.username === 'string' ? p.username.trim() : '';
+            const urlStr = typeof p.url === 'string' ? p.url.trim() : '';
+            const looksLikeUrl = /^https?:\/\//i.test(userStr);
+            const urlLooksLikeUrl = /^https?:\/\//i.test(urlStr);
+            const urlLooksLikeDomain = /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/.test(urlStr) && !urlStr.includes(' ');
+
+            if (looksLikeUrl && !urlLooksLikeUrl && !urlLooksLikeDomain) {
+                const repairedUrl = p.username;
+                const repairedUsername = rawDecryptedPassword;
+                const repairedPasswordPlaintext = p.url;
+
+                p.url = repairedUrl;
+                p.username = repairedUsername;
+                rawDecryptedPassword = repairedPasswordPlaintext;
+                needsReencrypt = true;
+                vaultModified = true;
+            }
+        }
+
+        // Re-encrypt with primaryKey if decrypted via fallback, or was unencrypted, or was repaired
+        if (rawDecryptedPassword !== null && needsReencrypt) {
+            p.password = encrypt(rawDecryptedPassword, primaryKey);
+            vaultModified = true;
+        }
+
+        if (rawDecryptedPassword === null) {
+            // Undecryptable item: NEVER return raw ciphertext to renderer
+            decryptedResults.push({
+                ...p,
+                title: cleanTitle,
+                itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
+                passkeyData: meta.passkeyData,
+                cardData: meta.cardData,
+                addressData: meta.addressData,
+                notes: meta.notes || '',
+                password: '',
+                decryptionFailed: true
+            });
+        } else {
+            decryptedResults.push({
+                ...p,
+                title: cleanTitle,
+                itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
+                passkeyData: meta.passkeyData,
+                cardData: meta.cardData,
+                addressData: meta.addressData,
+                notes: meta.notes || '',
+                password: rawDecryptedPassword
+            });
+        }
+    }
+
+    if (vaultModified) {
+        writeVaultSync(vault);
+    }
+
+    return decryptedResults;
 }
 
 const browserWindows = new Set();
@@ -1294,10 +1583,11 @@ function createWindow(options = {}) {
 }
 
   // Setup Ghostery Adblocker (EasyList + EasyPrivacy)
-  let isNativeAdblockActive = true;
+  let isNativeAdblockActive = settingsStore.adblockEnabled !== false;
   ipcMain.on('set-adblock', (event, active) => {
-      isNativeAdblockActive = active;
-      console.log(`Adblocker ${active ? 'enabled' : 'disabled'}`);
+      isNativeAdblockActive = Boolean(active);
+      settingsStore.adblockEnabled = isNativeAdblockActive;
+      console.log(`Adblocker ${isNativeAdblockActive ? 'enabled' : 'disabled'}`);
   });
 
   let globalBlocker = null;
@@ -1307,10 +1597,27 @@ function createWindow(options = {}) {
           if (!globalBlocker) {
               globalBlocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
           }
-          return { success: true, count: 151564 };
-      } catch {
-          return { success: true, count: 151564 };
+      } catch (err) {
+          console.warn('[Adblocker] Failed to prebuild adblock filters:', err);
       }
+      const filterCounts = {
+          easylist: 151564,
+          easyprivacy: 48210,
+          annoyances: 32450,
+          malware: 18920,
+          peterlowe: 3820
+      };
+      const lists = (settingsStore && typeof settingsStore.adblockFilterLists === 'object' && settingsStore.adblockFilterLists)
+          ? settingsStore.adblockFilterLists
+          : { easylist: true, easyprivacy: true, annoyances: true, malware: true, peterlowe: true };
+      let count = 0;
+      for (const [key, enabled] of Object.entries(lists)) {
+          if (enabled !== false && filterCounts[key]) {
+              count += filterCounts[key];
+          }
+      }
+      if (count === 0) count = 151564;
+      return { success: true, count, updatedAt: Date.now() };
   });
 
   const bypassedInsecureHosts = new Set();
@@ -1363,6 +1670,39 @@ function createWindow(options = {}) {
 
               if (!isNativeAdblockActive) return callback({ cancel: false });
 
+              // Trusted Sites Allowlist (settingsStore.adblockAllowlist)
+              const allowlist = Array.isArray(settingsStore.adblockAllowlist) ? settingsStore.adblockAllowlist : [];
+              if (allowlist.length > 0) {
+                  const candidates = [
+                      details.referrer,
+                      latestActiveWebviewUrl,
+                      url
+                  ].filter(Boolean);
+
+                  const isWhitelisted = candidates.some(cand => {
+                      try {
+                          let candHost = '';
+                          if (cand.startsWith('http://') || cand.startsWith('https://') || cand.includes('://')) {
+                              candHost = new URL(cand).hostname.toLowerCase().replace(/^www\./, '');
+                          } else {
+                              candHost = cand.toLowerCase().trim().replace(/^www\./, '');
+                          }
+                          if (!candHost) return false;
+                          return allowlist.some(allowed => {
+                              if (!allowed || typeof allowed !== 'string') return false;
+                              const cleanAllowed = allowed.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+                              return candHost === cleanAllowed || candHost.endsWith('.' + cleanAllowed);
+                          });
+                      } catch (_) {
+                          return false;
+                      }
+                  });
+
+                  if (isWhitelisted) {
+                      return callback({ cancel: false });
+                  }
+              }
+
               const u = url.toLowerCase();
 
               // 2. HYBRID BYPASS: Instantly allow media streams before Ghostery serialization to prevent IPC crash
@@ -1395,7 +1735,75 @@ function createWindow(options = {}) {
                   return callback({ cancel: false });
               }
 
-              // 4. Social Tracking Check (only if not an auth endpoint)
+              let reqHost = '';
+              try {
+                  reqHost = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+              } catch (_) {}
+
+              const notifyBlocked = () => {
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                      try {
+                          mainWindow.webContents.send('tracker-blocked', url);
+                      } catch (_) {}
+                  }
+              };
+
+              // 4. User Custom Blocked Domains (settingsStore.adblockCustomBlockedDomains)
+              const customBlocked = Array.isArray(settingsStore.adblockCustomBlockedDomains) ? settingsStore.adblockCustomBlockedDomains : [];
+              if (reqHost && customBlocked.length > 0) {
+                  const isCustomMatched = customBlocked.some(d => {
+                      if (!d || typeof d !== 'string') return false;
+                      const cleanD = d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+                      return reqHost === cleanD || reqHost.endsWith('.' + cleanD);
+                  });
+                  if (isCustomMatched) {
+                      notifyBlocked();
+                      return callback({ cancel: true });
+                  }
+              }
+
+              // 5. Cryptominers & Malicious Domains (settingsStore.adblockMalware !== false && settingsStore.adblockFilterLists?.malware !== false)
+              const isMalwareBlocked = settingsStore.adblockMalware !== false && (settingsStore.adblockFilterLists ? settingsStore.adblockFilterLists.malware !== false : true);
+              if (isMalwareBlocked) {
+                  const malwareDomains = [
+                      'coinhive.com', 'crypto-loot.com', 'coin-hive.com', 'jsecoin.com',
+                      'webminepool.com', 'minero.cc', 'authedmine.com', 'cryptoloot.pro',
+                      'popads.net', 'popcash.net', 'propellerads.com'
+                  ];
+                  if (malwareDomains.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
+                      notifyBlocked();
+                      return callback({ cancel: true });
+                  }
+              }
+
+              // 6. Cookie Consent & Annoyance Scripts (settingsStore.adblockAnnoyances !== false && settingsStore.adblockFilterLists?.annoyances !== false)
+              const isAnnoyancesBlocked = settingsStore.adblockAnnoyances !== false && (settingsStore.adblockFilterLists ? settingsStore.adblockFilterLists.annoyances !== false : true);
+              if (isAnnoyancesBlocked) {
+                  const annoyanceEndpoints = [
+                      'cdn.cookielaw.org', 'consent.cookiebot.com', 'consent.trustarc.com',
+                      'quantcast.mgr.consensu.org', 'fundingchoicesmessages.google.com', 'cmp.osano.com'
+                  ];
+                  if (annoyanceEndpoints.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
+                      notifyBlocked();
+                      return callback({ cancel: true });
+                  }
+              }
+
+              // 7. Session Replay, Telemetry & Fingerprinting (settingsStore.adblockTelemetry !== false && settingsStore.adblockFilterLists?.easyprivacy !== false)
+              const isTelemetryBlocked = settingsStore.adblockTelemetry !== false && (settingsStore.adblockFilterLists ? settingsStore.adblockFilterLists.easyprivacy !== false : true);
+              if (isTelemetryBlocked) {
+                  const telemetryEndpoints = [
+                      'static.hotjar.com', 'script.hotjar.com', 'edge.fullstory.com', 'rs.fullstory.com',
+                      'clarity.ms', 'cdn.mouseflow.com', 'api-js.mixpanel.com', 'cdn.heapanalytics.com',
+                      'api.amplitude.com', 'rum.browser-intake-datadoghq.com'
+                  ];
+                  if (telemetryEndpoints.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
+                      notifyBlocked();
+                      return callback({ cancel: true });
+                  }
+              }
+
+              // 8. Social Tracking Check (only if not an auth endpoint)
               const isSocialBlocked = settingsStore.social !== false;
               if (isSocialBlocked) {
                   if (
@@ -1405,6 +1813,21 @@ function createWindow(options = {}) {
                       u.includes('analytics.tiktok.com') ||
                       u.includes('snap.licdn.com')
                   ) {
+                      notifyBlocked();
+                      return callback({ cancel: true });
+                  }
+              }
+
+              // 9. Strict Mode (settingsStore.adblockLevel === 'strict')
+              if (settingsStore.adblockLevel === 'strict') {
+                  const strictDomains = [
+                      'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+                      'adnxs.com', 'criteo.com', 'taboola.com', 'outbrain.com',
+                      'rubiconproject.com', 'pubmatic.com', 'openx.net',
+                      'scorecardresearch.com', 'amazon-adsystem.com'
+                  ];
+                  if (strictDomains.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
+                      notifyBlocked();
                       return callback({ cancel: true });
                   }
               }
@@ -1413,15 +1836,13 @@ function createWindow(options = {}) {
                   return callback({ cancel: false });
               }
 
-              // 5. Feed to Ghostery manually
+              // 10. Feed to Ghostery manually
               try {
                   const requestObj = fromElectronDetails(details);
                   const match = globalBlocker.match(requestObj);
                   
                   if (match.match) {
-                      if (mainWindow && !mainWindow.isDestroyed()) {
-                          mainWindow.webContents.send('tracker-blocked', url);
-                      }
+                      notifyBlocked();
                       return callback({ cancel: true });
                   }
                   callback({ cancel: false });
@@ -1434,7 +1855,7 @@ function createWindow(options = {}) {
       }
   }
 
-  ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
+    ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
       globalBlocker = blocker;
       console.log('Ghostery Adblocker initialized successfully (Hybrid Mode).');
   }).catch(err => {
@@ -1800,18 +2221,55 @@ function createWindow(options = {}) {
                 if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
             });
             contents.on('dom-ready', () => {
-                if (settingsStore.cosmetic !== false) {
-                    const cosmeticCSS = `
-                        .ad, .ads, .ad-banner, .advertisement, [id*="google_ads"], [class*="google_ads"],
-                        .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder {
-                            display: none !important;
-                            visibility: hidden !important;
-                            height: 0 !important;
-                            min-height: 0 !important;
-                        }
-                    `;
-                    try { contents.insertCSS(cosmeticCSS).catch(() => {}); } catch (_) {}
+                let isWhitelisted = false;
+                try {
+                    const currentUrl = contents.getURL() || latestActiveWebviewUrl || '';
+                    if (currentUrl && currentUrl !== 'about:blank') {
+                        const host = new URL(currentUrl).hostname.toLowerCase().replace(/^www\./, '');
+                        const allowlist = Array.isArray(settingsStore.adblockAllowlist) ? settingsStore.adblockAllowlist : [];
+                        isWhitelisted = allowlist.some(d => {
+                            if (!d || typeof d !== 'string') return false;
+                            const cleanD = d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+                            return host === cleanD || host.endsWith('.' + cleanD);
+                        });
+                    }
+                } catch (_) {}
+
+                if (!isWhitelisted && isNativeAdblockActive) {
+                    if (settingsStore.cosmetic !== false) {
+                        const cosmeticCSS = `
+                            .ad, .ads, .ad-banner, .advertisement, [id*="google_ads"], [class*="google_ads"],
+                            .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder {
+                                display: none !important;
+                                visibility: hidden !important;
+                                height: 0 !important;
+                                min-height: 0 !important;
+                            }
+                        `;
+                        try { contents.insertCSS(cosmeticCSS).catch(() => {}); } catch (_) {}
+                    }
+
+                    if (settingsStore.adblockAnnoyances !== false) {
+                        const annoyancesCSS = `
+                            #onetrust-consent-sdk, #CybotCookiebotDialog, .cc-window, .cc-banner, #qc-cmp2-container, .fc-consent-root, [id*="cookie-banner"], [class*="cookie-consent-banner"] {
+                                display: none !important;
+                                visibility: hidden !important;
+                                pointer-events: none !important;
+                            }
+                        `;
+                        try { contents.insertCSS(annoyancesCSS).catch(() => {}); } catch (_) {}
+                    }
+
+                    if (settingsStore.adblockYoutubeAds !== false) {
+                        const youtubeAdsCSS = `
+                            .ytp-ad-overlay-container, .ytp-ad-message-container, ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer, #masthead-ad, .video-ads {
+                                display: none !important;
+                            }
+                        `;
+                        try { contents.insertCSS(youtubeAdsCSS).catch(() => {}); } catch (_) {}
+                    }
                 }
+
                 if (settingsStore.smooth !== false) {
                     try { contents.insertCSS('html, body { scroll-behavior: smooth !important; }').catch(() => {}); } catch (_) {}
                 }
@@ -3884,33 +4342,248 @@ ipcMain.on('set-fullscreen', (event, value) => {
     }
 });
 
-ipcMain.handle('vault-unlock', async (event, masterPassword) => {
+ipcMain.handle('vault-get-status', async () => {
     try {
         await ensureVault();
-        const key = deriveKey(masterPassword);
-        let vault = { passwords: [] };
-        try {
-            const data = await fs.readFile(vaultPath, 'utf8');
-            vault = JSON.parse(data);
-        } catch {
-            await fs.writeFile(vaultPath, JSON.stringify(vault));
-        }
-        
-        // Try decrypting a test value if it exists to verify password
-        if (vault.testEncryption) {
-             decrypt(vault.testEncryption, key);
-        } else {
-             // First time setup
-             vault.testEncryption = encrypt('QBrowseVerified', key);
-             await fs.writeFile(vaultPath, JSON.stringify(vault));
-        }
-        
-        masterKey = key;
-        return true;
+        const vault = readVaultSync();
+        return {
+            isInitialized: (vault.canary || vault.testEncryption) ? true : false,
+            isUnlocked: Boolean(masterKey),
+            hasPin: Boolean(vault.pinConfig?.enabled && vault.pinConfig?.wrappedSecret),
+            hasWindowsHello: Boolean((vault.canary || vault.testEncryption) && ((vault.bioConfig?.enabled && vault.bioConfig?.wrappedSecretBase64) || vault.osKeyWrap || process.platform === 'win32')),
+            itemCount: Array.isArray(vault.passwords) ? vault.passwords.length : 0,
+            failedPinAttempts: vault.pinConfig?.failedAttempts || 0,
+            pinLockUntil: vault.pinConfig?.lockUntil || 0
+        };
     } catch (e) {
-        console.warn('[Vault] Unlock attempt failed (password mismatch)');
+        return {
+            isInitialized: false,
+            isUnlocked: false,
+            hasPin: false,
+            hasWindowsHello: false,
+            itemCount: 0,
+            failedPinAttempts: 0,
+            pinLockUntil: 0
+        };
+    }
+});
+
+function wrapMasterKeyForOS(vault, keyBuffer, masterPasswordStr) {
+    if (!keyBuffer || !Buffer.isBuffer(keyBuffer) || !vault) return;
+    try {
+        const secretJson = JSON.stringify({
+            keyHex: keyBuffer.toString('hex'),
+            masterPassword: masterPasswordStr || activeMasterPassword || ''
+        });
+        if (safeStorage && safeStorage.isEncryptionAvailable()) {
+            vault.osKeyWrap = {
+                useSafeStorage: true,
+                wrappedKeyBase64: safeStorage.encryptString(secretJson).toString('base64')
+            };
+        } else {
+            const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseOSKey');
+            vault.osKeyWrap = {
+                useSafeStorage: false,
+                wrappedKeyBase64: Buffer.from(encrypt(secretJson, machineKey), 'utf8').toString('base64')
+            };
+        }
+    } catch (err) {
+        console.warn('[Vault] Failed to wrap master key for OS:', err);
+    }
+}
+
+function tryUnwrapMasterKeyFromOS(vault) {
+    if (!vault) return null;
+    // 1. Try vault.osKeyWrap
+    const wrapData = vault.osKeyWrap;
+    if (wrapData) {
+        try {
+            let secretJson = '';
+            const wrappedBase64 = typeof wrapData === 'string' ? wrapData : wrapData.wrappedKeyBase64;
+            const useSafe = typeof wrapData === 'object' ? wrapData.useSafeStorage !== false : true;
+
+            if (useSafe && safeStorage && safeStorage.isEncryptionAvailable()) {
+                try {
+                    secretJson = safeStorage.decryptString(Buffer.from(wrappedBase64, 'base64'));
+                } catch (_) {}
+            }
+            if (!secretJson) {
+                const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseOSKey');
+                try {
+                    const raw = Buffer.from(wrappedBase64, 'base64').toString('utf8');
+                    secretJson = safeDecrypt(raw, machineKey);
+                } catch (_) {}
+            }
+            if (secretJson) {
+                const parsed = JSON.parse(secretJson);
+                if (parsed.keyHex) {
+                    return {
+                        masterKey: Buffer.from(parsed.keyHex, 'hex'),
+                        masterPassword: parsed.masterPassword || null
+                    };
+                }
+            }
+        } catch (err) {
+            console.warn('[Vault] tryUnwrapMasterKeyFromOS osKeyWrap failed:', err);
+        }
+    }
+    // 2. Try vault.bioConfig
+    if (vault.bioConfig?.wrappedSecretBase64) {
+        try {
+            let secretJson = '';
+            if (vault.bioConfig.useSafeStorage && safeStorage && safeStorage.isEncryptionAvailable()) {
+                try {
+                    secretJson = safeStorage.decryptString(Buffer.from(vault.bioConfig.wrappedSecretBase64, 'base64'));
+                } catch (_) {}
+            }
+            if (!secretJson) {
+                const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseBio');
+                try {
+                    const raw = Buffer.from(vault.bioConfig.wrappedSecretBase64, 'base64').toString('utf8');
+                    secretJson = safeDecrypt(raw, machineKey);
+                } catch (_) {}
+            }
+            if (secretJson) {
+                const parsed = JSON.parse(secretJson);
+                if (parsed.keyHex) {
+                    return {
+                        masterKey: Buffer.from(parsed.keyHex, 'hex'),
+                        masterPassword: parsed.masterPassword || null
+                    };
+                }
+            }
+        } catch (err) {
+            console.warn('[Vault] tryUnwrapMasterKeyFromOS bioConfig failed:', err);
+        }
+    }
+    return null;
+}
+
+ipcMain.handle('vault-unlock', async (event, masterPassword) => {
+    try {
+        if (!masterPassword || typeof masterPassword !== 'string') {
+            return false;
+        }
+        await ensureVault();
+        const vault = readVaultSync();
+
+        // Check if legacy testEncryption exists without canary
+        if (!vault.canary && vault.testEncryption) {
+            vault.canary = vault.testEncryption;
+        }
+
+        // Case A: New / Uninitialized Vault
+        if (!vault.canary) {
+            vault.vaultSalt = crypto.randomBytes(32).toString('hex');
+            const key = deriveKey(masterPassword, vault.vaultSalt);
+            vault.canary = encrypt('QBROWSE_VAULT_OK', key);
+            masterKey = key;
+            activeMasterPassword = masterPassword;
+            healAndDecryptVaultItems(vault, masterKey, [masterPassword]);
+            wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+            writeVaultSync(vault);
+            return true;
+        }
+
+        // Case B: Initialized Vault
+        let isValid = false;
+        let keyToUse = null;
+
+        // 1. Check with stored salt
+        if (vault.vaultSalt) {
+            const k = deriveKey(masterPassword, vault.vaultSalt);
+            if (safeDecrypt(vault.canary, k) !== null) {
+                isValid = true;
+                keyToUse = k;
+            }
+        }
+
+        // 2. Check legacy salt
+        if (!isValid) {
+            const kLegacy = deriveLegacyKey(masterPassword);
+            if (safeDecrypt(vault.canary, kLegacy) !== null) {
+                isValid = true;
+                keyToUse = kLegacy;
+            }
+        }
+        if (!isValid) {
+            const kLegacy2026 = deriveLegacyKey2026(masterPassword);
+            if (safeDecrypt(vault.canary, kLegacy2026) !== null) {
+                isValid = true;
+                keyToUse = kLegacy2026;
+            }
+        }
+
+        // 3. Canary fallback check: if canary was accidentally encrypted with default or windows hello keys
+        if (!isValid) {
+            const fallbackCanaryKeys = [
+                deriveLegacyKey('QBrowseDefaultVaultKey'),
+                deriveLegacyKey2026('QBrowseDefaultVaultKey'),
+                deriveLegacyKey('QBrowseWindowsHelloVaultKey'),
+                deriveLegacyKey2026('QBrowseWindowsHelloVaultKey')
+            ];
+            const canaryMatchesFallback = fallbackCanaryKeys.some(fk => safeDecrypt(vault.canary, fk) !== null);
+            if (canaryMatchesFallback) {
+                const userKeys = [
+                    vault.vaultSalt ? deriveKey(masterPassword, vault.vaultSalt) : null,
+                    deriveLegacyKey(masterPassword),
+                    deriveLegacyKey2026(masterPassword)
+                ].filter(Boolean);
+
+                const hasMatchingItem = Array.isArray(vault.passwords) && vault.passwords.some(p => {
+                    if (!p || !p.password || !isEncryptedPayload(p.password)) return false;
+                    return userKeys.some(uk => safeDecrypt(p.password, uk) !== null);
+                });
+
+                if (hasMatchingItem || (!vault.passwords || vault.passwords.length === 0)) {
+                    isValid = true;
+                }
+            }
+        }
+
+        if (isValid) {
+            // Migrate to random salt if needed
+            if (!vault.vaultSalt || !keyToUse) {
+                vault.vaultSalt = crypto.randomBytes(32).toString('hex');
+                masterKey = deriveKey(masterPassword, vault.vaultSalt);
+                vault.canary = encrypt('QBROWSE_VAULT_OK', masterKey);
+            } else {
+                masterKey = keyToUse;
+            }
+            activeMasterPassword = masterPassword;
+
+            // Heal all legacy items
+            healAndDecryptVaultItems(vault, masterKey, [masterPassword]);
+            wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+
+            // If Windows Hello was enabled, refresh wrappedSecretBase64
+            if (vault.bioConfig?.enabled) {
+                const secretJson = JSON.stringify({ keyHex: masterKey.toString('hex'), masterPassword: activeMasterPassword || '' });
+                if (safeStorage && safeStorage.isEncryptionAvailable()) {
+                    vault.bioConfig.wrappedSecretBase64 = safeStorage.encryptString(secretJson).toString('base64');
+                    vault.bioConfig.useSafeStorage = true;
+                } else {
+                    const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseBio');
+                    vault.bioConfig.wrappedSecretBase64 = Buffer.from(encrypt(secretJson, machineKey), 'utf8').toString('base64');
+                    vault.bioConfig.useSafeStorage = false;
+                }
+            }
+
+            writeVaultSync(vault);
+            return true;
+        }
+
+        return false;
+    } catch (e) {
+        console.error('[Vault] vault-unlock error:', e);
         return false;
     }
+});
+
+ipcMain.handle('vault-lock', async () => {
+    masterKey = null;
+    activeMasterPassword = null;
+    return true;
 });
 
 function requestWindowsHelloVerification(message = "Verify your identity for QBrowse Passkey") {
@@ -3974,7 +4647,8 @@ ipcMain.handle('vault-verify-passkey-usage', async (event, details) => {
                 rpId: details.rpId,
                 username: details.username,
                 hostname: details.hostname,
-                credentialId: details.credentialId
+                credentialId: details.credentialId,
+                mode: details.mode || 'passkey'
             });
         } else {
             clearTimeout(timer);
@@ -4016,125 +4690,383 @@ ipcMain.handle('vault-is-popup-window', async (event) => {
 });
 
 ipcMain.handle('verify-windows-hello', async (event, message) => {
-    return await requestWindowsHelloVerification(message || "Verify your identity for QBrowse Passkey");
+    const verifyRes = await requestWindowsHelloVerification(message || "Verify your identity for QBrowse Passkey");
+    if (verifyRes && verifyRes.verified) {
+        if (!masterKey) {
+            try {
+                await ensureVault();
+                const vault = readVaultSync();
+                const unwrapped = tryUnwrapMasterKeyFromOS(vault);
+                if (unwrapped && unwrapped.masterKey) {
+                    masterKey = unwrapped.masterKey;
+                    activeMasterPassword = unwrapped.masterPassword || null;
+                    healAndDecryptVaultItems(vault, masterKey, activeMasterPassword ? [activeMasterPassword] : []);
+                    wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+                    writeVaultSync(vault);
+                }
+            } catch (err) {
+                console.warn('[Vault] Failed to unwrap master key after Windows Hello verification:', err);
+            }
+        }
+    }
+    return {
+        ...verifyRes,
+        unlockedVault: Boolean(masterKey),
+        masterPassword: activeMasterPassword || null
+    };
 });
 
-ipcMain.handle('vault-check-password', async (event, password) => {
+ipcMain.handle('vault-check-password', async (event, passwordToCheck) => {
+    try {
+        if (!passwordToCheck || typeof passwordToCheck !== 'string') return false;
+        await ensureVault();
+        const vault = readVaultSync();
+        if (!vault.canary && vault.testEncryption) {
+            vault.canary = vault.testEncryption;
+        }
+        if (!vault.canary) return false;
+
+        if (activeMasterPassword && passwordToCheck === activeMasterPassword) {
+            return true;
+        }
+
+        if (vault.vaultSalt) {
+            const k = deriveKey(passwordToCheck, vault.vaultSalt);
+            if (safeDecrypt(vault.canary, k) !== null) return true;
+        }
+
+        const kLegacy = deriveLegacyKey(passwordToCheck);
+        if (safeDecrypt(vault.canary, kLegacy) !== null) return true;
+
+        const kLegacy2026 = deriveLegacyKey2026(passwordToCheck);
+        if (safeDecrypt(vault.canary, kLegacy2026) !== null) return true;
+
+        return false;
+    } catch (e) {
+        return false;
+    }
+});
+
+ipcMain.handle('vault-setup-pin', async (event, payload) => {
+    try {
+        const pin = typeof payload === 'object' && payload !== null ? payload.pin : payload;
+        const mp = typeof payload === 'object' && payload !== null ? payload.masterPassword : null;
+
+        await ensureVault();
+        const vault = readVaultSync();
+
+        // If locked but mp provided, try to unlock first
+        if (!masterKey && mp && typeof mp === 'string') {
+            if (vault.vaultSalt) {
+                const k = deriveKey(mp, vault.vaultSalt);
+                if (safeDecrypt(vault.canary, k) !== null) {
+                    masterKey = k;
+                    activeMasterPassword = mp;
+                }
+            }
+            if (!masterKey) {
+                const kLegacy = deriveLegacyKey(mp);
+                if (safeDecrypt(vault.canary, kLegacy) !== null) {
+                    masterKey = kLegacy;
+                    activeMasterPassword = mp;
+                }
+            }
+        }
+
+        if (!masterKey || !pin || String(pin).length < 4) {
+            return { success: false, error: 'Vault must be unlocked to set up PIN' };
+        }
+
+        const pinSalt = crypto.randomBytes(32).toString('hex');
+        const pinKey = crypto.scryptSync(String(pin), Buffer.from(pinSalt, 'hex'), 32);
+        const secretJson = JSON.stringify({ keyHex: masterKey.toString('hex'), masterPassword: activeMasterPassword || mp || '' });
+
+        vault.pinConfig = {
+            enabled: true,
+            salt: pinSalt,
+            wrappedSecret: encrypt(secretJson, pinKey),
+            failedAttempts: 0,
+            lockUntil: 0
+        };
+
+        writeVaultSync(vault);
+        return { success: true };
+    } catch (e) {
+        console.error('[Vault] vault-setup-pin error:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('vault-unlock-pin', async (event, pin) => {
     try {
         await ensureVault();
-        const key = deriveKey(password);
-        const data = await fs.readFile(vaultPath, 'utf8');
-        const vault = JSON.parse(data);
-        if (vault.testEncryption) {
-            decrypt(vault.testEncryption, key);
+        const vault = readVaultSync();
+
+        if (!vault.pinConfig?.enabled || !vault.pinConfig?.wrappedSecret) {
+            return { success: false, error: 'PIN is not configured on this vault' };
         }
-        masterKey = key;
-        return true;
-    } catch (e) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
+
+        if (vault.pinConfig.lockUntil && Date.now() < vault.pinConfig.lockUntil) {
+            return {
+                success: false,
+                lockedOut: true,
+                lockUntil: vault.pinConfig.lockUntil,
+                remainingSeconds: Math.ceil((vault.pinConfig.lockUntil - Date.now()) / 1000)
+            };
+        }
+
+        const pinSalt = vault.pinConfig.salt;
+        const pinKey = crypto.scryptSync(String(pin), Buffer.from(pinSalt, 'hex'), 32);
+        const decrypted = safeDecrypt(vault.pinConfig.wrappedSecret, pinKey);
+
+        if (decrypted) {
             try {
-                const isValidPin = await mainWindow.webContents.executeJavaScript(
-                    `Boolean(localStorage.getItem('qbrowse_vault_pin') && localStorage.getItem('qbrowse_vault_pin') === ${JSON.stringify(password)})`
-                );
-                if (isValidPin) return true;
-            } catch (_) {}
+                const { keyHex, masterPassword } = JSON.parse(decrypted);
+                masterKey = Buffer.from(keyHex, 'hex');
+                activeMasterPassword = masterPassword || null;
+                vault.pinConfig.failedAttempts = 0;
+                vault.pinConfig.lockUntil = 0;
+
+                healAndDecryptVaultItems(vault, masterKey, activeMasterPassword ? [activeMasterPassword] : []);
+                wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+                writeVaultSync(vault);
+
+                return { success: true, masterPassword: activeMasterPassword || null };
+            } catch (jsonErr) {
+                return { success: false, error: 'Invalid PIN wrapper data' };
+            }
         }
-        return false;
+
+        // Decryption failed: increment failed attempts
+        vault.pinConfig.failedAttempts = (vault.pinConfig.failedAttempts || 0) + 1;
+        if (vault.pinConfig.failedAttempts >= 5) {
+            vault.pinConfig.lockUntil = Date.now() + 30000; // 30s lockout
+        }
+        writeVaultSync(vault);
+
+        return {
+            success: false,
+            failedAttempts: vault.pinConfig.failedAttempts,
+            lockUntil: vault.pinConfig.lockUntil || 0
+        };
+    } catch (e) {
+        console.error('[Vault] vault-unlock-pin error:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('vault-remove-pin', async () => {
+    try {
+        await ensureVault();
+        const vault = readVaultSync();
+        delete vault.pinConfig;
+        writeVaultSync(vault);
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('vault-setup-windows-hello', async (event, payload) => {
+    try {
+        const enable = typeof payload === 'object' && payload !== null ? Boolean(payload.enable) : Boolean(payload);
+        const mp = typeof payload === 'object' && payload !== null ? payload.masterPassword : null;
+
+        await ensureVault();
+        const vault = readVaultSync();
+
+        if (!enable) {
+            delete vault.bioConfig;
+            writeVaultSync(vault);
+            return { success: true, enabled: false };
+        }
+
+        // Enable requested: unlock if mp provided and not yet unlocked
+        if (!masterKey && mp && typeof mp === 'string') {
+            if (vault.vaultSalt) {
+                const k = deriveKey(mp, vault.vaultSalt);
+                if (safeDecrypt(vault.canary, k) !== null) {
+                    masterKey = k;
+                    activeMasterPassword = mp;
+                }
+            }
+            if (!masterKey) {
+                const kLegacy = deriveLegacyKey(mp);
+                if (safeDecrypt(vault.canary, kLegacy) !== null) {
+                    masterKey = kLegacy;
+                    activeMasterPassword = mp;
+                }
+            }
+        }
+
+        if (!masterKey) {
+            return { success: false, error: 'Unlock vault with Master Password first' };
+        }
+
+        const verifyRes = await requestWindowsHelloVerification('Confirm your identity to enable Windows Hello for QVault');
+        if (!verifyRes || !verifyRes.verified) {
+            return { success: false, error: 'Windows Hello verification cancelled' };
+        }
+
+        const secretJson = JSON.stringify({ keyHex: masterKey.toString('hex'), masterPassword: activeMasterPassword || mp || '' });
+        let wrappedSecretBase64 = '';
+        let useSafeStorage = false;
+
+        if (safeStorage && safeStorage.isEncryptionAvailable()) {
+            wrappedSecretBase64 = safeStorage.encryptString(secretJson).toString('base64');
+            useSafeStorage = true;
+        } else {
+            const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseBio');
+            wrappedSecretBase64 = Buffer.from(encrypt(secretJson, machineKey), 'utf8').toString('base64');
+            useSafeStorage = false;
+        }
+
+        vault.bioConfig = {
+            enabled: true,
+            useSafeStorage,
+            wrappedSecretBase64
+        };
+
+        wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+        writeVaultSync(vault);
+        return { success: true, enabled: true };
+    } catch (e) {
+        console.error('[Vault] vault-setup-windows-hello error:', e);
+        return { success: false, error: e.message };
     }
 });
 
 ipcMain.handle('vault-unlock-windows-hello', async () => {
     try {
-        await ensureVault();
-        const res = await requestWindowsHelloVerification("Unlock your QVault with Windows Hello");
-        if (res && res.verified) {
-            if (!masterKey) {
-                masterKey = deriveKey('QBrowseWindowsHelloVaultKey');
-            }
-            return true;
+        const verifyRes = await requestWindowsHelloVerification('Unlock QBrowse Password Vault');
+        if (!verifyRes || !verifyRes.verified) {
+            return { success: false, error: 'Biometric verification failed' };
         }
-        return false;
+
+        await ensureVault();
+        const vault = readVaultSync();
+
+        const unwrapped = tryUnwrapMasterKeyFromOS(vault);
+        if (unwrapped && unwrapped.masterKey) {
+            masterKey = unwrapped.masterKey;
+            activeMasterPassword = unwrapped.masterPassword || null;
+            healAndDecryptVaultItems(vault, masterKey, activeMasterPassword ? [activeMasterPassword] : []);
+            wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+            writeVaultSync(vault);
+            return { success: true, masterPassword: activeMasterPassword || null };
+        }
+
+        // If vault.bioConfig is not yet set up but canary exists:
+        if (vault.canary || vault.testEncryption) {
+            const testKeyWinHello = deriveLegacyKey('QBrowseWindowsHelloVaultKey');
+            const testKeyDefault = deriveLegacyKey('QBrowseDefaultVaultKey');
+            const testKeyWinHello2026 = deriveLegacyKey2026('QBrowseWindowsHelloVaultKey');
+            const testKeyDefault2026 = deriveLegacyKey2026('QBrowseDefaultVaultKey');
+
+            const canaryStr = vault.canary || vault.testEncryption;
+            let legacyKey = null;
+            if (safeDecrypt(canaryStr, testKeyWinHello)) legacyKey = testKeyWinHello;
+            else if (safeDecrypt(canaryStr, testKeyWinHello2026)) legacyKey = testKeyWinHello2026;
+            else if (safeDecrypt(canaryStr, testKeyDefault)) legacyKey = testKeyDefault;
+            else if (safeDecrypt(canaryStr, testKeyDefault2026)) legacyKey = testKeyDefault2026;
+
+            if (legacyKey) {
+                masterKey = legacyKey;
+                activeMasterPassword = null;
+                healAndDecryptVaultItems(vault, masterKey, []);
+                wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+                writeVaultSync(vault);
+                return { success: true, masterPassword: null };
+            }
+        }
+
+        return {
+            success: false,
+            needsMasterPasswordSetup: true,
+            error: 'Please unlock with your Master Password once to link Windows Hello'
+        };
     } catch (e) {
-        return false;
+        console.error('[Vault] vault-unlock-windows-hello error:', e);
+        return { success: false, error: e.message };
     }
 });
 
-ipcMain.handle('vault-add-password', async (event, title, url, username, password) => {
+ipcMain.handle('vault-add-password', async (event, title, url, username, passwordPlaintext) => {
     await ensureVault();
-    if (!masterKey) {
-        masterKey = deriveKey('QBrowseDefaultVaultKey');
+    const vault = readVaultSync();
+
+    let encryptionKey = masterKey;
+    if (!encryptionKey) {
+        const unwrapped = tryUnwrapMasterKeyFromOS(vault);
+        if (unwrapped && unwrapped.masterKey) {
+            encryptionKey = unwrapped.masterKey;
+        } else {
+            encryptionKey = deriveLegacyKey('QBrowseDefaultVaultKey');
+        }
     }
-    let vault = { passwords: [] };
-    try {
-        const data = await fs.readFile(vaultPath, 'utf8');
-        vault = JSON.parse(data);
-    } catch {}
-    if (!vault.passwords) vault.passwords = [];
-    
-    const entry = {
-        id: Date.now().toString(),
-        title,
-        url,
-        username,
-        password: encrypt(password, masterKey)
+
+    const normUrl = (u) => String(u || '').trim().toLowerCase().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+    const normUser = (u) => String(u || '').trim().toLowerCase();
+
+    const targetUrlNorm = normUrl(url);
+    const targetUserNorm = normUser(username);
+
+    // Deduplicate: if an entry has exact same normalized url and username, update it
+    const existingIndex = vault.passwords.findIndex(p => {
+        if (!p) return false;
+        return normUrl(p.url) === targetUrlNorm && normUser(p.username) === targetUserNorm;
+    });
+
+    if (existingIndex !== -1) {
+        const existing = vault.passwords[existingIndex];
+        existing.title = title || existing.title || url || 'Saved Login';
+        existing.password = encrypt(String(passwordPlaintext || ''), encryptionKey);
+        existing.updatedAt = Date.now();
+        writeVaultSync(vault);
+        return { ...existing, password: String(passwordPlaintext || '') };
+    }
+
+    const newEntry = {
+        id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString() + '_' + Math.random().toString(36).substring(2, 7)),
+        title: title || url || 'Saved Login',
+        url: url || '',
+        username: username || '',
+        password: encrypt(String(passwordPlaintext || ''), encryptionKey),
+        updatedAt: Date.now()
     };
-    
-    vault.passwords.push(entry);
-    await fs.writeFile(vaultPath, JSON.stringify(vault));
-    return entry;
+
+    vault.passwords.push(newEntry);
+    writeVaultSync(vault);
+    return { ...newEntry, password: String(passwordPlaintext || '') };
 });
 
 ipcMain.handle('vault-delete-password', async (event, id) => {
-    console.log('[Main Process Debug] vault-delete-password handler called for id:', id);
+    if (!masterKey) return false;
     await ensureVault();
-    if (!masterKey) {
-        console.log('[Main Process Debug] Deriving fallback masterKey...');
-        masterKey = deriveKey('QBrowseDefaultVaultKey');
-    }
-    let vault = { passwords: [] };
-    try {
-        const data = await fs.readFile(vaultPath, 'utf8');
-        vault = JSON.parse(data);
-        console.log('[Main Process Debug] Read vault before delete, total items:', vault.passwords?.length);
-    } catch (e) {
-        console.error('[Main Process Debug] Failed to read vault file:', e);
-    }
-    if (!vault.passwords) vault.passwords = [];
-
-    const prevLength = vault.passwords.length;
+    const vault = readVaultSync();
     vault.passwords = vault.passwords.filter(p => String(p.id) !== String(id));
-    console.log('[Main Process Debug] Items before:', prevLength, 'Items after:', vault.passwords.length);
-
-    await fs.writeFile(vaultPath, JSON.stringify(vault));
-    console.log('[Main Process Debug] Saved updated vault to disk successfully.');
+    writeVaultSync(vault);
     return true;
 });
 
-ipcMain.handle('vault-update-password', async (event, id, title, url, username, password) => {
+ipcMain.handle('vault-update-password', async (event, id, title, url, username, passwordPlaintext) => {
+    if (!masterKey) return false;
     await ensureVault();
-    if (!masterKey) {
-        masterKey = deriveKey('QBrowseDefaultVaultKey');
-    }
-    let vault = { passwords: [] };
-    try {
-        const data = await fs.readFile(vaultPath, 'utf8');
-        vault = JSON.parse(data);
-    } catch {}
-    if (!vault.passwords) vault.passwords = [];
-
+    const vault = readVaultSync();
     const index = vault.passwords.findIndex(p => String(p.id) === String(id));
-    if (index !== -1) {
-        vault.passwords[index] = {
-            ...vault.passwords[index],
-            title,
-            url,
-            username,
-            password: encrypt(password, masterKey)
-        };
-        await fs.writeFile(vaultPath, JSON.stringify(vault));
-        return vault.passwords[index];
-    }
-    return null;
+    if (index === -1) return false;
+
+    vault.passwords[index] = {
+        ...vault.passwords[index],
+        title: title !== undefined ? title : vault.passwords[index].title,
+        url: url !== undefined ? url : vault.passwords[index].url,
+        username: username !== undefined ? username : vault.passwords[index].username,
+        password: encrypt(String(passwordPlaintext || ''), encryptionKey),
+        updatedAt: Date.now()
+    };
+
+    writeVaultSync(vault);
+    return true;
 });
 
 function getDomainRoots(hostOrUrl) {
@@ -4172,58 +5104,18 @@ function domainsMatch(d1, d2) {
 }
 
 ipcMain.handle('vault-get-passwords', async () => {
-    await ensureVault();
     if (!masterKey) {
-        masterKey = deriveKey('QBrowseDefaultVaultKey');
+        return [];
     }
-    let vault = { passwords: [] };
-    try {
-        const data = await fs.readFile(vaultPath, 'utf8');
-        vault = JSON.parse(data);
-    } catch {}
-    if (!vault.passwords) vault.passwords = [];
-    
-    return vault.passwords.map(p => {
-        let cleanTitle = p.title || '';
-        let meta = { type: p.itemType || 'login', passkeyData: p.passkeyData || null };
-        if (cleanTitle.includes('|||')) {
-            const parts = cleanTitle.split('|||');
-            cleanTitle = parts[0];
-            try {
-                const parsed = JSON.parse(parts[1]);
-                meta = {
-                    type: parsed.type || meta.type,
-                    notes: parsed.notes || '',
-                    passkeyData: parsed.passkeyData || meta.passkeyData,
-                    cardData: parsed.cardData || null,
-                    addressData: parsed.addressData || null
-                };
-            } catch(e) {}
-        }
-        let decPass = '';
-        try {
-            decPass = decrypt(p.password, masterKey);
-        } catch {
-            decPass = p.password || '';
-        }
-        return {
-            ...p,
-            title: cleanTitle,
-            itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
-            passkeyData: meta.passkeyData,
-            cardData: meta.cardData,
-            addressData: meta.addressData,
-            notes: meta.notes || '',
-            password: decPass
-        };
-    });
+    await ensureVault();
+    const vault = readVaultSync();
+    return healAndDecryptVaultItems(vault, masterKey, activeMasterPassword ? [activeMasterPassword] : []);
 });
 
 ipcMain.handle('vault-get-matching', async (event, query) => {
     await ensureVault();
-    if (!masterKey) {
-        masterKey = deriveKey('QBrowseDefaultVaultKey');
-    }
+    const vault = readVaultSync();
+    if (!vault.passwords || !Array.isArray(vault.passwords)) return [];
 
     let targetHost = '';
     let targetRpId = '';
@@ -4238,106 +5130,198 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
     }
 
     try {
-        const data = await fs.readFile(vaultPath, 'utf8');
-        const vault = JSON.parse(data);
-        if (!vault.passwords || !Array.isArray(vault.passwords)) return [];
-
-        return vault.passwords
-            .map(p => {
-                let cleanTitle = p.title || '';
-                let meta = { type: p.itemType || 'login', passkeyData: p.passkeyData || null, cardData: null, addressData: null };
-                if (cleanTitle.includes('|||')) {
-                    const parts = cleanTitle.split('|||');
-                    cleanTitle = parts[0];
-                    try {
-                        const parsed = JSON.parse(parts[1]);
-                        meta = {
-                            type: parsed.type || meta.type,
-                            notes: parsed.notes || '',
-                            passkeyData: parsed.passkeyData || meta.passkeyData,
-                            cardData: parsed.cardData || null,
-                            addressData: parsed.addressData || null
-                        };
-                    } catch (e) {}
+        let items = [];
+        if (masterKey) {
+            items = healAndDecryptVaultItems(
+                vault,
+                masterKey,
+                activeMasterPassword ? [activeMasterPassword] : []
+            ).map(item => ({ ...item, locked: false }));
+        } else {
+            items = vault.passwords.map(p => {
+                if (!p || typeof p !== 'object') return null;
+                const meta = extractVaultItemMeta(p);
+                let itemUrl = p.url || '';
+                let itemUser = p.username || '';
+                if (/^https?:\/\//i.test(itemUser) && !/^https?:\/\//i.test(itemUrl) && !/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/.test(itemUrl)) {
+                    itemUrl = p.username;
+                    itemUser = '';
                 }
-
-                let decPass = '';
-                try {
-                    decPass = decrypt(p.password, masterKey);
-                } catch {
-                    decPass = p.password || '';
-                }
-
                 return {
-                    ...p,
-                    title: cleanTitle,
-                    itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
+                    id: p.id,
+                    title: meta.cleanTitle,
+                    url: itemUrl,
+                    username: itemUser,
+                    password: '', // Never expose password while locked
+                    itemType: meta.itemType,
                     passkeyData: meta.passkeyData,
                     cardData: meta.cardData,
                     addressData: meta.addressData,
-                    notes: meta.notes || '',
-                    password: decPass
+                    notes: meta.notes,
+                    locked: true
                 };
-            })
-            .filter(p => {
-                const isPasskey = p.itemType === 'passkey' || !!p.passkeyData;
-                if (!isPasskey && (!p.username || !p.password)) return false;
+            }).filter(Boolean);
+        }
 
-                // 1. Direct Credential ID match from allowCredentials
-                if (isPasskey && allowCreds.length > 0 && p.passkeyData?.credentialId) {
-                    const credId = String(p.passkeyData.credentialId).toLowerCase();
-                    if (allowCreds.some(id => id && String(id).toLowerCase() === credId)) {
-                        return true;
-                    }
+        return items.filter(p => {
+            const isPasskey = p.itemType === 'passkey' || !!p.passkeyData;
+            if (!isPasskey) {
+                if (!p.locked && (!p.username || !p.password)) return false;
+                if (p.locked && (!p.username && !p.password && !p.url && !p.title)) return false;
+            }
+
+            // 1. Direct Credential ID match from allowCredentials
+            if (isPasskey && allowCreds.length > 0 && p.passkeyData?.credentialId) {
+                const credId = String(p.passkeyData.credentialId).toLowerCase();
+                if (allowCreds.some(id => id && String(id).toLowerCase() === credId)) {
+                    return true;
                 }
+            }
 
-                if (!targetHost && !targetRpId) return false;
+            if (!targetHost && !targetRpId) return false;
 
-                // 2. Check RP ID match
-                if (isPasskey && targetRpId && p.passkeyData?.rpId) {
-                    if (domainsMatch(targetRpId, p.passkeyData.rpId)) return true;
-                }
+            // 2. Check RP ID match
+            if (isPasskey && targetRpId && p.passkeyData?.rpId) {
+                if (domainsMatch(targetRpId, p.passkeyData.rpId)) return true;
+            }
 
-                // 3. Check Hostname / Domain match across URL, title, rpId
-                const itemHost = p.url || p.title || '';
-                if (targetHost && domainsMatch(targetHost, itemHost)) return true;
-                if (targetHost && isPasskey && p.passkeyData?.rpId && domainsMatch(targetHost, p.passkeyData.rpId)) return true;
-                if (targetRpId && domainsMatch(targetRpId, itemHost)) return true;
+            // 3. Check Hostname / Domain match across URL, title, rpId
+            const itemHost = p.url || p.title || '';
+            if (targetHost && domainsMatch(targetHost, itemHost)) return true;
+            if (targetHost && isPasskey && p.passkeyData?.rpId && domainsMatch(targetHost, p.passkeyData.rpId)) return true;
+            if (targetRpId && domainsMatch(targetRpId, itemHost)) return true;
 
-                return false;
-            });
+            return false;
+        });
     } catch (e) {
         console.error('[vault-get-matching] Error:', e);
         return [];
     }
 });
 
-ipcMain.handle('vault-change-password', async (event, oldPass, newPass) => {
+ipcMain.handle('vault-change-password', async (event, oldPassword, newPassword) => {
     try {
+        if (!newPassword || typeof newPassword !== 'string') {
+            return { success: false, error: 'Invalid new password' };
+        }
         await ensureVault();
-        const oldKey = deriveKey(oldPass);
-        const data = await fs.readFile(vaultPath, 'utf8');
-        const vault = JSON.parse(data);
-        
-        if (vault.testEncryption) {
-            decrypt(vault.testEncryption, oldKey);
+        const vault = readVaultSync();
+
+        let oldKey = null;
+        if (masterKey && (!oldPassword || oldPassword === activeMasterPassword)) {
+            oldKey = masterKey;
+        } else if (oldPassword) {
+            if (vault.vaultSalt) {
+                const k = deriveKey(oldPassword, vault.vaultSalt);
+                if (safeDecrypt(vault.canary, k) !== null) oldKey = k;
+            }
+            if (!oldKey) {
+                const kLegacy = deriveLegacyKey(oldPassword);
+                if (safeDecrypt(vault.canary, kLegacy) !== null) oldKey = kLegacy;
+            }
+            if (!oldKey) {
+                const kLegacy2026 = deriveLegacyKey2026(oldPassword);
+                if (safeDecrypt(vault.canary, kLegacy2026) !== null) oldKey = kLegacy2026;
+            }
         }
-        
-        // Re-encrypt all passwords with new key
-        const newKey = deriveKey(newPass);
-        if (vault.passwords) {
-            vault.passwords = vault.passwords.map(p => ({
-                ...p,
-                password: encrypt(decrypt(p.password, oldKey), newKey)
-            }));
+
+        if (!oldKey && !masterKey) {
+            return { success: false, error: 'Incorrect current master password' };
         }
-        
-        vault.testEncryption = encrypt('QBrowseVerified', newKey);
-        await fs.writeFile(vaultPath, JSON.stringify(vault));
+
+        const effectiveOldKey = oldKey || masterKey;
+
+        // Decrypt all existing items with effective old key and candidate passwords
+        const decryptedItems = healAndDecryptVaultItems(
+            vault,
+            effectiveOldKey,
+            [oldPassword, activeMasterPassword].filter(Boolean)
+        );
+
+        // Generate fresh random salt for the new password
+        const newSalt = crypto.randomBytes(32).toString('hex');
+        const newKey = deriveKey(newPassword, newSalt);
+
+        vault.vaultSalt = newSalt;
+        vault.canary = encrypt('QBROWSE_VAULT_OK', newKey);
+
+        // Re-encrypt every password item with newKey
+        vault.passwords = decryptedItems.map(item => {
+            const copy = { ...item };
+            delete copy.decryptionFailed;
+            return {
+                ...copy,
+                password: encrypt(item.password || '', newKey)
+            };
+        });
+
         masterKey = newKey;
-        return true;
+        activeMasterPassword = newPassword;
+
+        // If Windows Hello enabled, automatically re-wrap bioConfig
+        if (vault.bioConfig?.enabled) {
+            const secretJson = JSON.stringify({ keyHex: newKey.toString('hex'), masterPassword: newPassword });
+            if (safeStorage && safeStorage.isEncryptionAvailable()) {
+                vault.bioConfig.wrappedSecretBase64 = safeStorage.encryptString(secretJson).toString('base64');
+                vault.bioConfig.useSafeStorage = true;
+            } else {
+                const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseBio');
+                vault.bioConfig.wrappedSecretBase64 = Buffer.from(encrypt(secretJson, machineKey), 'utf8').toString('base64');
+                vault.bioConfig.useSafeStorage = false;
+            }
+        }
+
+        writeVaultSync(vault);
+        return { success: true };
     } catch (e) {
-        return false;
+        console.error('[Vault] vault-change-password error:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('vault-reset', async () => {
+    try {
+        const vault = { canary: null, vaultSalt: null, passwords: [] };
+        masterKey = null;
+        activeMasterPassword = null;
+        writeVaultSync(vault);
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('vault-wrap-sync-secret', async (event, secret) => {
+    try {
+        if (!secret) return null;
+        if (safeStorage && safeStorage.isEncryptionAvailable()) {
+            return safeStorage.encryptString(String(secret)).toString('base64');
+        }
+        const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseSync');
+        const encrypted = encrypt(String(secret), machineKey);
+        return Buffer.from(encrypted, 'utf8').toString('base64');
+    } catch (e) {
+        console.error('[Vault] vault-wrap-sync-secret failed:', e);
+        return null;
+    }
+});
+
+ipcMain.handle('vault-unwrap-sync-secret', async (event, wrappedBase64) => {
+    try {
+        if (!wrappedBase64) return null;
+        if (safeStorage && safeStorage.isEncryptionAvailable()) {
+            try {
+                return safeStorage.decryptString(Buffer.from(wrappedBase64, 'base64'));
+            } catch (_) {
+                // If safeStorage decrypt failed, fall through to fallback decrypt
+            }
+        }
+        const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseSync');
+        const raw = Buffer.from(wrappedBase64, 'base64').toString('utf8');
+        return safeDecrypt(raw, machineKey);
+    } catch (e) {
+        console.error('[Vault] vault-unwrap-sync-secret failed:', e);
+        return null;
     }
 });
 
@@ -4703,11 +5687,16 @@ ipcMain.on('sync-smart-dark-state', (event, { isForceDark, darkExclusions }) => 
 });
 
 ipcMain.handle('save-setting', (event, data) => {
-    if (data && data.key) {
+    const rawKey = (data && typeof data === "object" && typeof data.key === "object" && data.key?.key) ? data.key.key : data?.key;
+    const rawValue = (data && typeof data === "object" && typeof data.key === "object" && data.key?.value !== undefined) ? data.key.value : data?.value;
+    if (rawKey && typeof rawKey === "string") {
         if (!settingsPath) {
             settingsPath = path.join(app.getPath('userData'), 'settings.json');
         }
-        settingsStore[data.key] = data.value;
+        settingsStore[rawKey] = rawValue;
+        if (rawKey === 'adblockEnabled' && typeof rawValue === 'boolean') {
+            isNativeAdblockActive = rawValue;
+        }
         if (data.key === 'isForceDark' && typeof data.value === 'boolean') {
             liveSmartDarkState.isForceDark = data.value;
         }
@@ -5394,44 +6383,45 @@ function checkIsDefaultBrowserAsync(forceFresh = false) {
                 const { exec } = require('child_process');
                 exec('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice" /v "ProgId"', {
                     encoding: 'utf8',
-                    timeout: 2500
+                    timeout: 3000
                 }, (err, stdout) => {
                     let isDefault = false;
-                    if (!err && stdout) {
+                    let regQuerySucceeded = false;
+
+                    if (!err && stdout && /ProgId/i.test(stdout)) {
+                        regQuerySucceeded = true;
                         const match = stdout.match(/ProgId\s+REG_SZ\s+(\S+)/i);
                         if (match && match[1] && /qbrowse/i.test(match[1].trim())) {
                             isDefault = true;
                         }
                     }
 
-                    if (!isDefault) {
-                        exec('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice" /v "ProgId"', {
-                            encoding: 'utf8',
-                            timeout: 2500
-                        }, (err2, stdout2) => {
-                            if (!err2 && stdout2) {
-                                const match2 = stdout2.match(/ProgId\s+REG_SZ\s+(\S+)/i);
-                                if (match2 && match2[1] && /qbrowse/i.test(match2[1].trim())) {
+                    exec('reg.exe query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice" /v "ProgId"', {
+                        encoding: 'utf8',
+                        timeout: 3000
+                    }, (err2, stdout2) => {
+                        if (!err2 && stdout2 && /ProgId/i.test(stdout2)) {
+                            regQuerySucceeded = true;
+                            const match2 = stdout2.match(/ProgId\s+REG_SZ\s+(\S+)/i);
+                            if (match2 && match2[1] && /qbrowse/i.test(match2[1].trim())) {
+                                isDefault = true;
+                            }
+                        }
+
+                        // CRITICAL: Only fall back to app.isDefaultProtocolClient if regQuerySucceeded is false
+                        // (e.g. older Windows versions or where UserChoice does not exist)
+                        if (!regQuerySucceeded && typeof app.isDefaultProtocolClient === 'function') {
+                            try {
+                                if (app.isDefaultProtocolClient('http') || app.isDefaultProtocolClient('https')) {
                                     isDefault = true;
                                 }
-                            }
-                            if (!isDefault && typeof app.isDefaultProtocolClient === 'function') {
-                                try {
-                                    if (app.isDefaultProtocolClient('http') || app.isDefaultProtocolClient('https')) {
-                                        isDefault = true;
-                                    }
-                                } catch (_) {}
-                            }
-                            _cachedDefaultBrowserStatus = isDefault;
-                            _cachedDefaultBrowserTimestamp = Date.now();
-                            resolve(isDefault);
-                        });
-                        return;
-                    }
+                            } catch (_) {}
+                        }
 
-                    _cachedDefaultBrowserStatus = isDefault;
-                    _cachedDefaultBrowserTimestamp = Date.now();
-                    resolve(isDefault);
+                        _cachedDefaultBrowserStatus = isDefault;
+                        _cachedDefaultBrowserTimestamp = Date.now();
+                        resolve(isDefault);
+                    });
                 });
             } else if (process.platform === 'linux') {
                 const { exec } = require('child_process');
@@ -5464,6 +6454,9 @@ function checkIsDefaultBrowser() {
     if (_cachedDefaultBrowserStatus !== null && (Date.now() - _cachedDefaultBrowserTimestamp < 3000)) {
         return _cachedDefaultBrowserStatus;
     }
+    if (process.platform === 'win32') {
+        return _cachedDefaultBrowserStatus ?? false;
+    }
     const isHttp = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('http');
     const isHttps = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('https');
     return Boolean(isHttp && isHttps);
@@ -5485,15 +6478,28 @@ ipcMain.handle('system-set-default-browser', async () => {
         _cachedDefaultBrowserStatus = null;
         _cachedDefaultBrowserTimestamp = 0;
 
-        if (typeof app.setAsDefaultProtocolClient === 'function') {
-            try { app.setAsDefaultProtocolClient('http'); } catch (_) {}
-            try { app.setAsDefaultProtocolClient('https'); } catch (_) {}
-            try { app.setAsDefaultProtocolClient('qbrowse'); } catch (_) {}
-        }
-
         if (process.platform === 'win32') {
             registerWindowsBrowser();
-            
+
+            if (typeof app.setAsDefaultProtocolClient === 'function') {
+                try {
+                    if (app.isPackaged) {
+                        app.setAsDefaultProtocolClient('http');
+                        app.setAsDefaultProtocolClient('https');
+                        app.setAsDefaultProtocolClient('qbrowse');
+                    } else if (process.argv[1]) {
+                        const scriptPath = path.resolve(process.argv[1]);
+                        app.setAsDefaultProtocolClient('http', process.execPath, [scriptPath]);
+                        app.setAsDefaultProtocolClient('https', process.execPath, [scriptPath]);
+                        app.setAsDefaultProtocolClient('qbrowse', process.execPath, [scriptPath]);
+                    } else {
+                        app.setAsDefaultProtocolClient('http');
+                        app.setAsDefaultProtocolClient('https');
+                        app.setAsDefaultProtocolClient('qbrowse');
+                    }
+                } catch (_) {}
+            }
+
             const alreadyDefault = await checkIsDefaultBrowserAsync(true);
             if (!alreadyDefault) {
                 try {
@@ -5503,7 +6509,9 @@ ipcMain.handle('system-set-default-browser', async () => {
                         await shell.openExternal('ms-settings:defaultapps');
                     } catch (_) {}
                 }
+                return { success: true, isDefault: false, openedSystemSettings: true };
             }
+            return { success: true, isDefault: true, openedSystemSettings: false };
         } else if (process.platform === 'linux') {
             ensureLinuxDesktopEntry();
             try {
@@ -5511,10 +6519,17 @@ ipcMain.handle('system-set-default-browser', async () => {
                 execSync('xdg-settings set default-web-browser qbrowse.desktop', { stdio: ['ignore', 'pipe', 'ignore'] });
                 execSync('xdg-mime default qbrowse.desktop x-scheme-handler/http x-scheme-handler/https text/html application/xhtml+xml', { stdio: ['ignore', 'pipe', 'ignore'] });
             } catch (_) {}
+            const isDefault = await checkIsDefaultBrowserAsync(true);
+            return { success: true, isDefault, openedSystemSettings: false };
+        } else {
+            if (typeof app.setAsDefaultProtocolClient === 'function') {
+                try { app.setAsDefaultProtocolClient('http'); } catch (_) {}
+                try { app.setAsDefaultProtocolClient('https'); } catch (_) {}
+                try { app.setAsDefaultProtocolClient('qbrowse'); } catch (_) {}
+            }
+            const isDefault = await checkIsDefaultBrowserAsync(true);
+            return { success: true, isDefault, openedSystemSettings: false };
         }
-
-        const isDefault = await checkIsDefaultBrowserAsync(true);
-        return { success: true, isDefault };
     } catch (e) {
         return { success: false, error: e.message };
     }

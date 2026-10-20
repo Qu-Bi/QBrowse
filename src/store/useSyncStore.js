@@ -15,6 +15,65 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, deleteField, collection, getDocs, deleteDoc, onSnapshot } from 'firebase/firestore';
 
+export function isRawCiphertextString(str) {
+    return typeof str === 'string' && /^[0-9a-fA-F]{24}:[0-9a-fA-F]{32}:[0-9a-fA-F]+$/.test(str.trim());
+}
+
+export async function saveWrappedPassphrase(passphrase) {
+    try {
+        localStorage.removeItem('qbrowse_master_passphrase');
+    } catch (_) {}
+    if (!passphrase) {
+        try {
+            localStorage.removeItem('qbrowse_wrapped_mp');
+        } catch (_) {}
+        return;
+    }
+    try {
+        if (window.electronAPI?.wrapSyncSecret) {
+            const wrapped = await window.electronAPI.wrapSyncSecret(passphrase);
+            if (wrapped) {
+                localStorage.setItem('qbrowse_wrapped_mp', wrapped);
+                return wrapped;
+            }
+        } else {
+            const encoded = btoa(unescape(encodeURIComponent(passphrase)));
+            localStorage.setItem('qbrowse_wrapped_mp', encoded);
+            return encoded;
+        }
+    } catch (e) {
+        console.warn('[Sync] saveWrappedPassphrase error:', e);
+    }
+}
+
+export async function loadWrappedPassphrase() {
+    try {
+        const legacy = localStorage.getItem('qbrowse_master_passphrase');
+        if (legacy) {
+            await saveWrappedPassphrase(legacy);
+            try { localStorage.removeItem('qbrowse_master_passphrase'); } catch (_) {}
+            return legacy;
+        }
+
+        const wrapped = localStorage.getItem('qbrowse_wrapped_mp');
+        if (!wrapped) return '';
+
+        if (window.electronAPI?.unwrapSyncSecret) {
+            const unwrapped = await window.electronAPI.unwrapSyncSecret(wrapped);
+            return unwrapped || '';
+        } else {
+            try {
+                return decodeURIComponent(escape(atob(wrapped)));
+            } catch (_) {
+                return '';
+            }
+        }
+    } catch (e) {
+        console.warn('[Sync] loadWrappedPassphrase error:', e);
+        return '';
+    }
+}
+
 // Web Crypto API Encryption Helpers (AES-GCM 256-bit with PBKDF2)
 async function deriveKey(passphrase, saltHex) {
     const encoder = new TextEncoder();
@@ -236,7 +295,8 @@ function setupLocalStoreWatchers() {
 
 const useSyncStore = create((set, get) => ({
     user: null,
-    masterPassword: localStorage.getItem('qbrowse_master_passphrase') || '',
+    masterPassword: '',
+    syncKeyError: false,
     isAuthInitialized: false,
     authError: null,
     isSyncing: false,
@@ -268,8 +328,139 @@ const useSyncStore = create((set, get) => ({
     },
 
     setMasterPassword: (passphrase) => {
-        set({ masterPassword: passphrase });
-        localStorage.setItem('qbrowse_master_passphrase', passphrase);
+        set({ masterPassword: passphrase, syncKeyError: false });
+        saveWrappedPassphrase(passphrase);
+        if (passphrase && window.electronAPI?.unlockVault) {
+            window.electronAPI.unlockVault(passphrase).catch(() => {});
+        }
+        if (typeof window !== 'undefined' && window.__vaultStore) {
+            window.__vaultStore.getState().syncVaultStatus?.().catch(() => {});
+        }
+    },
+
+    receiveVaultMasterPassword: async (vaultMp) => {
+        if (!vaultMp) return;
+        const { user, masterPassword } = get();
+        if (!user) return;
+        if (!masterPassword) {
+            set({ masterPassword: vaultMp, syncKeyError: false });
+            await saveWrappedPassphrase(vaultMp);
+            get().listenToCloudSync();
+            get().syncNow({ silent: true }).catch(() => {});
+        }
+    },
+
+    updateMasterPasswordAndResync: async (newPass) => {
+        if (!newPass) return;
+        set({ masterPassword: newPass, syncKeyError: false });
+        await saveWrappedPassphrase(newPass);
+        const { user, autoSyncEnabled, syncCategories } = get();
+        if (user && (autoSyncEnabled || syncCategories?.vault !== false)) {
+            await get().syncNow({ silent: true }).catch(() => {});
+        }
+    },
+
+    unlockSyncVault: async (passphrase) => {
+        if (!passphrase) return false;
+        await get().setMasterPassword(passphrase);
+        if (get().user) {
+            get().listenToCloudSync();
+            get().syncNow({ silent: true }).catch(() => {});
+        }
+        return true;
+    },
+
+    mergeRemoteVault: async (remoteVaultItems, masterPassword) => {
+        if (!Array.isArray(remoteVaultItems) || remoteVaultItems.length === 0) return;
+        const pass = masterPassword || get().masterPassword;
+
+        try {
+            // Filter out any corrupted raw ciphertext passwords
+            const cleanRemote = remoteVaultItems.filter(item => item && !isRawCiphertextString(item.password));
+            if (cleanRemote.length === 0) return;
+
+            // Ensure local vault is unlocked
+            if (pass && window.electronAPI?.unlockVault) {
+                try {
+                    await window.electronAPI.unlockVault(pass);
+                } catch (_) {}
+            }
+
+            let localPasswords = [];
+            if (window.electronAPI?.getPasswords) {
+                try {
+                    localPasswords = (await window.electronAPI.getPasswords()) || [];
+                } catch (_) {}
+            }
+
+            const norm = (s) => (s ? String(s).trim().toLowerCase() : '');
+
+            for (const remoteItem of cleanRemote) {
+                const remoteUrl = norm(remoteItem.url);
+                const remoteUser = norm(remoteItem.username);
+                const remoteTitle = norm(remoteItem.title?.split('|||')[0]);
+
+                // Match existing credentials by normalized (url, username) OR (title, username)
+                const localMatch = localPasswords.find(lp => {
+                    const lpUrl = norm(lp.url);
+                    const lpUser = norm(lp.username);
+                    const lpTitle = norm(lp.title?.split('|||')[0]);
+                    const sameUser = (lpUser === remoteUser);
+                    const sameUrl = (remoteUrl && lpUrl && (lpUrl === remoteUrl || lpUrl.includes(remoteUrl) || remoteUrl.includes(lpUrl)));
+                    const sameTitle = (remoteTitle && lpTitle && lpTitle === remoteTitle);
+                    return sameUser && (sameUrl || sameTitle);
+                });
+
+                if (localMatch) {
+                    const remoteUpdated = new Date(remoteItem.updatedAt || 0).getTime();
+                    const localUpdated = new Date(localMatch.updatedAt || 0).getTime();
+                    if (remoteUpdated > localUpdated && remoteItem.password && remoteItem.password !== localMatch.password) {
+                        if (window.electronAPI?.updatePassword) {
+                            try {
+                                await window.electronAPI.updatePassword(
+                                    localMatch.id,
+                                    remoteItem.title || localMatch.title,
+                                    remoteItem.url || '',
+                                    remoteItem.username || '',
+                                    remoteItem.password
+                                );
+                            } catch (err) {
+                                console.warn('[Sync] updatePassword during mergeRemoteVault failed:', err);
+                            }
+                        }
+                    }
+                } else {
+                    if (window.electronAPI?.addPassword) {
+                        try {
+                            const payload = {
+                                type: remoteItem.itemType || 'login',
+                                notes: remoteItem.notes || '',
+                                passkeyData: remoteItem.passkeyData || null,
+                                cardData: remoteItem.cardData || null,
+                                addressData: remoteItem.addressData || null
+                            };
+                            const jsonPayload = JSON.stringify(payload);
+                            const combinedTitle = `${remoteItem.title || 'Synced Account'}|||${jsonPayload}`;
+                            await window.electronAPI.addPassword(
+                                combinedTitle,
+                                remoteItem.url || '',
+                                remoteItem.username || '',
+                                remoteItem.password || ''
+                            );
+                        } catch (err) {
+                            console.warn('[Sync] addPassword during mergeRemoteVault failed:', err);
+                        }
+                    }
+                }
+            }
+
+            // After merging, refresh open QVault UI immediately
+            if (typeof window !== 'undefined' && window.__vaultStore?.getState()?.isUnlocked) {
+                await window.__vaultStore.getState().refreshPasswords?.();
+            }
+        } catch (err) {
+            console.warn('[Sync] mergeRemoteVault error:', err);
+        }
     },
 
     startAutoSync: (intervalMinutes = 5) => {
@@ -364,12 +555,22 @@ const useSyncStore = create((set, get) => ({
                 try {
                     await user.getIdToken();
                 } catch(e) {}
-                // If masterPassword is missing, check if saved in session or local
-                const currentPass = get().masterPassword;
+
+                // Load OS-wrapped passphrase if available
+                let currentPass = get().masterPassword;
                 if (!currentPass) {
-                    const saved = localStorage.getItem('qbrowse_master_passphrase');
-                    if (saved) set({ masterPassword: saved });
+                    currentPass = await loadWrappedPassphrase();
+                    if (currentPass) {
+                        set({ masterPassword: currentPass, syncKeyError: false });
+                        if (window.electronAPI?.unlockVault) {
+                            try { await window.electronAPI.unlockVault(currentPass); } catch (_) {}
+                        }
+                        if (typeof window !== 'undefined' && window.__vaultStore) {
+                            try { await window.__vaultStore.getState().syncVaultStatus?.(); } catch (_) {}
+                        }
+                    }
                 }
+
                 // Auto-heal any legacy bloated root document to stay strictly under the 1MB limit
                 healBloatedRootDocument(user.uid).catch(() => {});
 
@@ -393,7 +594,7 @@ const useSyncStore = create((set, get) => ({
         try {
             const userCred = await createUserWithEmailAndPassword(auth, email, password);
             const passToUse = masterPass || password;
-            get().setMasterPassword(passToUse);
+            await get().setMasterPassword(passToUse);
             set({ isSyncing: false, user: userCred.user, syncStatus: 'synced' });
             useUIStore.getState().setSetupComplete(true);
             if (get().autoSyncEnabled) {
@@ -413,7 +614,7 @@ const useSyncStore = create((set, get) => ({
         try {
             const userCred = await signInWithEmailAndPassword(auth, email, password);
             const passToUse = masterPass || password;
-            get().setMasterPassword(passToUse);
+            await get().setMasterPassword(passToUse);
             set({ isSyncing: false, user: userCred.user, syncStatus: 'synced' });
             useUIStore.getState().setSetupComplete(true);
             if (get().autoSyncEnabled) {
@@ -432,8 +633,10 @@ const useSyncStore = create((set, get) => ({
         get().stopListening();
         get().stopAutoSync();
         await signOut(auth);
+        await saveWrappedPassphrase('');
         set({ 
             user: null, 
+            masterPassword: '',
             lastSyncTime: null, 
             syncedItemsCount: 0, 
             cloudBackups: [],
@@ -590,9 +793,11 @@ const useSyncStore = create((set, get) => ({
 
                 // SAFEGUARD: Only upload if vault is confirmed unlocked (in UI or via verified master key).
                 // If locked without credentials, NEVER overwrite the cloud vault!
+                // Filter out corrupted raw ciphertext strings!
                 if (isVaultUnlockedLocally) {
-                    await get().syncDataToCloud('vault', vaultItems);
-                    totalItems += vaultItems.length;
+                    const cleanVault = (vaultItems || []).filter(item => item && !isRawCiphertextString(item.password));
+                    await get().syncDataToCloud('vault', cleanVault);
+                    totalItems += cleanVault.length;
                 }
             }
 
@@ -678,7 +883,7 @@ const useSyncStore = create((set, get) => ({
 
             // 2. Gather browser state (with safe bounds on history)
             const payload = {
-                version: "1.3.3",
+                version: "1.3.4",
                 createdAt: new Date().toISOString(),
                 label: customLabel.trim() || `Manual Backup (${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
                 settings: cleanSettings,
@@ -687,10 +892,10 @@ const useSyncStore = create((set, get) => ({
                     if (v.length === 0 && useVaultStore.getState().isUnlocked && window.electronAPI?.getPasswords) {
                         try {
                             const disk = await window.electronAPI.getPasswords();
-                            if (Array.isArray(disk) && disk.length > 0) return disk;
+                            if (Array.isArray(disk) && disk.length > 0) v = disk;
                         } catch(e) {}
                     }
-                    return v;
+                    return (v || []).filter(item => item && !isRawCiphertextString(item.password));
                 })(),
                 tabs: {
                     privateTabs: (useTabStore.getState().privateTabs || [])
@@ -908,7 +1113,7 @@ const useSyncStore = create((set, get) => ({
 
             // 2. Restore Vault Passwords
             if (Array.isArray(decrypted.vault) && decrypted.vault.length > 0) {
-                useVaultStore.getState().mergeRemoteVault(decrypted.vault);
+                await get().mergeRemoteVault(decrypted.vault, masterPassword);
             }
 
             // 3. Restore Tabs
@@ -998,7 +1203,7 @@ const useSyncStore = create((set, get) => ({
 
             const payload = {
                 app: "QBrowse",
-                version: "1.3.3",
+                version: "1.3.4",
                 exportedAt: new Date().toISOString(),
                 settings: cleanSettings,
                 vault: await (async () => {
@@ -1006,10 +1211,10 @@ const useSyncStore = create((set, get) => ({
                     if (v.length === 0 && useVaultStore.getState().isUnlocked && window.electronAPI?.getPasswords) {
                         try {
                             const disk = await window.electronAPI.getPasswords();
-                            if (Array.isArray(disk) && disk.length > 0) return disk;
+                            if (Array.isArray(disk) && disk.length > 0) v = disk;
                         } catch(e) {}
                     }
-                    return v;
+                    return (v || []).filter(item => item && !isRawCiphertextString(item.password));
                 })(),
                 tabs: {
                     privateTabs: (useTabStore.getState().privateTabs || [])
@@ -1052,7 +1257,7 @@ const useSyncStore = create((set, get) => ({
                 Object.keys(data.settings).forEach(k => useUIStore.getState().setSettingValue(k, data.settings[k]));
             }
             if (Array.isArray(data.vault)) {
-                useVaultStore.getState().mergeRemoteVault(data.vault);
+                await get().mergeRemoteVault(data.vault, passToUse);
             }
             if (data.tabs) {
                 const cleanTabs = {
@@ -1142,7 +1347,7 @@ const useSyncStore = create((set, get) => ({
                     try {
                         const remoteVault = await decryptData(data.vault.encrypted, masterPassword);
                         if (Array.isArray(remoteVault) && remoteVault.length > 0) {
-                            await useVaultStore.getState().mergeRemoteVault(remoteVault);
+                            await get().mergeRemoteVault(remoteVault, masterPassword);
                         }
                     } catch(e) {}
                 }
@@ -1200,11 +1405,12 @@ const useSyncStore = create((set, get) => ({
 
     serializeCurrentProfileSync: (profileId) => {
         try {
-            const passKey = (!profileId || profileId === 'default') ? 'qbrowse_master_passphrase' : `qbrowse_master_passphrase_${profileId}`;
             const syncKey = (!profileId || profileId === 'default') ? 'qbrowse_last_sync' : `qbrowse_last_sync_${profileId}`;
             const catKey = (!profileId || profileId === 'default') ? 'qbrowse_sync_categories' : `qbrowse_sync_categories_${profileId}`;
 
-            if (get().masterPassword) localStorage.setItem(passKey, get().masterPassword);
+            if (get().masterPassword) {
+                saveWrappedPassphrase(get().masterPassword);
+            }
             if (get().lastSyncTime) localStorage.setItem(syncKey, get().lastSyncTime);
             localStorage.setItem(catKey, JSON.stringify(get().syncCategories));
         } catch (e) {
@@ -1212,13 +1418,12 @@ const useSyncStore = create((set, get) => ({
         }
     },
 
-    loadProfileSync: (profileId) => {
+    loadProfileSync: async (profileId) => {
         try {
-            const passKey = (!profileId || profileId === 'default') ? 'qbrowse_master_passphrase' : `qbrowse_master_passphrase_${profileId}`;
             const syncKey = (!profileId || profileId === 'default') ? 'qbrowse_last_sync' : `qbrowse_last_sync_${profileId}`;
             const catKey = (!profileId || profileId === 'default') ? 'qbrowse_sync_categories' : `qbrowse_sync_categories_${profileId}`;
 
-            const masterPass = localStorage.getItem(passKey) || '';
+            const masterPass = await loadWrappedPassphrase();
             const lastSync = localStorage.getItem(syncKey) || null;
             let cats = { vault: true, settings: true, tabs: true, history: true };
             try {
@@ -1233,6 +1438,13 @@ const useSyncStore = create((set, get) => ({
                 cloudBackups: [],
                 isLoadingBackups: false
             });
+
+            if (masterPass && window.electronAPI?.unlockVault) {
+                try { await window.electronAPI.unlockVault(masterPass); } catch (_) {}
+            }
+            if (typeof window !== 'undefined' && window.__vaultStore) {
+                try { await window.__vaultStore.getState().syncVaultStatus?.(); } catch (_) {}
+            }
 
             // If user is authenticated, refresh cloud backups and listener for this profile
             if (get().user) {

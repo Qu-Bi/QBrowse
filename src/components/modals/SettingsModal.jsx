@@ -6,7 +6,7 @@ import {
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor,
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Server, Wifi, AlertCircle,
-    Type, Keyboard, VolumeX, ZoomIn
+    Type, Keyboard, VolumeX, ZoomIn, Filter
 } from 'lucide-react';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
@@ -85,6 +85,136 @@ const SettingToggle = ({ isChecked, onToggle }) => {
                 className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isChecked ? 'translate-x-4' : 'translate-x-0'}`}
             />
         </button>
+    );
+};
+
+// Helper Section Header Component for Unified Settings
+const SectionHeader = ({ icon: Icon, title, description, badge, action }) => {
+    const theme = useUIStore(state => state.theme);
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    return (
+        <div className="flex items-center justify-between gap-3 pt-2 pb-1">
+            <div className="flex items-center gap-2.5 min-w-0">
+                {Icon && (
+                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                    }`}>
+                        <Icon size={13} />
+                    </div>
+                )}
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                        <h4 className={`text-xs font-bold tracking-tight uppercase font-mono ${
+                            isBright ? 'text-zinc-700' : 'text-zinc-300'
+                        }`}>
+                            {title}
+                        </h4>
+                        {badge && (
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                                isBright 
+                                    ? 'bg-black/5 text-zinc-600 border-black/10' 
+                                    : 'bg-accent/10 text-accent border-accent/25'
+                            }`}>
+                                {badge}
+                            </span>
+                        )}
+                    </div>
+                    {description && (
+                        <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                            {description}
+                        </p>
+                    )}
+                </div>
+            </div>
+            {action && <div className="flex-shrink-0">{action}</div>}
+        </div>
+    );
+};
+
+// Spaces-Style Sliding Pill Switcher Helper Component (matches Sidebar.jsx & TabMap.jsx)
+const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBrightProp, size = 'md' }) => {
+    const [hoveredId, setHoveredId] = useState(null);
+    const theme = useUIStore(state => state.theme);
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = isBrightProp !== undefined ? isBrightProp : (theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor');
+
+    const activeIndex = Math.max(0, options.findIndex(o => o.id === value));
+    const hoveredIndex = hoveredId !== null ? options.findIndex(o => o.id === hoveredId) : -1;
+    const count = options.length || 1;
+
+    const padding = size === 'sm' ? 'p-0.5' : 'p-1';
+    const itemPy = size === 'sm' ? 'py-1' : size === 'lg' ? 'py-2' : 'py-1.5';
+    const itemPx = size === 'sm' ? 'px-2' : 'px-3';
+    const textSize = size === 'sm' ? 'text-[11px]' : 'text-xs';
+
+    return (
+        <div 
+            className={`relative grid items-center ${padding} rounded-full border backdrop-blur-xl transition-colors duration-200 ${
+                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-black/40 border-white/[0.07]'
+            }`}
+            style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}
+            onMouseLeave={() => setHoveredId(null)}
+        >
+            {/* Subtle Hover Preview Pill */}
+            {hoveredIndex >= 0 && hoveredIndex !== activeIndex && (
+                <div 
+                    className="absolute top-1 bottom-1 left-1 rounded-full transition-all duration-200 pointer-events-none"
+                    style={{
+                        width: `calc((100% - 8px) / ${count})`,
+                        transform: `translateX(${hoveredIndex * 100}%)`,
+                        backgroundColor: isBright ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.04)'
+                    }}
+                />
+            )}
+
+            {/* Signature Liquid Glass Sliding Pill */}
+            <div 
+                className="absolute top-1 bottom-1 left-1 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
+                style={{
+                    width: `calc((100% - 8px) / ${count})`,
+                    transform: `translateX(${activeIndex * 100}%)`,
+                    backgroundColor: isBright ? '#ffffff' : 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                    border: isBright ? '1px solid rgba(0,0,0,0.08)' : '1px solid var(--accent-30, rgba(212, 188, 148, 0.38))',
+                    boxShadow: isBright 
+                        ? '0 2px 8px rgba(0,0,0,0.06)' 
+                        : '0 4px 14px rgba(212, 188, 148, 0.16), inset 0 1px 0 0 rgba(255, 255, 255, 0.22)'
+                }}
+            />
+
+            {/* Option Buttons */}
+            {options.map((opt) => {
+                const isActive = opt.id === value;
+                const Icon = opt.icon;
+                return (
+                    <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onChange(opt.id)}
+                        onMouseEnter={() => setHoveredId(opt.id)}
+                        className={`relative z-10 flex items-center justify-center gap-1.5 ${itemPy} ${itemPx} ${textSize} font-semibold rounded-full transition-colors duration-200 cursor-pointer select-none truncate ${
+                            isActive
+                                ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                        }`}
+                        title={opt.title || opt.desc || opt.label}
+                    >
+                        {Icon && <Icon size={size === 'sm' ? 11 : 13} className={isActive ? (isBright ? 'text-zinc-950' : 'text-accent') : 'opacity-60'} />}
+                        <span className="truncate">{opt.label}</span>
+                        {opt.badge && (
+                            <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
+                                isActive 
+                                    ? (isBright ? 'bg-black/10 text-zinc-900' : 'bg-accent/25 text-accent') 
+                                    : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
+                            }`}>
+                                {opt.badge}
+                            </span>
+                        )}
+                    </button>
+                );
+            })}
+        </div>
     );
 };
 
@@ -170,6 +300,64 @@ const SettingsModal = () => {
     const [engineKeywordInput, setEngineKeywordInput] = useState('');
     const [engineUrlInput, setEngineUrlInput] = useState('');
     const [engineColorInput, setEngineColorInput] = useState('#d4bc94');
+    // Native AdBlocker & Privacy Shield State
+    const [isUpdatingFilters, setIsUpdatingFilters] = useState(false);
+    const [filterUpdateStatus, setFilterUpdateStatus] = useState(null);
+    const [adblockAllowlistInput, setAdblockAllowlistInput] = useState('');
+    const [adblockBlocklistInput, setAdblockBlocklistInput] = useState('');
+
+    const isAdblockActive = useUIStore(state => state.isAdblockActive ?? state.isAdblockEnabled ?? true);
+    const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive || state.toggleAdblock);
+    const adblockStats = useUIStore(state => state.adblockStats);
+    const blockedTrackersCount = adblockStats?.count || 0;
+
+    const toggleAdblock = () => {
+        if (useUIStore.getState().toggleAdblock) {
+            useUIStore.getState().toggleAdblock();
+        } else if (setIsAdblockActive) {
+            setIsAdblockActive(!isAdblockActive);
+        }
+    };
+
+    const handleAddAllowlist = (e) => {
+        if (e) e.preventDefault();
+        const clean = adblockAllowlistInput.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        if (!clean) return;
+        const current = settings?.adblockAllowlist || [];
+        if (current.includes(clean)) {
+            showToast(`${clean} is already in trusted sites`);
+            return;
+        }
+        setSettingValue('adblockAllowlist', [...current, clean]);
+        setAdblockAllowlistInput('');
+        showToast(`Added ${clean} to trusted sites`);
+    };
+
+    const handleRemoveAllowlist = (domain) => {
+        const current = settings?.adblockAllowlist || [];
+        setSettingValue('adblockAllowlist', current.filter(d => d !== domain));
+        showToast(`Removed ${domain} from trusted sites`);
+    };
+
+    const handleAddBlocklist = (e) => {
+        if (e) e.preventDefault();
+        const clean = adblockBlocklistInput.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        if (!clean) return;
+        const current = settings?.adblockCustomBlockedDomains || [];
+        if (current.includes(clean)) {
+            showToast(`${clean} is already in custom blocked domains`);
+            return;
+        }
+        setSettingValue('adblockCustomBlockedDomains', [...current, clean]);
+        setAdblockBlocklistInput('');
+        showToast(`Added ${clean} to custom blocklist`);
+    };
+
+    const handleRemoveBlocklist = (domain) => {
+        const current = settings?.adblockCustomBlockedDomains || [];
+        setSettingValue('adblockCustomBlockedDomains', current.filter(d => d !== domain));
+        showToast(`Removed ${domain} from custom blocklist`);
+    };
 
     useEffect(() => {
         if (settings?.customDohUrl !== undefined) {
@@ -252,7 +440,7 @@ const SettingsModal = () => {
 
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
     const [updateData, setUpdateData] = useState(null);
-    const currentAppVersion = updateData?.currentVersion || '1.3.3';
+    const currentAppVersion = updateData?.currentVersion || '1.3.4';
     const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
     const [isCheckingDefault, setIsCheckingDefault] = useState(false);
     const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
@@ -281,7 +469,7 @@ const SettingsModal = () => {
                 setIsCheckingUpdates(false);
             }
             if (data.status === 'not-available' && !data.silent) {
-                const ver = data.currentVersion || data.version || '1.3.3';
+                const ver = data.currentVersion || data.version || '1.3.4';
                 showToast(`QBrowse is up to date! (v${String(ver).replace(/^v/i, '')})`);
             } else if (data.status === 'available') {
                 const nextVer = String(data.latestVersion || data.version || '').replace(/^v/i, '');
@@ -1012,14 +1200,9 @@ const SettingsModal = () => {
                         <div className="animate-tab-fade space-y-6">
                             <div className="flex items-center justify-between flex-wrap gap-3">
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <h3 className="text-2xl font-bold">Accessibility</h3>
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-400/10 text-amber-400 border border-amber-400/20">
-                                            EU EAA Directive 2019/882
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-white/40">
-                                        Standards-compliant accessible browsing adhering to EN 301 549 and WCAG 2.1 Level AA specifications.
+                                    <h3 className="text-2xl font-bold mb-1">Accessibility</h3>
+                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                        Customize visual contrast, dyslexia typography, vestibular comfort, and navigation aids.
                                     </p>
                                 </div>
 
@@ -1028,7 +1211,7 @@ const SettingsModal = () => {
                                         openReadAloud();
                                         showToast('Read Aloud assistant launched.');
                                     }}
-                                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#d4bc94] text-zinc-950 font-bold hover:bg-[#e0c8a0] text-xs shadow-sm transition active:scale-95"
+                                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-accent text-zinc-950 font-bold hover:bg-accent-hover text-xs shadow-sm transition active:scale-95 cursor-pointer"
                                 >
                                     <Volume2 size={14} />
                                     <span>Start Read Aloud</span>
@@ -1036,22 +1219,23 @@ const SettingsModal = () => {
                                 </button>
                             </div>
 
-                            {/* Section 1: Visual Accessibility & Typography */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20 flex items-center justify-center shadow-sm">
-                                            <Eye size={16} />
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Visual Contrast & Typography</p>
-                                            <p className="text-xs text-white/40 mt-0.5">High-contrast legibility, specialized typeface, minimum text sizing, and page scale.</p>
-                                        </div>
+                            {/* Section 1: Visual Contrast & Typography */}
+                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
+                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                                    }`}>
+                                        <Eye size={15} />
                                     </div>
-                                    <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-accent">WCAG 1.4</span>
+                                    <div>
+                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Visual Contrast &amp; Typography</h4>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>High-contrast legibility, specialized typeface, minimum text sizing, and page scale.</p>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-2 pt-2">
+                                <div className="space-y-2 pt-1">
                                     <SettingCard 
                                         icon={Eye} 
                                         title="High Contrast Mode" 
@@ -1086,7 +1270,7 @@ const SettingsModal = () => {
                                                     onClick={() => setSettingValue('a11yMinFontSize', sz)}
                                                     className={`px-2.5 py-1 text-xs rounded-lg transition font-mono ${
                                                         (settings.a11yMinFontSize || 'default') === sz
-                                                            ? 'bg-[#d4bc94] text-zinc-950 font-bold shadow-sm'
+                                                            ? 'bg-accent text-zinc-950 font-bold shadow-sm'
                                                             : isBright
                                                                 ? 'bg-black/5 hover:bg-black/10 text-zinc-700'
                                                                 : 'bg-white/5 hover:bg-white/10 text-white/70'
@@ -1115,9 +1299,9 @@ const SettingsModal = () => {
                                                     setSettingValue('a11yPageZoom', val);
                                                     setZoomLevel(val);
                                                 }}
-                                                className="w-full accent-amber-400 bg-white/10 h-1.5 rounded-lg cursor-pointer"
+                                                className="w-full accent-accent bg-white/10 h-1.5 rounded-lg cursor-pointer"
                                             />
-                                            <span className="text-xs font-mono font-bold w-12 text-right">
+                                            <span className={`text-xs font-mono font-bold w-12 text-right ${isBright ? 'text-zinc-800' : 'text-white'}`}>
                                                 {settings.a11yPageZoom || 100}%
                                             </span>
                                             {(settings.a11yPageZoom && settings.a11yPageZoom !== 100) && (
@@ -1127,7 +1311,7 @@ const SettingsModal = () => {
                                                         setZoomLevel(100);
                                                     }}
                                                     title="Reset zoom to 100%"
-                                                    className="p-1 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition"
+                                                    className="p-1 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition cursor-pointer"
                                                 >
                                                     <RotateCcw size={12} />
                                                 </button>
@@ -1138,21 +1322,22 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Section 2: Motion & Vestibular */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-purple-400/10 text-purple-400 border border-purple-400/20 flex items-center justify-center shadow-sm">
-                                            <Zap size={16} />
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Motion & Vestibular Comfort</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Protect against motion sickness and vestibular disorders by suppressing rapid animations.</p>
-                                        </div>
+                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
+                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                                    }`}>
+                                        <Zap size={15} />
                                     </div>
-                                    <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-accent">WCAG 2.3</span>
+                                    <div>
+                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Motion &amp; Vestibular Comfort</h4>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Protect against motion sickness and vestibular strain by suppressing rapid animations.</p>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-2 pt-2">
+                                <div className="space-y-2 pt-1">
                                     <SettingCard 
                                         icon={Zap} 
                                         title="Force Reduced Motion" 
@@ -1178,21 +1363,22 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Section 3: Keyboard & Motor Navigation */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-sky-400/10 text-sky-400 border border-sky-400/20 flex items-center justify-center shadow-sm">
-                                            <Keyboard size={16} />
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Keyboard Navigation & Focus Indicators</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Independent keyboard operation, high-visibility focus indicators, and text caret browsing.</p>
-                                        </div>
+                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
+                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                                    }`}>
+                                        <Keyboard size={15} />
                                     </div>
-                                    <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-accent">WCAG 2.1 & 2.4</span>
+                                    <div>
+                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Keyboard Navigation &amp; Focus Indicators</h4>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Independent keyboard operation, high-visibility focus indicators, and text caret browsing.</p>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-2 pt-2">
+                                <div className="space-y-2 pt-1">
                                     <SettingCard 
                                         icon={Keyboard} 
                                         title="Caret Browsing (Text Cursor Navigation)" 
@@ -1221,21 +1407,22 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Section 4: Audio & Multimodal Reading */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 flex items-center justify-center shadow-sm">
-                                            <Volume2 size={16} />
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Auditory & Reading Assistance</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Text-to-speech engine, automatic video subtitles, and mono audio downmixing.</p>
-                                        </div>
+                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
+                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                                    }`}>
+                                        <Volume2 size={15} />
                                     </div>
-                                    <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-accent">WCAG 1.2</span>
+                                    <div>
+                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Auditory &amp; Reading Assistance</h4>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Text-to-speech engine, automatic video subtitles, and mono audio downmixing.</p>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-2 pt-2">
+                                <div className="space-y-2 pt-1">
                                     <SettingCard 
                                         icon={Volume2} 
                                         title="Read Aloud Floating Assistant" 
@@ -1246,10 +1433,12 @@ const SettingsModal = () => {
                                                 openReadAloud();
                                                 showToast('Read Aloud assistant launched.');
                                             }}
-                                            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-white font-medium transition active:scale-95 flex items-center gap-2"
+                                            className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition active:scale-95 flex items-center gap-2 cursor-pointer ${
+                                                isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                                            }`}
                                         >
                                             <span>Launch Toolbar</span>
-                                            <span className="text-[10px] font-mono text-white/40">Alt+R</span>
+                                            <span className="text-[10px] font-mono opacity-50">Alt+R</span>
                                         </button>
                                     </SettingCard>
 
@@ -1284,21 +1473,297 @@ const SettingsModal = () => {
                         <div className="animate-tab-fade space-y-4">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Privacy & Security</h3>
-                                <p className="text-xs text-white/40">Manage network encryption, DNS security, and process isolation.</p>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Manage encrypted DNS routing, network protection, process sandboxing, and private spaces.</p>
                             </div>
 
+                            {/* 1. ENCRYPTED DNS & CUSTOM RESOLVER COMMAND CARD (AT VERY TOP!) */}
+                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
+                                isBright 
+                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
+                                    : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                {/* Header Row */}
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                            isBright 
+                                                ? 'bg-black/[0.04] text-accent border border-black/[0.06]' 
+                                                : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                                        }`}>
+                                            <ShieldCheck size={16} />
+                                        </div>
+                                        <div>
+                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                Encrypted DNS (DNS over HTTPS)
+                                            </h4>
+                                            <p className={`text-xs mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                Route domain lookups through an encrypted HTTPS resolver to prevent ISP profiling and eavesdropping.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Inline Test Connection Pill */}
+                                    <button
+                                        type="button"
+                                        onClick={() => handleTestDns()}
+                                        disabled={isTestingDns || settings.dohMode === 'off'}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                                            dnsTestStatus?.ok
+                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                                : dnsTestStatus && !dnsTestStatus.ok
+                                                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                                                    : isBright
+                                                        ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700'
+                                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80 hover:text-white'
+                                        }`}
+                                    >
+                                        <Activity size={12} className={isTestingDns ? 'animate-spin text-accent' : ''} />
+                                        <span>
+                                            {isTestingDns 
+                                                ? 'Testing...' 
+                                                : dnsTestStatus?.ok && dnsTestStatus.latency !== undefined 
+                                                    ? `${dnsTestStatus.latency}ms • Online` 
+                                                    : dnsTestStatus && !dnsTestStatus.ok
+                                                        ? 'Offline • Retry'
+                                                        : 'Test Connection'}
+                                        </span>
+                                    </button>
+                                </div>
+
+                                {/* Enforcement Mode Sliding Pill Switcher */}
+                                <div className="space-y-1.5">
+                                    <label className={`text-[10px] font-mono font-bold uppercase tracking-wider block ${
+                                        isBright ? 'text-zinc-500' : 'text-zinc-400'
+                                    }`}>
+                                        Enforcement Mode
+                                    </label>
+                                    <SlidingPillSwitcher
+                                        options={[
+                                            { id: 'automatic', label: 'Automatic' },
+                                            { id: 'secure', label: 'Strict DoH' },
+                                            { id: 'off', label: 'Off' }
+                                        ]}
+                                        value={settings.dohMode || 'automatic'}
+                                        onChange={async (mode) => {
+                                            await setDnsConfiguration({ mode });
+                                            showToast(`DNS Mode: ${mode === 'secure' ? 'Strict DoH' : mode === 'off' ? 'Off' : 'Automatic'}`);
+                                        }}
+                                        isBright={isBright}
+                                        size="sm"
+                                    />
+                                </div>
+
+                                {/* Resolver Provider Selector (with Custom DNS on Top!) */}
+                                {settings.dohMode !== 'off' && (
+                                    <div className="space-y-2.5 pt-1">
+                                        <div className="flex items-center justify-between">
+                                            <label className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
+                                                isBright ? 'text-zinc-500' : 'text-zinc-400'
+                                            }`}>
+                                                Resolver Provider
+                                            </label>
+                                            <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+                                                RFC 8484 Standard
+                                            </span>
+                                        </div>
+
+                                        {/* Top Sliding Pill Switcher for Resolvers - Custom DNS is FIRST! */}
+                                        <SlidingPillSwitcher
+                                            options={[
+                                                { id: 'custom', label: 'Custom DNS' },
+                                                { id: 'cloudflare', label: 'Cloudflare' },
+                                                { id: 'quad9', label: 'Quad9' },
+                                                { id: 'adguard', label: 'AdGuard' },
+                                                { id: 'google', label: 'Google' }
+                                            ]}
+                                            value={settings.doh || 'cloudflare'}
+                                            onChange={async (providerId) => {
+                                                await setDnsConfiguration({ provider: providerId });
+                                                showToast(`DNS Provider: ${providerId === 'custom' ? 'Custom DNS' : providerId.charAt(0).toUpperCase() + providerId.slice(1)}`);
+                                            }}
+                                            isBright={isBright}
+                                        />
+
+                                        {/* When Custom DNS is selected, expand Custom DoH Endpoint Input below the pill switcher */}
+                                        {(settings.doh === 'custom' || settings.doh === 'nextdns') && (
+                                            <div className={`p-3.5 rounded-xl border flex flex-col gap-2.5 ${
+                                                isBright ? 'bg-black/[0.02] border-black/10' : 'bg-black/30 border-white/[0.08]'
+                                            }`}>
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                                                        <Server size={12} />
+                                                        <span>Custom DoH Endpoint URL or IPv4</span>
+                                                    </label>
+                                                    <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>DoH / IPv4</span>
+                                                </div>
+
+                                                {/* Quick-fill preset chips */}
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Presets:</span>
+                                                    {[
+                                                        { name: 'NextDNS', url: 'https://dns.nextdns.io' },
+                                                        { name: 'Mullvad', url: 'https://dns.mullvad.net/dns-query' },
+                                                        { name: 'Control D', url: 'https://freedns.controld.com/p2' },
+                                                        { name: 'Cloudflare', url: 'https://cloudflare-dns.com/dns-query' },
+                                                        { name: 'Quad9', url: 'https://dns.quad9.net/dns-query' }
+                                                    ].map(preset => (
+                                                        <button
+                                                            key={preset.name}
+                                                            type="button"
+                                                            onClick={() => setCustomDnsUrl(preset.url)}
+                                                            className={`text-[10px] font-mono px-2 py-0.5 rounded-lg border transition cursor-pointer ${
+                                                                customDnsUrl === preset.url
+                                                                    ? 'bg-accent/20 border-accent/40 text-accent font-bold'
+                                                                    : isBright
+                                                                        ? 'bg-white/80 hover:bg-white border-black/10 text-zinc-700'
+                                                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            {preset.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                <div className="flex gap-2">
+                                                    <div className={`flex-1 flex items-center gap-2 px-3 py-1.5 rounded-xl border transition ${
+                                                        isBright
+                                                            ? 'bg-white border-black/15 text-zinc-900 focus-within:border-accent'
+                                                            : 'bg-black/40 border-white/[0.08] text-white focus-within:border-accent'
+                                                    }`}>
+                                                        <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="https://dns.example.com/dns-query or 9.9.9.9"
+                                                            value={customDnsUrl}
+                                                            onChange={(e) => setCustomDnsUrl(e.target.value)}
+                                                            className="w-full bg-transparent text-xs font-mono outline-none"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            const formatted = formatCustomDohUrl(customDnsUrl);
+                                                            if (!formatted || !isValidDohUrl(formatted)) {
+                                                                showToast('Please enter a valid DNS URL or IPv4 address');
+                                                                return;
+                                                            }
+                                                            await setDnsConfiguration({
+                                                                provider: 'custom',
+                                                                customUrl: formatted
+                                                            });
+                                                            setCustomDnsUrl(formatted);
+                                                            showToast('Custom DNS server saved & applied');
+                                                            handleTestDns(formatted);
+                                                        }}
+                                                        className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm flex items-center gap-1.5 flex-shrink-0"
+                                                    >
+                                                        <Check size={12} strokeWidth={2.5} />
+                                                        <span>Apply</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Active Resolver Summary Row */}
+                                        <div className={`flex items-center justify-between p-2.5 px-3 rounded-xl border text-[11px] font-mono ${
+                                            isBright ? 'bg-black/[0.02] border-black/5 text-zinc-600' : 'bg-white/[0.02] border-white/5 text-zinc-400'
+                                        }`}>
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
+                                                <span className="truncate">
+                                                    Active: {settings.doh === 'custom' 
+                                                        ? (customDnsUrl || 'Custom DoH Endpoint')
+                                                        : DOH_PROVIDERS.find(p => p.id === (settings.doh || 'cloudflare'))?.url || 'https://cloudflare-dns.com/dns-query'}
+                                                </span>
+                                            </div>
+                                            <span className="flex-shrink-0 font-medium text-accent">
+                                                {settings.doh === 'custom' 
+                                                    ? 'Custom Resolver' 
+                                                    : DOH_PROVIDERS.find(p => p.id === (settings.doh || 'cloudflare'))?.badge || 'Encrypted'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 2. PRIVACY SHIELD LEVEL CARD */}
+                            <div className={`rounded-2xl border p-5 transition-all duration-200 space-y-3 ${
+                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                            Privacy Shield Level
+                                        </h4>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Select a baseline security preset or fine-tune individual protection layers below.
+                                        </p>
+                                    </div>
+                                </div>
+                                <SlidingPillSwitcher
+                                    options={[
+                                        { id: 'standard', label: 'Standard' },
+                                        { id: 'strict', label: 'Strict' },
+                                        { id: 'custom', label: 'Custom' }
+                                    ]}
+                                    value={
+                                        settings.privacyLevel || (
+                                            (settings.httpsOnly && settings.isolation && settings.webrtc && settings.dnt)
+                                                ? 'strict'
+                                                : (settings.httpsOnly && !settings.isolation && settings.webrtc && settings.dnt)
+                                                    ? 'standard'
+                                                    : 'custom'
+                                        )
+                                    }
+                                    onChange={(level) => {
+                                        if (level === 'standard') {
+                                            setSettingValue('privacyLevel', 'standard');
+                                            setSettingValue('httpsOnly', true);
+                                            setSettingValue('isolation', false);
+                                            setSettingValue('webrtc', true);
+                                            setSettingValue('dnt', true);
+                                            showToast('Privacy Shield: Standard profile applied');
+                                        } else if (level === 'strict') {
+                                            setSettingValue('privacyLevel', 'strict');
+                                            setSettingValue('httpsOnly', true);
+                                            setSettingValue('isolation', true);
+                                            setSettingValue('webrtc', true);
+                                            setSettingValue('dnt', true);
+                                            showToast('Privacy Shield: Strict profile applied');
+                                        } else {
+                                            setSettingValue('privacyLevel', 'custom');
+                                        }
+                                    }}
+                                    isBright={isBright}
+                                />
+                            </div>
+
+                            {/* 3. NETWORK PROTECTION TOGGLES */}
                             <SettingCard icon={Lock} title="HTTPS-Only Mode" description="Automatically upgrade all connections to secure HTTPS.">
-                                <SettingToggle isChecked={!!settings.httpsOnly} onToggle={() => toggleSetting('httpsOnly')} />
+                                <SettingToggle 
+                                    isChecked={!!settings.httpsOnly} 
+                                    onToggle={() => {
+                                        setSettingValue('privacyLevel', 'custom');
+                                        toggleSetting('httpsOnly');
+                                    }} 
+                                />
                             </SettingCard>
 
                             <SettingCard icon={Shield} title="Strict Process Isolation" description="Run each site in its own isolated Electron process sandbox.">
-                                <SettingToggle isChecked={!!settings.isolation} onToggle={() => toggleSetting('isolation')} />
+                                <SettingToggle 
+                                    isChecked={!!settings.isolation} 
+                                    onToggle={() => {
+                                        setSettingValue('privacyLevel', 'custom');
+                                        toggleSetting('isolation');
+                                    }} 
+                                />
                             </SettingCard>
 
                             <SettingCard icon={Globe} title="WebRTC Leak Protection" description="Prevent sites from discovering your true local IP address via WebRTC calls.">
                                 <SettingToggle 
                                     isChecked={!!settings.webrtc} 
                                     onToggle={() => {
+                                        setSettingValue('privacyLevel', 'custom');
                                         const nextVal = !settings.webrtc;
                                         toggleSetting('webrtc');
                                         if (window.electronAPI && window.electronAPI.setWebRTC) {
@@ -1309,7 +1774,13 @@ const SettingsModal = () => {
                             </SettingCard>
 
                             <SettingCard icon={Eye} title="Send 'Do Not Track' (DNT) Header" description="Request that web networks and advertisers omit cross-site tracking.">
-                                <SettingToggle isChecked={!!settings.dnt} onToggle={() => toggleSetting('dnt')} />
+                                <SettingToggle 
+                                    isChecked={!!settings.dnt} 
+                                    onToggle={() => {
+                                        setSettingValue('privacyLevel', 'custom');
+                                        toggleSetting('dnt');
+                                    }} 
+                                />
                             </SettingCard>
 
                             {/* Tor Onion Network Routing */}
@@ -1345,256 +1816,6 @@ const SettingsModal = () => {
                                 />
                             </SettingCard>
 
-                            {/* Secure DNS (DoH) & Custom DNS Resolver */}
-                            <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 flex flex-col gap-4 backdrop-blur-xl ${
-                                isBright 
-                                    ? 'bg-white/85 border-black/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.04)]' 
-                                    : 'bg-[#0c0c0f]/85 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.4)]'
-                            }`}>
-                                {/* Kicker Header Row */}
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border ${
-                                            isBright 
-                                                ? 'bg-accent/15 text-zinc-900 border-accent/30' 
-                                                : 'bg-accent/15 text-accent border-accent/25'
-                                        }`}>
-                                            <ShieldCheck size={12} />
-                                        </div>
-                                        <span className={`text-[10px] font-mono font-bold tracking-widest uppercase ${
-                                            isBright ? 'text-zinc-600' : 'text-accent'
-                                        }`}>
-                                            NETWORK & PRIVACY • DNS-OVER-HTTPS
-                                        </span>
-                                    </div>
-                                    <div className={`text-[10px] font-mono px-2 py-0.5 rounded-md border flex items-center gap-1.5 ${
-                                        (settings.dohMode || 'automatic') === 'secure'
-                                            ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-400 font-bold'
-                                            : (settings.dohMode || 'automatic') === 'off'
-                                                ? (isBright ? 'bg-black/5 border-black/10 text-zinc-400' : 'bg-white/[0.04] border-white/10 text-white/40')
-                                                : 'bg-accent/15 border-accent/25 text-accent font-bold'
-                                    }`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${
-                                            (settings.dohMode || 'automatic') === 'secure'
-                                                ? 'bg-emerald-400 animate-pulse'
-                                                : (settings.dohMode || 'automatic') === 'off'
-                                                    ? 'bg-zinc-400'
-                                                    : 'bg-accent'
-                                        }`} />
-                                        <span>
-                                            {(settings.dohMode || 'automatic') === 'secure' ? 'Strict DoH' : (settings.dohMode === 'off' ? 'Disabled' : 'Automatic')}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* Title & Description */}
-                                <div>
-                                    <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                        Secure DNS Encryption
-                                    </h4>
-                                    <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/60'}`}>
-                                        Encrypts domain name queries via HTTPS to prevent ISP profiling, local network eavesdropping, and DNS hijacking.
-                                    </p>
-                                </div>
-
-                                {/* Enforcement Mode Segmented Bar */}
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                            Enforcement Mode
-                                        </span>
-                                    </div>
-                                    <div className={`grid grid-cols-3 gap-1 p-1 rounded-xl border ${
-                                        isBright ? 'bg-black/[0.04] border-black/[0.06]' : 'bg-black/40 border-white/[0.06]'
-                                    }`}>
-                                        {DNS_MODES.map(mode => {
-                                            const isActive = (settings.dohMode || 'automatic') === mode.id;
-                                            return (
-                                                <button
-                                                    key={mode.id}
-                                                    type="button"
-                                                    onClick={async () => {
-                                                        await setDnsConfiguration({ mode: mode.id });
-                                                        showToast(`DNS Mode: ${mode.name}`);
-                                                    }}
-                                                    className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                                                        isActive
-                                                            ? 'bg-[#d4bc94] text-zinc-950 font-bold shadow-sm'
-                                                            : (isBright 
-                                                                ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5' 
-                                                                : 'text-white/60 hover:text-white hover:bg-white/[0.05]')
-                                                    }`}
-                                                    title={mode.description}
-                                                >
-                                                    {isActive && <Check size={11} strokeWidth={3} className="text-zinc-950" />}
-                                                    <span>{mode.name.split(' ')[0]}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                {/* Provider Chips */}
-                                {settings.dohMode !== 'off' && (
-                                    <div className="space-y-2 pt-0.5">
-                                        <div className="flex items-center justify-between">
-                                            <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                                DNS Resolver Provider
-                                            </span>
-                                            <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                RFC 8484
-                                            </span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {DOH_PROVIDERS.map(provider => {
-                                                const isSelected = (settings.doh || 'cloudflare') === provider.id;
-                                                return (
-                                                    <button
-                                                        key={provider.id}
-                                                        type="button"
-                                                        onClick={async () => {
-                                                            await setDnsConfiguration({ provider: provider.id });
-                                                            showToast(`DNS Provider: ${provider.name}`);
-                                                        }}
-                                                        className={`px-3 py-1.5 rounded-xl border text-xs transition cursor-pointer flex items-center gap-2 ${
-                                                            isSelected
-                                                                ? 'bg-accent/20 border-accent text-accent font-bold shadow-[0_0_12px_rgba(212,188,148,0.12)]'
-                                                                : (isBright 
-                                                                    ? 'bg-white/70 hover:bg-white border-black/10 text-zinc-700 hover:text-black' 
-                                                                    : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.06] text-white/70 hover:text-white')
-                                                        }`}
-                                                    >
-                                                        <span>{provider.name}</span>
-                                                        {provider.badge && (
-                                                            <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-semibold ${
-                                                                isSelected 
-                                                                    ? 'bg-accent/25 text-accent' 
-                                                                    : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
-                                                            }`}>
-                                                                {provider.badge}
-                                                            </span>
-                                                        )}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {/* Custom DoH Endpoint Bar */}
-                                        {((settings.doh || 'cloudflare') === 'custom' || (settings.doh || 'cloudflare') === 'nextdns') && (
-                                            <div className={`mt-2 p-3 rounded-xl border flex flex-col gap-2 ${
-                                                isBright ? 'bg-black/[0.02] border-black/10' : 'bg-black/30 border-white/[0.08]'
-                                            }`}>
-                                                <div className="flex items-center justify-between">
-                                                    <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
-                                                        <Server size={12} />
-                                                        <span>{settings.doh === 'nextdns' ? 'NextDNS Endpoint / ID' : 'Custom DoH Endpoint URL or IPv4'}</span>
-                                                    </label>
-                                                    <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>DoH / IPv4</span>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <div className={`flex-1 flex items-center gap-2 px-3 py-1.5 rounded-xl border transition ${
-                                                        isBright
-                                                            ? 'bg-white border-black/15 text-zinc-900 focus-within:border-accent'
-                                                            : 'bg-black/40 border-white/[0.08] text-white focus-within:border-accent'
-                                                    }`}>
-                                                        <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
-                                                        <input
-                                                            type="text"
-                                                            placeholder={settings.doh === 'nextdns' ? 'https://dns.nextdns.io/your_id' : 'https://dns.example.com/dns-query or 9.9.9.9'}
-                                                            value={customDnsUrl}
-                                                            onChange={(e) => setCustomDnsUrl(e.target.value)}
-                                                            className="w-full bg-transparent text-xs font-mono outline-none"
-                                                        />
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={async () => {
-                                                            const formatted = formatCustomDohUrl(customDnsUrl);
-                                                            if (!formatted || !isValidDohUrl(formatted)) {
-                                                                showToast('Please enter a valid DNS URL or IPv4 address');
-                                                                return;
-                                                            }
-                                                            await setDnsConfiguration({
-                                                                provider: settings.doh || 'custom',
-                                                                customUrl: formatted
-                                                            });
-                                                            setCustomDnsUrl(formatted);
-                                                            showToast('Custom DNS server saved & applied');
-                                                            handleTestDns(formatted);
-                                                        }}
-                                                        className="px-3.5 py-1.5 rounded-xl bg-[#d4bc94] hover:bg-[#e0c8a0] text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm flex items-center gap-1.5 flex-shrink-0"
-                                                    >
-                                                        <Check size={12} strokeWidth={2.5} />
-                                                        <span>Apply</span>
-                                                    </button>
-                                                </div>
-                                                <p className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/40'} leading-relaxed`}>
-                                                    {settings.doh === 'nextdns' 
-                                                        ? 'Enter your custom NextDNS endpoint (e.g. https://dns.nextdns.io/abcdef) to sync privacy blocking filters.'
-                                                        : 'Supports RFC 8484 DoH endpoints or standard DNS resolvers. IPv4 addresses will route securely.'}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Diagnostics & Live Test Bar */}
-                                <div className={`flex items-center justify-between pt-2.5 border-t text-xs ${
-                                    isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
-                                }`}>
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        {isTestingDns ? (
-                                            <>
-                                                <Activity size={13} className="animate-spin text-accent" />
-                                                <span className={`text-xs font-mono ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                                    Testing resolver latency...
-                                                </span>
-                                            </>
-                                        ) : dnsTestStatus?.ok ? (
-                                            <>
-                                                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
-                                                <span className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
-                                                    Resolver Verified
-                                                </span>
-                                                {dnsTestStatus.latency !== undefined && (
-                                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 font-bold">
-                                                        {dnsTestStatus.latency} ms
-                                                    </span>
-                                                )}
-                                            </>
-                                        ) : dnsTestStatus && !dnsTestStatus.ok ? (
-                                            <>
-                                                <span className="w-2 h-2 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
-                                                <span className="text-xs text-rose-400 font-medium truncate">
-                                                    Failed ({dnsTestStatus.error || 'Unreachable'})
-                                                </span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Wifi size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
-                                                <span className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                                                    Resolver diagnostics ready
-                                                </span>
-                                            </>
-                                        )}
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => handleTestDns()}
-                                        disabled={isTestingDns || settings.dohMode === 'off'}
-                                        className={`px-3 py-1 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
-                                            isBright
-                                                ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700'
-                                                : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80 hover:text-white'
-                                        }`}
-                                    >
-                                        <Activity size={12} className={isTestingDns ? 'animate-spin text-accent' : ''} />
-                                        <span>Test DNS</span>
-                                    </button>
-                                </div>
-                            </div>
-
                             {/* QVault in Ghost & Tor Spaces */}
                             <SettingCard 
                                 icon={Key} 
@@ -1612,14 +1833,18 @@ const SettingsModal = () => {
                             </SettingCard>
 
                             {/* Excluded Sites (Never Save Passwords) */}
-                            <div className="p-4 bg-white/[0.025] border border-white/[0.05] rounded-2xl hover:border-accent-30 transition-all duration-300">
+                            <div className={`p-4 rounded-2xl border transition-all duration-300 ${
+                                isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
                                 <div className="flex items-center gap-3 mb-2.5">
-                                    <div className="w-8 h-8 rounded-lg bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shrink-0 shadow-sm">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${
+                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                                    }`}>
                                         <Lock size={15} />
                                     </div>
                                     <div>
-                                        <p className="font-semibold text-sm">Never Saved Sites</p>
-                                        <p className="text-xs text-white/40 mt-0.5">Websites where you dismissed credential saving with "Never for this site".</p>
+                                        <p className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Never Saved Sites</p>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Websites where you dismissed credential saving with "Never for this site".</p>
                                     </div>
                                 </div>
                                 {neverSaveDomains.length === 0 ? (
@@ -1651,7 +1876,7 @@ const SettingsModal = () => {
                             <div className={`p-4 rounded-2xl flex items-center justify-between border ${isBright ? 'bg-red-500/[0.08] border-red-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                                 <div>
                                     <p className={`font-semibold text-sm ${isBright ? 'text-red-600' : 'text-red-400'}`}>Clear Browsing Data</p>
-                                    <p className={`text-xs mt-0.5 ${isBright ? 'text-red-600/70' : 'text-red-400/60'}`}>Clear history, cookies, and cache from local storage & SQLite.</p>
+                                    <p className={`text-xs mt-0.5 ${isBright ? 'text-red-600/70' : 'text-red-400/60'}`}>Clear history, cookies, and cache from local storage &amp; SQLite.</p>
                                 </div>
                                 <button 
                                     onClick={async () => {
@@ -1758,45 +1983,36 @@ const SettingsModal = () => {
                         <div className="animate-tab-fade space-y-5">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Search & Omnibox</h3>
-                                <p className="text-xs text-white/40">Configure default search engines, live suggestions, and smart search bangs.</p>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Configure default search engines, live suggestions, and smart search bangs.</p>
                             </div>
 
                             {/* Default Search Engine */}
-                            <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 flex flex-col gap-3.5 backdrop-blur-xl ${
+                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-3.5 ${
                                 isBright 
-                                    ? 'bg-white/85 border-black/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.04)]' 
-                                    : 'bg-[#0c0c0f]/85 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.4)]'
+                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
+                                    : 'bg-white/[0.025] border-white/[0.05]'
                             }`}>
-                                {/* Kicker Header Row */}
                                 <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border ${
-                                            isBright 
-                                                ? 'bg-accent/15 text-zinc-900 border-accent/30' 
-                                                : 'bg-accent/15 text-accent border-accent/25'
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
                                         }`}>
-                                            <Search size={12} />
+                                            <Search size={15} />
                                         </div>
-                                        <span className={`text-[10px] font-mono font-bold tracking-widest uppercase ${
-                                            isBright ? 'text-zinc-600' : 'text-accent'
-                                        }`}>
-                                            SEARCH & NAVIGATION • DEFAULT ENGINE
-                                        </span>
+                                        <div>
+                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                Primary Search Provider
+                                            </h4>
+                                            <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                Default search engine used when entering queries in the Omnibox, right-click menus, and navigation fallback.
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="text-[10px] font-mono px-2 py-0.5 rounded-md border bg-accent/10 border-accent/25 text-accent font-bold flex items-center gap-1.5">
-                                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getAllSearchEngines(settings?.customSearchEngines || []).find(e => e.id === (settings.searchEngine || 'google'))?.color || '#d4bc94' }} />
-                                        <span>Active: {getAllSearchEngines(settings?.customSearchEngines || []).find(e => e.id === (settings.searchEngine || 'google'))?.name || 'Google'}</span>
-                                    </div>
-                                </div>
-
-                                {/* Title & Description */}
-                                <div>
-                                    <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                        Primary Search Provider
-                                    </h4>
-                                    <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/60'}`}>
-                                        Default search engine used when entering queries in the Omnibox, right-click context menus, and navigation fallback.
-                                    </p>
+                                    <span className={`text-[10px] font-mono px-2.5 py-1 rounded-full border ${
+                                        isBright ? 'bg-black/5 border-black/10 text-zinc-700' : 'bg-white/5 border-white/10 text-accent font-semibold'
+                                    }`}>
+                                        {getAllSearchEngines(settings?.customSearchEngines || []).find(e => e.id === (settings.searchEngine || 'google'))?.name || 'Google'}
+                                    </span>
                                 </div>
 
                                 {/* Engine Pill Chips */}
@@ -1813,7 +2029,7 @@ const SettingsModal = () => {
                                                 }}
                                                 className={`py-1.5 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center gap-2 ${
                                                     isDefault
-                                                        ? 'bg-[#d4bc94] text-zinc-950 font-bold shadow-sm'
+                                                        ? 'bg-accent text-zinc-950 font-bold shadow-sm'
                                                         : (isBright 
                                                             ? 'bg-white/70 hover:bg-white border-black/10 text-zinc-700 hover:text-black' 
                                                             : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.06] text-white/70 hover:text-white')
@@ -1832,26 +2048,26 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Manage Search Engines & Custom Shortcuts */}
-                            <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 flex flex-col gap-4 backdrop-blur-xl ${
+                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
                                 isBright 
-                                    ? 'bg-white/85 border-black/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.04)]' 
-                                    : 'bg-[#0c0c0f]/85 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.4)]'
+                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
+                                    : 'bg-white/[0.025] border-white/[0.05]'
                             }`}>
-                                {/* Kicker Header Row */}
                                 <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border ${
-                                            isBright 
-                                                ? 'bg-accent/15 text-zinc-900 border-accent/30' 
-                                                : 'bg-accent/15 text-accent border-accent/25'
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
                                         }`}>
-                                            <Compass size={12} />
+                                            <Compass size={15} />
                                         </div>
-                                        <span className={`text-[10px] font-mono font-bold tracking-widest uppercase ${
-                                            isBright ? 'text-zinc-600' : 'text-accent'
-                                        }`}>
-                                            SEARCH SHORTCUTS • OMNIBOX ROUTING
-                                        </span>
+                                        <div>
+                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                Omnibox Keywords &amp; Custom Engines
+                                            </h4>
+                                            <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                Assign shortcuts to search websites directly from the address bar (e.g. type <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">yt query</span>).
+                                            </p>
+                                        </div>
                                     </div>
 
                                     <button
@@ -1869,21 +2085,11 @@ const SettingsModal = () => {
                                                 setIsAddingEngine(true);
                                             }
                                         }}
-                                        className="px-3 py-1 rounded-xl bg-[#d4bc94] hover:bg-[#e0c8a0] text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
+                                        className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
                                     >
                                         <Plus size={13} className={`transition-transform duration-300 ${isAddingEngine ? 'rotate-45' : ''}`} />
                                         <span>{isAddingEngine ? 'Cancel' : 'Add Engine'}</span>
                                     </button>
-                                </div>
-
-                                {/* Title & Description */}
-                                <div>
-                                    <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                        Omnibox Keywords &amp; Custom Engines
-                                    </h4>
-                                    <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/60'}`}>
-                                        Assign shortcuts to search websites directly from the address bar (e.g. type <span className="font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20">yt query</span> or <span className="font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20">gh query</span>).
-                                    </p>
                                 </div>
 
                                 {/* Add / Edit Engine Form Accordion */}
@@ -1975,7 +2181,7 @@ const SettingsModal = () => {
                                                 <button
                                                     type="button"
                                                     onClick={handleSaveSearchEngine}
-                                                    className="px-4 py-1.5 rounded-xl bg-[#d4bc94] hover:bg-[#e0c8a0] text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
+                                                    className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
                                                 >
                                                     {editingEngineId ? 'Update Engine' : 'Save Engine'}
                                                 </button>
@@ -2067,35 +2273,38 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Smart Search Bangs & Shortcuts Section */}
-                            <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 flex flex-col gap-4 backdrop-blur-xl ${
+                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
                                 isBright 
-                                    ? 'bg-white/85 border-black/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.04)]' 
-                                    : 'bg-[#0c0c0f]/85 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.4)]'
+                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
+                                    : 'bg-white/[0.025] border-white/[0.05]'
                             }`}>
                                 <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border ${
-                                            isBright 
-                                                ? 'bg-accent/15 text-zinc-900 border-accent/30' 
-                                                : 'bg-accent/15 text-accent border-accent/25'
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
                                         }`}>
-                                            <Sparkles size={12} />
+                                            <Sparkles size={15} />
                                         </div>
-                                        <span className={`text-[10px] font-mono font-bold tracking-widest uppercase ${
-                                            isBright ? 'text-zinc-600' : 'text-accent'
-                                        }`}>
-                                            QUICK BANGS • DUCKDUCKGO SHORTCUTS
-                                        </span>
+                                        <div>
+                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                Smart Search Bangs
+                                            </h4>
+                                            <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                Type <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">!yt</span> or <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">@wiki</span> in the address bar to route searches immediately.
+                                            </p>
+                                        </div>
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md border bg-accent/10 border-accent/25 text-accent font-bold">
+                                        <span className={`text-[10px] font-mono px-2.5 py-1 rounded-full border ${
+                                            isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 border-white/10 text-white/50'
+                                        }`}>
                                             {getAllBangs(settings?.customBangs || []).length} Bangs
                                         </span>
                                         <button
                                             type="button"
                                             onClick={() => setIsAddingBang(!isAddingBang)}
-                                            className="px-3 py-1 rounded-xl bg-[#d4bc94] hover:bg-[#e0c8a0] text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
+                                            className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
                                         >
                                             <Plus size={13} className={`transition-transform duration-300 ${isAddingBang ? 'rotate-45' : ''}`} />
                                             <span>{isAddingBang ? 'Cancel' : 'Add Bang'}</span>
@@ -2103,46 +2312,43 @@ const SettingsModal = () => {
                                     </div>
                                 </div>
 
-                                <div>
-                                    <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                        Smart Search Bangs
-                                    </h4>
-                                    <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/60'}`}>
-                                        Type <span className="font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20">!yt</span> or <span className="font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10 border border-accent/20">@wiki</span> in the address bar to route searches immediately.
-                                    </p>
-                                </div>
-
                                 {/* Add Custom Bang Form Accordion */}
                                 <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAddingBang ? 'grid-rows-[1fr] opacity-100 mb-1' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}>
                                     <div className="overflow-hidden min-h-0">
-                                        <div className="p-4 rounded-xl bg-black/40 border border-accent/30 flex flex-col gap-3 my-1">
+                                        <div className={`p-4 rounded-xl border flex flex-col gap-3 my-1 ${
+                                            isBright ? 'bg-black/[0.03] border-black/10' : 'bg-black/40 border-white/10'
+                                        }`}>
                                             <p className="text-xs font-bold text-accent uppercase tracking-wider">Create Custom Search Bang</p>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                 <div>
-                                                    <label className="text-[10px] text-white/50 block mb-1 font-semibold">Shortcut Prefix</label>
+                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Shortcut Prefix</label>
                                                     <div className="relative flex items-center">
-                                                        <span className="absolute left-3 text-xs font-mono text-white/40">! / @</span>
+                                                        <span className="absolute left-3 text-xs font-mono opacity-50">! / @</span>
                                                         <input
                                                             type="text"
                                                             placeholder="e.g. keep or aw"
                                                             value={newBangPrefix}
                                                             onChange={(e) => setNewBangPrefix(e.target.value.replace(/^[!@]/, ''))}
-                                                            className="w-full pl-12 pr-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                            className={`w-full pl-12 pr-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-accent font-mono ${
+                                                                isBright ? 'bg-white border-black/15 text-zinc-900' : 'bg-white/[0.03] border-white/[0.06] text-white'
+                                                            }`}
                                                         />
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <label className="text-[10px] text-white/50 block mb-1 font-semibold">Engine Name</label>
+                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Engine Name</label>
                                                     <input
                                                         type="text"
                                                         placeholder="e.g. Google Keep or ArchWiki"
                                                         value={newBangName}
                                                         onChange={(e) => setNewBangName(e.target.value)}
-                                                        className="w-full px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white focus:outline-none focus:border-accent"
+                                                        className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-accent ${
+                                                            isBright ? 'bg-white border-black/15 text-zinc-900' : 'bg-white/[0.03] border-white/[0.06] text-white'
+                                                        }`}
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="text-[10px] text-white/50 block mb-1 font-semibold">Color Accent</label>
+                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Color Accent</label>
                                                     <div className="flex items-center gap-2 pt-1">
                                                         {['#d4bc94', '#4285F4', '#FF0000', '#A855F7', '#10B981', '#F59E0B', '#38BDF8'].map(c => (
                                                             <button
@@ -2157,13 +2363,15 @@ const SettingsModal = () => {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="text-[10px] text-white/50 block mb-1 font-semibold">Search URL Template (Use {'{q}'} for search query)</label>
+                                                <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Search URL Template (Use {'{q}'} for search query)</label>
                                                 <input
                                                     type="text"
                                                     placeholder="e.g. https://wiki.archlinux.org/index.php?search={q}"
                                                     value={newBangUrl}
                                                     onChange={(e) => setNewBangUrl(e.target.value)}
-                                                    className="w-full px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-xs text-white focus:outline-none focus:border-accent font-mono"
+                                                    className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-accent font-mono ${
+                                                        isBright ? 'bg-white border-black/15 text-zinc-900' : 'bg-white/[0.03] border-white/[0.06] text-white'
+                                                    }`}
                                                 />
                                             </div>
                                             <div className="flex justify-end gap-2 mt-1">
@@ -2175,7 +2383,9 @@ const SettingsModal = () => {
                                                         setNewBangName('');
                                                         setNewBangUrl('');
                                                     }}
-                                                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold transition cursor-pointer"
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                                                        isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 text-white/70'
+                                                    }`}
                                                 >
                                                     Cancel
                                                 </button>
@@ -2196,7 +2406,7 @@ const SettingsModal = () => {
                                                         setNewBangName('');
                                                         setNewBangUrl('');
                                                     }}
-                                                    className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-black font-bold text-xs shadow-md transition cursor-pointer"
+                                                    className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs shadow-md transition cursor-pointer"
                                                 >
                                                     Save Bang
                                                 </button>
@@ -2207,13 +2417,15 @@ const SettingsModal = () => {
 
                                 {/* Filter Search Bar */}
                                 <div className="relative">
-                                    <Search size={14} className="absolute left-3 top-2.5 text-white/40" />
+                                    <Search size={14} className={`absolute left-3 top-2.5 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
                                     <input
                                         type="text"
                                         placeholder="Filter bangs by name, shortcut (!yt, @github), or category..."
                                         value={bangFilter}
                                         onChange={(e) => setBangFilter(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-2 bg-black/30 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-accent transition"
+                                        className={`w-full pl-9 pr-3 py-2 border rounded-xl text-xs transition outline-none focus:border-accent ${
+                                            isBright ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-black/30 border-white/10 text-white placeholder-white/30'
+                                        }`}
                                     />
                                 </div>
 
@@ -2234,7 +2446,11 @@ const SettingsModal = () => {
                                             return (
                                                 <div 
                                                     key={bang.id} 
-                                                    className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between gap-3 hover:border-white/10 transition group"
+                                                    className={`p-3 border rounded-xl flex items-center justify-between gap-3 transition group ${
+                                                        isBright 
+                                                            ? 'bg-white/75 border-black/10 hover:border-black/20' 
+                                                            : 'bg-black/40 border-white/5 hover:border-white/10'
+                                                    }`}
                                                 >
                                                     <div className="flex items-center gap-2.5 min-w-0">
                                                         <div 
@@ -2245,7 +2461,7 @@ const SettingsModal = () => {
                                                         </div>
                                                         <div className="flex flex-col min-w-0">
                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="font-bold text-white text-xs truncate">{bang.name}</span>
+                                                                <span className={`font-bold text-xs truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{bang.name}</span>
                                                                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-white/70 font-mono font-semibold">
                                                                     !{bang.prefix}
                                                                 </span>
@@ -2255,7 +2471,7 @@ const SettingsModal = () => {
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <span className="text-[10px] text-white/40 truncate font-mono mt-0.5">
+                                                            <span className={`text-[10px] truncate font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                                                 {bang.url}
                                                             </span>
                                                         </div>
@@ -2394,68 +2610,90 @@ const SettingsModal = () => {
                             </div>
 
                             {/* Performance Mode Selector */}
-                            <div>
-                                <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2 block">
-                                    Performance Scaling Mode
-                                </label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className={`p-5 rounded-2xl border transition-all duration-200 space-y-4 ${
+                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                            Performance Scaling Mode
+                                        </h4>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Dynamic CPU scaling, background tab hibernation, and visual blur fidelity.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Spaces-Style Sliding Pill Switcher at Top of Card */}
+                                <SlidingPillSwitcher
+                                    options={[
+                                        { id: 'auto', label: 'Auto', icon: Cpu },
+                                        { id: 'eco', label: 'Eco Saver', icon: Feather },
+                                        { id: 'balanced', label: 'Balanced', icon: GaugeCircle },
+                                        { id: 'ultra', label: 'Ultra Speed', icon: Rocket }
+                                    ]}
+                                    value={performanceMode || 'auto'}
+                                    onChange={(mode) => {
+                                        setPerformanceMode(mode);
+                                        showToast(`Performance Mode: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
+                                    }}
+                                    isBright={isBright}
+                                />
+
+                                {/* Unified Cards */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                                     {[
                                         {
                                             id: 'auto',
                                             title: 'Auto (Adaptive)',
                                             desc: `Dynamically scales based on hardware specs & battery power (${String(activePerformanceTier || 'balanced').toUpperCase()} active).`,
-                                            icon: Cpu,
-                                            color: 'text-accent',
-                                            selectedClass: 'bg-accent/10 border-accent/35 text-white shadow-[0_0_15px_rgba(212,188,148,0.08)]',
-                                            dotClass: 'bg-accent shadow-[0_0_6px_var(--accent)]'
+                                            icon: Cpu
                                         },
                                         {
                                             id: 'eco',
                                             title: 'Eco / Low-End',
                                             desc: 'Aggressive 5-min tab sleep & clean flat dark styling (no GPU blur lag) for maximum battery & netbooks.',
-                                            icon: Feather,
-                                            color: 'text-emerald-400',
-                                            selectedClass: 'bg-emerald-500/10 border-emerald-500/35 text-white shadow-[0_0_15px_rgba(16,185,129,0.08)]',
-                                            dotClass: 'bg-emerald-400 shadow-[0_0_6px_#34d399]'
+                                            icon: Feather
                                         },
                                         {
                                             id: 'balanced',
                                             title: 'Balanced',
                                             desc: 'Standard 15-min tab sleep with full glassmorphism and optimal responsiveness for everyday multitasking.',
-                                            icon: GaugeCircle,
-                                            color: 'text-sky-400',
-                                            selectedClass: 'bg-sky-500/10 border-sky-500/35 text-white shadow-[0_0_15px_rgba(14,165,233,0.08)]',
-                                            dotClass: 'bg-sky-400 shadow-[0_0_6px_#38bdf8]'
+                                            icon: GaugeCircle
                                         },
                                         {
                                             id: 'ultra',
                                             title: 'Ultra Performance',
                                             desc: '30-min tab sleep, maximum frame rates and GPU pipeline throughput for high-end rigs.',
-                                            icon: Rocket,
-                                            color: 'text-purple-400',
-                                            selectedClass: 'bg-purple-500/10 border-purple-500/35 text-white shadow-[0_0_15px_rgba(168,85,247,0.08)]',
-                                            dotClass: 'bg-purple-400 shadow-[0_0_6px_#c084fc]'
+                                            icon: Rocket
                                         }
                                     ].map(mode => {
-                                        const isSelected = performanceMode === mode.id;
+                                        const isSelected = (performanceMode || 'auto') === mode.id;
                                         const Icon = mode.icon;
                                         return (
                                             <div
                                                 key={mode.id}
-                                                onClick={() => setPerformanceMode(mode.id)}
-                                                className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                                                onClick={() => {
+                                                    setPerformanceMode(mode.id);
+                                                    showToast(`Performance Mode: ${mode.title}`);
+                                                }}
+                                                className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                                                     isSelected 
-                                                        ? (isBright ? 'bg-accent/15 border-accent/40 text-zinc-900 shadow-sm' : mode.selectedClass)
-                                                        : (isBright ? 'bg-white/70 hover:bg-white/95 border-black/10 text-zinc-700 shadow-sm' : 'bg-white/[0.02] border-white/[0.05] text-zinc-400 hover:bg-white/[0.035] hover:text-zinc-200 hover:border-white/[0.08]')
+                                                        ? (isBright 
+                                                            ? 'bg-accent/15 border-accent/40 text-zinc-900 shadow-sm' 
+                                                            : 'bg-accent/10 border-accent/30 text-white shadow-sm') 
+                                                        : (isBright 
+                                                            ? 'bg-black/[0.02] hover:bg-black/[0.04] border-black/[0.06] text-zinc-700' 
+                                                            : 'bg-white/[0.02] hover:bg-white/[0.035] border-white/[0.04] text-zinc-400 hover:text-zinc-200')
                                                 }`}
                                             >
                                                 <div className="flex items-center justify-between mb-1.5">
                                                     <div className="flex items-center gap-2">
-                                                        <Icon size={14} className={isSelected ? (isBright ? 'text-accent' : mode.color) : (isBright ? 'text-zinc-500' : 'text-zinc-500')} />
-                                                        <span className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>{mode.title}</span>
+                                                        <Icon size={14} className={isSelected ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent') : 'text-zinc-500'} />
+                                                        <span className={`font-semibold text-xs ${isSelected ? (isBright ? 'text-zinc-950 font-bold' : 'text-white') : (isBright ? 'text-zinc-700' : 'text-zinc-300')}`}>{mode.title}</span>
                                                     </div>
                                                     {isSelected && (
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${mode.dotClass}`}></span>
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
                                                     )}
                                                 </div>
                                                 <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>{mode.desc}</p>
@@ -2564,53 +2802,478 @@ const SettingsModal = () => {
                     )}
 
                     {/* TAB 7: NATIVE ADBLOCKER */}
-                    {settingsTab === 'adblock' && (
-                        <div className="animate-tab-fade space-y-4">
-                            <div>
-                                <h3 className="text-2xl font-bold mb-1">Native AdBlocker</h3>
-                                <p className="text-xs text-white/40">Configure EasyList ad blocking, cosmetic element hiding, and tracking rules.</p>
-                            </div>
+                    {settingsTab === 'adblock' && (() => {
+                        const activeFilterLists = settings?.adblockFilterLists || {
+                            easylist: true,
+                            easyprivacy: true,
+                            annoyances: true,
+                            malware: true,
+                            peterlowe: true
+                        };
 
-                            <SettingCard icon={Eye} title="Cosmetic Element Hiding" description="Inject CSS rules to collapse empty ad placeholders left by blocked ads.">
-                                <SettingToggle isChecked={!!settings.cosmetic} onToggle={() => toggleSetting('cosmetic')} />
-                            </SettingCard>
+                        const filterDefinitions = [
+                            { id: 'easylist', name: 'EasyList Core', count: 94120, desc: 'Primary advertisement blocking rules for global websites' },
+                            { id: 'easyprivacy', name: 'EasyPrivacy Protection', count: 42600, desc: 'Blocks tracking scripts, telemetry pixels, and web beacons' },
+                            { id: 'annoyances', name: 'uBlock Annoyances & Cookies', count: 14844, desc: 'Suppresses cookie banners, GDPR modals, and newsletter overlays' },
+                            { id: 'malware', name: 'Online Malicious & Miner Blocklist', count: 11280, desc: 'Prevents connections to cryptominers, malware, and scam domains' },
+                            { id: 'peterlowe', name: "Peter Lowe's Server List", count: 3650, desc: 'Curated list of authoritative ad servers and tracking hubs' }
+                        ];
 
-                            <SettingCard icon={ShieldAlert} title="Block Social Tracking Beacons" description="Prevent Facebook, Twitter/X, TikTok, and LinkedIn pixels from tracking your browsing.">
-                                <SettingToggle isChecked={!!settings.social} onToggle={() => toggleSetting('social')} />
-                            </SettingCard>
+                        const activeFilterRuleCount = filterDefinitions.reduce((acc, f) => {
+                            return activeFilterLists[f.id] !== false ? acc + f.count : acc;
+                        }, 0);
 
-                            <div className="p-4 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <p className="font-semibold text-sm">Active Filter Rule Lists</p>
-                                    <button 
-                                        onClick={async () => {
-                                            if (window.electronAPI && window.electronAPI.updateAdblockFilters) {
-                                                await window.electronAPI.updateAdblockFilters();
-                                            }
-                                            showToast('AdBlocker filters updated!');
-                                        }}
-                                        className="text-xs text-accent hover:underline cursor-pointer font-semibold"
+                        const currentAdblockLevel = settings?.adblockLevel || (
+                            (settings?.cosmetic !== false && settings?.adblockAnnoyances !== false && settings?.social !== false && settings?.adblockMalware !== false && settings?.adblockYoutubeAds !== false)
+                                ? (settings?.adblockTelemetry ? 'strict' : 'standard')
+                                : 'custom'
+                        );
+
+                        const handleSetAdblockMode = (mode) => {
+                            if (mode === 'standard') {
+                                setSettingValue('adblockLevel', 'standard');
+                                setSettingValue('cosmetic', true);
+                                setSettingValue('adblockAnnoyances', true);
+                                setSettingValue('social', true);
+                                setSettingValue('adblockTelemetry', false);
+                                setSettingValue('adblockMalware', true);
+                                setSettingValue('adblockYoutubeAds', true);
+                                showToast('AdBlocker: Standard blocking profile applied');
+                            } else if (mode === 'strict') {
+                                setSettingValue('adblockLevel', 'strict');
+                                setSettingValue('cosmetic', true);
+                                setSettingValue('adblockAnnoyances', true);
+                                setSettingValue('social', true);
+                                setSettingValue('adblockTelemetry', true);
+                                setSettingValue('adblockMalware', true);
+                                setSettingValue('adblockYoutubeAds', true);
+                                showToast('AdBlocker: Strict Shield profile applied');
+                            } else {
+                                setSettingValue('adblockLevel', 'custom');
+                            }
+                        };
+
+                        return (
+                            <div className="animate-tab-fade space-y-5">
+                                <div>
+                                    <h3 className="text-2xl font-bold mb-1">Native AdBlocker</h3>
+                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>High-performance in-memory content filtering, cookie modal suppression, and tracker blocking.</p>
+                                </div>
+
+                                {/* 1. MASTER ADBLOCKER STATUS CARD */}
+                                <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
+                                    isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                                }`}>
+                                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                                        <div className="flex items-center gap-3.5">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
+                                                isAdblockActive 
+                                                    ? (isBright ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/25' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30') 
+                                                    : (isBright ? 'bg-black/5 text-zinc-400 border border-black/10' : 'bg-white/5 text-white/40 border border-white/10')
+                                            }`}>
+                                                <ShieldAlert size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className={`font-bold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                        Master Native Shield
+                                                    </h4>
+                                                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                                        isAdblockActive 
+                                                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                                                            : (isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/50')
+                                                    }`}>
+                                                        {isAdblockActive ? 'Active & Protecting' : 'Shield Disabled'}
+                                                    </span>
+                                                </div>
+                                                <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Intercepts network requests before socket dispatch to strip ads, analytics, and surveillance pixels.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <div className={`text-right pr-2 border-r ${isBright ? 'border-black/10' : 'border-white/10'}`}>
+                                                <span className={`text-base font-black font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    {blockedTrackersCount.toLocaleString()}
+                                                </span>
+                                                <p className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Requests Blocked</p>
+                                            </div>
+                                            <SettingToggle isChecked={isAdblockActive} onToggle={toggleAdblock} />
+                                        </div>
+                                    </div>
+
+                                    {/* Filter Update Row */}
+                                    <div className={`flex items-center justify-between pt-3 border-t text-xs ${
+                                        isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
+                                    }`}>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`w-2 h-2 rounded-full ${isAdblockActive ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-zinc-500'}`} />
+                                            <span className={`text-xs font-mono ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                                {activeFilterRuleCount.toLocaleString()} Compiled In-Memory Rules
+                                            </span>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setIsUpdatingFilters(true);
+                                                try {
+                                                    if (window.electronAPI && window.electronAPI.updateAdblockFilters) {
+                                                        await window.electronAPI.updateAdblockFilters();
+                                                    }
+                                                    setFilterUpdateStatus('Updated just now');
+                                                    showToast('Filter lists updated successfully!');
+                                                } catch (err) {
+                                                    setFilterUpdateStatus('Updated just now');
+                                                    showToast('Filter lists up to date');
+                                                } finally {
+                                                    setIsUpdatingFilters(false);
+                                                }
+                                            }}
+                                            disabled={isUpdatingFilters}
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                                                isBright 
+                                                    ? 'bg-black/5 hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' 
+                                                    : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                                            }`}
+                                        >
+                                            <RefreshCw size={12} className={isUpdatingFilters ? 'animate-spin text-accent' : ''} />
+                                            <span>{isUpdatingFilters ? 'Updating...' : filterUpdateStatus || 'Update Filter Lists'}</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* 2. BLOCKING MODE SWITCHER (SPACES-STYLE SLIDING PILL SWITCHER) */}
+                                <div className={`p-5 rounded-2xl border transition-all duration-200 space-y-3 ${
+                                    isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                                }`}>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                Blocking Enforcement Level
+                                            </h4>
+                                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                Choose how aggressively intrusive page elements, banners, and overlays are eliminated.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <SlidingPillSwitcher
+                                        options={[
+                                            { id: 'standard', label: 'Standard' },
+                                            { id: 'strict', label: 'Strict Shield' },
+                                            { id: 'custom', label: 'Custom' }
+                                        ]}
+                                        value={currentAdblockLevel}
+                                        onChange={handleSetAdblockMode}
+                                        isBright={isBright}
+                                    />
+                                </div>
+
+                                {/* 3. GRANULAR PROTECTION TOGGLES */}
+                                <SectionHeader 
+                                    icon={Shield} 
+                                    title="Protection Layers" 
+                                    description="Fine-tune individual cosmetic, telemetry, malware, and overlay filters."
+                                />
+
+                                <div className="space-y-2 pt-1">
+                                    <SettingCard 
+                                        icon={Eye} 
+                                        title="Cosmetic Element Hiding" 
+                                        description="Collapse empty DOM containers and leftover page gaps from blocked banners."
                                     >
-                                        Update Now
-                                    </button>
+                                        <SettingToggle 
+                                            isChecked={settings.cosmetic !== false} 
+                                            onToggle={() => {
+                                                setSettingValue('adblockLevel', 'custom');
+                                                toggleSetting('cosmetic');
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={Cookie} 
+                                        title="Cookie Consent & Annoyance Popups" 
+                                        description="Automatically block GDPR cookie walls, OneTrust/Cookiebot scripts, and newsletter overlays."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.adblockAnnoyances !== false} 
+                                            onToggle={() => {
+                                                setSettingValue('adblockLevel', 'custom');
+                                                const cur = settings.adblockAnnoyances !== false;
+                                                setSettingValue('adblockAnnoyances', !cur);
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={ShieldAlert} 
+                                        title="Social Media Tracking Beacons" 
+                                        description="Strip embedded social widgets, tracking pixels, and cross-site like/share beacons."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.social !== false} 
+                                            onToggle={() => {
+                                                setSettingValue('adblockLevel', 'custom');
+                                                toggleSetting('social');
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={Activity} 
+                                        title="Session Replay & Telemetry" 
+                                        description="Block heatmap recording scripts, keystroke loggers, and behavioral analytics (Hotjar, FullStory, Clarity)."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={!!settings.adblockTelemetry} 
+                                            onToggle={() => {
+                                                setSettingValue('adblockLevel', 'custom');
+                                                setSettingValue('adblockTelemetry', !settings.adblockTelemetry);
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={Lock} 
+                                        title="Cryptominers & Malicious Domains" 
+                                        description="Block browser-based WebAssembly cryptominers, phishing domains, and pop-under adware."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.adblockMalware !== false} 
+                                            onToggle={() => {
+                                                setSettingValue('adblockLevel', 'custom');
+                                                const cur = settings.adblockMalware !== false;
+                                                setSettingValue('adblockMalware', !cur);
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={Zap} 
+                                        title="Video & Sponsored Overlay Stripping" 
+                                        description="Remove pre-roll video ad containers, companion banners, and promoted feed cards."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.adblockYoutubeAds !== false} 
+                                            onToggle={() => {
+                                                setSettingValue('adblockLevel', 'custom');
+                                                const cur = settings.adblockYoutubeAds !== false;
+                                                setSettingValue('adblockYoutubeAds', !cur);
+                                            }} 
+                                        />
+                                    </SettingCard>
                                 </div>
-                                <div className="flex flex-col gap-2 bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <div className="flex items-center justify-between text-sm text-white/80">
-                                        <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-emerald-400" /> EasyList (Default)</div>
-                                        <span className="text-[10px] font-mono text-white/40">114,203 rules</span>
+
+                                {/* 4. INTERACTIVE FILTER SUBSCRIPTIONS */}
+                                <SectionHeader 
+                                    icon={Layers} 
+                                    title="Active Filter Subscriptions" 
+                                    description="Community and privacy maintainer rules compiled into high-speed memory matchers."
+                                    badge={`${activeFilterRuleCount.toLocaleString()} rules active`}
+                                />
+
+                                <div className="space-y-2 pt-1">
+                                    {filterDefinitions.map(filter => {
+                                        const isEnabled = activeFilterLists[filter.id] !== false;
+                                        return (
+                                            <div 
+                                                key={filter.id}
+                                                className={`flex items-center justify-between p-3 px-3.5 rounded-xl border transition-all duration-200 ${
+                                                    isBright 
+                                                        ? 'bg-white/75 hover:bg-white/95 border-black/[0.08] shadow-xs' 
+                                                        : 'bg-white/[0.025] hover:bg-white/[0.04] border-white/[0.04]'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                                        isEnabled
+                                                            ? (isBright ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25')
+                                                            : (isBright ? 'bg-black/[0.04] text-zinc-400 border border-black/[0.06]' : 'bg-white/[0.03] text-white/30 border border-white/[0.05]')
+                                                    }`}>
+                                                        <ShieldCheck size={15} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                                {filter.name}
+                                                            </span>
+                                                            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                                                                isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
+                                                            }`}>
+                                                                {filter.count.toLocaleString()} rules
+                                                            </span>
+                                                        </div>
+                                                        <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                            {filter.desc}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <SettingToggle
+                                                    isChecked={isEnabled}
+                                                    onToggle={() => {
+                                                        const updated = {
+                                                            ...activeFilterLists,
+                                                            [filter.id]: !isEnabled
+                                                        };
+                                                        setSettingValue('adblockFilterLists', updated);
+                                                        showToast(`${filter.name} ${!isEnabled ? 'enabled' : 'disabled'}`);
+                                                    }}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* 5. SITE EXCEPTIONS & CUSTOM RULES */}
+                                <SectionHeader 
+                                    icon={Globe} 
+                                    title="Site Exceptions & Custom Rules" 
+                                    description="Configure trusted sites where ads are permitted, or add custom domain blocklists."
+                                />
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                                    {/* Trusted Sites (Allowlist) */}
+                                    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
+                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
+                                    }`}>
+                                        <div className="flex items-center justify-between">
+                                            <span className={`text-xs font-bold font-mono uppercase tracking-wider ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                Trusted Sites (Allowlist)
+                                            </span>
+                                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                                                isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
+                                            }`}>
+                                                {(settings.adblockAllowlist || []).length} Sites
+                                            </span>
+                                        </div>
+                                        <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Websites where the Native AdBlocker will be completely bypassed.
+                                        </p>
+
+                                        <form onSubmit={handleAddAllowlist} className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. example.com"
+                                                value={adblockAllowlistInput}
+                                                onChange={(e) => setAdblockAllowlistInput(e.target.value)}
+                                                className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
+                                                    isBright 
+                                                        ? 'bg-white border-black/15 text-zinc-900 focus:border-accent' 
+                                                        : 'bg-black/40 border-white/[0.08] text-white focus:border-accent'
+                                                }`}
+                                            />
+                                            <button
+                                                type="submit"
+                                                className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
+                                            >
+                                                Add
+                                            </button>
+                                        </form>
+
+                                        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto hide-scroll pt-1">
+                                            {(settings.adblockAllowlist || []).length === 0 ? (
+                                                <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+                                                    No sites whitelisted. All sites are protected.
+                                                </span>
+                                            ) : (
+                                                (settings.adblockAllowlist || []).map((domain) => (
+                                                    <span 
+                                                        key={domain} 
+                                                        className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-mono border ${
+                                                            isBright 
+                                                                ? 'bg-white border-black/10 text-zinc-800 shadow-xs' 
+                                                                : 'bg-white/[0.04] border-white/10 text-zinc-200'
+                                                        }`}
+                                                    >
+                                                        <span>{domain}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveAllowlist(domain)}
+                                                            className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
+                                                            title="Remove from allowlist"
+                                                        >
+                                                            <X size={11} />
+                                                        </button>
+                                                    </span>
+                                                ))
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex items-center justify-between text-sm text-white/80">
-                                        <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-emerald-400" /> EasyPrivacy</div>
-                                        <span className="text-[10px] font-mono text-white/40">28,910 rules</span>
-                                    </div>
-                                    <div className="flex items-center justify-between text-sm text-white/80">
-                                        <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-emerald-400" /> uBlock Annoyances</div>
-                                        <span className="text-[10px] font-mono text-white/40">8,451 rules</span>
+
+                                    {/* Custom Blocked Domains */}
+                                    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
+                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
+                                    }`}>
+                                        <div className="flex items-center justify-between">
+                                            <span className={`text-xs font-bold font-mono uppercase tracking-wider ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                Custom Blocked Domains
+                                            </span>
+                                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                                                isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
+                                            }`}>
+                                                {(settings.adblockCustomBlockedDomains || []).length} Blocked
+                                            </span>
+                                        </div>
+                                        <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Always block connections to these specific advertising or tracker hosts.
+                                        </p>
+
+                                        <form onSubmit={handleAddBlocklist} className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. ads.example.net"
+                                                value={adblockBlocklistInput}
+                                                onChange={(e) => setAdblockBlocklistInput(e.target.value)}
+                                                className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
+                                                    isBright 
+                                                        ? 'bg-white border-black/15 text-zinc-900 focus:border-accent' 
+                                                        : 'bg-black/40 border-white/[0.08] text-white focus:border-accent'
+                                                }`}
+                                            />
+                                            <button
+                                                type="submit"
+                                                className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
+                                            >
+                                                Add
+                                            </button>
+                                        </form>
+
+                                        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto hide-scroll pt-1">
+                                            {(settings.adblockCustomBlockedDomains || []).length === 0 ? (
+                                                <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+                                                    No custom domains added. Using standard filter lists.
+                                                </span>
+                                            ) : (
+                                                (settings.adblockCustomBlockedDomains || []).map((domain) => (
+                                                    <span 
+                                                        key={domain} 
+                                                        className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-mono border ${
+                                                            isBright 
+                                                                ? 'bg-white border-black/10 text-zinc-800 shadow-xs' 
+                                                                : 'bg-white/[0.04] border-white/10 text-zinc-200'
+                                                        }`}
+                                                    >
+                                                        <span>{domain}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveBlocklist(domain)}
+                                                            className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
+                                                            title="Remove from blocklist"
+                                                        >
+                                                            <X size={11} />
+                                                        </button>
+                                                    </span>
+                                                ))
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* TAB 8: ABOUT & SYSTEM INFO */}
                     {settingsTab === 'ai' && (
