@@ -7,7 +7,8 @@ import {
     Download, Image as ImageIcon, Sparkles, Globe, FileText, MessageSquare,
     HelpCircle, RotateCcw, RotateCw, Scissors, Clipboard, CheckSquare,
     Code, Terminal, Briefcase, User, EyeOff, Shield, FolderOpen, Plus,
-    CornerDownLeft, ChevronRight, ArrowRightLeft, Bookmark, Check, ShieldCheck
+    CornerDownLeft, ChevronRight, ArrowRightLeft, Bookmark, Check, ShieldCheck,
+    SlidersHorizontal, Settings
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -520,6 +521,16 @@ function HighlightSwatches({ onSelectColor }) {
         </div>
     );
 }
+
+export const TOPBAR_EXTENSION_ICONS = [
+    { id: 'splitview', label: 'Split View' },
+    { id: 'theme', label: 'Theme & Smart Dark' },
+    { id: 'shield', label: 'QShield Tracker Blocker' },
+    { id: 'media', label: 'Media Player' },
+    { id: 'downloads', label: 'Downloads' },
+    { id: 'tor', label: 'Tor Onion Network' },
+    { id: 'vault', label: 'QVault Passwords' },
+];
 
 export default function ContextMenuProvider({ children }) {
     const contextMenu = useUIStore(state => state.contextMenu);
@@ -1613,12 +1624,139 @@ export default function ContextMenuProvider({ children }) {
             })()}
 
             {/* ========================================================================= */}
-            {/* 5. TOP BAR / OMNIBOX CONTEXT MENU */}
+            {/* 5. TOP BAR / OMNIBOX & EXTENSION HUB CONTEXT MENU */}
             {/* ========================================================================= */}
             {(topBarContextMenu || isTopBarContextMenuClosing) && (() => {
                 const tbm = topBarContextMenu || {};
                 const url = tbm.url || useUIStore.getState().currentUrl || '';
                 const wv = getTargetWebview(tbm.tabId);
+                const hiddenIcons = useUIStore.getState().settings?.hiddenTopBarIcons || [];
+
+                if (tbm.iconId) {
+                    return (
+                        <MenuContainer
+                            key={`topbar-icon-${tbm.openedAt || `${tbm.x}-${tbm.y}`}`}
+                            x={tbm.x}
+                            y={tbm.y}
+                            isClosing={isTopBarContextMenuClosing}
+                            onClose={closeTopBarContextMenu}
+                            className="w-60"
+                        >
+                            <MenuSectionHeader>
+                                {tbm.iconLabel || 'Toolbar Icon'}
+                            </MenuSectionHeader>
+
+                            <MenuItem
+                                icon={EyeOff}
+                                label={`Hide "${tbm.iconLabel || 'Icon'}"`}
+                                onClick={() => {
+                                    useUIStore.getState().hideTopBarIcon(tbm.iconId);
+                                    showToast(`Hidden "${tbm.iconLabel || 'Icon'}" from toolbar`);
+                                    closeTopBarContextMenu();
+                                }}
+                            />
+
+                            <MenuDivider />
+
+                            <MenuItemWithSubmenu
+                                icon={SlidersHorizontal}
+                                label="Manage Toolbar Icons"
+                            >
+                                {TOPBAR_EXTENSION_ICONS.map((item) => {
+                                    const isItemVisible = !hiddenIcons.includes(item.id);
+                                    return (
+                                        <MenuItem
+                                            key={item.id}
+                                            icon={isItemVisible ? Check : EyeOff}
+                                            label={item.label}
+                                            accent={isItemVisible}
+                                            onClick={() => {
+                                                useUIStore.getState().toggleTopBarIcon(item.id);
+                                                showToast(`${isItemVisible ? 'Hidden' : 'Showing'} ${item.label}`);
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </MenuItemWithSubmenu>
+
+                            <MenuItem
+                                icon={RotateCcw}
+                                label="Restore All Icons"
+                                onClick={() => {
+                                    useUIStore.getState().resetTopBarIcons();
+                                    showToast('All toolbar icons restored');
+                                    closeTopBarContextMenu();
+                                }}
+                            />
+
+                            <MenuItem
+                                icon={Settings}
+                                label="Toolbar Settings..."
+                                onClick={() => {
+                                    useUIStore.getState().openModal('settings');
+                                    closeTopBarContextMenu();
+                                }}
+                            />
+                        </MenuContainer>
+                    );
+                }
+
+                if (tbm.isHubGeneral) {
+                    return (
+                        <MenuContainer
+                            key={`topbar-hub-${tbm.openedAt || `${tbm.x}-${tbm.y}`}`}
+                            x={tbm.x}
+                            y={tbm.y}
+                            isClosing={isTopBarContextMenuClosing}
+                            onClose={closeTopBarContextMenu}
+                            className="w-60"
+                        >
+                            <MenuSectionHeader>
+                                Toolbar &amp; Extensions
+                            </MenuSectionHeader>
+
+                            <MenuItemWithSubmenu
+                                icon={SlidersHorizontal}
+                                label="Manage Toolbar Icons"
+                            >
+                                {TOPBAR_EXTENSION_ICONS.map((item) => {
+                                    const isItemVisible = !hiddenIcons.includes(item.id);
+                                    return (
+                                        <MenuItem
+                                            key={item.id}
+                                            icon={isItemVisible ? Check : EyeOff}
+                                            label={item.label}
+                                            accent={isItemVisible}
+                                            onClick={() => {
+                                                useUIStore.getState().toggleTopBarIcon(item.id);
+                                                showToast(`${isItemVisible ? 'Hidden' : 'Showing'} ${item.label}`);
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </MenuItemWithSubmenu>
+
+                            <MenuItem
+                                icon={RotateCcw}
+                                label="Restore All Icons"
+                                onClick={() => {
+                                    useUIStore.getState().resetTopBarIcons();
+                                    showToast('All toolbar icons restored');
+                                    closeTopBarContextMenu();
+                                }}
+                            />
+
+                            <MenuItem
+                                icon={Settings}
+                                label="Toolbar Settings..."
+                                onClick={() => {
+                                    useUIStore.getState().openModal('settings');
+                                    closeTopBarContextMenu();
+                                }}
+                            />
+                        </MenuContainer>
+                    );
+                }
 
                 return (
                     <MenuContainer
@@ -1627,7 +1765,7 @@ export default function ContextMenuProvider({ children }) {
                         y={tbm.y}
                         isClosing={isTopBarContextMenuClosing}
                         onClose={closeTopBarContextMenu}
-                        className="w-56"
+                        className="w-60"
                     >
                         <MenuSectionHeader>
                             Address Bar
@@ -1679,6 +1817,36 @@ export default function ContextMenuProvider({ children }) {
                         />
 
                         <MenuDivider />
+
+                        <MenuItemWithSubmenu
+                            icon={SlidersHorizontal}
+                            label="Toolbar Icons"
+                        >
+                            {TOPBAR_EXTENSION_ICONS.map((item) => {
+                                const isItemVisible = !hiddenIcons.includes(item.id);
+                                return (
+                                    <MenuItem
+                                        key={item.id}
+                                        icon={isItemVisible ? Check : EyeOff}
+                                        label={item.label}
+                                        accent={isItemVisible}
+                                        onClick={() => {
+                                            useUIStore.getState().toggleTopBarIcon(item.id);
+                                            showToast(`${isItemVisible ? 'Hidden' : 'Showing'} ${item.label}`);
+                                        }}
+                                    />
+                                );
+                            })}
+                            <MenuDivider />
+                            <MenuItem
+                                icon={RotateCcw}
+                                label="Restore All Icons"
+                                onClick={() => {
+                                    useUIStore.getState().resetTopBarIcons();
+                                    showToast('All toolbar icons restored');
+                                }}
+                            />
+                        </MenuItemWithSubmenu>
 
                         <MenuItem
                             icon={Terminal}

@@ -358,14 +358,7 @@ export default function MainFrame() {
             <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden animate-pop-in z-10 w-full h-full">
                 <div className="relative z-10 flex flex-col items-center transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] origin-center will-change-transform w-full mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
                     <div className="flex flex-col items-center mb-10 md:mb-14 px-4 w-full text-center">
-                        {isTor ? (
-                            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-semibold mb-4 shadow-[0_0_15px_rgba(168,85,247,0.2)] animate-pulse">
-                                <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-                                <span>Tor Onion Routing • Zero-Disk Memory Mode</span>
-                            </div>
-                        ) : (
-                            <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isDark ? 'text-white/50' : 'text-zinc-700 font-bold'}`}>{dateString}</span>
-                        )}
+                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')}`}>{dateString}</span>
                         <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isTor ? 'from-purple-200 via-purple-300/80 to-purple-500/20' : (isDark ? 'from-white via-white/90 to-white/20' : 'from-zinc-900 via-zinc-800 to-zinc-700')} select-none transition-colors duration-500 px-4`} style={{ textShadow: isTor ? '0 20px 50px rgba(168,85,247,0.3)' : (isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)') }}>
                             {timeString}
                         </h1>

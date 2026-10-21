@@ -11,7 +11,7 @@ export const MODEL_PRESETS = [
         filename: 'gemma-4-E2B-it-Q4_0.gguf',
         mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-Q8_0.gguf',
         mmprojFilename: 'mmproj-gemma-4-E2B-it-Q8_0.gguf',
-        description: 'Unsloth Gemma 4 E2B Instruct GGUF model with full Multimodal Vision support for analyzing images and chat.'
+        description: 'Google Gemma 4 E2B Instruct GGUF model with full Multimodal Vision support for analyzing images and chat.'
     },
     {
         id: 'gemma-4-e4b',
@@ -21,7 +21,15 @@ export const MODEL_PRESETS = [
         filename: 'gemma-4-E4B-it-Q4_0.gguf',
         mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-Q8_0.gguf',
         mmprojFilename: 'mmproj-gemma-4-E4B-it-Q8_0.gguf',
-        description: 'High reasoning Unsloth Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
+        description: 'High reasoning Google Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
+    },
+    {
+        id: 'llama-3.2-3b',
+        name: 'Llama 3.2 3B Instruct (Q4_K_M)',
+        size: '2.02 GB',
+        url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+        filename: 'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+        description: 'Ultra-fast, lightweight Meta Llama 3.2 3B model with universal compatibility and reasoning.'
     }
 ];
 
@@ -203,7 +211,39 @@ const useAIStore = create((set, get) => ({
         if (window.electronAPI && typeof window.electronAPI.stopAiServer === 'function') {
             await window.electronAPI.stopAiServer();
         }
-        set({ isRunning: false, status: 'stopped' });
+        set({ 
+            isRunning: false, 
+            status: 'stopped', 
+            lastError: null,
+            metrics: { ...get().metrics, status: 'stopped', errorMessage: null, errorType: null }
+        });
+    },
+
+    clearError: () => {
+        set({ 
+            status: get().isRunning ? 'running' : 'stopped', 
+            lastError: null,
+            metrics: { ...get().metrics, errorMessage: null, errorType: null }
+        });
+    },
+
+    updateEngine: async () => {
+        set({ status: 'downloading_engine', isRunning: false, lastError: null });
+        try {
+            if (window.electronAPI && typeof window.electronAPI.updateAiEngine === 'function') {
+                const res = await window.electronAPI.updateAiEngine();
+                if (res && res.success) {
+                    set({ status: 'stopped', lastError: null });
+                    return res;
+                } else {
+                    set({ status: 'error', lastError: res?.error || 'Engine update failed' });
+                    return res;
+                }
+            }
+        } catch (err) {
+            set({ status: 'error', lastError: err?.message || 'Engine update failed' });
+            return { success: false, error: err?.message };
+        }
     },
 
     toggleEngine: async () => {

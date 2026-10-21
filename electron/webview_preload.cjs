@@ -156,17 +156,12 @@ try {
             } catch (_) {}
         })();
     `;
-    if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
+    const isChallengeFrame = typeof window !== 'undefined' && (
+        window.location.hostname.includes('challenges.cloudflare.com') ||
+        window.location.pathname.includes('/cdn-cgi/challenge-platform')
+    );
+    if (!isChallengeFrame && typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
         webFrame.executeJavaScript(stealthChromeScript).catch(() => {});
-    }
-    if (typeof window !== 'undefined') {
-        window.addEventListener('DOMContentLoaded', () => {
-            try {
-                if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
-                    webFrame.executeJavaScript(stealthChromeScript).catch(() => {});
-                }
-            } catch (_) {}
-        }, { once: true });
     }
 } catch (_) {}
 
@@ -285,16 +280,13 @@ if (!isOAuthPopup && !isGoogleAuth) {
             })();
         `;
 
-        if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
+        const isChallengeFrame = typeof window !== 'undefined' && (
+            window.location.hostname.includes('challenges.cloudflare.com') ||
+            window.location.pathname.includes('/cdn-cgi/challenge-platform')
+        );
+        if (!isChallengeFrame && typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
             webFrame.executeJavaScript(dialogBridgeScript).catch(() => {});
         }
-        window.addEventListener('DOMContentLoaded', () => {
-            try {
-                if (typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
-                    webFrame.executeJavaScript(dialogBridgeScript).catch(() => {});
-                }
-            } catch (_) {}
-        }, { once: true });
         }
     } catch (e) {
         console.warn('[QBrowse Preload] Failed to inject dialog bridge:', e);
@@ -1480,27 +1472,9 @@ function applyWebviewA11yStyles(config) {
         `;
     }
 
-    // 2. Dyslexia-Friendly Font (OpenDyslexic with dyslexia-legible fallback)
+    // 2. Dyslexia-Friendly Font (uses locally available high-legibility fonts + clean fallback without violating third-party site CSP)
     if (currentA11yConfig.a11yDyslexiaFont) {
         css += `
-            @font-face {
-                font-family: 'OpenDyslexic';
-                src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff'),
-                     url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Regular.ttf') format('truetype'),
-                     url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Regular.otf') format('opentype');
-                font-weight: 400;
-                font-style: normal;
-                font-display: swap;
-            }
-            @font-face {
-                font-family: 'OpenDyslexic';
-                src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff'),
-                     url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Bold.ttf') format('truetype'),
-                     url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/dist/opentype/OpenDyslexic-Bold.otf') format('opentype');
-                font-weight: 700;
-                font-style: normal;
-                font-display: swap;
-            }
             html, body, body *:not(code):not(pre):not(kbd):not([class*="icon"]):not([class*="fa-"]):not(.material-icons):not(.material-symbols-outlined) {
                 font-family: 'OpenDyslexic', 'Comic Sans MS', 'Trebuchet MS', Verdana, sans-serif !important;
                 letter-spacing: 0.03em !important;
@@ -1522,8 +1496,9 @@ function applyWebviewA11yStyles(config) {
         }
     }
 
-    // 4. Force Reduced Motion (Strict WCAG 2.2.2 / 2.3.3)
-    if (currentA11yConfig.a11yReducedMotion) {
+    // 4. Force Reduced Motion (Strict WCAG 2.2.2 / 2.3.3 & Windows Animation Effects sync)
+    const isMotionReduced = currentA11yConfig.a11yReducedMotion || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    if (isMotionReduced) {
         css += `
             *, *::before, *::after {
                 animation-duration: 0.001ms !important;

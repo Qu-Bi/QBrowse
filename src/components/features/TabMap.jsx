@@ -123,6 +123,9 @@ export default function TabMap() {
     const tabNodeOffsets = useTabStore(state => state.tabNodeOffsets) || {};
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const a11yReducedMotion = useUIStore(state => state.settings?.a11yReducedMotion);
+    const isSystemReducedMotion = useUIStore(state => state.isSystemReducedMotion);
+    const isReducedMotion = !!(a11yReducedMotion || isSystemReducedMotion);
 
     // Camera Viewport State
     const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -164,12 +167,13 @@ export default function TabMap() {
     }, [uiShowToast]);
 
     const handleContainerPointerMove = useCallback((e) => {
+        if (isReducedMotion) return;
         const vw = window.innerWidth || 1;
         const vh = window.innerHeight || 1;
         const nx = (e.clientX / vw) - 0.5;
         const ny = (e.clientY / vh) - 0.5;
         setMouseParallax({ x: nx, y: ny });
-    }, []);
+    }, [isReducedMotion]);
 
     // Compute all tabs by space map
     const spaceTabsMap = useMemo(() => ({
@@ -1949,7 +1953,7 @@ export default function TabMap() {
                                 key={tab.id}
                                 onPointerDown={(e) => handleTabPointerDown(e, tab, node.spaceId)}
                                 onPointerMove={(e) => {
-                                    if (dragState?.isDragging) return;
+                                    if (dragState?.isDragging || isReducedMotion) return;
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width || 1)));
                                     const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / (rect.height || 1)));

@@ -62,12 +62,21 @@ export default function App() {
     const a11yDyslexiaFont = useUIStore(state => state.settings?.a11yDyslexiaFont);
     const a11yReducedMotion = useUIStore(state => state.settings?.a11yReducedMotion);
     const a11yFocusRings = useUIStore(state => state.settings?.a11yFocusRings);
+    const isSystemReducedMotion = useUIStore(state => state.isSystemReducedMotion);
+    const initSystemReducedMotion = useUIStore(state => state.initSystemReducedMotion);
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
     const [currentWallpaper, setCurrentWallpaper] = useState(activeWallpaper);
     const [prevWallpaper, setPrevWallpaper] = useState(null);
+
+    // Initialize Windows & OS reduced-motion accessibility synchronization
+    useEffect(() => {
+        if (typeof initSystemReducedMotion === 'function') {
+            initSystemReducedMotion();
+        }
+    }, [initSystemReducedMotion]);
 
     // Preload & GPU-decode wallpaper so it is fully rendered before boot curtain dissolves
     useEffect(() => {
@@ -530,9 +539,9 @@ export default function App() {
         const root = document.documentElement;
         root.classList.toggle('a11y-high-contrast', !!a11yHighContrast);
         root.classList.toggle('a11y-dyslexia-font', !!a11yDyslexiaFont);
-        root.classList.toggle('a11y-reduced-motion', !!a11yReducedMotion);
+        root.classList.toggle('a11y-reduced-motion', !!(a11yReducedMotion || isSystemReducedMotion));
         root.classList.toggle('a11y-focus-rings', !!a11yFocusRings);
-    }, [a11yHighContrast, a11yDyslexiaFont, a11yReducedMotion, a11yFocusRings]);
+    }, [a11yHighContrast, a11yDyslexiaFont, a11yReducedMotion, a11yFocusRings, isSystemReducedMotion]);
 
     const handleBootFinish = () => {
         finishBoot();

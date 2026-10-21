@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startLocalAi: () => ipcRenderer.invoke('start-local-ai'),
     startAiServer: (options) => ipcRenderer.invoke('ai-start-server', options),
     stopAiServer: () => ipcRenderer.invoke('ai-stop-server'),
+    updateAiEngine: () => ipcRenderer.invoke('ai-update-engine'),
     getAiStatus: () => ipcRenderer.invoke('ai-get-status'),
     getAiLogs: () => ipcRenderer.invoke('ai-get-logs'),
     pickAiModelFile: () => ipcRenderer.invoke('ai-pick-model-file'),
@@ -230,6 +231,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('open-new-tab-url', handler);
         return () => ipcRenderer.removeListener('open-new-tab-url', handler);
+    },
+
+    // Windows / OS Accessibility & Motion Sync
+    getSystemReducedMotion: () => ipcRenderer.invoke('system-get-reduced-motion'),
+    onSystemReducedMotionChanged: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('system-reduced-motion-changed', handler);
+        return () => ipcRenderer.removeListener('system-reduced-motion-changed', handler);
     },
 
     // Experimental Flags & Relaunch

@@ -456,7 +456,7 @@ export default function Sidebar() {
                 <div className="hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center" style={{ WebkitAppRegion: 'no-drag' }}>
                     <button 
                         onClick={() => togglePopover('user')} 
-                        className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all duration-200 hover:scale-115 active:scale-90 cursor-pointer relative ${
+                        className={`w-[25px] h-[25px] rounded-full flex items-center justify-center border transition-all duration-200 hover:scale-110 active:scale-90 cursor-pointer relative ${
                             activePopover === 'user' || activePopover === 'userProfile'
                                 ? 'bg-accent-20 border-accent text-accent shadow-[0_0_10px_var(--accent)] scale-105'
                                 : (isBright ? 'bg-white/70 border-white/40 text-zinc-700 hover:text-black shadow-xs' : 'bg-white/10 border-white/20 text-white/70 hover:text-white')
@@ -479,8 +479,8 @@ export default function Sidebar() {
                             }`} />
                         )}
                     </button>
-                    <button onClick={() => setActiveModal('history')} className="hover:text-accent hover:scale-115 active:scale-90 transition-all duration-200 p-1 rounded-md" title="History"><Clock size={14} /></button>
-                    <button onClick={() => setActiveModal('settings')} className="hover:text-accent hover:scale-115 active:scale-90 hover:rotate-45 transition-all duration-200 p-1 rounded-md" title="Settings"><Settings size={14} /></button>
+                    <button onClick={() => setActiveModal('history')} className="hover:text-accent hover:scale-110 active:scale-90 transition-all duration-200 p-1 rounded-md cursor-pointer" title="History"><Clock size={15} strokeWidth={1.85} /></button>
+                    <button onClick={() => setActiveModal('settings')} className="hover:text-accent hover:scale-110 active:scale-90 hover:rotate-45 transition-all duration-200 p-1 rounded-md cursor-pointer" title="Settings"><Settings size={15} strokeWidth={1.85} /></button>
                     <button 
                         onClick={handleGoHome} 
                         onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
@@ -491,10 +491,10 @@ export default function Sidebar() {
                                 handleNewTab('qbrowse://home', false);
                             }
                         }}
-                        className={`transition-all duration-200 hover:scale-115 active:scale-90 p-1 rounded-md ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-110' : 'hover:text-accent'}`} 
+                        className={`transition-all duration-200 hover:scale-110 active:scale-90 p-1 rounded-md cursor-pointer ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-105' : 'hover:text-accent'}`} 
                         title="Zen Dashboard (Middle-click to open in background)"
                     >
-                        <Home size={14} />
+                        <Home size={15} strokeWidth={1.85} />
                     </button>
                 </div>
             </div>

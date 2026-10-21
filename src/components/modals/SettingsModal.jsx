@@ -3,10 +3,10 @@ import {
     Palette, Shield, Cpu, ShieldAlert, Search, Download, X, 
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, History,
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
-    Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor,
+    Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal,
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Server, Wifi, AlertCircle,
-    Type, Keyboard, VolumeX, ZoomIn, Filter
+    Type, Keyboard, VolumeX, ZoomIn, Filter, Minus
 } from 'lucide-react';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
@@ -249,6 +249,7 @@ const SettingsModal = () => {
         activePerformanceTier,
         tabSleepTimeoutMinutes,
         reduceVisualsOnEco,
+        isSystemReducedMotion,
         setPerformanceMode,
         setTabSleepTimeoutMinutes,
         setReduceVisualsOnEco,
@@ -800,20 +801,25 @@ const SettingsModal = () => {
             </div>
 
             {/* RIGHT CONTENT PANEL */}
-            <div className={`flex-1 p-6 md:p-10 lg:px-12 relative overflow-y-auto h-full ${
+            <div className={`flex-1 relative h-full flex flex-col overflow-hidden ${
                 isBright ? 'bg-transparent text-zinc-900 settings-bright-mode' : 'bg-transparent text-white'
             }`}>
+                {/* Pinned Close Button (Fixed at top-right of panel, never scrolls away) */}
                 <button 
                     onClick={(e) => { e.stopPropagation(); closeModal(); }} 
-                    className={`absolute top-6 right-8 w-9 h-9 flex items-center justify-center rounded-xl border transition z-[999] cursor-pointer ${
-                        isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600 hover:text-zinc-900 shadow-xs' : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.06] text-zinc-400 hover:text-white shadow-xs'
+                    className={`absolute top-6 right-8 w-9 h-9 flex items-center justify-center rounded-xl border transition z-[300] cursor-pointer backdrop-blur-xl active:scale-90 ${
+                        isBright 
+                            ? 'bg-white/80 hover:bg-white border-black/10 text-zinc-600 hover:text-zinc-900 shadow-sm' 
+                            : 'bg-[#090a0f]/80 hover:bg-[#090a0f] border-white/10 text-zinc-400 hover:text-white shadow-sm'
                     }`}
                     title="Close Settings (Esc)"
                 >
                     <X size={16} className="pointer-events-none" />
                 </button>
 
-                <div className="w-full max-w-6xl xl:max-w-7xl mx-auto pb-16">
+                {/* Scrollable Content Body */}
+                <div className="flex-1 p-6 md:p-10 lg:px-12 overflow-y-auto h-full">
+                    <div className="w-full max-w-6xl xl:max-w-7xl mx-auto pb-16">
                     {/* TAB 1: APPEARANCE & UX */}
                     {settingsTab === 'appearance' && (
                         <div className="animate-tab-fade space-y-6">
@@ -1192,13 +1198,71 @@ const SettingsModal = () => {
                                     })}
                                 </div>
                             </SettingCard>
+
+                            {/* Toolbar & Extensions Hub Quick Icons Card */}
+                            <div className={`p-5 rounded-2xl border space-y-3 transition-all duration-200 ${
+                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm ${
+                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-accent/10 text-accent border border-accent/30'
+                                        }`}>
+                                            <SlidersHorizontal size={17} />
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-sm">Toolbar &amp; Extension Hub Icons</p>
+                                            <p className="text-xs text-white/40 mt-0.5">Toggle quick-access buttons in the top bar. You can also right-click any icon in the toolbar to hide it.</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => useUIStore.getState().resetTopBarIcons()}
+                                        className="text-xs text-accent hover:underline cursor-pointer"
+                                    >
+                                        Restore All
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 pt-2">
+                                    {[
+                                        { id: 'splitview', label: 'Split View' },
+                                        { id: 'theme', label: 'Theme Toggle' },
+                                        { id: 'shield', label: 'QShield Tracker' },
+                                        { id: 'media', label: 'Media Player' },
+                                        { id: 'downloads', label: 'Downloads' },
+                                        { id: 'tor', label: 'Tor Network' },
+                                        { id: 'vault', label: 'QVault Passwords' }
+                                    ].map(item => {
+                                        const isItemVisible = !(settings.hiddenTopBarIcons || []).includes(item.id);
+                                        return (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                onClick={() => useUIStore.getState().toggleTopBarIcon(item.id)}
+                                                className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                                                    isItemVisible
+                                                        ? (isBright 
+                                                            ? 'bg-accent/15 border-accent/40 text-zinc-900 font-semibold shadow-xs' 
+                                                            : 'bg-accent/15 border-accent/35 text-white font-semibold shadow-xs')
+                                                        : (isBright 
+                                                            ? 'bg-black/[0.02] border-black/[0.06] text-zinc-400 hover:text-zinc-700' 
+                                                            : 'bg-white/[0.02] border-white/[0.04] text-white/40 hover:text-white/70')
+                                                }`}
+                                            >
+                                                <span>{item.label}</span>
+                                                <span className={`w-2 h-2 rounded-full transition-colors ${isItemVisible ? 'bg-accent shadow-[0_0_6px_var(--accent)]' : 'bg-white/20'}`} />
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                     )}
 
                     {/* TAB: ACCESSIBILITY (EU European Accessibility Act / EN 301 549 & WCAG 2.1 AA) */}
                     {settingsTab === 'accessibility' && (
                         <div className="animate-tab-fade space-y-6">
-                            <div className="flex items-center justify-between flex-wrap gap-3">
+                            <div className="flex items-center justify-between flex-wrap gap-3 pr-14">
                                 <div>
                                     <h3 className="text-2xl font-bold mb-1">Accessibility</h3>
                                     <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
@@ -1285,37 +1349,109 @@ const SettingsModal = () => {
                                     <SettingCard 
                                         icon={ZoomIn} 
                                         title="Default Page Zoom" 
-                                        description={`Base magnification scale applied across tabs. Currently ${(settings.a11yPageZoom || 100)}%.`}
+                                        description="Base magnification scale applied across tabs. Standard baseline is 100%."
                                     >
-                                        <div className="flex items-center gap-3 w-56">
-                                            <input 
-                                                type="range"
-                                                min="80"
-                                                max="200"
-                                                step="5"
-                                                value={settings.a11yPageZoom || 100}
-                                                onChange={(e) => {
-                                                    const val = Number(e.target.value);
-                                                    setSettingValue('a11yPageZoom', val);
-                                                    setZoomLevel(val);
-                                                }}
-                                                className="w-full accent-accent bg-white/10 h-1.5 rounded-lg cursor-pointer"
-                                            />
-                                            <span className={`text-xs font-mono font-bold w-12 text-right ${isBright ? 'text-zinc-800' : 'text-white'}`}>
-                                                {settings.a11yPageZoom || 100}%
-                                            </span>
-                                            {(settings.a11yPageZoom && settings.a11yPageZoom !== 100) && (
-                                                <button 
+                                        <div className="flex items-center gap-2">
+                                            {/* Dedicated Reset Slot on the LEFT - Fixed width (40px) so stepper pill NEVER shifts position! */}
+                                            <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                                                <button
+                                                    type="button"
                                                     onClick={() => {
                                                         setSettingValue('a11yPageZoom', 100);
                                                         setZoomLevel(100);
                                                     }}
+                                                    disabled={(settings.a11yPageZoom || 100) === 100}
                                                     title="Reset zoom to 100%"
-                                                    className="p-1 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition cursor-pointer"
+                                                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+                                                        (settings.a11yPageZoom || 100) !== 100
+                                                            ? 'scale-100 opacity-100 pointer-events-auto rotate-0 shadow-sm'
+                                                            : 'scale-0 opacity-0 pointer-events-none -rotate-90'
+                                                    } ${
+                                                        isBright
+                                                            ? 'bg-black/[0.04] hover:bg-black/10 text-zinc-600 hover:text-zinc-900 border-black/10 shadow-xs'
+                                                            : 'bg-white/[0.04] hover:bg-white/10 text-white/60 hover:text-accent border-white/[0.08] shadow-xs'
+                                                    }`}
                                                 >
-                                                    <RotateCcw size={12} />
+                                                    <RotateCcw size={14} strokeWidth={2.2} className="transition-transform duration-300 active:-rotate-45" />
                                                 </button>
-                                            )}
+                                            </div>
+
+                                            {/* Substantial Liquid Glass Stepper Capsule (h-10) - Fixed geometry */}
+                                            <div className={`flex items-center h-10 rounded-2xl border backdrop-blur-xl transition-all ${
+                                                isBright 
+                                                    ? 'bg-black/[0.03] hover:bg-black/[0.05] border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_0_rgba(255,255,255,0.8)]' 
+                                                    : 'bg-white/[0.04] hover:bg-white/[0.06] border-white/[0.08] shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.08)]'
+                                            }`}>
+                                                {/* Minus Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentZoom = settings.a11yPageZoom || 100;
+                                                        const steps = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+                                                        const lowerSteps = steps.filter(s => s < currentZoom);
+                                                        const nextVal = lowerSteps.length > 0 ? lowerSteps[lowerSteps.length - 1] : Math.max(50, currentZoom - 10);
+                                                        setSettingValue('a11yPageZoom', nextVal);
+                                                        setZoomLevel(nextVal);
+                                                    }}
+                                                    disabled={(settings.a11yPageZoom || 100) <= 50}
+                                                    title="Zoom out"
+                                                    className={`w-10 h-full rounded-l-2xl flex items-center justify-center transition-all cursor-pointer active:scale-90 disabled:opacity-20 disabled:cursor-not-allowed ${
+                                                        isBright 
+                                                            ? 'hover:bg-black/5 active:bg-black/10 text-zinc-700' 
+                                                            : 'hover:bg-white/10 active:bg-white/15 text-white/80'
+                                                    }`}
+                                                >
+                                                    <Minus size={14} strokeWidth={2.5} />
+                                                </button>
+
+                                                {/* Vertical Divider */}
+                                                <div className={`w-px h-5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
+
+                                                {/* Center Value */}
+                                                <div 
+                                                    onClick={() => {
+                                                        if ((settings.a11yPageZoom || 100) !== 100) {
+                                                            setSettingValue('a11yPageZoom', 100);
+                                                            setZoomLevel(100);
+                                                        }
+                                                    }}
+                                                    title={(settings.a11yPageZoom || 100) !== 100 ? "Click to reset to 100%" : "Default scale (100%)"}
+                                                    className={`w-20 h-full flex items-center justify-center select-none cursor-pointer transition-colors ${
+                                                        (settings.a11yPageZoom || 100) === 100
+                                                            ? isBright ? 'text-zinc-700' : 'text-zinc-200'
+                                                            : 'text-accent font-bold drop-shadow-[0_0_8px_rgba(212,188,148,0.25)]'
+                                                    }`}
+                                                >
+                                                    <span className="font-mono text-sm font-bold tracking-tight">
+                                                        {settings.a11yPageZoom || 100}%
+                                                    </span>
+                                                </div>
+
+                                                {/* Vertical Divider */}
+                                                <div className={`w-px h-5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
+
+                                                {/* Plus Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentZoom = settings.a11yPageZoom || 100;
+                                                        const steps = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+                                                        const higherSteps = steps.filter(s => s > currentZoom);
+                                                        const nextVal = higherSteps.length > 0 ? higherSteps[0] : Math.min(200, currentZoom + 10);
+                                                        setSettingValue('a11yPageZoom', nextVal);
+                                                        setZoomLevel(nextVal);
+                                                    }}
+                                                    disabled={(settings.a11yPageZoom || 100) >= 200}
+                                                    title="Zoom in"
+                                                    className={`w-10 h-full rounded-r-2xl flex items-center justify-center transition-all cursor-pointer active:scale-90 disabled:opacity-20 disabled:cursor-not-allowed ${
+                                                        isBright 
+                                                            ? 'hover:bg-black/5 active:bg-black/10 text-zinc-700' 
+                                                            : 'hover:bg-white/10 active:bg-white/15 text-white/80'
+                                                    }`}
+                                                >
+                                                    <Plus size={14} strokeWidth={2.5} />
+                                                </button>
+                                            </div>
                                         </div>
                                     </SettingCard>
                                 </div>
@@ -1341,7 +1477,12 @@ const SettingsModal = () => {
                                     <SettingCard 
                                         icon={Zap} 
                                         title="Force Reduced Motion" 
-                                        description="Disables browser chrome transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations."
+                                        badge={isSystemReducedMotion ? "Windows Animations: Off" : null}
+                                        description={
+                                            isSystemReducedMotion
+                                                ? "Windows Accessibility animations are currently turned off. Browser transitions, Tab Map 3D tilt, and web animations are automatically suppressed."
+                                                : "Disables browser chrome transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with Windows Animation Effects."
+                                        }
                                     >
                                         <SettingToggle 
                                             isChecked={!!settings.a11yReducedMotion} 
@@ -3664,6 +3805,7 @@ const SettingsModal = () => {
                             </div>
                         </div>
                     )}
+                    </div>
                 </div>
             </div>
         </div>

@@ -628,11 +628,12 @@ const useTabStore = create((set, get) => ({
 
             if (tabMatchesWc || tabMatchesUrl) {
                 // Determine if this tab is an orphaned tab opened purely for this download
-                const isOrphaned = 
-                    tab.isOpenedByNewWindow ||
-                    tab.isDownloadTab ||
-                    (!canGoBack && !tab.hasNavigatedToDocument) ||
-                    (tab.createdAt && Date.now() - tab.createdAt < 60000 && !tab.hasNavigatedToDocument);
+                // A tab is an orphaned download tab ONLY if:
+                // 1) It was explicitly designated as a download tab (tab.isDownloadTab), OR
+                // 2) It never navigated to a document (!tab.hasNavigatedToDocument && !canGoBack) AND was opened by a new window / blank popup.
+                const isExplicitDownloadTab = Boolean(tab.isDownloadTab);
+                const isBlankOrNeverNavigated = !tab.hasNavigatedToDocument && !canGoBack;
+                const isOrphaned = isExplicitDownloadTab || (isBlankOrNeverNavigated && (tab.isOpenedByNewWindow || !tab.url || tab.url === 'about:blank'));
 
                 if (isOrphaned) {
                     console.log(`[TabStore] Automatically closing orphaned download tab ${tab.id} (${tab.title || tab.url})`);

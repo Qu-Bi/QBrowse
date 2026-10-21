@@ -19,6 +19,12 @@ let metrics = {
 
 let healthPollTimer = null;
 let currentDownloadReq = null;
+let isStoppingIntentional = false;
+
+const TARGET_ENGINE_TAG = 'b11796';
+const TARGET_ENGINE_BUILD = 11796;
+const MIN_SUPPORTED_ENGINE_BUILD = 11796;
+const ENGINE_VERSION_FILE = 'engine_version.json';
 
 const MODEL_PRESETS = [
     {
@@ -29,7 +35,7 @@ const MODEL_PRESETS = [
         filename: 'gemma-4-E2B-it-Q4_0.gguf',
         mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-Q8_0.gguf',
         mmprojFilename: 'mmproj-gemma-4-E2B-it-Q8_0.gguf',
-        description: 'Gemma 4 E2B Instruct GGUF model with full Multimodal Vision support for analyzing images and chat.'
+        description: 'Google Gemma 4 E2B Instruct GGUF model with full Multimodal Vision support for analyzing images and chat.'
     },
     {
         id: 'gemma-4-e4b',
@@ -39,9 +45,41 @@ const MODEL_PRESETS = [
         filename: 'gemma-4-E4B-it-Q4_0.gguf',
         mmprojUrl: 'https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-Q8_0.gguf',
         mmprojFilename: 'mmproj-gemma-4-E4B-it-Q8_0.gguf',
-        description: 'High reasoning Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
+        description: 'High reasoning Google Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
+    },
+    {
+        id: 'llama-3.2-3b',
+        name: 'Llama 3.2 3B Instruct (Q4_K_M)',
+        size: '2.02 GB',
+        url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+        filename: 'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+        description: 'Ultra-fast, lightweight Meta Llama 3.2 3B model with universal compatibility and reasoning.'
     }
 ];
+
+function getBinaryBuildNumber(exePath) {
+    if (!exePath || !fs.existsSync(exePath)) return 0;
+    try {
+        const { spawnSync } = require('child_process');
+        const res = spawnSync(exePath, ['--version'], { timeout: 3500, encoding: 'utf8' });
+        const text = (res.stderr || '') + (res.stdout || '');
+        const match = text.match(/build\s+(\d+)/i);
+        if (match) return parseInt(match[1], 10);
+    } catch (_) {}
+    return 0;
+}
+
+function killStrayLlamaProcesses() {
+    try {
+        if (process.platform === 'win32') {
+            const { execSync } = require('child_process');
+            execSync('taskkill /F /IM llama-server.exe /T 2>nul || exit 0', { stdio: 'ignore' });
+        } else {
+            const { execSync } = require('child_process');
+            execSync('pkill -9 llama-server 2>/dev/null || true', { stdio: 'ignore' });
+        }
+    } catch (_) {}
+}
 
 function getModelsDir() {
     const appData = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.config');
@@ -82,23 +120,48 @@ function resolveBinaryPath() {
             ensureMsvcRuntime(getBinDir());
             const bundledStats = fs.statSync(bundledPath);
             const userStats = fs.existsSync(userPath) ? fs.statSync(userPath) : null;
-            if (!userStats || bundledStats.mtimeMs > userStats.mtimeMs || bundledStats.size !== userStats.size) {
+            const bundledBuild = getBinaryBuildNumber(bundledPath);
+            const userBuild = userStats ? getBinaryBuildNumber(userPath) : 0;
+
+            if (!userStats || userBuild < bundledBuild || userBuild < MIN_SUPPORTED_ENGINE_BUILD || bundledStats.mtimeMs > userStats.mtimeMs || bundledStats.size !== userStats.size) {
+                appendLog(`[AI ENGINE] Synchronizing modern llama.cpp binaries (build ${bundledBuild || TARGET_ENGINE_TAG}) to AppData...`);
                 const bundledDir = getBundledBinDir();
                 const userDir = getBinDir();
                 const files = fs.readdirSync(bundledDir);
                 for (const f of files) {
                     try {
                         fs.copyFileSync(path.join(bundledDir, f), path.join(userDir, f));
-                    } catch (_) {}
+                    } catch (err) {
+                        if (err.code === 'EBUSY' || err.code === 'EPERM') {
+                            killStrayLlamaProcesses();
+                            try {
+                                fs.copyFileSync(path.join(bundledDir, f), path.join(userDir, f));
+                            } catch (_) {}
+                        }
+                    }
                 }
+                try {
+                    fs.writeFileSync(path.join(userDir, ENGINE_VERSION_FILE), JSON.stringify({
+                        tag: TARGET_ENGINE_TAG,
+                        build: bundledBuild || TARGET_ENGINE_BUILD,
+                        updatedAt: Date.now()
+                    }, null, 2));
+                } catch (_) {}
             }
-        } catch (_) {}
+        } catch (e) {
+            appendLog(`[AI ENGINE] Error during binary synchronization: ${e.message}`);
+        }
         if (fs.existsSync(userPath)) return userPath;
         return bundledPath;
     }
 
     // 2. Fall back to user AppData bin dir
     if (fs.existsSync(userPath)) {
+        const userBuild = getBinaryBuildNumber(userPath);
+        if (userBuild > 0 && userBuild < MIN_SUPPORTED_ENGINE_BUILD) {
+            appendLog(`[WARN] Installed llama-server build (${userBuild}) is older than required minimum (${MIN_SUPPORTED_ENGINE_BUILD}) for Gemma 4. Auto-update required.`);
+            return null; // Forces ensureEngineExists to download the modern build
+        }
         ensureMsvcRuntime(getBinDir());
         return userPath;
     }
@@ -345,6 +408,7 @@ function startBuiltinNodeServer(port, onLog) {
 }
 
 async function startLlamaServer(options = {}, onLog, onStatusChange) {
+    isStoppingIntentional = false;
     if (serverProcess) {
         stopLlamaServer();
     }
@@ -378,35 +442,38 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
         }
     }
 
-    const ensureEngineExists = async () => {
-        let binPath = resolveBinaryPath();
-        if (binPath) {
-            ensureMsvcRuntime(path.dirname(binPath));
-            ensureMsvcRuntime(getBinDir());
-            return binPath;
+    const ensureEngineExists = async (forceDownload = false) => {
+        if (!forceDownload) {
+            let binPath = resolveBinaryPath();
+            if (binPath) {
+                ensureMsvcRuntime(path.dirname(binPath));
+                ensureMsvcRuntime(getBinDir());
+                return binPath;
+            }
         }
 
-        appendLog('Downloading native llama.cpp engine...');
+        appendLog(`[AI ENGINE] Downloading native llama.cpp engine (${TARGET_ENGINE_TAG})...`);
         if (onStatusChange) onStatusChange({ status: 'downloading_engine' });
 
         const AdmZip = require('adm-zip');
         const targetBinDir = getBinDir();
-        const zipPath = path.join(targetBinDir, 'llama.zip');
+        const isWin = process.platform === 'win32';
+        const zipPath = path.join(targetBinDir, isWin ? 'llama.zip' : 'llama.tar.gz');
 
-        // Check if Vulkan is present on Windows, otherwise use universal AVX2 CPU engine
-        const hasVulkanRuntime = process.platform === 'win32' && fs.existsSync(path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'vulkan-1.dll'));
+        // Check if Vulkan is present on Windows, otherwise use universal CPU engine
+        const hasVulkanRuntime = isWin && fs.existsSync(path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'vulkan-1.dll'));
         
-        let downloadUrl = 'https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-win-avx2-x64.zip';
-        if (process.platform === 'win32') {
+        let downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-win-cpu-x64.zip`;
+        if (isWin) {
             if (hasVulkanRuntime) {
-                downloadUrl = 'https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-win-vulkan-x64.zip';
+                downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-win-vulkan-x64.zip`;
             } else {
-                appendLog('[INFO] Vulkan runtime not detected on system. Selecting universal AVX2 CPU engine for maximum compatibility.');
+                appendLog('[INFO] Vulkan runtime not detected on system. Selecting universal CPU engine for maximum compatibility.');
             }
         } else if (process.platform === 'linux') {
-            downloadUrl = 'https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-ubuntu-x64.zip';
+            downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-ubuntu-x64.tar.gz`;
         } else if (process.platform === 'darwin') {
-            downloadUrl = 'https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-macos-arm64.zip';
+            downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-macos-arm64.tar.gz`;
         }
 
         const downloadWithRedirects = (url, redirectCount = 0) => {
@@ -433,23 +500,38 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                     fileStream.on('finish', () => {
                         fileStream.close();
                         try {
-                            const zip = new AdmZip(zipPath);
-                            zip.extractAllTo(targetBinDir, true);
+                            killStrayLlamaProcesses();
+
+                            if (downloadUrl.endsWith('.zip')) {
+                                const zip = new AdmZip(zipPath);
+                                zip.extractAllTo(targetBinDir, true);
+                            } else {
+                                const { execSync } = require('child_process');
+                                execSync(`tar -xzf "${zipPath}" -C "${targetBinDir}"`);
+                            }
                             try { fs.unlinkSync(zipPath); } catch (_) {}
                             
-                            const finalExeName = process.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+                            const finalExeName = isWin ? 'llama-server.exe' : 'llama-server';
                             const finalBinPath = path.join(targetBinDir, finalExeName);
-                            if (process.platform !== 'win32' && fs.existsSync(finalBinPath)) {
+                            if (!isWin && fs.existsSync(finalBinPath)) {
                                 fs.chmodSync(finalBinPath, 0o755);
                             }
 
-                            // Option A: Ensure MSVC runtime DLLs are placed in targetBinDir
+                            try {
+                                fs.writeFileSync(path.join(targetBinDir, ENGINE_VERSION_FILE), JSON.stringify({
+                                    tag: TARGET_ENGINE_TAG,
+                                    build: TARGET_ENGINE_BUILD,
+                                    updatedAt: Date.now()
+                                }, null, 2));
+                            } catch (_) {}
+
+                            // Ensure MSVC runtime DLLs are placed in targetBinDir
                             ensureMsvcRuntime(targetBinDir);
 
-                            appendLog('Native llama.cpp engine downloaded and extracted successfully.');
+                            appendLog(`[AI ENGINE] Native llama.cpp engine (${TARGET_ENGINE_TAG}) extracted successfully.`);
                             resolve(finalBinPath);
                         } catch (err) {
-                            appendLog(`Extraction error: ${err.message}`);
+                            appendLog(`[AI ENGINE] Extraction error: ${err.message}`);
                             reject(err);
                         }
                     });
@@ -480,6 +562,7 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 '--threads', threads.toString(),
                 '--n-gpu-layers', gpuLayers.toString(),
                 '--port', port.toString(),
+                '--host', '127.0.0.1',
                 '--parallel', '1'
             ];
 
@@ -570,29 +653,81 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 if (onLog) onLog(logLine);
             });
 
+            const recentStderrLines = [];
             serverProcess.stderr.on('data', (data) => {
                 const str = data.toString();
+                recentStderrLines.push(str);
+                if (recentStderrLines.length > 50) recentStderrLines.shift();
                 const logLine = appendLog(str);
                 if (onLog) onLog(logLine);
             });
 
-            serverProcess.on('close', (code) => {
+            serverProcess.on('close', async (code, signal) => {
                 if (healthPollTimer) {
                     clearInterval(healthPollTimer);
                     healthPollTimer = null;
                 }
                 isServerRunning = false;
                 serverProcess = null;
-                metrics.status = 'stopped';
 
-                // Check Windows STATUS_DLL_NOT_FOUND (0xC0000135 = 3221225781 or -1073741515)
+                // 1. If shutdown was intentional or sent SIGTERM/SIGINT, treat as normal graceful stop
+                if (isStoppingIntentional || signal === 'SIGTERM' || signal === 'SIGINT') {
+                    metrics.status = 'stopped';
+                    metrics.errorType = null;
+                    metrics.errorMessage = null;
+                    appendLog(`llama-server process stopped gracefully${signal ? ` (${signal})` : ''}.`);
+                    if (onStatusChange) onStatusChange(metrics);
+                    return;
+                }
+
+                // 2. Normal clean exit code 0
+                if (code === 0) {
+                    metrics.status = 'stopped';
+                    metrics.errorType = null;
+                    metrics.errorMessage = null;
+                    appendLog(`llama-server process stopped gracefully (code 0).`);
+                    if (onStatusChange) onStatusChange(metrics);
+                    return;
+                }
+
+                metrics.status = 'stopped';
+                const combinedStderr = recentStderrLines.join('\n');
+
+                // 3. Windows STATUS_DLL_NOT_FOUND (0xC0000135 = 3221225781 or -1073741515)
                 if (code === 3221225781 || code === -1073741515) {
                     appendLog(`[CRITICAL ERROR] llama-server failed to launch because required C++ runtime DLLs are missing (Exit 0xC0000135).`);
                     appendLog(`[SOLUTION] Please install Microsoft Visual C++ 2015-2022 Redistributable (x64): https://aka.ms/vs/17/release/vc_redist.x64.exe`);
                     metrics.status = 'error';
                     metrics.errorType = 'MISSING_VCRUNTIME';
-                } else {
+                    metrics.errorMessage = 'Missing C++ runtime DLLs. Please install Visual C++ Redistributable.';
+                } else if (combinedStderr.includes('unknown model architecture') || combinedStderr.includes('error loading model architecture')) {
+                    appendLog(`[CRITICAL ERROR] Model architecture not recognized by current llama.cpp engine build.`);
+                    appendLog(`[AUTO-REPAIR] Upgrading engine to latest build (${TARGET_ENGINE_TAG}) to support this model...`);
+                    metrics.status = 'error';
+                    metrics.errorType = 'OUTDATED_ENGINE';
+                    metrics.errorMessage = 'Engine update required to support Gemma 4. Automatically upgrading...';
+                    if (onStatusChange) onStatusChange(metrics);
+                    try {
+                        await ensureEngineExists(true);
+                        appendLog(`[SUCCESS] Engine successfully upgraded to ${TARGET_ENGINE_TAG}. Please restart the model.`);
+                    } catch (upgradeErr) {
+                        appendLog(`[ERROR] Automatic engine upgrade failed: ${upgradeErr.message}`);
+                    }
+                } else if (combinedStderr.includes('failed to load model') || combinedStderr.includes('error loading model')) {
+                    appendLog(`[ERROR] Failed to load model weights. The GGUF file may be corrupted or incompatible.`);
+                    metrics.status = 'error';
+                    metrics.errorType = 'MODEL_LOAD_FAILED';
+                    metrics.errorMessage = 'Failed to load model file. Please check file integrity or re-download.';
+                } else if (code !== null && code !== 0) {
                     appendLog(`llama-server process exited with code ${code}`);
+                    metrics.status = 'error';
+                    metrics.errorType = 'PROCESS_EXITED';
+                    metrics.errorMessage = `Engine process exited with code ${code}`;
+                } else {
+                    appendLog(`llama-server process stopped.`);
+                    metrics.status = 'stopped';
+                    metrics.errorType = null;
+                    metrics.errorMessage = null;
                 }
                 if (onStatusChange) onStatusChange(metrics);
             });
@@ -614,12 +749,15 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
 }
 
 function stopLlamaServer() {
+    isStoppingIntentional = true;
     if (healthPollTimer) {
         clearInterval(healthPollTimer);
         healthPollTimer = null;
     }
     if (serverProcess) {
-        serverProcess.kill('SIGTERM');
+        try {
+            serverProcess.kill('SIGTERM');
+        } catch (_) {}
         serverProcess = null;
     }
     if (nodeHttpServer) {
@@ -628,8 +766,117 @@ function stopLlamaServer() {
     }
     isServerRunning = false;
     metrics.status = 'stopped';
-    appendLog(`[INFO] llama-server stopped by user.`);
+    metrics.errorType = null;
+    metrics.errorMessage = null;
+    appendLog(`[INFO] llama-server stopped.`);
     return { success: true };
+}
+
+async function updateEngine(onStatusChange = null) {
+    appendLog(`[AI ENGINE] Manual engine upgrade requested...`);
+    if (serverProcess) {
+        stopLlamaServer();
+    }
+    killStrayLlamaProcesses();
+
+    // 1. If bundled directory has target build, sync it directly
+    const bundledPath = path.join(getBundledBinDir(), process.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
+    const bundledBuild = getBinaryBuildNumber(bundledPath);
+    if (fs.existsSync(bundledPath) && bundledBuild >= MIN_SUPPORTED_ENGINE_BUILD) {
+        appendLog(`[AI ENGINE] Syncing target build ${bundledBuild} from local bundle to AppData...`);
+        const bundledDir = getBundledBinDir();
+        const userDir = getBinDir();
+        const files = fs.readdirSync(bundledDir);
+        for (const f of files) {
+            try {
+                fs.copyFileSync(path.join(bundledDir, f), path.join(userDir, f));
+            } catch (_) {}
+        }
+        ensureMsvcRuntime(userDir);
+        try {
+            fs.writeFileSync(path.join(userDir, ENGINE_VERSION_FILE), JSON.stringify({
+                tag: TARGET_ENGINE_TAG,
+                build: bundledBuild,
+                updatedAt: Date.now()
+            }, null, 2));
+        } catch (_) {}
+        return { success: true, version: TARGET_ENGINE_TAG, build: bundledBuild };
+    }
+
+    // 2. Otherwise download latest engine from GitHub release
+    const targetBinDir = getBinDir();
+    const AdmZip = require('adm-zip');
+    const isWin = process.platform === 'win32';
+    const zipPath = path.join(targetBinDir, isWin ? 'llama.zip' : 'llama.tar.gz');
+    const hasVulkan = isWin && fs.existsSync(path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'vulkan-1.dll'));
+    
+    let downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-win-cpu-x64.zip`;
+    if (isWin) {
+        if (hasVulkan) {
+            downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-win-vulkan-x64.zip`;
+        }
+    } else if (process.platform === 'linux') {
+        downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-ubuntu-x64.tar.gz`;
+    } else if (process.platform === 'darwin') {
+        downloadUrl = `https://github.com/ggml-org/llama.cpp/releases/download/${TARGET_ENGINE_TAG}/llama-${TARGET_ENGINE_TAG}-bin-macos-arm64.tar.gz`;
+    }
+
+    if (onStatusChange) onStatusChange({ status: 'downloading_engine' });
+
+    const downloadWithRedirects = (url, redirectCount = 0) => {
+        return new Promise((resolve, reject) => {
+            if (redirectCount > 5) return reject(new Error('Too many redirects'));
+            const client = url.startsWith('https') ? https : http;
+            const req = client.get(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QBrowse/1.0 Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': '*/*'
+                }
+            }, (res) => {
+                if ([301, 302, 307, 308].includes(res.statusCode)) {
+                    return resolve(downloadWithRedirects(res.headers.location, redirectCount + 1));
+                }
+                if (res.statusCode !== 200) {
+                    return reject(new Error(`Failed to download engine: HTTP ${res.statusCode}`));
+                }
+
+                const fileStream = fs.createWriteStream(zipPath);
+                res.pipe(fileStream);
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    try {
+                        killStrayLlamaProcesses();
+                        if (downloadUrl.endsWith('.zip')) {
+                            const zip = new AdmZip(zipPath);
+                            zip.extractAllTo(targetBinDir, true);
+                        } else {
+                            const { execSync } = require('child_process');
+                            execSync(`tar -xzf "${zipPath}" -C "${targetBinDir}"`);
+                        }
+                        try { fs.unlinkSync(zipPath); } catch (_) {}
+                        
+                        const finalExe = path.join(targetBinDir, isWin ? 'llama-server.exe' : 'llama-server');
+                        if (!isWin && fs.existsSync(finalExe)) fs.chmodSync(finalExe, 0o755);
+                        ensureMsvcRuntime(targetBinDir);
+                        try {
+                            fs.writeFileSync(path.join(targetBinDir, ENGINE_VERSION_FILE), JSON.stringify({
+                                tag: TARGET_ENGINE_TAG,
+                                build: TARGET_ENGINE_BUILD,
+                                updatedAt: Date.now()
+                            }, null, 2));
+                        } catch (_) {}
+                        resolve({ success: true, version: TARGET_ENGINE_TAG, build: TARGET_ENGINE_BUILD });
+                    } catch (err) {
+                        reject(err);
+                    }
+                });
+                fileStream.on('error', reject);
+            });
+            req.on('error', reject);
+        });
+    };
+
+    return downloadWithRedirects(downloadUrl);
 }
 
 function getLogs() {
@@ -866,6 +1113,7 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
 module.exports = {
     startLlamaServer,
     stopLlamaServer,
+    updateEngine,
     processPromptStream,
     getLogs,
     getStatus,
@@ -873,5 +1121,7 @@ module.exports = {
     downloadModel,
     cancelModelDownload,
     getModelsDir,
-    MODEL_PRESETS
+    MODEL_PRESETS,
+    TARGET_ENGINE_TAG,
+    TARGET_ENGINE_BUILD
 };

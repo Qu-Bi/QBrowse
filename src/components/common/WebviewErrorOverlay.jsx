@@ -325,6 +325,15 @@ const ERROR_METADATA = {
         icon: AlertTriangle,
         color: 'text-red-400',
         isInsecure: false
+    },
+    '-999': {
+        category: 'RENDER PROCESS GONE',
+        badge: 'CRASHED',
+        title: 'Tab Crashed Unexpectedly',
+        message: 'The page renderer process terminated unexpectedly. You can reload this tab to restore your session.',
+        icon: AlertTriangle,
+        color: 'text-rose-400',
+        isInsecure: false
     }
 };
 

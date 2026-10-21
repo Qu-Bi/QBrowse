@@ -415,7 +415,19 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             }
         } catch (_) {}
 
-        if (currentWvUrl && (currentWvUrl === actualLoadUrl || currentWvUrl === actualLoadUrl + '/')) {
+        // If the webview itself just navigated to this URL (e.g. in-page hash/pushState or redirect), do NOT reload!
+        if (currentRequestedUrlRef.current && (
+            currentRequestedUrlRef.current === actualLoadUrl ||
+            isSameOrEquivalentUrl(currentRequestedUrlRef.current, actualLoadUrl)
+        )) {
+            return;
+        }
+
+        if (currentWvUrl && (
+            currentWvUrl === actualLoadUrl ||
+            currentWvUrl === actualLoadUrl + '/' ||
+            isSameOrEquivalentUrl(currentWvUrl, actualLoadUrl)
+        )) {
             currentRequestedUrlRef.current = actualLoadUrl;
             return;
         }
@@ -579,7 +591,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             sendAnnotationsToWebview();
             sendVaultMatchesToWebview();
             try {
-                wv.send('apply-a11y-settings', useUIStore.getState().settings);
+                wv.send('apply-a11y-settings', {
+                    ...useUIStore.getState().settings,
+                    a11yReducedMotion: !!(useUIStore.getState().settings?.a11yReducedMotion || useUIStore.getState().isSystemReducedMotion)
+                });
             } catch (_) {}
 
             if (pendingScrollAnnotationRef.current) {
@@ -691,6 +706,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             if (e && e.isMainFrame === false) return;
             console.log(`[WebView ${tab.id}] did-navigate:`, e.url);
             wv.hasCrashed = false;
+            wv.__hasAutoRecovered = false;
             loadErrorRef.current = null;
             if (e.url) {
                 failedUrlsRef.current.delete(normalizeUrlForCompare(e.url));
@@ -976,33 +992,59 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const handleFailLoadLogged = (e) => {
             if (!e || e.isMainFrame === false) return;
             if (e.errorCode === -3) {
-                // net::ERR_ABORTED: Common when navigation transitions into an external file download
-                if (tab.isOpenedByNewWindow || tab.isDownloadTab) {
-                    console.log(`[WebView ${tab.id}] Navigation aborted for download, checking orphan tab cleanup.`);
-                    useTabStore.getState().closeDownloadTabIfOrphaned({
-                        url: tab.url,
-                        urlChain: [tab.url],
-                        webContentsId: (wv && typeof wv.getWebContentsId === 'function') ? wv.getWebContentsId() : null,
-                        canGoBack: false
-                    });
-                }
+                // net::ERR_ABORTED: Normal Chromium lifecycle event when a page redirects (301/302/307),
+                // JS navigates (window.location.replace), or provisional navigation cancels.
+                // Must NEVER close the tab or treat as a fatal failure.
                 return;
             }
-            if (e.errorCode === -302 || (e.validatedURL && window.electronAPI?.isAppProtocol?.(e.validatedURL))) {
+            const isKnownAppProtocol = Boolean(e.validatedURL && window.electronAPI?.isAppProtocol?.(e.validatedURL));
+            if (e.errorCode === -302 || isKnownAppProtocol) {
                 // net::ERR_UNKNOWN_URL_SCHEME (-302): Handled via desktop application protocol handoff
-                console.log(`[WebView ${tab.id}] Suppressed ERR_UNKNOWN_URL_SCHEME for app protocol:`, e.validatedURL);
+                console.log(`[WebView ${tab.id}] Handled ERR_UNKNOWN_URL_SCHEME for app protocol:`, e.validatedURL);
                 if (e.validatedURL && window.electronAPI?.openAppProtocol) {
                     window.electronAPI.openAppProtocol(e.validatedURL);
                 }
-                if (tab.isOpenedByNewWindow) {
+                if (tab.isOpenedByNewWindow && isKnownAppProtocol) {
                     useTabStore.getState().closeTab(tab.id, space);
                 }
                 return;
             }
-            console.error(`[WebView ${tab.id}] did-fail-load or crashed. Code:`, e.errorCode, 'Desc:', e.errorDescription, 'URL:', e.validatedURL);
+            console.error(`[WebView ${tab.id}] did-fail-load. Code:`, e.errorCode, 'Desc:', e.errorDescription, 'URL:', e.validatedURL);
             handleFailLoad(e);
             updateNavState();
         };
+
+        const handleRenderProcessGone = (e) => {
+            const details = e?.details || e || {};
+            console.warn(`[WebView ${tab.id}] render-process-gone:`, details);
+            if (details.reason === 'clean-exit') return;
+
+            wv.hasCrashed = true;
+            const errObj = {
+                errorCode: -999,
+                errorDescription: `ERR_RENDERER_${(details.reason || 'CRASHED').toUpperCase()}`,
+                validatedURL: tab.url,
+                time: Date.now()
+            };
+            loadErrorRef.current = errObj;
+            setLoadError(errObj);
+
+            // Attempt auto-recovery reload once for unexpected crashes
+            if (details.reason === 'crashed' || details.reason === 'oom' || details.reason === 'abnormal-exit' || details.reason === 'killed') {
+                if (!wv.__hasAutoRecovered) {
+                    wv.__hasAutoRecovered = true;
+                    setTimeout(() => {
+                        try {
+                            if (wvRef.current && typeof wvRef.current.loadURL === 'function' && tab.url && tab.url !== 'about:blank') {
+                                console.log(`[WebView ${tab.id}] Auto-recovering crashed render process...`);
+                                wvRef.current.loadURL(tab.url).catch(() => {});
+                            }
+                        } catch (_) {}
+                    }, 400);
+                }
+            }
+        };
+
         const handleConsoleMessage = (e) => {
             // Keep third-party web page errors confined to DevTools unless explicit debug flag is enabled
             if (window.__qbrowseDebugWebviews && e.level === 3) {
@@ -1093,8 +1135,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('did-navigate', handleNavigateSafe);
         wv.addEventListener('did-navigate-in-page', handleNavigateInPage);
         wv.addEventListener('did-fail-load', handleFailLoadLogged);
-        wv.addEventListener('crashed', handleFailLoadLogged);
-        wv.addEventListener('plugin-crashed', handleFailLoadLogged);
+        wv.addEventListener('render-process-gone', handleRenderProcessGone);
+        wv.addEventListener('crashed', handleRenderProcessGone);
+        wv.addEventListener('plugin-crashed', handleRenderProcessGone);
         wv.addEventListener('page-title-updated', handleTitleUpdate);
         wv.addEventListener('dom-ready', () => { registerWcId(); handleDomReady(); updateNavState(); });
         wv.addEventListener('did-stop-loading', handleDidStopLoading);
@@ -1115,7 +1158,8 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('did-navigate', handleNavigateSafe);
             wv.removeEventListener('did-navigate-in-page', handleNavigateInPage);
             wv.removeEventListener('did-fail-load', handleFailLoadLogged);
-            wv.removeEventListener('crashed', handleFailLoadLogged);
+            wv.removeEventListener('render-process-gone', handleRenderProcessGone);
+            wv.removeEventListener('crashed', handleRenderProcessGone);
             wv.removeEventListener('page-title-updated', handleTitleUpdate);
             wv.removeEventListener('dom-ready', handleDomReady);
             wv.removeEventListener('did-stop-loading', handleDidStopLoading);
@@ -1124,7 +1168,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('media-started-playing', handleMediaPlay);
             wv.removeEventListener('media-paused', handleMediaPause);
             wv.removeEventListener('console-message', handleConsoleMessage);
-            wv.removeEventListener('plugin-crashed', handleFailLoadLogged);
+            wv.removeEventListener('plugin-crashed', handleRenderProcessGone);
             wv.removeEventListener('ipc-message', handleIpcMessage);
             wv.removeEventListener('found-in-page', handleFoundInPage);
             wv.removeEventListener('new-window', handleNewWindow);
@@ -1398,6 +1442,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
     // Sync Accessibility Settings to webview
     const a11ySettings = useUIStore(state => state.settings);
+    const isSystemReducedMotion = useUIStore(state => state.isSystemReducedMotion);
     useEffect(() => {
         const wv = wvRef.current;
         if (!wv || !isDomReadyRef.current) return;
@@ -1406,7 +1451,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 a11yHighContrast: a11ySettings?.a11yHighContrast,
                 a11yDyslexiaFont: a11ySettings?.a11yDyslexiaFont,
                 a11yMinFontSize: a11ySettings?.a11yMinFontSize,
-                a11yReducedMotion: a11ySettings?.a11yReducedMotion,
+                a11yReducedMotion: !!(a11ySettings?.a11yReducedMotion || isSystemReducedMotion),
                 a11ySuppressAutoplay: a11ySettings?.a11ySuppressAutoplay,
                 a11yCaretBrowsing: a11ySettings?.a11yCaretBrowsing,
                 a11yFocusRings: a11ySettings?.a11yFocusRings,
@@ -1419,6 +1464,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         a11ySettings?.a11yDyslexiaFont,
         a11ySettings?.a11yMinFontSize,
         a11ySettings?.a11yReducedMotion,
+        isSystemReducedMotion,
         a11ySettings?.a11ySuppressAutoplay,
         a11ySettings?.a11yCaretBrowsing,
         a11ySettings?.a11yFocusRings,

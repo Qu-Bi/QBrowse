@@ -44,7 +44,7 @@ const useTorStore = create((set, get) => ({
                 }
             } else {
                 if (currentSpace === 'tor') {
-                    useTabStore.getState().setActiveSpace('ghost');
+                    useTabStore.getState().setActiveSpace('personal');
                 }
                 get().stopTor();
             }
@@ -95,6 +95,10 @@ const useTorStore = create((set, get) => ({
                 useUIStore.getState().showToast('Connected to Tor Network!');
                 get().checkExitIp();
                 get().fetchCircuit();
+                const { default: useTabStore } = await import('./useTabStore');
+                if (useTabStore.getState().activeSpace !== 'tor') {
+                    useTabStore.getState().setActiveSpace('tor');
+                }
             } else {
                 set({ status: 'error', lastError: res.error || 'Failed to start Tor' });
                 useUIStore.getState().showToast(`Tor error: ${res.error || 'Connection failed'}`);
@@ -114,6 +118,10 @@ const useTorStore = create((set, get) => ({
             }
             set({ isTorEnabled: false, status: 'stopped', bootstrapProgress: 0, verifiedExitIp: null, isTorVerified: false });
             useUIStore.getState().showToast('Tor Network disconnected');
+            const { default: useTabStore } = await import('./useTabStore');
+            if (useTabStore.getState().activeSpace === 'tor') {
+                useTabStore.getState().setActiveSpace('personal');
+            }
         } catch (err) {
             console.error('[TorStore] Stop error:', err);
         }
@@ -223,11 +231,20 @@ const useTorStore = create((set, get) => ({
         if (get().listenersInitialized || !window.electronAPI) return;
         set({ listenersInitialized: true });
 
-        window.electronAPI.onTorStatus?.((status) => {
+        window.electronAPI.onTorStatus?.(async (status) => {
             set({ status });
             if (status === 'connected') {
                 get().checkExitIp();
                 get().fetchCircuit();
+                const { default: useTabStore } = await import('./useTabStore');
+                if (useTabStore.getState().activeSpace !== 'tor') {
+                    useTabStore.getState().setActiveSpace('tor');
+                }
+            } else if (status === 'stopped' || status === 'error') {
+                const { default: useTabStore } = await import('./useTabStore');
+                if (useTabStore.getState().activeSpace === 'tor') {
+                    useTabStore.getState().setActiveSpace('personal');
+                }
             }
         });
 

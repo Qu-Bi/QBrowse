@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
     Cpu, Zap, Terminal, RefreshCw, Play, Square, Download, 
-    FolderOpen, HardDrive, Sliders, CheckCircle, AlertCircle, Copy, Trash2, Sparkles, FileText, Loader2
+    FolderOpen, HardDrive, Sliders, CheckCircle, AlertCircle, Copy, Trash2, Sparkles, FileText, Loader2, Wrench
 } from 'lucide-react';
 import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useUIStore from '../../store/useUIStore';
@@ -13,13 +13,14 @@ export default function AIEngineSettings() {
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const { 
-        status, isRunning, activeModelId, customModelPath, customMmprojPath, logs, metrics,
+        status, isRunning, activeModelId, customModelPath, customMmprojPath, logs, metrics, lastError,
         threads, contextSize, gpuLayers, temperature, downloadProgress, downloadDetail, downloadedModels,
         setActiveModelId, setCustomModelPath, setCustomMmprojPath, setThreads, setContextSize,
-        setGpuLayers, setTemperature, startEngine, stopEngine, toggleEngine,
+        setGpuLayers, setTemperature, startEngine, stopEngine, toggleEngine, updateEngine,
         downloadModel, clearLogs, addLog, parsePdfAsImage, setParsePdfAsImage
     } = useAIStore();
 
+    const [isUpdatingEngine, setIsUpdatingEngine] = useState(false);
     const showToast = useUIStore(state => state.showToast);
     const terminalRef = useRef(null);
 
@@ -74,6 +75,18 @@ export default function AIEngineSettings() {
         }
     };
 
+    const handleUpdateEngine = async () => {
+        setIsUpdatingEngine(true);
+        showToast('Updating native llama.cpp engine...');
+        const res = await updateEngine();
+        setIsUpdatingEngine(false);
+        if (res && res.success) {
+            showToast('llama.cpp engine successfully updated to latest build (b11796)!');
+        } else {
+            showToast(`Engine update failed: ${res?.error || 'Unknown error'}`);
+        }
+    };
+
     const handleCopyLogs = () => {
         navigator.clipboard.writeText(logs.join('\n'));
         showToast('llama-server logs copied to clipboard!');
@@ -117,19 +130,34 @@ export default function AIEngineSettings() {
                             <Cpu size={24} className={isRunning ? 'animate-pulse' : ''} />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <h3 className={`text-xl font-black tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>llama.cpp AI Engine</h3>
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                                     isRunning 
                                         ? (isBright ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30')
-                                        : (status === 'loading' || status === 'starting' || status === 'downloading_engine')
+                                        : (status === 'loading' || status === 'starting')
                                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
-                                            : (isBright ? 'bg-black/5 text-zinc-500 border border-black/10' : 'bg-white/10 text-white/40')
+                                            : status === 'downloading_engine'
+                                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse'
+                                                : status === 'error'
+                                                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                                    : (isBright ? 'bg-black/5 text-zinc-500 border border-black/10' : 'bg-white/10 text-white/40')
                                 }`}>
-                                    {isRunning ? 'Online (llama-server)' : (status === 'loading' || status === 'starting' || status === 'downloading_engine') ? 'Starting...' : 'Stopped'}
+                                    {isRunning ? 'Online (llama-server)' : (status === 'loading' || status === 'starting') ? 'Starting...' : status === 'downloading_engine' ? 'Updating Engine...' : status === 'error' ? 'Engine Error' : 'Stopped'}
                                 </span>
+                                <button
+                                    onClick={handleUpdateEngine}
+                                    disabled={isUpdatingEngine || status === 'downloading_engine'}
+                                    title="Check and synchronize native llama.cpp engine (b11796 with Gemma 4 support)"
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono transition flex items-center gap-1 cursor-pointer ${
+                                        isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600 border border-black/10' : 'bg-white/5 hover:bg-white/10 text-white/60 border border-white/10'
+                                    }`}
+                                >
+                                    <RefreshCw size={10} className={isUpdatingEngine || status === 'downloading_engine' ? 'animate-spin text-accent' : ''} />
+                                    {isUpdatingEngine || status === 'downloading_engine' ? 'Updating...' : 'Sync Engine (b11796)'}
+                                </button>
                             </div>
-                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>High-speed, zero-knowledge local LLM runner based on Gemma 4 / Llama 3.2 GGUF architecture.</p>
+                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>High-speed, zero-knowledge local LLM runner with native Gemma 4 & Llama 3.2 GGUF support.</p>
                         </div>
                     </div>
 
@@ -182,6 +210,30 @@ export default function AIEngineSettings() {
                         </button>
                     )}
                 </div>
+
+                {status === 'error' && (
+                    <div className="mt-4 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-red-400">
+                        <div className="flex items-center gap-2.5">
+                            <AlertCircle size={16} className="shrink-0 text-red-400" />
+                            <span>{metrics?.errorMessage || lastError || 'llama-server encountered an error starting the model.'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                            <button
+                                onClick={() => useAIStore.getState().clearError()}
+                                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-[11px] transition cursor-pointer"
+                            >
+                                Dismiss
+                            </button>
+                            <button
+                                onClick={handleUpdateEngine}
+                                disabled={isUpdatingEngine || status === 'downloading_engine'}
+                                className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold text-[11px] border border-red-500/30 transition cursor-pointer flex items-center gap-1.5"
+                            >
+                                <RefreshCw size={12} className={isUpdatingEngine ? 'animate-spin' : ''} /> Update AI Engine
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Performance Benchmark Bar */}

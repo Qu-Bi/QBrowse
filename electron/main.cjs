@@ -927,7 +927,7 @@ app.commandLine.appendSwitch('enable-fast-unload');
 app.commandLine.appendSwitch('enable-tcp-fastopen');
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
+app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'default_public_interface_only');
 
 // GPU Resilience: Prevents Chromium from permanently blacklisting hardware acceleration
 // and falling back to CPU software rasterization (SwiftShader) after display resolution/mode switches
@@ -1730,7 +1730,11 @@ function createWindow(options = {}) {
                   u.includes('/oauth') ||
                   u.includes('/auth') ||
                   u.includes('/login') ||
-                  u.includes('/signin')
+                  u.includes('/signin') ||
+                  u.includes('challenges.cloudflare.com') ||
+                  u.includes('/cdn-cgi/challenge-platform') ||
+                  u.includes('hcaptcha.com') ||
+                  u.includes('recaptcha')
               ) {
                   return callback({ cancel: false });
               }
@@ -1899,8 +1903,9 @@ function createWindow(options = {}) {
                 return { action: 'deny' };
             }
 
-            // Detect OAuth / authentication popups or explicit dialog windows
+            // Distinguish true OAuth/dialog popup windows from tab navigations
             const isPopupWithDims = Boolean(features && (features.includes('width=') || features.includes('height=')));
+            const isExplicitPopup = isPopupWithDims || Boolean(features && features.includes('popup=true'));
             const isAuthUrl = Boolean(url && (
                 url.includes('firebaseapp.com') ||
                 url.includes('accounts.google.com') ||
@@ -1923,7 +1928,10 @@ function createWindow(options = {}) {
                 frameName.includes('signin')
             ));
 
-            if (isPopupWithDims || isAuthUrl || isAuthFrameName) {
+            // Only allow as a popup window if explicitly requested with popup dimensions or as a script-opened OAuth popup (new-window)
+            const isScriptOAuthPopup = (disposition === 'new-window') && (isAuthUrl || isAuthFrameName);
+
+            if (isExplicitPopup || isScriptOAuthPopup) {
                 console.log('[Electron Main] Allowing OAuth popup window for:', url);
                 return {
                     action: 'allow',
@@ -2211,6 +2219,10 @@ function createWindow(options = {}) {
             contents.setUserAgent(cleanChromeUA);
         }
 
+        contents.on('render-process-gone', (event, details) => {
+            console.warn(`[Electron Main] render-process-gone on webContents (${contents.id}, type: ${contents.getType()}): `, details);
+        });
+
         // Track active webview URL for accurate domain resolution in in-tab dialogs
         if (contents.getType() === 'webview') {
             contents.on('did-navigate', (event, url) => {
@@ -2406,7 +2418,12 @@ function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl) {
             reqHost.includes('x.com') ||
             reqHost.includes('microsoft.com') ||
             reqHost.includes('live.com') ||
-            reqHost.includes('voxmedia.com')
+            reqHost.includes('voxmedia.com') ||
+            reqHost.includes('cloudflare.com') ||
+            reqHost.includes('challenges.cloudflare.com') ||
+            reqHost.includes('hcaptcha.com') ||
+            reqHost.includes('recaptcha.net') ||
+            reqHost.includes('turnstile')
         ) {
             return false;
         }
@@ -2517,7 +2534,8 @@ function setupHeadersHandler(sess) {
             }
         }
 
-        if (localDialogPort && !isGoogleAuth) {
+        const isCloudflare = details.url && (details.url.includes('cloudflare.com') || details.url.includes('challenges.cloudflare.com'));
+        if (localDialogPort && !isGoogleAuth && !isCloudflare) {
             for (const headerKey of Object.keys(responseHeaders)) {
                 const lowerKey = headerKey.toLowerCase();
                 if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
@@ -5715,7 +5733,7 @@ ipcMain.handle('save-setting', (event, data) => {
 
 ipcMain.handle('set-webrtc', async (event, enabled) => {
     try {
-        const policy = enabled ? 'disable_non_proxied_udp' : 'default';
+        const policy = enabled ? 'default_public_interface_only' : 'default';
         const sessions = [session.defaultSession, session.fromPartition('ghost')];
         sessions.forEach(s => {
             if (s && s.setWebRTCIPHandlingPolicy) {
@@ -5857,6 +5875,14 @@ ipcMain.handle('ai-start-server', async (event, options) => {
 
 ipcMain.handle('ai-stop-server', async () => {
     return aiEngine.stopLlamaServer();
+});
+
+ipcMain.handle('ai-update-engine', async () => {
+    return aiEngine.updateEngine((metrics) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ai-status-event', metrics);
+        }
+    });
 });
 
 ipcMain.handle('ai-get-status', async () => {
@@ -6559,6 +6585,27 @@ ipcMain.handle('system-open-default-apps-settings', async () => {
         return { success: false, error: e.message };
     }
 });
+
+ipcMain.handle('system-get-reduced-motion', () => {
+    try {
+        return !!nativeTheme.prefersReducedMotion;
+    } catch (_) {
+        return false;
+    }
+});
+
+try {
+    nativeTheme.on('updated', () => {
+        try {
+            const prefersReducedMotion = !!nativeTheme.prefersReducedMotion;
+            for (const win of browserWindows) {
+                if (win && !win.isDestroyed()) {
+                    win.webContents.send('system-reduced-motion-changed', prefersReducedMotion);
+                }
+            }
+        } catch (_) {}
+    });
+} catch (_) {}
 
 ipcMain.handle('get-initial-launch-url', () => {
     const url = initialUrlToOpen;

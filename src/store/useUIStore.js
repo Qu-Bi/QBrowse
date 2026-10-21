@@ -81,13 +81,16 @@ const defaultSettings = {
     a11yHighContrast: false,
     a11yDyslexiaFont: false,
     a11yMinFontSize: 'default', // 'default' | '12px' | '14px' | '16px' | '18px'
-    a11yPageZoom: 100, // 80 - 200%
+    a11yPageZoom: 100, // 50 - 200%
     a11yReducedMotion: false,
     a11ySuppressAutoplay: false,
     a11yCaretBrowsing: false,
     a11yFocusRings: false,
     a11yVideoCaptions: false,
-    a11yMonoAudio: false
+    a11yMonoAudio: false,
+
+    // Toolbar & Extensions Hub
+    hiddenTopBarIcons: []
 };
 
 const loadSettings = () => {
@@ -200,6 +203,74 @@ const useUIStore = create((set, get) => ({
     });
     useUIStore.getState().showToast(rightId ? 'Split View: Enabled' : 'Split View: Select a tab');
   },
+  // Windows & OS Accessibility Sync
+  isSystemReducedMotion: typeof window !== 'undefined' && typeof window.matchMedia === 'function' 
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
+    : false,
+  setIsSystemReducedMotion: (val) => set({ isSystemReducedMotion: Boolean(val) }),
+  initSystemReducedMotion: () => {
+    if (typeof window === 'undefined') return;
+    
+    // 1. Native Chromium Media Query (Immediate & Real-Time)
+    if (typeof window.matchMedia === 'function') {
+      const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      set({ isSystemReducedMotion: motionQuery.matches });
+      
+      const handleMotionChange = (e) => {
+        set({ isSystemReducedMotion: Boolean(e.matches) });
+      };
+      
+      if (typeof motionQuery.addEventListener === 'function') {
+        motionQuery.addEventListener('change', handleMotionChange);
+      } else if (typeof motionQuery.addListener === 'function') {
+        motionQuery.addListener(handleMotionChange);
+      }
+    }
+
+    // 2. Electron Main Process NativeTheme Sync (OS Level)
+    if (window.electronAPI?.getSystemReducedMotion) {
+      window.electronAPI.getSystemReducedMotion().then((nativeVal) => {
+        if (typeof nativeVal === 'boolean') {
+          set(state => ({ isSystemReducedMotion: nativeVal || state.isSystemReducedMotion }));
+        }
+      }).catch(() => {});
+    }
+
+    if (window.electronAPI?.onSystemReducedMotionChanged) {
+      window.electronAPI.onSystemReducedMotionChanged((nativeVal) => {
+        if (typeof nativeVal === 'boolean') {
+          set({ isSystemReducedMotion: nativeVal });
+        }
+      });
+    }
+  },
+
+  // Topbar Extensions Hub Customization
+  hideTopBarIcon: (iconId) => {
+    const current = get().settings?.hiddenTopBarIcons || [];
+    if (!current.includes(iconId)) {
+      const next = [...current, iconId];
+      get().setSetting('hiddenTopBarIcons', next);
+    }
+  },
+  showTopBarIcon: (iconId) => {
+    const current = get().settings?.hiddenTopBarIcons || [];
+    if (current.includes(iconId)) {
+      const next = current.filter(id => id !== iconId);
+      get().setSetting('hiddenTopBarIcons', next);
+    }
+  },
+  toggleTopBarIcon: (iconId) => {
+    const current = get().settings?.hiddenTopBarIcons || [];
+    const next = current.includes(iconId)
+      ? current.filter(id => id !== iconId)
+      : [...current, iconId];
+    get().setSetting('hiddenTopBarIcons', next);
+  },
+  resetTopBarIcons: () => {
+    get().setSetting('hiddenTopBarIcons', []);
+  },
+
   isFullscreen: false,
   setIsFullscreen: async (val) => {
     set({ isFullscreen: val });
@@ -1292,6 +1363,10 @@ const useUIStore = create((set, get) => ({
             try {
               window.electronAPI?.setAdblock?.(diskSettings.adblockEnabled);
             } catch (_) {}
+          }
+
+          if (typeof merged.a11yPageZoom === 'number' && merged.a11yPageZoom >= 50 && merged.a11yPageZoom <= 200) {
+            set({ zoomLevel: merged.a11yPageZoom });
           }
 
           // Ensure disk store has all current merged fields
