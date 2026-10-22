@@ -8,6 +8,46 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
 const AVAILABLE_FLAGS = [
+    // --- HARDWARE & GRAPHICS ---
+    {
+        id: 'prefer-high-performance-gpu',
+        name: 'Prefer High-Performance GPU',
+        description: 'Directs WebGL, Canvas, and 3D rendering to the dedicated GPU on systems with multiple graphics cards. Automatically disabled in Eco Saver mode to conserve battery.',
+        category: 'Hardware & Graphics',
+        defaultState: 'enabled',
+        default: 'enabled',
+        status: 'Beta'
+    },
+    {
+        id: 'unlock-frame-rate',
+        name: 'Unlocked Frame Rate (Benchmark Mode)',
+        description: 'Disables V-Sync and framerate limits for synthetic canvas/WebGL FPS benchmarks (e.g. xbitlabs, TestUFO). May cause screen tearing and higher power consumption in regular browsing.',
+        category: 'Hardware & Graphics',
+        defaultState: 'disabled',
+        default: 'disabled',
+        status: 'Experimental'
+    },
+    {
+        id: 'ignore-gpu-blocklist',
+        name: 'Ignore GPU Blocklist',
+        description: 'Overrides Chromium built-in software rendering lists and enables hardware acceleration on older or unclassified graphics drivers.',
+        category: 'Hardware & Graphics',
+        defaultState: 'disabled',
+        default: 'disabled',
+        status: 'Experimental'
+    },
+
+    // --- WEB STANDARDS & ENGINE ---
+    {
+        id: 'experimental-web-platform',
+        name: 'Experimental Web Platform Features',
+        description: 'Enables experimental web platform features under development in Chromium. Increases compatibility score on HTML5Test; some cutting-edge APIs may be unstable.',
+        category: 'Web Standards & Engine',
+        defaultState: 'disabled',
+        default: 'disabled',
+        status: 'Experimental'
+    },
+
     // --- PERFORMANCE & COMPOSITING ---
     {
         id: 'gpu-rasterization',
@@ -339,7 +379,10 @@ const UNAVAILABLE_FLAGS = [
     }
 ];
 
-const CATEGORIES = ['All', 'Performance', 'Security', 'Networking', 'Media & UI', 'AI & Tools'];
+const CATEGORIES = ['All', 'Performance', 'Hardware & Graphics', 'Web Standards & Engine', 'Security', 'Networking', 'Media & UI', 'AI & Tools'];
+
+export const DEFAULT_FLAGS = AVAILABLE_FLAGS;
+export { AVAILABLE_FLAGS, UNAVAILABLE_FLAGS, CATEGORIES };
 
 export default function FlagsPage() {
     const showToast = useUIStore(state => state.showToast);

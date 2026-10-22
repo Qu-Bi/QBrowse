@@ -268,7 +268,20 @@ if (!isOAuthPopup && !isGoogleAuth) {
                 };
 
                 scanIframes();
-                setInterval(scanIframes, 100);
+                // Capture-phase load listener on document catches every iframe load and navigation
+                document.addEventListener('load', (e) => {
+                    const t = e.target;
+                    if (t && (t.tagName === 'IFRAME' || t.tagName === 'FRAME')) {
+                        try { if (t.contentWindow) patchTargetWindow(t.contentWindow); } catch (_) {}
+                    }
+                }, true);
+
+                // Low-frequency idle safety net (paused when document is hidden)
+                setInterval(() => {
+                    if (typeof document !== 'undefined' && !document.hidden) {
+                        scanIframes();
+                    }
+                }, 1500);
 
                 // Also scan on user interactions so dynamically written iframes (like W3Schools Tryit Editor)
                 // are guaranteed to have their window.prompt/alert/confirm patched right when clicked
@@ -476,34 +489,34 @@ function checkReaderStatus() {
 }
 
 if (typeof window !== 'undefined' && window === window.top) {
+    let readerCheckTimer = null;
+    function scheduleReaderCheck(delay = 250) {
+        if (readerCheckTimer) clearTimeout(readerCheckTimer);
+        readerCheckTimer = setTimeout(checkReaderStatus, delay);
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
-        setTimeout(checkReaderStatus, 150);
-        setTimeout(checkReaderStatus, 600);
-        setTimeout(checkReaderStatus, 1500);
+        scheduleReaderCheck(300);
     });
     window.addEventListener('load', () => {
-        setTimeout(checkReaderStatus, 100);
-        setTimeout(checkReaderStatus, 1000);
+        scheduleReaderCheck(1200);
     });
 
     try {
         const origPushState = history.pushState;
         history.pushState = function() {
             const ret = origPushState.apply(this, arguments);
-            setTimeout(checkReaderStatus, 250);
-            setTimeout(checkReaderStatus, 1200);
+            scheduleReaderCheck(250);
             return ret;
         };
         const origReplaceState = history.replaceState;
         history.replaceState = function() {
             const ret = origReplaceState.apply(this, arguments);
-            setTimeout(checkReaderStatus, 250);
-            setTimeout(checkReaderStatus, 1200);
+            scheduleReaderCheck(250);
             return ret;
         };
         window.addEventListener('popstate', () => {
-            setTimeout(checkReaderStatus, 250);
-            setTimeout(checkReaderStatus, 1200);
+            scheduleReaderCheck(250);
         });
     } catch (_) {}
 }
@@ -949,10 +962,26 @@ function sendMediaState() {
     } catch(e) {}
 }
 
-setInterval(sendMediaState, 800);
+let mediaPollTimer = null;
 
-document.addEventListener('play', sendMediaState, true);
-document.addEventListener('pause', sendMediaState, true);
+function syncMediaPolling() {
+    sendMediaState();
+    const anyPlaying = Array.from(document.querySelectorAll('video, audio')).some(el => !el.paused && !el.ended);
+    if (anyPlaying && !mediaPollTimer) {
+        mediaPollTimer = setInterval(sendMediaState, 800);
+    } else if (!anyPlaying && mediaPollTimer) {
+        clearInterval(mediaPollTimer);
+        mediaPollTimer = null;
+    }
+}
+
+['play', 'playing', 'pause', 'ended', 'loadedmetadata', 'emptied', 'ratechange', 'seeked'].forEach(ev => {
+    document.addEventListener(ev, syncMediaPolling, true);
+});
+if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', syncMediaPolling);
+    window.addEventListener('load', syncMediaPolling);
+}
 
 ipcRenderer.on('media-control-command', (event, cmdData) => {
     try {
@@ -1918,10 +1947,15 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 
     let activeAnchorId = null;
+    let anchorRaf = null;
+    let selectionPillVisible = false;
 
     function openNoteCard(id, anchorEl) {
         removeCard();
-        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        if (selectionPillVisible) {
+            selectionPillVisible = false;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        }
 
         const ann = currentAnnotations.find(a => a.id === id) || { id, note: '', color: 'accent' };
         const rect = anchorEl ? anchorEl.getBoundingClientRect() : { top: 100, bottom: 120, left: 100, right: 120, width: 20, height: 20 };
@@ -1944,20 +1978,29 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 
     window.addEventListener('scroll', () => {
-        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        if (selectionPillVisible) {
+            selectionPillVisible = false;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        }
         if (activeAnchorId) {
-            const anchor = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${activeAnchorId}"]`) || document.querySelector(`.qbrowse-highlight[data-qbrowse-id="${activeAnchorId}"]`);
-            if (anchor) {
-                const rect = anchor.getBoundingClientRect();
-                ipcRenderer.sendToHost('qbrowse-update-note-anchor', {
-                    id: activeAnchorId,
-                    rect: {
-                        top: rect.top,
-                        bottom: rect.bottom,
-                        left: rect.left,
-                        right: rect.right,
-                        width: rect.width,
-                        height: rect.height
+            if (!anchorRaf) {
+                anchorRaf = requestAnimationFrame(() => {
+                    anchorRaf = null;
+                    if (!activeAnchorId) return;
+                    const anchor = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${activeAnchorId}"]`) || document.querySelector(`.qbrowse-highlight[data-qbrowse-id="${activeAnchorId}"]`);
+                    if (anchor) {
+                        const rect = anchor.getBoundingClientRect();
+                        ipcRenderer.sendToHost('qbrowse-update-note-anchor', {
+                            id: activeAnchorId,
+                            rect: {
+                                top: rect.top,
+                                bottom: rect.bottom,
+                                left: rect.left,
+                                right: rect.right,
+                                width: rect.width,
+                                height: rect.height
+                            }
+                        });
                     }
                 });
             }
@@ -1971,7 +2014,10 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             activeAnchorId = null;
         }
         if (!isBadge) {
-            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            if (selectionPillVisible) {
+                selectionPillVisible = false;
+                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            }
         }
     });
 
@@ -2025,14 +2071,20 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
             currentSelectionState = null;
-            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            if (selectionPillVisible) {
+                selectionPillVisible = false;
+                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            }
             return;
         }
 
         const text = sel.toString().trim();
         if (text.length < 2) {
             currentSelectionState = null;
-            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            if (selectionPillVisible) {
+                selectionPillVisible = false;
+                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            }
             return;
         }
 
@@ -2043,7 +2095,10 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         if (anchorEl?.closest('input, textarea, [contenteditable="true"]') ||
             focusEl?.closest('input, textarea, [contenteditable="true"]')) {
             currentSelectionState = null;
-            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            if (selectionPillVisible) {
+                selectionPillVisible = false;
+                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            }
             return;
         }
 
@@ -2051,7 +2106,10 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         const rect = range.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) {
             currentSelectionState = null;
-            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            if (selectionPillVisible) {
+                selectionPillVisible = false;
+                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            }
             return;
         }
 
@@ -2064,6 +2122,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         };
         lastRightClickSelection = currentSelectionState;
 
+        selectionPillVisible = true;
         ipcRenderer.sendToHost('qbrowse-show-selection-pill', {
             rect: {
                 top: rect.top,
@@ -2083,19 +2142,28 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 
         // If not right-click, hide selection pill immediately on mouse press
         if (e.button !== 2) {
-            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            if (selectionPillVisible) {
+                selectionPillVisible = false;
+                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            }
         }
     }, true);
 
     document.addEventListener('selectionchange', () => {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            if (selectionPillVisible) {
+                selectionPillVisible = false;
+                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+            }
         }
     });
 
     window.addEventListener('scroll', () => {
-        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        if (selectionPillVisible) {
+            selectionPillVisible = false;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        }
     }, { passive: true });
 
     window.addEventListener('mouseup', () => {
@@ -2111,7 +2179,10 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 
     // Right-click context menu tracking for annotations
     window.addEventListener('contextmenu', (e) => {
-        ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        if (selectionPillVisible) {
+            selectionPillVisible = false;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
+        }
         const sel = window.getSelection();
         if (sel && !sel.isCollapsed && sel.toString().trim().length >= 1) {
             try {
@@ -2134,6 +2205,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 
     // IPC: Create highlight triggered from host floating pill
     ipcRenderer.on('qbrowse-pill-create-highlight', (event, { color = 'accent' } = {}) => {
+        selectionPillVisible = false;
         const targetRange = currentSelectionState?.range || lastRightClickSelection?.range || (window.getSelection()?.rangeCount > 0 ? window.getSelection().getRangeAt(0) : null);
         if (targetRange) {
             createHighlightFromRange(targetRange, color);
@@ -2144,6 +2216,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 
     // IPC: Add note triggered from host floating pill
     ipcRenderer.on('qbrowse-pill-add-note', () => {
+        selectionPillVisible = false;
         const targetRange = currentSelectionState?.range || lastRightClickSelection?.range || (window.getSelection()?.rangeCount > 0 ? window.getSelection().getRangeAt(0) : null);
         if (targetRange) {
             const res = createHighlightFromRange(targetRange, 'accent');
@@ -2734,31 +2807,50 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         }
     }, true);
 
-    // Listen for matching credentials from host
-    ipcRenderer.on('qvault-matching-credentials', (event, matches) => {
-        qvaultMatches = Array.isArray(matches) ? matches : [];
-        updateBadgePositions();
-    });
+    let isQVaultObserving = false;
 
-    // Window scroll and resize listeners for badge repositioning
-    window.addEventListener('scroll', updateBadgePositions, { passive: true, capture: true });
-    window.addEventListener('resize', updateBadgePositions, { passive: true });
+    function hasPasswordField() {
+        return typeof document !== 'undefined' && Boolean(document.querySelector('input[type="password"]'));
+    }
+
+    function shouldObserveQVault() {
+        return (Array.isArray(qvaultMatches) && qvaultMatches.length > 0) || hasPasswordField();
+    }
 
     // Mutation observer to detect newly rendered login inputs
     const observer = new MutationObserver(() => {
+        syncQVaultObservers();
         if (qvaultMatches.length > 0) {
             updateBadgePositions();
         }
     });
 
-    if (document.body) {
-        observer.observe(document.body, { childList: true, subtree: true });
-    } else {
-        document.addEventListener('DOMContentLoaded', () => {
-            observer.observe(document.body, { childList: true, subtree: true });
-            if (qvaultMatches.length > 0) updateBadgePositions();
-        });
+    function syncQVaultObservers() {
+        const shouldObserve = shouldObserveQVault();
+        if (shouldObserve && !isQVaultObserving) {
+            if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true });
+                window.addEventListener('scroll', updateBadgePositions, { passive: true, capture: true });
+                window.addEventListener('resize', updateBadgePositions, { passive: true });
+                isQVaultObserving = true;
+            } else if (typeof document !== 'undefined') {
+                document.addEventListener('DOMContentLoaded', () => syncQVaultObservers(), { once: true });
+            }
+        } else if (!shouldObserve && isQVaultObserving) {
+            observer.disconnect();
+            window.removeEventListener('scroll', updateBadgePositions, { passive: true, capture: true });
+            window.removeEventListener('resize', updateBadgePositions, { passive: true });
+            isQVaultObserving = false;
+            cleanUpBadges();
+        }
     }
+
+    // Listen for matching credentials from host
+    ipcRenderer.on('qvault-matching-credentials', (event, matches) => {
+        qvaultMatches = Array.isArray(matches) ? matches : [];
+        syncQVaultObservers();
+        updateBadgePositions();
+    });
 
     // Self-query matching credentials from main on page load & focus
     async function refreshMatchingCredentialsFromMain() {
@@ -2768,7 +2860,10 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             const loginMatches = (res || []).filter(m => m.itemType !== 'passkey' && !m.passkeyData);
             if (loginMatches.length > 0 && qvaultMatches.length === 0) {
                 qvaultMatches = loginMatches;
+                syncQVaultObservers();
                 updateBadgePositions();
+            } else {
+                syncQVaultObservers();
             }
         } catch (e) {
             console.warn('[QVault] refreshMatchingCredentialsFromMain error:', e);
@@ -2776,15 +2871,25 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 
     if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        syncQVaultObservers();
         refreshMatchingCredentialsFromMain();
     } else {
-        document.addEventListener('DOMContentLoaded', refreshMatchingCredentialsFromMain);
+        document.addEventListener('DOMContentLoaded', () => {
+            syncQVaultObservers();
+            refreshMatchingCredentialsFromMain();
+        });
     }
-    window.addEventListener('load', refreshMatchingCredentialsFromMain);
+    window.addEventListener('load', () => {
+        syncQVaultObservers();
+        refreshMatchingCredentialsFromMain();
+    });
 
     document.addEventListener('focusin', (e) => {
-        if (qvaultMatches.length === 0 && e.target && e.target.tagName === 'INPUT') {
-            refreshMatchingCredentialsFromMain();
+        if (e.target && e.target.tagName === 'INPUT') {
+            syncQVaultObservers();
+            if (qvaultMatches.length === 0) {
+                refreshMatchingCredentialsFromMain();
+            }
         }
     }, true);
 })();

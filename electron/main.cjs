@@ -311,7 +311,6 @@ dialog.showMessageBox = function(targetWindow, options) {
 
 // Disable Blink automation features so navigator.webdriver is false and automation flags are suppressed
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests');
 
 // Register custom privileged scheme for streaming local media and wallpapers safely
 protocol.registerSchemesAsPrivileged([
@@ -920,12 +919,22 @@ app.on('open-url', (event, url) => {
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('canvas-oop-rasterization');
-app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('enable-blink-features', 'MiddleClickAutoscroll');
 app.commandLine.appendSwitch('enable-picture-in-picture');
 app.commandLine.appendSwitch('enable-fast-unload');
 app.commandLine.appendSwitch('enable-tcp-fastopen');
-app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
+// Prevent Windows 10/11 EcoQoS downclocking and occlusion throttling on child renderers
+const disabledChromiumFeatures = new Set([
+    'BlockInsecurePrivateNetworkRequests',
+    'HardwareMediaKeyHandling',
+    'CalculateNativeWinOcclusion',
+    'UseEcoQoSForBackgroundProcess'
+]);
+app.commandLine.appendSwitch('disable-features', Array.from(disabledChromiumFeatures).join(','));
+
+// Hardware parallel raster threads tuned to host CPU topology
+const cpuCount = Array.isArray(os.cpus()) && os.cpus().length ? os.cpus().length : 4;
+app.commandLine.appendSwitch('num-raster-threads', String(Math.max(2, Math.min(cpuCount, 8))));
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'default_public_interface_only');
 
@@ -950,6 +959,14 @@ const isFlagOn = (id, defaultVal = false) => {
     if (userFlags[id] === 'disabled') return false;
     return defaultVal;
 };
+let perfMode = 'auto';
+try {
+    const perfPath = path.join(app.getPath('userData'), 'performance_settings.json');
+    if (fsSync.existsSync(perfPath)) {
+        const perfData = JSON.parse(fsSync.readFileSync(perfPath, 'utf8'));
+        perfMode = perfData?.mode || 'auto';
+    }
+} catch (_) {}
 
 // Consolidate all Chromium features into a single enable-features switch to avoid command-line overwrite
 const enabledChromiumFeatures = new Set([
@@ -960,7 +977,9 @@ const enabledChromiumFeatures = new Set([
     'AutomaticLazyImageLoading',
     'BackForwardCache',
     'BackForwardCacheSameSiteForced',
-    'BackForwardCacheMedia'
+    'BackForwardCacheMedia',
+    'V8VmFuture',
+    'WebAssemblyTurboshaft'
 ]);
 
 if (isFlagOn('enable-vulkan', false)) enabledChromiumFeatures.add('Vulkan');
@@ -969,6 +988,10 @@ if (isFlagOn('enable-encrypted-client-hello', true)) enabledChromiumFeatures.add
 if (isFlagOn('enable-tls13-kyber', true)) enabledChromiumFeatures.add('PostQuantumKyber');
 if (isFlagOn('overlay-scrollbars', false)) enabledChromiumFeatures.add('OverlayScrollbar');
 if (isFlagOn('enable-drdc', false)) enabledChromiumFeatures.add('DynamicRefreshRateDetection');
+// WebGPU feature enablement
+if (isFlagOn('enable-webgpu', false)) {
+    enabledChromiumFeatures.add('WebGPU');
+}
 
 app.commandLine.appendSwitch('enable-features', Array.from(enabledChromiumFeatures).join(','));
 
@@ -978,6 +1001,33 @@ if (isFlagOn('enable-quic', true)) app.commandLine.appendSwitch('enable-quic');
 if (isFlagOn('enable-webgpu', false)) app.commandLine.appendSwitch('enable-unsafe-webgpu');
 if (isFlagOn('strict-origin-isolation', false)) app.commandLine.appendSwitch('site-per-process');
 if (isFlagOn('disable-hyperlink-auditing', true)) app.commandLine.appendSwitch('no-pings');
+
+// Discrete High-Performance GPU: Directs WebGL/3D to dedicated GPU on hybrid graphics laptops (disabled in Eco mode)
+if (perfMode !== 'eco' && isFlagOn('prefer-high-performance-gpu', true)) {
+    app.commandLine.appendSwitch('force_high_performance_gpu');
+}
+
+// High-priority process scheduling & foreground timer fidelity (disabled in Eco mode)
+if (perfMode !== 'eco') {
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+}
+
+// Unlocked Framerate for synthetic WebGL/Canvas benchmarks (xbitlabs, testufo)
+if (isFlagOn('unlock-frame-rate', false)) {
+    app.commandLine.appendSwitch('disable-frame-rate-limit');
+    app.commandLine.appendSwitch('disable-gpu-vsync');
+}
+
+// Ignore GPU Blocklist for legacy or unclassified drivers
+if (isFlagOn('ignore-gpu-blocklist', false)) {
+    app.commandLine.appendSwitch('ignore-gpu-blocklist');
+}
+
+// Experimental Web Platform features
+if (isFlagOn('experimental-web-platform', false)) {
+    app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+}
 
 process.on('unhandledRejection', (reason) => {
     const isAborted = reason && (
@@ -1881,6 +1931,9 @@ function createWindow(options = {}) {
             webPreferences.webSecurity = true;
             webPreferences.allowRunningInsecureContent = false;
             webPreferences.enableRemoteModule = false;
+            if (perfMode !== 'eco') {
+                webPreferences.backgroundThrottling = false;
+            }
         });
         
         const getTargetWindow = () => {
@@ -2832,10 +2885,7 @@ try {
     const cpuCores = os.cpus()?.length || 4;
     const totalMemGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
 
-    // Enable GPU rasterization, zero-copy buffers, and smooth compositor scrolling
-    app.commandLine.appendSwitch('enable-gpu-rasterization');
-    app.commandLine.appendSwitch('enable-zero-copy');
-    app.commandLine.appendSwitch('enable-smooth-scrolling');
+    // Multithreaded rasterization based on available physical/logical CPU cores
     app.commandLine.appendSwitch('num-raster-threads', String(Math.min(4, Math.max(1, Math.floor(cpuCores / 2)))));
 
     // Chromium Back-Forward Cache (bfcache) flag
@@ -5059,32 +5109,83 @@ ipcMain.handle('vault-add-password', async (event, title, url, username, passwor
 });
 
 ipcMain.handle('vault-delete-password', async (event, id) => {
-    if (!masterKey) return false;
-    await ensureVault();
-    const vault = readVaultSync();
-    vault.passwords = vault.passwords.filter(p => String(p.id) !== String(id));
-    writeVaultSync(vault);
-    return true;
+    try {
+        await ensureVault();
+        const vault = readVaultSync();
+        if (!masterKey) {
+            const unwrapped = tryUnwrapMasterKeyFromOS(vault);
+            if (unwrapped && unwrapped.masterKey) {
+                masterKey = unwrapped.masterKey;
+                activeMasterPassword = unwrapped.masterPassword || null;
+            }
+        }
+        vault.passwords = (vault.passwords || []).filter(p => String(p.id) !== String(id));
+        writeVaultSync(vault);
+        return true;
+    } catch (e) {
+        console.error('[Vault] vault-delete-password error:', e);
+        return false;
+    }
 });
 
 ipcMain.handle('vault-update-password', async (event, id, title, url, username, passwordPlaintext) => {
-    if (!masterKey) return false;
-    await ensureVault();
-    const vault = readVaultSync();
-    const index = vault.passwords.findIndex(p => String(p.id) === String(id));
-    if (index === -1) return false;
+    try {
+        await ensureVault();
+        const vault = readVaultSync();
 
-    vault.passwords[index] = {
-        ...vault.passwords[index],
-        title: title !== undefined ? title : vault.passwords[index].title,
-        url: url !== undefined ? url : vault.passwords[index].url,
-        username: username !== undefined ? username : vault.passwords[index].username,
-        password: encrypt(String(passwordPlaintext || ''), encryptionKey),
-        updatedAt: Date.now()
-    };
+        let encryptionKey = masterKey;
+        if (!encryptionKey) {
+            const unwrapped = tryUnwrapMasterKeyFromOS(vault);
+            if (unwrapped && unwrapped.masterKey) {
+                encryptionKey = unwrapped.masterKey;
+                masterKey = encryptionKey;
+                activeMasterPassword = unwrapped.masterPassword || null;
+            } else {
+                encryptionKey = deriveLegacyKey('QBrowseDefaultVaultKey');
+            }
+        }
 
-    writeVaultSync(vault);
-    return true;
+        if (!encryptionKey) return false;
+
+        const index = vault.passwords.findIndex(p => String(p.id) === String(id));
+        if (index === -1) return false;
+
+        // Defensive normalization: detect if caller passed (id, title, username, password, url)
+        let finalUrl = url;
+        let finalUsername = username;
+        let finalPassword = passwordPlaintext;
+
+        if (typeof passwordPlaintext === 'string' && /^https?:\/\//i.test(passwordPlaintext) &&
+            typeof url === 'string' && !/^https?:\/\//i.test(url) && !url.includes('.')) {
+            finalUrl = passwordPlaintext;
+            finalPassword = username;
+            finalUsername = url;
+        }
+
+        let encryptedPassword = vault.passwords[index].password;
+        if (finalPassword !== undefined && finalPassword !== null) {
+            if (isEncryptedPayload(finalPassword)) {
+                encryptedPassword = finalPassword;
+            } else {
+                encryptedPassword = encrypt(String(finalPassword || ''), encryptionKey);
+            }
+        }
+
+        vault.passwords[index] = {
+            ...vault.passwords[index],
+            title: title !== undefined ? title : vault.passwords[index].title,
+            url: finalUrl !== undefined ? finalUrl : vault.passwords[index].url,
+            username: finalUsername !== undefined ? finalUsername : vault.passwords[index].username,
+            password: encryptedPassword,
+            updatedAt: Date.now()
+        };
+
+        writeVaultSync(vault);
+        return true;
+    } catch (e) {
+        console.error('[Vault] vault-update-password error:', e);
+        return false;
+    }
 });
 
 function getDomainRoots(hostOrUrl) {

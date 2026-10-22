@@ -35,8 +35,35 @@ export const listenToEvent = async (event, handler) => {
     return true;
   };
   
-  export const updatePassword = async (id, title, url, username, passwordPlaintext) => {
+  export const updatePassword = async (id, title, arg3, arg4, arg5) => {
     if (window.electronAPI && window.electronAPI.updatePassword) {
+        let url = '';
+        let username = '';
+        let passwordPlaintext = '';
+
+        if (typeof title === 'object' && title !== null) {
+            url = title.url || '';
+            username = title.username || '';
+            passwordPlaintext = title.password || title.passwordPlaintext || '';
+            title = title.title || '';
+        } else if (arg5 !== undefined) {
+            // Check if caller passed (id, title, url, username, passwordPlaintext)
+            // vs the store format (id, title, username, passwordPlaintext, url)
+            if (typeof arg3 === 'string' && /^https?:\/\//i.test(arg3) && !/^https?:\/\//i.test(arg5 || '')) {
+                url = arg3;
+                username = arg4;
+                passwordPlaintext = arg5;
+            } else {
+                username = arg3;
+                passwordPlaintext = arg4;
+                url = arg5;
+            }
+        } else {
+            url = arg3 || '';
+            username = arg4 || '';
+            passwordPlaintext = '';
+        }
+
         return await window.electronAPI.updatePassword(id, title, url, username, passwordPlaintext);
     }
     return true;
