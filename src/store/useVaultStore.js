@@ -750,7 +750,7 @@ const useVaultStore = create((set, get) => ({
             });
 
         if (format === 'json') {
-            const dataStr = JSON.stringify({ qvault_version: '1.3.4', exported_at: new Date().toISOString(), items: exportable }, null, 2);
+            const dataStr = JSON.stringify({ qvault_version: '1.3.5', exported_at: new Date().toISOString(), items: exportable }, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

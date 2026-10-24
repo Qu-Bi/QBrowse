@@ -52,13 +52,14 @@ function isGoogleAuthUrl(targetUrl) {
                h === 'oauth2.googleapis.com' ||
                h.startsWith('accounts.youtube.') ||
                h === 'myaccount.google.com' ||
+               h.startsWith('smartlock.google.') ||
                h.startsWith('consent.google.') ||
                h.startsWith('consent.youtube.') ||
-               (h.includes('google.') && (u.pathname.startsWith('/signin') || u.pathname.startsWith('/ServiceLogin'))) ||
-               (h === 'apis.google.com' && (u.pathname.includes('/auth') || u.pathname.includes('/oauth')));
+               (h.includes('google.') && (u.pathname.startsWith('/signin') || u.pathname.startsWith('/ServiceLogin') || u.pathname.includes('/gsi'))) ||
+               (h === 'apis.google.com' && (u.pathname.includes('/auth') || u.pathname.includes('/oauth') || u.pathname.includes('/gsi')));
     } catch (_) {
         const s = targetUrl.toLowerCase();
-        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.');
+        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.') || s.includes('smartlock.google.');
     }
 }
 
@@ -928,7 +929,15 @@ const disabledChromiumFeatures = new Set([
     'BlockInsecurePrivateNetworkRequests',
     'HardwareMediaKeyHandling',
     'CalculateNativeWinOcclusion',
-    'UseEcoQoSForBackgroundProcess'
+    'UseEcoQoSForBackgroundProcess',
+    // Strictly disable FedCM: Google Identity Services (GSI) checks "IdentityCredential" in window.
+    // In desktop Electron, FedCM has no native account-chooser UI dialog and fails with NetworkError.
+    // Disabling FedCM forces GSI on Pinterest and other OAuth sites to fall back to standard popup window.open!
+    'FedCm',
+    'FedCmButtonMode',
+    'FedCmAuthz',
+    'FedCmAutoSelectedFlag',
+    'FedCmIdPRegistration'
 ]);
 app.commandLine.appendSwitch('disable-features', Array.from(disabledChromiumFeatures).join(','));
 
@@ -1795,10 +1804,20 @@ function createWindow(options = {}) {
               } catch (_) {}
 
               const notifyBlocked = () => {
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                      try {
-                          mainWindow.webContents.send('tracker-blocked', url);
-                      } catch (_) {}
+                  if (!global.__pendingBlockedBatch) global.__pendingBlockedBatch = 0;
+                  global.__pendingBlockedBatch++;
+                  global.__lastBlockedUrl = url;
+                  if (!global.__blockedBatchTimer) {
+                      global.__blockedBatchTimer = setTimeout(() => {
+                          global.__blockedBatchTimer = null;
+                          if (mainWindow && !mainWindow.isDestroyed() && global.__pendingBlockedBatch > 0) {
+                              try {
+                                  mainWindow.webContents.send('tracker-blocked-batch', { count: global.__pendingBlockedBatch, url: global.__lastBlockedUrl });
+                                  mainWindow.webContents.send('tracker-blocked', global.__lastBlockedUrl);
+                              } catch (_) {}
+                              global.__pendingBlockedBatch = 0;
+                          }
+                      }, 200);
                   }
               };
 
@@ -1916,6 +1935,15 @@ function createWindow(options = {}) {
       console.error('Failed to initialize Adblocker:', err);
   });
 
+    ipcMain.on('debug-terminal-log', (event, message, data) => {
+    const timestamp = new Date().toLocaleTimeString();
+    if (data !== undefined) {
+        console.log(`\x1b[36m[QBrowse Terminal ${timestamp}]\x1b[0m ${message}`, data);
+    } else {
+        console.log(`\x1b[36m[QBrowse Terminal ${timestamp}]\x1b[0m ${message}`);
+    }
+});
+
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
 
@@ -1946,7 +1974,12 @@ function createWindow(options = {}) {
 
         // Handle window.open: Distinguish OAuth popups (Firebase, Google, etc.) from normal link navigations
         contents.setWindowOpenHandler(({ url, frameName, disposition, features }) => {
-            console.log('[Electron Main] setWindowOpenHandler intercepted:', { url, disposition, features, frameName });
+            console.log('\x1b[33m[QBrowse Main] window.open intercepted:\x1b[0m', {
+                url: url || '(blank/script)',
+                frameName: frameName || '(none)',
+                disposition,
+                features: features || '(none)'
+            });
 
             // Detect external app protocol links (e.g. slack://, zoommtg://, discord://, spotify://)
             if (isAppProtocolUrl(url)) {
@@ -1959,16 +1992,32 @@ function createWindow(options = {}) {
             // Distinguish true OAuth/dialog popup windows from tab navigations
             const isPopupWithDims = Boolean(features && (features.includes('width=') || features.includes('height=')));
             const isExplicitPopup = isPopupWithDims || Boolean(features && features.includes('popup=true'));
+            const hasPopupFeatures = Boolean(features && features.trim().length > 0);
+            const isBlankTarget = !url || url === 'about:blank' || url === '';
+
             const isAuthUrl = Boolean(url && (
                 url.includes('firebaseapp.com') ||
-                url.includes('accounts.google.com') ||
+                url.includes('accounts.google.') ||
+                url.includes('smartlock.google.com') ||
+                url.includes('google.com/gsi') ||
+                url.includes('/gsi/') ||
                 url.includes('facebook.com') ||
                 url.includes('appleid.apple.com') ||
                 url.includes('github.com/login/oauth') ||
                 url.includes('twitter.com/i/oauth2') ||
                 url.includes('x.com/i/oauth2') ||
+                url.includes('microsoft.com') ||
+                url.includes('live.com') ||
+                url.includes('discord.com/oauth2') ||
+                url.includes('discord.com/api/oauth2') ||
+                url.includes('slack.com/oauth') ||
+                url.includes('linkedin.com/oauth') ||
+                url.includes('spotify.com/authorize') ||
+                url.includes('pinterest.com/_/_/auth') ||
+                url.includes('pinterest.com/oauth') ||
                 url.includes('/oauth') ||
                 url.includes('/auth/handler') ||
+                url.includes('/auth/callback') ||
                 url.includes('/auth') ||
                 url.includes('/login') ||
                 url.includes('/signin')
@@ -1978,25 +2027,50 @@ function createWindow(options = {}) {
                 frameName.includes('auth') ||
                 frameName.includes('oauth') ||
                 frameName.includes('login') ||
-                frameName.includes('signin')
+                frameName.includes('signin') ||
+                frameName.includes('google') ||
+                frameName.includes('gsi') ||
+                frameName.includes('credential') ||
+                frameName.includes('popup') ||
+                frameName.includes('dialog')
             ));
 
-            // Only allow as a popup window if explicitly requested with popup dimensions or as a script-opened OAuth popup (new-window)
-            const isScriptOAuthPopup = (disposition === 'new-window') && (isAuthUrl || isAuthFrameName);
+            // Allow as a popup window if explicitly requested with popup features, blank script window, or OAuth target
+            const shouldAllowPopup = isBlankTarget || hasPopupFeatures || isExplicitPopup || isAuthUrl || isAuthFrameName || disposition === 'new-window';
 
-            if (isExplicitPopup || isScriptOAuthPopup) {
-                console.log('[Electron Main] Allowing OAuth popup window for:', url);
+            if (shouldAllowPopup) {
+                let popupWidth = 620;
+                let popupHeight = 760;
+                if (features) {
+                    const wMatch = features.match(/(?:^|,|\s)width=(\d+)/i);
+                    const hMatch = features.match(/(?:^|,|\s)height=(\d+)/i);
+                    if (wMatch && wMatch[1]) {
+                        const parsedW = parseInt(wMatch[1], 10);
+                        if (parsedW >= 320 && parsedW <= 1600) popupWidth = parsedW;
+                    }
+                    if (hMatch && hMatch[1]) {
+                        const parsedH = parseInt(hMatch[1], 10);
+                        if (parsedH >= 400 && parsedH <= 1400) popupHeight = parsedH;
+                    }
+                }
+                console.log('\x1b[32m[QBrowse Main] Allowing OAuth popup window for:\x1b[0m', {
+                    url: url || '(blank/script)',
+                    dimensions: `${popupWidth}x${popupHeight}`,
+                    frameName: frameName || '(none)'
+                });
                 return {
                     action: 'allow',
                     overrideBrowserWindowOptions: {
                         icon: path.join(__dirname, '../icon.png'),
-                        width: 620,
-                        height: 760,
-                        minWidth: 460,
-                        minHeight: 580,
+                        width: popupWidth,
+                        height: popupHeight,
+                        minWidth: 420,
+                        minHeight: 520,
                         frame: false,
                         titleBarStyle: 'hidden',
                         titleBarOverlay: false,
+                        show: true,
+                        roundedCorners: true,
                         hasShadow: true,
                         autoHideMenuBar: true,
                         backgroundColor: '#121214',
@@ -2024,9 +2098,26 @@ function createWindow(options = {}) {
         // Handle child windows created via window.open (e.g. OAuth popup windows)
         contents.on('did-create-window', (childWindow, details) => {
             if (!childWindow || childWindow.isDestroyed()) return;
+            console.log('\x1b[32m[QBrowse Main] Child OAuth Popup Window Created:\x1b[0m', {
+                windowId: childWindow.id,
+                url: details?.url || '(empty)'
+            });
             try {
                 childWindow.setMenuBarVisibility(false);
             } catch (_) {}
+            childWindow.once('ready-to-show', () => {
+                if (!childWindow.isDestroyed()) {
+                    childWindow.show();
+                    childWindow.focus();
+                }
+            });
+            setTimeout(() => {
+                if (childWindow && !childWindow.isDestroyed()) {
+                    childWindow.show();
+                    childWindow.focus();
+                    childWindow.moveTop();
+                }
+            }, 60);
 
             childWindow.webContents.setUserAgent(cleanChromeUA);
 
@@ -2038,6 +2129,14 @@ function createWindow(options = {}) {
                 if (!childWindow || childWindow.isDestroyed()) return;
                 try {
                     childWindow.webContents.insertCSS(`
+                        body {
+                            padding-top: 54px !important;
+                            box-sizing: border-box !important;
+                        }
+                        html {
+                            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14) !important;
+                            border-radius: 12px !important;
+                        }
                         ::-webkit-scrollbar {
                             width: 6px !important;
                             height: 6px !important;
@@ -2060,21 +2159,19 @@ function createWindow(options = {}) {
             };
 
             const onChildReady = () => {
+                if (!childWindow || childWindow.isDestroyed()) return;
                 injectChildScrollbar();
                 injectOAuthSmartDarkCSS(childWindow);
                 syncOAuthWindowSmartDark(childWindow);
+                try {
+                    childWindow.webContents.send('init-oauth-popup-mode');
+                } catch (_) {}
             };
 
             childWindow.webContents.on('dom-ready', onChildReady);
             childWindow.webContents.on('did-finish-load', onChildReady);
-            childWindow.webContents.on('did-navigate', () => {
-                injectOAuthSmartDarkCSS(childWindow);
-                syncOAuthWindowSmartDark(childWindow);
-            });
-            childWindow.webContents.on('did-navigate-in-page', () => {
-                injectOAuthSmartDarkCSS(childWindow);
-                syncOAuthWindowSmartDark(childWindow);
-            });
+            childWindow.webContents.on('did-navigate', onChildReady);
+            childWindow.webContents.on('did-navigate-in-page', onChildReady);
 
             // Native right-click context menu for OAuth popup window (Cut/Copy/Paste/Zoom/Navigation)
             childWindow.webContents.on('context-menu', (event, params) => {
@@ -2287,10 +2384,12 @@ function createWindow(options = {}) {
             });
             contents.on('dom-ready', () => {
                 let isWhitelisted = false;
+                let isYouTube = false;
                 try {
                     const currentUrl = contents.getURL() || latestActiveWebviewUrl || '';
                     if (currentUrl && currentUrl !== 'about:blank') {
                         const host = new URL(currentUrl).hostname.toLowerCase().replace(/^www\./, '');
+                        isYouTube = host === 'youtube.com' || host.endsWith('.youtube.com');
                         const allowlist = Array.isArray(settingsStore.adblockAllowlist) ? settingsStore.adblockAllowlist : [];
                         isWhitelisted = allowlist.some(d => {
                             if (!d || typeof d !== 'string') return false;
@@ -2301,7 +2400,7 @@ function createWindow(options = {}) {
                 } catch (_) {}
 
                 if (!isWhitelisted && isNativeAdblockActive) {
-                    if (settingsStore.cosmetic !== false) {
+                    if (!isYouTube && settingsStore.cosmetic !== false) {
                         const cosmeticCSS = `
                             .ad, .ads, .ad-banner, .advertisement, [id*="google_ads"], [class*="google_ads"],
                             .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder {
@@ -2314,7 +2413,7 @@ function createWindow(options = {}) {
                         try { contents.insertCSS(cosmeticCSS).catch(() => {}); } catch (_) {}
                     }
 
-                    if (settingsStore.adblockAnnoyances !== false) {
+                    if (!isYouTube && settingsStore.adblockAnnoyances !== false) {
                         const annoyancesCSS = `
                             #onetrust-consent-sdk, #CybotCookiebotDialog, .cc-window, .cc-banner, #qc-cmp2-container, .fc-consent-root, [id*="cookie-banner"], [class*="cookie-consent-banner"] {
                                 display: none !important;
@@ -2325,18 +2424,14 @@ function createWindow(options = {}) {
                         try { contents.insertCSS(annoyancesCSS).catch(() => {}); } catch (_) {}
                     }
 
-                    if (settingsStore.adblockYoutubeAds !== false) {
+                    if (isYouTube && settingsStore.adblockYoutubeAds !== false) {
                         const youtubeAdsCSS = `
-                            .ytp-ad-overlay-container, .ytp-ad-message-container, ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer, #masthead-ad, .video-ads {
+                            .ytp-ad-overlay-container, .ytp-ad-message-container, ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer, #masthead-ad {
                                 display: none !important;
                             }
                         `;
                         try { contents.insertCSS(youtubeAdsCSS).catch(() => {}); } catch (_) {}
                     }
-                }
-
-                if (settingsStore.smooth !== false) {
-                    try { contents.insertCSS('html, body { scroll-behavior: smooth !important; }').catch(() => {}); } catch (_) {}
                 }
             });
         }

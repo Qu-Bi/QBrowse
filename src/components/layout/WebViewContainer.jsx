@@ -704,7 +704,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
         const handleNavigateSafe = (e) => {
             if (e && e.isMainFrame === false) return;
-            console.log(`[WebView ${tab.id}] did-navigate:`, e.url);
+            // [WebView did-navigate silenced]
             wv.hasCrashed = false;
             wv.__hasAutoRecovered = false;
             loadErrorRef.current = null;
@@ -723,7 +723,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
         const handleNavigateInPage = (e) => {
             if (e && e.isMainFrame === false) return;
-            console.log(`[WebView ${tab.id}] did-navigate-in-page:`, e.url);
+            // [WebView did-navigate-in-page silenced]
             handleNavigateSafe(e);
             if (isActive && isSpaceActive) {
                 scheduleReaderChecks();
@@ -974,7 +974,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const handleMediaPause = () => useTabStore.getState().updateTabAudible(tab.id, false);
         
         const handleDidStartLoading = () => {
-            console.log(`[WebView ${tab.id}] did-start-loading`);
+            // [WebView did-start-loading silenced]
             if (loadErrorRef.current && isSameOrEquivalentUrl(loadErrorRef.current.validatedURL, tab.url)) {
                 return;
             }
@@ -985,7 +985,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             }
         };
         const handleDidStopLoading = (e) => {
-            console.log(`[WebView ${tab.id}] did-stop-loading`);
+            // [WebView did-stop-loading silenced]
             handleStopLoading(e);
             updateNavState();
         };
@@ -1053,7 +1053,53 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const handleNewWindow = (e) => {
-            console.log(`[WebView ${tab.id}] new-window intercepted:`, e.url, e.disposition);
+            try {
+                window.electronAPI?.logToTerminal?.(`[WebView ${tab.id}] new-window intercepted`, {
+                    url: e.url || '(empty)',
+                    disposition: e.disposition,
+                    frameName: e.frameName || '(none)'
+                });
+            } catch (_) {}
+            const targetUrl = (e.url || '').toLowerCase();
+            const frameName = (e.frameName || '').toLowerCase();
+            const isAuthOrPopup = !e.url || e.url === 'about:blank' ||
+                targetUrl.includes('accounts.google.') ||
+                targetUrl.includes('smartlock.google.com') ||
+                targetUrl.includes('google.com/gsi') ||
+                targetUrl.includes('/gsi/') ||
+                targetUrl.includes('facebook.com') ||
+                targetUrl.includes('appleid.apple.com') ||
+                targetUrl.includes('github.com/login/oauth') ||
+                targetUrl.includes('twitter.com/i/oauth2') ||
+                targetUrl.includes('x.com/i/oauth2') ||
+                targetUrl.includes('microsoft.com') ||
+                targetUrl.includes('live.com') ||
+                targetUrl.includes('discord.com/oauth2') ||
+                targetUrl.includes('slack.com/oauth') ||
+                targetUrl.includes('linkedin.com/oauth') ||
+                targetUrl.includes('spotify.com/authorize') ||
+                targetUrl.includes('pinterest.com') ||
+                targetUrl.includes('/oauth') ||
+                targetUrl.includes('/auth') ||
+                targetUrl.includes('/login') ||
+                targetUrl.includes('/signin') ||
+                frameName.includes('auth') ||
+                frameName.includes('oauth') ||
+                frameName.includes('login') ||
+                frameName.includes('signin') ||
+                frameName.includes('google') ||
+                frameName.includes('gsi') ||
+                frameName.includes('credential') ||
+                frameName.includes('popup') ||
+                frameName.includes('dialog') ||
+                e.disposition === 'new-window';
+
+            // Critical: If it is an auth popup or script window, DO NOT call preventDefault!
+            // Let Electron's main process setWindowOpenHandler open the native child BrowserWindow!
+            if (isAuthOrPopup) {
+                return;
+            }
+
             try { if (e.preventDefault) e.preventDefault(); } catch(err) {}
             if (e.url && e.url !== 'about:blank') {
                 if (window.electronAPI?.isAppProtocol?.(e.url)) {

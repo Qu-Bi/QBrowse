@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('app-protocol-launched', handler);
     },
     openWithDialog: (url) => ipcRenderer.invoke('open-with-dialog', url),
+    logToTerminal: (message, data) => {
+        try { ipcRenderer.send('debug-terminal-log', message, data); } catch (_) {}
+    },
 
     // Vault
     unlockVault: (password) => ipcRenderer.invoke('vault-unlock', password),
@@ -148,7 +151,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Adblocker
     setAdblock: (active) => ipcRenderer.send('set-adblock', active),
     updateAdblockFilters: () => ipcRenderer.invoke('update-adblock-filters'),
-    onTrackerBlocked: (callback) => ipcRenderer.on('tracker-blocked', (event, url) => callback(url)),
+    onTrackerBlocked: (callback) => {
+        ipcRenderer.on('tracker-blocked-batch', (event, data) => callback(data));
+        ipcRenderer.on('tracker-blocked', (event, url) => callback(url));
+    },
 
     // Downloads
     onDownloadStarted: (callback) => {

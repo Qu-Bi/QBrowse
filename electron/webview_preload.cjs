@@ -8,7 +8,17 @@ ipcRenderer.sendToHost = function(channel, ...args) {
     } catch (_) {}
 };
 
-const isOAuthPopup = Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup');
+function detectIsOAuthPopup() {
+    try {
+        if (Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup')) return true;
+        if (typeof window !== 'undefined' && Boolean(window.opener)) return true;
+        if (typeof window !== 'undefined' && window.location && isGoogleAuthTarget(window.location.href)) {
+            if (typeof ipcRenderer.sendToHost !== 'function' || !origSendToHost) return true;
+        }
+    } catch (_) {}
+    return false;
+}
+let isOAuthPopup = detectIsOAuthPopup();
 
 function isGoogleAuthTarget(urlOrHost) {
     if (!urlOrHost) return false;
@@ -22,13 +32,14 @@ function isGoogleAuthTarget(urlOrHost) {
                hostname === 'oauth2.googleapis.com' ||
                hostname.startsWith('accounts.youtube.') ||
                hostname === 'myaccount.google.com' ||
+               hostname.startsWith('smartlock.google.') ||
                hostname.startsWith('consent.google.') ||
                hostname.startsWith('consent.youtube.') ||
-               (hostname.includes('google.') && (str.includes('/signin') || str.includes('/servicelogin'))) ||
-               (hostname === 'apis.google.com' && (str.includes('/auth') || str.includes('/oauth')));
+               (hostname.includes('google.') && (str.includes('/signin') || str.includes('/servicelogin') || str.includes('/gsi'))) ||
+               (hostname === 'apis.google.com' && (str.includes('/auth') || str.includes('/oauth') || str.includes('/gsi')));
     } catch (_) {
         const s = String(urlOrHost).toLowerCase();
-        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.');
+        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.') || s.includes('smartlock.google.');
     }
 }
 
@@ -141,18 +152,24 @@ try {
                     };
                 }
 
-                if (!window.chrome.runtime) {
-                    window.chrome.runtime = {
-                        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
-                        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
-                        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-                        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-                        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
-                        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
-                        connect: function connect() { throw new TypeError('Error in invocation of runtime.connect'); },
-                        sendMessage: function sendMessage() { throw new TypeError('Error in invocation of runtime.sendMessage'); }
-                    };
-                }
+                // In standard Chrome web pages, window.chrome.runtime is not present.
+                // Omitting it ensures sites like YouTube (Cast API) and Pinterest do not throw invocation TypeErrors.
+
+                // 3. Disable FedCM (Federated Credential Management) in main world:
+                // Google Identity Services (GSI) on sites like Pinterest checks "IdentityCredential" in window.
+                // In desktop Electron, FedCM has no native account-chooser UI dialog and fails with NetworkError.
+                // Disabling FedCM forces GSI to fall back to the standard popup-based OAuth window.open flow!
+                try {
+                    delete window.IdentityCredential;
+                    delete window.FederatedCredential;
+                    if (typeof Window !== 'undefined' && Window.prototype) {
+                        try { delete Window.prototype.IdentityCredential; } catch (_) {}
+                        try { delete Window.prototype.FederatedCredential; } catch (_) {}
+                    }
+                    const winProto = (window && Object.getPrototypeOf(window)) || {};
+                    try { delete winProto.IdentityCredential; } catch (_) {}
+                    try { delete winProto.FederatedCredential; } catch (_) {}
+                } catch (_) {}
             } catch (_) {}
         })();
     `;
@@ -862,17 +879,18 @@ const injectMainWorldPasskeyOverride = () => {
                                     toJSON: () => ({ id, rawId: id, type: "public-key", response: { clientDataJSON: base64url(clientDataJSON), authenticatorData: base64url(authData.buffer), signature: base64url(signatureBuffer) } })
                                 };
                             }
+                            if (options && options.identity) {
+                                // FedCM is not supported in desktop Electron: reject with NotSupportedError to trigger immediate popup fallback
+                                return Promise.reject(new DOMException('FedCM is not supported in this environment', 'NotSupportedError'));
+                            }
                             if (isConditional) {
-                                return new Promise((resolve, reject) => {
-                                    if (options && options.signal) {
-                                        if (options.signal.aborted) {
-                                            return reject(new DOMException("The operation was aborted.", "AbortError"));
-                                        }
-                                        options.signal.addEventListener('abort', () => {
-                                            reject(new DOMException("The operation was aborted.", "AbortError"));
-                                        }, { once: true });
-                                    }
-                                });
+                                // If QVault has no stored passkey for this domain, fall through to native origGet
+                                // or return null so credential negotiation finishes cleanly without hanging!
+                                try {
+                                    return await origGet(options);
+                                } catch (_) {
+                                    return null;
+                                }
                             }
                             return await origGet(options);
                         }
@@ -1077,38 +1095,16 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
         console.error('[Preload MediaControl] Exception in command handler:', e);
     }
 });
-// --- AGGRESSIVE AD-SKIPPER ---
-if (window.location.hostname.includes('youtube.com') && window === window.top) {
-    setInterval(() => {
-        try {
-            if (!document.body) return;
-            const ad = document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player-overlay, .ytp-ad-player-overlay-instream-info');
-            
-            if (ad) {
-                const video = document.querySelector('video');
-                if (video) {
-                    // Mute ad instantly
-                    video.muted = true;
-                    // If the current video buffer is an ad (duration less than 5 mins), jump to the end instantly
-                    if (!isNaN(video.duration) && video.duration > 0 && video.duration < 300) {
-                        if (video.currentTime < video.duration - 0.5) {
-                            video.currentTime = video.duration - 0.1;
-                        }
-                    }
-                }
-                
-                // Click any available skip button
-                const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-skip-button-slot');
-                if (skipBtn) {
-                    skipBtn.click();
-                }
-            }
-        } catch(e) {}
-    }, 50);
-}
 // --- SMART DARK MODE ---
 let smartDarkObserver = null;
-let currentSmartDarkConfig = { isForceDark: false, isExcluded: false };
+let currentSmartDarkConfig = {
+    isForceDark: false,
+    isExcluded: typeof window !== 'undefined' && window.location && (
+        window.location.hostname.includes('youtube.com') ||
+        window.location.hostname.includes('github.com') ||
+        window.location.hostname.includes('figma.com')
+    )
+};
 let smartDarkTimer = null;
 let isApplyingSmartDark = false;
 let observedDocEl = false;
@@ -2898,8 +2894,37 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 // 1. Frameless OAuth / Auth Popup Header & Controls
 // ==========================================
 (function() {
-    const isOAuthPopup = Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup');
-    if (!isOAuthPopup) return;
+    function getIsOAuth() {
+        try {
+            if (isOAuthPopup) return true;
+            if (Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup')) return true;
+            if (typeof window !== 'undefined' && Boolean(window.opener)) return true;
+            if (typeof window !== 'undefined' && window.location && isGoogleAuthTarget(window.location.href)) {
+                if (typeof ipcRenderer.sendToHost !== 'function' || !origSendToHost) return true;
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    let isOAuth = getIsOAuth();
+
+    ipcRenderer.on('init-oauth-popup-mode', () => {
+        isOAuth = true;
+        isOAuthPopup = true;
+        if (typeof injectOAuthControls === 'function') {
+            injectOAuthControls();
+        }
+    });
+
+    if (typeof window !== 'undefined') {
+        try {
+            window.__qbrowse_inject_oauth_controls = () => {
+                isOAuth = true;
+                isOAuthPopup = true;
+                injectOAuthControls();
+            };
+        } catch (_) {}
+    }
 
     function createSvgIcon(name, size = 12) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2976,7 +3001,14 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 
     function injectOAuthControls() {
+        if (!isOAuth && !getIsOAuth()) return;
         if (document.getElementById('qbrowse-oauth-header')) return;
+        if (!document.documentElement) {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', injectOAuthControls, { once: true });
+            }
+            return;
+        }
 
         // 1. Inject Custom Minimal Scrollbars & Top Offset
         const style = document.createElement('style');
@@ -3170,9 +3202,20 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             try { ipcRenderer.send('oauth-navigate-forward'); } catch (_) {}
         });
 
+        const reloadDivider = document.createElement('div');
+        reloadDivider.style.cssText = 'width: 1px !important; height: 12px !important; margin: 0 2px !important; flex-shrink: 0 !important; transition: background 0.2s ease !important;';
+
+        const reloadBtn = createNavButton('reload', 'Reload (Ctrl+R)', () => {
+            try { window.location.reload(); } catch (_) {
+                try { ipcRenderer.send('oauth-reload'); } catch (_) {}
+            }
+        });
+
         navPill.appendChild(backBtn);
         navPill.appendChild(navDivider);
         navPill.appendChild(fwdBtn);
+        navPill.appendChild(reloadDivider);
+        navPill.appendChild(reloadBtn);
         leftSection.appendChild(navPill);
 
         // --- 2. Center: Sleek Content-Sized Domain Pill [ 🔒 domain.com ] ---
@@ -3241,7 +3284,46 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         domainPill.appendChild(hostSpan);
         centerSection.appendChild(domainPill);
 
-        // --- 3. Right: Single Sleek Close 'X' Button ---
+        // --- 3. Right: Sleek Window Control Buttons [ — | ✕ ] ---
+        rightSection.style.gap = '4px';
+
+        const minBtn = document.createElement('button');
+        minBtn.id = 'qbrowse-oauth-min-btn';
+        minBtn.title = 'Minimize';
+        minBtn.style.cssText = [
+            '-webkit-app-region: no-drag !important',
+            'display: flex !important',
+            'align-items: center !important',
+            'justify-content: center !important',
+            'width: 30px !important',
+            'height: 30px !important',
+            'border-radius: 9999px !important',
+            'cursor: pointer !important',
+            'transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important',
+            'outline: none !important',
+            'padding: 0 !important',
+            'flex-shrink: 0 !important'
+        ].join(';');
+        minBtn.appendChild(createSvgIcon('minus', 11));
+
+        minBtn.onmouseenter = () => {
+            minBtn.style.background = currentIsLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.15)';
+            minBtn.style.color = currentIsLight ? '#000000' : '#ffffff';
+            minBtn.style.transform = 'scale(1.06)';
+        };
+        minBtn.onmouseleave = () => {
+            minBtn.style.background = currentIsLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.06)';
+            minBtn.style.color = currentIsLight ? 'rgba(24, 24, 27, 0.65)' : 'rgba(255, 255, 255, 0.75)';
+            minBtn.style.transform = 'none';
+        };
+        minBtn.onmousedown = () => { minBtn.style.transform = 'scale(0.92)'; };
+        minBtn.onmouseup = () => { minBtn.style.transform = 'scale(1.06)'; };
+        minBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            try { ipcRenderer.send('window-minimize'); } catch (_) {}
+        };
+
         const closeBtn = document.createElement('button');
         closeBtn.id = 'qbrowse-oauth-close-btn';
         closeBtn.title = 'Close (Esc)';
@@ -3287,6 +3369,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             closePopup();
         };
 
+        rightSection.appendChild(minBtn);
         rightSection.appendChild(closeBtn);
 
         // Assemble TopBar (Left: Nav Pill, Center: Centered Domain Pill, Right: Close Button)
@@ -3517,14 +3600,22 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
                 navPill.style.background = 'rgba(0, 0, 0, 0.04)';
                 navPill.style.border = '1px solid rgba(0, 0, 0, 0.06)';
                 navDivider.style.background = 'rgba(0, 0, 0, 0.08)';
+                if (typeof reloadDivider !== 'undefined' && reloadDivider) reloadDivider.style.background = 'rgba(0, 0, 0, 0.08)';
 
                 backBtn.style.color = 'rgba(24, 24, 27, 0.75)';
                 fwdBtn.style.color = 'rgba(24, 24, 27, 0.75)';
+                if (typeof reloadBtn !== 'undefined' && reloadBtn) reloadBtn.style.color = 'rgba(24, 24, 27, 0.75)';
 
                 domainPill.style.background = 'rgba(0, 0, 0, 0.04)';
                 domainPill.style.border = '1px solid rgba(0, 0, 0, 0.06)';
                 lockIcon.style.color = '#059669';
                 hostSpan.style.color = '#18181b';
+
+                if (typeof minBtn !== 'undefined' && minBtn) {
+                    minBtn.style.background = 'rgba(0, 0, 0, 0.04)';
+                    minBtn.style.border = '1px solid rgba(0, 0, 0, 0.06)';
+                    minBtn.style.color = 'rgba(24, 24, 27, 0.65)';
+                }
 
                 closeBtn.style.background = 'rgba(0, 0, 0, 0.04)';
                 closeBtn.style.border = '1px solid rgba(0, 0, 0, 0.06)';
@@ -3553,14 +3644,22 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
                 navPill.style.background = 'rgba(255, 255, 255, 0.06)';
                 navPill.style.border = '1px solid rgba(255, 255, 255, 0.08)';
                 navDivider.style.background = 'rgba(255, 255, 255, 0.12)';
+                if (typeof reloadDivider !== 'undefined' && reloadDivider) reloadDivider.style.background = 'rgba(255, 255, 255, 0.12)';
 
                 backBtn.style.color = 'rgba(255, 255, 255, 0.82)';
                 fwdBtn.style.color = 'rgba(255, 255, 255, 0.82)';
+                if (typeof reloadBtn !== 'undefined' && reloadBtn) reloadBtn.style.color = 'rgba(255, 255, 255, 0.82)';
 
                 domainPill.style.background = 'rgba(255, 255, 255, 0.06)';
                 domainPill.style.border = '1px solid rgba(255, 255, 255, 0.08)';
                 lockIcon.style.color = '#34d399';
                 hostSpan.style.color = 'rgba(255, 255, 255, 0.92)';
+
+                if (typeof minBtn !== 'undefined' && minBtn) {
+                    minBtn.style.background = 'rgba(255, 255, 255, 0.06)';
+                    minBtn.style.border = '1px solid rgba(255, 255, 255, 0.08)';
+                    minBtn.style.color = 'rgba(255, 255, 255, 0.75)';
+                }
 
                 closeBtn.style.background = 'rgba(255, 255, 255, 0.06)';
                 closeBtn.style.border = '1px solid rgba(255, 255, 255, 0.08)';
@@ -3713,6 +3812,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     } else {
         injectOAuthControls();
     }
+    window.addEventListener('load', injectOAuthControls);
 })();
 
 // Link-to-App Redirect & Custom Protocol Click Interceptor
@@ -3746,3 +3846,22 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 })();
 
 
+
+// Terminal debug logger for social auth buttons (Google, Apple, Facebook, etc.)
+try {
+    document.addEventListener('click', (e) => {
+        try {
+            const btn = e.target && e.target.closest ? e.target.closest('button, [role="button"], a') : null;
+            if (!btn) return;
+            const text = ((btn.innerText || btn.getAttribute('aria-label') || '') + '').toLowerCase().trim();
+            const testId = (btn.getAttribute('data-test-id') || '').toLowerCase();
+            if (text.includes('google') || testId.includes('google') || text.includes('kontynuuj przez google')) {
+                ipcRenderer.send('debug-terminal-log', `[WebView Click] Google Auth button clicked on ${window.location.hostname}`, {
+                    buttonText: (btn.innerText || btn.getAttribute('aria-label') || '').trim(),
+                    testId: btn.getAttribute('data-test-id') || '(none)',
+                    tag: btn.tagName
+                });
+            }
+        } catch (_) {}
+    }, true);
+} catch (_) {}

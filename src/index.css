@@ -1005,19 +1005,19 @@ html.eco-mode .liquid-pill-bright {
 }
 
 /* Ultra Mode: Maximum GPU visual fidelity & deep liquid refraction */
-html.ultra-mode {
+html.ultra-mode:not([style*="--glass-blur"]) {
   --glass-blur: 28px;
 }
 
 html.ultra-mode .liquid-glass-dark {
-  backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
+  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38), 0 0 1px 1px rgba(255, 255, 255, 0.08) inset !important;
 }
 
 html.ultra-mode .liquid-glass-bright {
-  backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(125%) contrast(104%) !important;
+  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(255, 255, 255, 0.6) inset !important;
 }
 
@@ -1340,8 +1340,8 @@ html.a11y-focus-rings *:focus-visible {
     radial-gradient(circle at 50% 0%, rgba(212, 188, 148, 0.09), transparent 62%),
     radial-gradient(circle at 85% 90%, rgba(99, 102, 241, 0.07), transparent 55%),
     rgba(8, 9, 14, 0.56) !important;
-  backdrop-filter: blur(36px) saturate(145%);
-  -webkit-backdrop-filter: blur(36px) saturate(145%);
+  backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
 }
 
 .tabmap-overlay-bright {
@@ -1349,23 +1349,23 @@ html.a11y-focus-rings *:focus-visible {
     radial-gradient(circle at 50% 0%, rgba(212, 188, 148, 0.14), transparent 62%),
     radial-gradient(circle at 85% 90%, rgba(99, 102, 241, 0.06), transparent 55%),
     rgba(244, 245, 248, 0.62) !important;
-  backdrop-filter: blur(36px) saturate(145%);
-  -webkit-backdrop-filter: blur(36px) saturate(145%);
+  backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
 }
 
 /* Floating top/bottom HUD bars outside scaled canvas */
 .tabmap-hud-glass-dark {
   background: linear-gradient(180deg, rgba(28, 30, 42, 0.72) 0%, rgba(14, 15, 22, 0.82) 100%) !important;
-  backdrop-filter: blur(28px) saturate(160%);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 0 rgba(255, 255, 255, 0.04) !important;
 }
 
 .tabmap-hud-glass-bright {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(248, 249, 252, 0.78) 100%) !important;
-  backdrop-filter: blur(28px) saturate(160%);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
   border: 1px solid rgba(0, 0, 0, 0.09) !important;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.9) !important;
 }

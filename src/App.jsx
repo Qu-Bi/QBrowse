@@ -54,6 +54,7 @@ export default function App() {
     const customWallpaper = useUIStore(state => state.settings?.customWallpaper);
     const wallpaperDimming = useUIStore(state => state.settings?.wallpaperDimming ?? 25);
     const wallpaperBlur = useUIStore(state => state.settings?.wallpaperBlur ?? 24);
+    const blurWallpaper = useUIStore(state => state.settings?.blurWallpaper ?? false);
     const loadStoredWallpaper = useUIStore(state => state.loadStoredWallpaper);
     const isBooting = useUIStore(state => state.isBooting);
     const finishBoot = useUIStore(state => state.finishBoot);
@@ -90,7 +91,10 @@ export default function App() {
     }, [activeWallpaper]);
 
     useEffect(() => {
-        document.documentElement.style.setProperty('--glass-blur', `${wallpaperBlur}px`);
+        const root = document.documentElement;
+        if (!root.classList.contains('eco-mode')) {
+            root.style.setProperty('--glass-blur', `${wallpaperBlur}px`);
+        }
     }, [wallpaperBlur]);
 
     useEffect(() => {
@@ -578,7 +582,8 @@ export default function App() {
                             className="absolute inset-0 bg-cover bg-center"
                             style={{ 
                                 backgroundImage: `url('${prevWallpaper}')`,
-                                filter: 'saturate(1.1)'
+                                filter: (blurWallpaper && wallpaperBlur > 0) ? `saturate(1.1) blur(${wallpaperBlur}px)` : 'saturate(1.1)',
+                                transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)'
                             }}
                         />
                     )}
@@ -588,7 +593,9 @@ export default function App() {
                         className="absolute inset-0 bg-cover bg-center animate-wallpaper-fade will-change-transform"
                         style={{ 
                             backgroundImage: `url('${currentWallpaper}')`,
-                            filter: 'saturate(1.1)'
+                            filter: (blurWallpaper && wallpaperBlur > 0) ? `saturate(1.1) blur(${wallpaperBlur}px)` : 'saturate(1.1)',
+                            transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)',
+                            transition: 'filter 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
                         }}
                     />
                     {/* Dimming / Frosted overlay layer to ensure UI readability without bleaching */}

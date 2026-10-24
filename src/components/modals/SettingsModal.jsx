@@ -441,7 +441,7 @@ const SettingsModal = () => {
 
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
     const [updateData, setUpdateData] = useState(null);
-    const currentAppVersion = updateData?.currentVersion || '1.3.4';
+    const currentAppVersion = updateData?.currentVersion || '1.3.5';
     const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
     const [isCheckingDefault, setIsCheckingDefault] = useState(false);
     const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
@@ -470,7 +470,7 @@ const SettingsModal = () => {
                 setIsCheckingUpdates(false);
             }
             if (data.status === 'not-available' && !data.silent) {
-                const ver = data.currentVersion || data.version || '1.3.4';
+                const ver = data.currentVersion || data.version || '1.3.5';
                 showToast(`QBrowse is up to date! (v${String(ver).replace(/^v/i, '')})`);
             } else if (data.status === 'available') {
                 const nextVer = String(data.latestVersion || data.version || '').replace(/^v/i, '');
@@ -492,6 +492,7 @@ const SettingsModal = () => {
     const customWallpaperOriginalUrl = settings?.customWallpaperOriginalUrl;
     const wallpaperDimming = settings?.wallpaperDimming ?? 25;
     const wallpaperBlur = settings?.wallpaperBlur ?? 24;
+    const blurWallpaper = settings?.blurWallpaper ?? false;
 
     const [wallpaperUrlInput, setWallpaperUrlInput] = useState('');
     const [isImportingUrl, setIsImportingUrl] = useState(false);
@@ -904,12 +905,17 @@ const SettingsModal = () => {
                                         <img 
                                             src={customWallpaper || DEFAULT_STOCK_WALLPAPER} 
                                             alt="Wallpaper preview" 
-                                            className="w-full h-full object-cover"
+                                            className="w-full h-full object-cover transition-all duration-300"
+                                            style={{
+                                                filter: `saturate(1.1) ${(blurWallpaper && wallpaperBlur > 0) ? `blur(${Math.min(12, wallpaperBlur * 0.3)}px)` : ''}`,
+                                                transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.08)' : 'scale(1)'
+                                            }}
                                             onError={(e) => {
                                                 e.target.src = DEFAULT_STOCK_WALLPAPER;
                                             }}
                                         />
                                         <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} />
+                                        
                                         <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center pointer-events-none">
                                             <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white/80 border border-white/10">
                                                 Preview
@@ -1030,6 +1036,25 @@ const SettingsModal = () => {
                                     </div>
                                 </div>
 
+                                {/* Blur Background Wallpaper Toggle */}
+                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                            <ImageIcon size={15} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Blur Wallpaper Background</p>
+                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>When disabled, the wallpaper stays crisp and sharp while UI panels retain frosted glass blur.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        <SettingToggle 
+                                            isChecked={!!blurWallpaper} 
+                                            onToggle={() => toggleSetting('blurWallpaper')} 
+                                        />
+                                    </div>
+                                </div>
+
                                 {/* Liquid Glass Frosted Blur Slider */}
                                 <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
                                     <div className="flex items-center gap-3 min-w-0 pr-4">
@@ -1037,8 +1062,8 @@ const SettingsModal = () => {
                                             <Sparkles size={15} />
                                         </div>
                                         <div className="min-w-0">
-                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Liquid Glass Frosted Blur</p>
-                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust backdrop blur diffusion (lower for crisp wallpaper contours, higher for smooth frosted abstraction).</p>
+                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Liquid Glass UI Frosted Blur</p>
+                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust frosted glass diffusion on UI surfaces (Sidebar, TopBar, and tab windows).</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3 flex-shrink-0">

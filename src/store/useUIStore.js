@@ -74,6 +74,7 @@ const defaultSettings = {
     customWallpaperOriginalUrl: null,
     wallpaperDimming: 25,
     wallpaperBlur: 24,
+    blurWallpaper: false,
     closeWindowOnLastTab: true,
     playStartupSound: false,
 
@@ -103,6 +104,9 @@ const loadSettings = () => {
             }
             if (parsed.wallpaperBlur === undefined) {
                 parsed.wallpaperBlur = 24;
+            }
+            if (parsed.blurWallpaper === undefined) {
+                parsed.blurWallpaper = false;
             }
             return { ...defaultSettings, ...parsed };
         }
@@ -1273,12 +1277,28 @@ const useUIStore = create((set, get) => ({
           return { count: 1, domains: [] };
       }
   })(),
-  addBlockedTracker: (url) => set((state) => {
+  addBlockedTracker: (data) => set((state) => {
       try {
-          const domain = new URL(url).hostname;
-          const newDomains = [domain, ...state.adblockStats.domains.filter(d => d !== domain)].slice(0, 5);
-          const nextCount = (state.adblockStats.count || 0) + 1;
-          try { localStorage.setItem('qbrowse_adblock_count', String(nextCount)); } catch (_) {}
+          const url = typeof data === 'string' ? data : (data?.url || '');
+          const increment = typeof data === 'object' && typeof data?.count === 'number' ? data.count : 1;
+          let newDomains = state.adblockStats.domains;
+          if (url) {
+              try {
+                  const domain = new URL(url).hostname;
+                  newDomains = [domain, ...state.adblockStats.domains.filter(d => d !== domain)].slice(0, 5);
+              } catch (_) {}
+          }
+          const nextCount = (state.adblockStats.count || 0) + increment;
+          if (!window.__debouncedSaveAdblockCount) {
+              let t = null;
+              window.__debouncedSaveAdblockCount = (cnt) => {
+                  if (t) clearTimeout(t);
+                  t = setTimeout(() => {
+                      try { localStorage.setItem('qbrowse_adblock_count', String(cnt)); } catch (_) {}
+                  }, 800);
+              };
+          }
+          window.__debouncedSaveAdblockCount(nextCount);
           return {
               adblockStats: {
                   count: nextCount,
@@ -1549,10 +1569,18 @@ const useUIStore = create((set, get) => ({
       get().setSettingValue('wallpaperDimming', val);
   },
   setWallpaperBlur: (blur) => {
-      const raw = Math.max(0, Math.min(50, Number(blur) ?? 24));
+      const raw = Math.max(0, Math.min(48, Number(blur) ?? 24));
       const val = Math.round(raw);
       get().setSettingValue('wallpaperBlur', val);
-      document.documentElement.style.setProperty('--glass-blur', `${val}px`);
+      if (typeof document !== 'undefined') {
+          const root = document.documentElement;
+          if (!root.classList.contains('eco-mode')) {
+              root.style.setProperty('--glass-blur', `${val}px`);
+          }
+      }
+  },
+  setBlurWallpaper: (enabled) => {
+      get().setSettingValue('blurWallpaper', Boolean(enabled));
   },
   resetCustomWallpaper: async () => {
       if (window.electronAPI && window.electronAPI.resetWallpaper) {
@@ -1933,13 +1961,13 @@ const useUIStore = create((set, get) => ({
         } else if (tier === 'ultra') {
           root.classList.remove('eco-mode');
           root.classList.add('ultra-mode');
-          root.style.setProperty('--glass-blur', '28px');
+          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 24}px`);
           root.style.setProperty('--animation-speed', '0.32s');
         } else {
           // balanced
           root.classList.remove('eco-mode');
           root.classList.remove('ultra-mode');
-          root.style.setProperty('--glass-blur', '18px');
+          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 20}px`);
           root.style.setProperty('--animation-speed', '0.24s');
         }
       };
@@ -2007,12 +2035,12 @@ const useUIStore = create((set, get) => ({
         } else if (activeTier === 'ultra') {
           root.classList.remove('eco-mode');
           root.classList.add('ultra-mode');
-          root.style.setProperty('--glass-blur', '28px');
+          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 24}px`);
           root.style.setProperty('--animation-speed', '0.32s');
         } else {
           root.classList.remove('eco-mode');
           root.classList.remove('ultra-mode');
-          root.style.setProperty('--glass-blur', '18px');
+          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 20}px`);
           root.style.setProperty('--animation-speed', '0.24s');
         }
       }
