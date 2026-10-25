@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Globe, Volume2, Ghost, Layers, ArrowRight } from 'lucide-react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
 export default function TabSwitcherOverlay() {
@@ -15,6 +15,30 @@ export default function TabSwitcherOverlay() {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    const [displayed, setDisplayed] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
+    const closeTimerRef = useRef(null);
+
+    const isActuallyOpen = Boolean(showSwitcher && showSwitcherUI && switcherTabs && switcherTabs.length > 0);
+
+    useEffect(() => {
+        if (isActuallyOpen) {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+            setDisplayed(true);
+            setIsClosing(false);
+        } else if (displayed && !isClosing) {
+            setIsClosing(true);
+            const timeout = getAnimationTimeout(140);
+            closeTimerRef.current = setTimeout(() => {
+                setDisplayed(false);
+                setIsClosing(false);
+            }, timeout);
+        }
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
+    }, [isActuallyOpen]);
 
     useEffect(() => {
         if (!showSwitcher || !showSwitcherUI) return;
@@ -51,7 +75,7 @@ export default function TabSwitcherOverlay() {
         };
     }, [showSwitcher, showSwitcherUI, cycleSwitcher, confirmSwitcher, cancelSwitcher]);
 
-    if (!showSwitcher || !showSwitcherUI || !switcherTabs || switcherTabs.length === 0) {
+    if (!displayed && !isActuallyOpen) {
         return null;
     }
 
@@ -63,7 +87,11 @@ export default function TabSwitcherOverlay() {
 
     return (
         <div 
-            className={`fixed inset-0 z-[60000] flex flex-col items-center justify-center ${isBright ? 'bg-black/35 backdrop-blur-xl' : 'bg-black/75 backdrop-blur-2xl'} transition-all duration-300 select-none overflow-hidden`}
+            className={`fixed inset-0 z-[60000] flex flex-col items-center justify-center ${
+                isBright ? 'bg-black/35 backdrop-blur-xl' : 'bg-black/75 backdrop-blur-2xl'
+            } select-none overflow-hidden ${
+                isClosing ? 'animate-dissolve-out pointer-events-none' : 'animate-fade-in'
+            }`}
             onClick={confirmSwitcher}
         >
             {/* Top Indicator Header */}

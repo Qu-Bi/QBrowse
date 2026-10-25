@@ -126,6 +126,18 @@ export const handleEscapeDismissal = () => {
     }
 
     // 14. Fullscreen Mode
+    if (uiStore.isWebviewHtmlFullscreen || uiStore.htmlFullscreenTabId) {
+        const activeTabId = uiStore.htmlFullscreenTabId;
+        const wv = activeTabId ? document.querySelector(`webview#webview-${activeTabId}`) : document.querySelector('webview');
+        if (wv) {
+            try {
+                wv.executeJavaScript('if (document.fullscreenElement) { document.exitFullscreen().catch(()=>{}); }');
+            } catch (_) {}
+        }
+        uiStore.setHtmlFullscreen(null, false);
+        return true;
+    }
+
     if (uiStore.isFullscreen || uiStore.isWebviewFullscreen) {
         if (window.electronAPI && window.electronAPI.setFullscreen) {
             window.electronAPI.setFullscreen(false);

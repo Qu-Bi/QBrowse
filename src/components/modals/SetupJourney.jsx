@@ -66,7 +66,16 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     } = useUIStore();
 
     const [currentStep, setCurrentStep] = useState(0);
+    const [slideDirection, setSlideDirection] = useState('forward');
+
+    const goToStep = (nextStep) => {
+        setSlideDirection(nextStep >= currentStep ? 'forward' : 'backward');
+        setCurrentStep(nextStep);
+    };
+
+    const stepAnimClass = slideDirection === 'forward' ? 'animate-slide-in-right' : 'animate-slide-in-left';
     const [importTab, setImportTab] = useState('bookmarks'); // 'bookmarks' | 'passwords'
+    const [hoveredImportTab, setHoveredImportTab] = useState(null);
     const [detectedBrowsers, setDetectedBrowsers] = useState([]);
     const [importingId, setImportingId] = useState(null);
     const [importedStats, setImportedStats] = useState({});
@@ -89,6 +98,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
     const [profileMode, setProfileMode] = useState(syncUser ? 'sync' : 'local'); // 'local' | 'sync'
     const [syncAuthTab, setSyncAuthTab] = useState('login'); // 'login' | 'register'
+    const [hoveredSyncAuthTab, setHoveredSyncAuthTab] = useState(null);
     const [syncEmail, setSyncEmail] = useState('');
     const [syncPassword, setSyncPassword] = useState('');
     const [syncConfirmPassword, setSyncConfirmPassword] = useState('');
@@ -447,7 +457,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     {steps.map((step, idx) => (
                         <div 
                             key={idx}
-                            onClick={() => setCurrentStep(idx)}
+                            onClick={() => goToStep(idx)}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all duration-300 ${
                                 currentStep === idx 
                                     ? 'bg-accent/20 border-accent/40 text-accent shadow-sm shadow-accent/20' 
@@ -478,7 +488,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 <div className="max-w-2xl w-full">
                     {/* SLIDE 0: APPEARANCE & ACCENT */}
                     {currentStep === 0 && (
-                        <div className="animate-pop-in space-y-8 text-center md:text-left">
+                        <div className={`${stepAnimClass} space-y-8 text-center md:text-left`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 1 of 5</span>
                                 <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Make QBrowse Yours</h2>
@@ -559,7 +569,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                     {/* SLIDE 1: DATA MIGRATION */}
                     {currentStep === 1 && (
-                        <div className="animate-pop-in space-y-6">
+                        <div className={`${stepAnimClass} space-y-6`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 2 of 5</span>
                                 <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Bring Your Data & Vault</h2>
@@ -569,17 +579,30 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                             </div>
 
                             {/* Sliding Pill Selector Switcher */}
-                            <div className="relative flex p-1 rounded-full border border-white/10 bg-white/[0.03] shadow-inner max-w-sm mx-auto">
+                            <div onMouseLeave={() => setHoveredImportTab(null)} className="relative flex p-1 rounded-full border border-white/10 bg-[#0c0d14]/78 shadow-[0_2px_8px_rgba(0,0,0,0.3)] max-w-sm mx-auto select-none">
+                                {/* Hover preview pill */}
+                                {hoveredImportTab && hoveredImportTab !== importTab && (
+                                    <div
+                                        className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none bg-white/[0.05]"
+                                        style={{
+                                            transform: hoveredImportTab === 'passwords' ? 'translateX(100%)' : 'translateX(0)'
+                                        }}
+                                    />
+                                )}
                                 <div 
-                                    className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] bg-accent/20 border border-accent/40 shadow-xs"
+                                    className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] border"
                                     style={{ 
-                                        transform: importTab === 'passwords' ? 'translateX(100%)' : 'translateX(0)'
+                                        transform: importTab === 'passwords' ? 'translateX(100%)' : 'translateX(0)',
+                                        borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                        backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
                                     }}
                                 />
                                 <button 
                                     type="button" 
+                                    onMouseEnter={() => setHoveredImportTab('bookmarks')}
                                     onClick={() => setImportTab('bookmarks')}
-                                    className={`relative z-10 flex-1 py-1.5 text-center text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
+                                    className={`relative z-10 flex-1 py-1.5 text-center text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 ${
                                         importTab === 'bookmarks' ? 'text-accent font-bold' : 'text-white/60 hover:text-white'
                                     }`}
                                 >
@@ -591,8 +614,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 </button>
                                 <button 
                                     type="button" 
+                                    onMouseEnter={() => setHoveredImportTab('passwords')}
                                     onClick={() => setImportTab('passwords')}
-                                    className={`relative z-10 flex-1 py-1.5 text-center text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
+                                    className={`relative z-10 flex-1 py-1.5 text-center text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 ${
                                         importTab === 'passwords' ? 'text-accent font-bold' : 'text-white/60 hover:text-white'
                                     }`}
                                 >
@@ -763,7 +787,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                     {/* SLIDE 2: PRIVACY & TOR SHIELD */}
                     {currentStep === 2 && (
-                        <div className="animate-pop-in space-y-8">
+                        <div className={`${stepAnimClass} space-y-8`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 3 of 5</span>
                                 <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Armor Your Privacy</h2>
@@ -823,7 +847,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                     {/* SLIDE 3: DEFAULT BROWSER */}
                     {currentStep === 3 && (
-                        <div className="animate-pop-in space-y-8">
+                        <div className={`${stepAnimClass} space-y-8`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 4 of 5</span>
                                 <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Set as Default Browser</h2>
@@ -900,7 +924,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                     {/* SLIDE 4: PROFILE & CLOUD SYNC */}
                     {currentStep === 4 && (
-                        <div className="animate-pop-in space-y-6">
+                        <div className={`${stepAnimClass} space-y-6`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 5 of 5 • Profile & Cloud Sync</span>
                                 <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Choose How You Browse</h2>
@@ -1077,16 +1101,35 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     <form onSubmit={handleSyncSubmit} className="p-6 rounded-3xl bg-white/[0.04] border border-white/10 space-y-5 animate-fade-in text-left">
                                         {/* Mode Switcher: Sign In vs Register */}
                                         <div className="space-y-1.5">
-                                            <div className="flex p-1 rounded-2xl bg-black/40 border border-white/10">
+                                            <div onMouseLeave={() => setHoveredSyncAuthTab(null)} className="relative flex p-1 rounded-full bg-[#0c0d14]/78 border border-white/10 shadow-[0_2px_8px_rgba(0,0,0,0.3)] select-none">
+                                                {/* Hover preview pill */}
+                                                {hoveredSyncAuthTab && hoveredSyncAuthTab !== syncAuthTab && (
+                                                    <div
+                                                        className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none bg-white/[0.05]"
+                                                        style={{
+                                                            transform: hoveredSyncAuthTab === 'register' ? 'translateX(100%)' : 'translateX(0)'
+                                                        }}
+                                                    />
+                                                )}
+                                                <div 
+                                                    className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] border"
+                                                    style={{ 
+                                                        transform: syncAuthTab === 'register' ? 'translateX(100%)' : 'translateX(0)',
+                                                        borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                                        backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                                    }}
+                                                />
                                                 <button
                                                     type="button"
+                                                    onMouseEnter={() => setHoveredSyncAuthTab('login')}
                                                     onClick={() => {
                                                         setSyncAuthTab('login');
                                                         setSyncLocalError(null);
                                                     }}
-                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                                                    className={`relative z-10 flex-1 py-2 rounded-full text-xs font-bold transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
                                                         syncAuthTab === 'login'
-                                                            ? 'bg-accent text-black shadow-md'
+                                                            ? 'text-accent font-bold'
                                                             : 'text-white/60 hover:text-white'
                                                     }`}
                                                 >
@@ -1096,13 +1139,14 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    onMouseEnter={() => setHoveredSyncAuthTab('register')}
                                                     onClick={() => {
                                                         setSyncAuthTab('register');
                                                         setSyncLocalError(null);
                                                     }}
-                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                                                    className={`relative z-10 flex-1 py-2 rounded-full text-xs font-bold transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
                                                         syncAuthTab === 'register'
-                                                            ? 'bg-accent text-black shadow-md'
+                                                            ? 'text-accent font-bold'
                                                             : 'text-white/60 hover:text-white'
                                                     }`}
                                                 >
@@ -1378,7 +1422,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             {/* Bottom Controls / Stepper */}
             <footer className="relative z-10 flex items-center justify-between px-8 py-5 border-t border-white/[0.08] bg-[#08090c]/80">
                 <button
-                    onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
+                    onClick={() => goToStep(Math.max(0, currentStep - 1))}
                     disabled={currentStep === 0}
                     className="px-5 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white disabled:opacity-0 transition cursor-pointer"
                 >
@@ -1388,7 +1432,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 <div className="flex items-center gap-3">
                     {currentStep < steps.length - 1 ? (
                         <button
-                            onClick={() => setCurrentStep(Math.min(steps.length - 1, currentStep + 1))}
+                            onClick={() => goToStep(Math.min(steps.length - 1, currentStep + 1))}
                             className="px-6 py-2.5 bg-accent text-black font-bold text-xs rounded-xl hover:scale-105 active:scale-95 transition shadow-lg shadow-accent/20 flex items-center gap-1.5 cursor-pointer"
                         >
                             <span>Continue</span>

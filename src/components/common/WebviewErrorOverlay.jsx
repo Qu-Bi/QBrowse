@@ -440,10 +440,10 @@ export default function WebviewErrorOverlay({
         >
             <div 
                 data-context-menu
-                className={`w-full max-w-[440px] rounded-2xl p-4 shadow-[0_24px_64px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl border flex flex-col gap-3 select-none animate-pop-in ${
+                className={`w-full max-w-[440px] rounded-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.65)] backdrop-blur-2xl border flex flex-col gap-3 select-none animate-pop-in ${
                     isBright
-                        ? 'bg-white/90 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)]'
-                        : 'bg-[#0c0c0f]/94 border-white/10 text-white/90'
+                        ? 'bg-white/90 border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.12)]'
+                        : 'bg-[#0c0c0f]/94 border-white/[0.06] text-white/90'
                 }`}
             >
                 {/* Section Header (Matches ContextMenuProvider MenuSectionHeader) */}

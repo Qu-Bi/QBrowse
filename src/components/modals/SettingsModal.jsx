@@ -6,13 +6,14 @@ import {
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal,
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Server, Wifi, AlertCircle,
-    Type, Keyboard, VolumeX, ZoomIn, Filter, Minus
+    Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch
 } from 'lucide-react';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useTabStore from '../../store/useTabStore';
+import { useGitHubStore } from '../../store/useGitHubStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
 import useVaultStore from '../../store/useVaultStore';
@@ -164,7 +165,7 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
                     style={{
                         width: `calc((100% - 8px) / ${count})`,
                         transform: `translateX(${hoveredIndex * 100}%)`,
-                        backgroundColor: isBright ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.04)'
+                        backgroundColor: isBright ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.05)'
                     }}
                 />
             )}
@@ -176,10 +177,10 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
                     width: `calc((100% - 8px) / ${count})`,
                     transform: `translateX(${activeIndex * 100}%)`,
                     backgroundColor: isBright ? '#ffffff' : 'var(--accent-15, rgba(212, 188, 148, 0.16))',
-                    border: isBright ? '1px solid rgba(0,0,0,0.08)' : '1px solid var(--accent-30, rgba(212, 188, 148, 0.38))',
+                    border: isBright ? '1px solid rgba(0,0,0,0.08)' : '1px solid var(--accent-30, rgba(212, 188, 148, 0.4))',
                     boxShadow: isBright 
-                        ? '0 2px 8px rgba(0,0,0,0.06)' 
-                        : '0 4px 14px rgba(212, 188, 148, 0.16), inset 0 1px 0 0 rgba(255, 255, 255, 0.22)'
+                        ? '0 2px 8px rgba(0,0,0,0.08)' 
+                        : '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
                 }}
             />
 
@@ -193,7 +194,7 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
                         type="button"
                         onClick={() => onChange(opt.id)}
                         onMouseEnter={() => setHoveredId(opt.id)}
-                        className={`relative z-10 flex items-center justify-center gap-1.5 ${itemPy} ${itemPx} ${textSize} font-semibold rounded-full transition-colors duration-200 cursor-pointer select-none truncate ${
+                        className={`relative z-10 flex items-center justify-center gap-1.5 ${itemPy} ${itemPx} ${textSize} font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer select-none truncate outline-none ${
                             isActive
                                 ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                 : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
@@ -696,6 +697,7 @@ const SettingsModal = () => {
         { id: 'cookies', label: 'Cookies & Permissions', icon: Cookie, color: 'text-amber-400', category: 'Preferences' },
         { id: 'search', label: 'Search & Omnibox', icon: Search, color: 'text-sky-400', category: 'Preferences' },
         { id: 'downloads', label: 'Downloads & Media', icon: Download, color: 'text-blue-400', category: 'Preferences' },
+        { id: 'workmode', label: 'Work Mode & GitHub', icon: GitPullRequest, color: 'text-emerald-400', category: 'Preferences' },
         { id: 'ai', label: 'AI & llama.cpp Engine', icon: Sparkles, color: 'text-violet-400', category: 'Advanced' },
         { id: 'engine', label: 'Engine & Performance', icon: Cpu, color: 'text-rose-400', category: 'Advanced' },
         { id: 'adblock', label: 'Native AdBlocker', icon: ShieldAlert, color: 'text-emerald-400', category: 'Advanced' },
@@ -2715,6 +2717,243 @@ const SettingsModal = () => {
                             <SettingCard icon={Bell} title="Download Completion Sound" description="Play an audio chime when a file finish downloading.">
                                 <SettingToggle isChecked={!!settings.downloadSound} onToggle={() => toggleSetting('downloadSound')} />
                             </SettingCard>
+                        </div>
+                    )}
+
+                    {/* TAB: WORK MODE & GITHUB INTEGRATION */}
+                    {settingsTab === 'workmode' && (
+                        <div className="animate-tab-fade space-y-5">
+                            <div>
+                                <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
+                                    <GitPullRequest className="text-emerald-400" size={24} /> Work Mode & GitHub
+                                </h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                    Dynamic Pull Requests and Issues integration inspired by Arc Browser. Built with a strict zero-resource architecture when turned off.
+                                </p>
+                            </div>
+
+                            {/* Master Toggle */}
+                            <SettingCard 
+                                icon={GitPullRequest} 
+                                title="Enable GitHub Live Integration" 
+                                description="Auto-updates pull requests and assigned issues directly in your Work Space sidebar. When turned off, all background timers and network calls are completely shut down."
+                            >
+                                <SettingToggle 
+                                    isChecked={!!settings.githubIntegrationEnabled} 
+                                    onToggle={() => {
+                                        toggleSetting('githubIntegrationEnabled');
+                                        setTimeout(() => {
+                                            useGitHubStore.getState().syncWithConfig();
+                                        }, 50);
+                                    }} 
+                                />
+                            </SettingCard>
+
+                            {settings.githubIntegrationEnabled ? (
+                                <>
+                                    {/* Sync Frequency */}
+                                    <SettingCard 
+                                        icon={RefreshCw} 
+                                        title="Background Refresh Interval" 
+                                        description="How frequently QBrowse checks GitHub for updates. Choose 'Manual Only' to eliminate all background polling."
+                                    >
+                                        <select 
+                                            value={settings.githubSyncInterval ?? 10}
+                                            onChange={(e) => {
+                                                const val = Number(e.target.value);
+                                                setSettingValue('githubSyncInterval', val);
+                                                useGitHubStore.getState().syncWithConfig();
+                                            }}
+                                            className={`text-xs px-2.5 py-1.5 rounded-lg border outline-none font-medium transition cursor-pointer ${
+                                                isBright 
+                                                    ? 'bg-white border-black/15 text-zinc-800 shadow-sm' 
+                                                    : 'bg-zinc-900 border-white/10 text-zinc-200'
+                                            }`}
+                                        >
+                                            <option value={0}>Manual Only (Zero background polling)</option>
+                                            <option value={2}>Every 2 minutes</option>
+                                            <option value={5}>Every 5 minutes</option>
+                                            <option value={10}>Every 10 minutes (Balanced)</option>
+                                            <option value={15}>Every 15 minutes</option>
+                                            <option value={30}>Every 30 minutes (Eco)</option>
+                                        </select>
+                                    </SettingCard>
+
+                                    {/* Display Sections */}
+                                    <div className="pt-2">
+                                        <h4 className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-2">
+                                            Tracked Categories
+                                        </h4>
+                                    </div>
+
+                                    <SettingCard 
+                                        icon={CheckCircle2} 
+                                        title="Review Requests" 
+                                        description="Track pull requests where someone has requested your review."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.githubShowReviews ?? true} 
+                                            onToggle={() => {
+                                                toggleSetting('githubShowReviews');
+                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={GitBranch} 
+                                        title="My Pull Requests" 
+                                        description="Track open pull requests authored by you across your repositories."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.githubShowMyPrs ?? true} 
+                                            onToggle={() => {
+                                                toggleSetting('githubShowMyPrs');
+                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={AlertCircle} 
+                                        title="Assigned Issues" 
+                                        description="Track open issues directly assigned to you."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.githubShowAssignedIssues ?? true} 
+                                            onToggle={() => {
+                                                toggleSetting('githubShowAssignedIssues');
+                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={SlidersHorizontal} 
+                                        title="Include Draft PRs" 
+                                        description="Include work-in-progress draft pull requests in the lists."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={!!settings.githubIncludeDrafts} 
+                                            onToggle={() => {
+                                                toggleSetting('githubIncludeDrafts');
+                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                            }} 
+                                        />
+                                    </SettingCard>
+
+                                    {/* UI & Glances */}
+                                    <div className="pt-2">
+                                        <h4 className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-2">
+                                            Sidebar & Preview
+                                        </h4>
+                                    </div>
+
+                                    <SettingCard 
+                                        icon={Eye} 
+                                        title="Hover Peek Glance (Arc-Style)" 
+                                        description="Hovering over the pinned GitHub icon displays a lightweight preview card with active reviews and notifications."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.githubHoverGlanceEnabled ?? true} 
+                                            onToggle={() => toggleSetting('githubHoverGlanceEnabled')} 
+                                        />
+                                    </SettingCard>
+
+                                    <SettingCard 
+                                        icon={Bell} 
+                                        title="Review Request Counter Badge" 
+                                        description="Show an indicator badge on the Live Folder when PRs are awaiting your review."
+                                    >
+                                        <SettingToggle 
+                                            isChecked={settings.githubBadgeCountEnabled ?? true} 
+                                            onToggle={() => toggleSetting('githubBadgeCountEnabled')} 
+                                        />
+                                    </SettingCard>
+
+                                    {/* Repository Filter */}
+                                    <div className="pt-2">
+                                        <h4 className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-2">
+                                            Scope & Credentials
+                                        </h4>
+                                    </div>
+
+                                    <div className={`p-3.5 rounded-xl border transition-all ${
+                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.04]'
+                                    }`}>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/[0.03] text-accent border border-white/[0.05]">
+                                                <Filter size={15} />
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-xs text-white">Repository Scope (Optional)</p>
+                                                <p className="text-[11px] text-zinc-400">Leave blank to watch all repositories, or enter comma-separated repos (e.g. <code>facebook/react, vercel/next.js</code>):</p>
+                                            </div>
+                                        </div>
+                                        <input 
+                                            type="text"
+                                            placeholder="e.g. vercel/next.js, facebook/react"
+                                            value={settings.githubRepoFilter || ''}
+                                            onChange={(e) => setSettingValue('githubRepoFilter', e.target.value)}
+                                            onBlur={() => useGitHubStore.getState().syncWithConfig()}
+                                            className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                                                isBright 
+                                                    ? 'bg-white border-black/15 text-zinc-800' 
+                                                    : 'bg-black/40 border-white/10 text-zinc-200'
+                                            }`}
+                                        />
+                                    </div>
+
+                                    {/* Personal Access Token */}
+                                    <div className={`p-3.5 rounded-xl border transition-all ${
+                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.04]'
+                                    }`}>
+                                        <div className="flex items-center justify-between gap-3 mb-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/[0.03] text-accent border border-white/[0.05]">
+                                                    <Key size={15} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-xs text-white">Custom Personal Access Token (Optional)</p>
+                                                    <p className="text-[11px] text-zinc-400">QBrowse auto-detects your active GitHub session. Provide a PAT if your organization enforces SSO/SAML:</p>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={async () => {
+                                                    await useGitHubStore.getState().syncWithConfig();
+                                                    await useGitHubStore.getState().fetchData(true);
+                                                    showToast('Synced with GitHub');
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-all cursor-pointer flex-shrink-0"
+                                            >
+                                                Test & Sync
+                                            </button>
+                                        </div>
+                                        <input 
+                                            type="password"
+                                            placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                            value={settings.githubPersonalAccessToken || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setSettingValue('githubPersonalAccessToken', val);
+                                                setSettingValue('githubAuthMode', val.trim() ? 'token' : 'auto');
+                                            }}
+                                            onBlur={() => useGitHubStore.getState().syncWithConfig()}
+                                            className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                                                isBright 
+                                                    ? 'bg-white border-black/15 text-zinc-800' 
+                                                    : 'bg-black/40 border-white/10 text-zinc-200'
+                                            }`}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="p-6 text-center rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
+                                    <p className="text-xs text-zinc-400">
+                                        GitHub Live Integration is currently dormant. Turn it on above to start tracking Pull Requests and Issues in Work Mode.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 

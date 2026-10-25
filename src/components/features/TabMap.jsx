@@ -131,10 +131,7 @@ export default function TabMap() {
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(0.85);
     const [toolMode, setToolMode] = useState('pan'); // 'pan' | 'select'
-
-    // Interactive Motion & Parallax State
-    const [mouseParallax, setMouseParallax] = useState({ x: 0, y: 0 });
-    const [hoveredCardTilt, setHoveredCardTilt] = useState(null); // { tabId, rotateX, rotateY, spotX, spotY }
+    const [hoveredToolMode, setHoveredToolMode] = useState(null);
 
     // Interaction State
     const [searchQuery, setSearchQuery] = useState('');
@@ -166,14 +163,6 @@ export default function TabMap() {
         uiShowToast?.(msg);
     }, [uiShowToast]);
 
-    const handleContainerPointerMove = useCallback((e) => {
-        if (isReducedMotion) return;
-        const vw = window.innerWidth || 1;
-        const vh = window.innerHeight || 1;
-        const nx = (e.clientX / vw) - 0.5;
-        const ny = (e.clientY / vh) - 0.5;
-        setMouseParallax({ x: nx, y: ny });
-    }, [isReducedMotion]);
 
     // Compute all tabs by space map
     const spaceTabsMap = useMemo(() => ({
@@ -965,7 +954,6 @@ export default function TabMap() {
             const dist = Math.hypot(me.clientX - startClientX, me.clientY - startClientY);
             if (!hasMoved && dist > 5) {
                 hasMoved = true;
-                setHoveredCardTilt(null);
             }
 
             if (hasMoved) {
@@ -1226,56 +1214,16 @@ export default function TabMap() {
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
             onWheel={handleWheel}
             onPointerDown={handleCanvasPointerDown}
-            onPointerMove={handleContainerPointerMove}
             className={`fixed inset-0 z-[80000] select-none overflow-hidden ${
                 isBright ? 'tabmap-overlay-bright text-zinc-900' : 'tabmap-overlay-dark text-white'
             } ${isTabMapClosing ? 'animate-tabmap-backdrop-out' : 'animate-tabmap-backdrop'}`}
             style={{ cursor: toolMode === 'select' ? 'crosshair' : 'grab' }}
         >
             <style>{`
-                @keyframes pulse-trail {
-                    0% { stroke-dashoffset: 48; }
-                    100% { stroke-dashoffset: 0; }
-                }
-                .trail-glow {
-                    stroke-dasharray: 8, 6;
-                    animation: pulse-trail 1.6s linear infinite;
-                }
-                .trail-domain-flow {
-                    stroke-dasharray: 5, 7;
-                    animation: pulse-trail 2.4s linear infinite;
-                }
-                @keyframes tabmapWallpaperEnter {
-                    0% {
-                        opacity: 0;
-                        transform: scale(1.14);
-                    }
-                    100% {
-                        opacity: 1;
-                    }
-                }
-                .animate-tabmap-wallpaper {
-                    animation: tabmapWallpaperEnter 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-                }
-                @keyframes tabmapOrbFloat {
-                    0%, 100% {
-                        transform: translate3d(0, 0, 0) scale(1);
-                    }
-                    50% {
-                        transform: translate3d(24px, -18px, 0) scale(1.07);
-                    }
-                }
-                .animate-tabmap-orb {
-                    animation: tabmapOrbFloat 9s ease-in-out infinite;
-                }
                 @keyframes tabmapZoneCascade {
                     0% {
                         opacity: 0;
-                        transform: scale(0.92) translateY(22px);
-                    }
-                    70% {
-                        opacity: 1;
-                        transform: scale(1.01) translateY(-2px);
+                        transform: scale(0.96) translateY(12px);
                     }
                     100% {
                         opacity: 1;
@@ -1283,123 +1231,73 @@ export default function TabMap() {
                     }
                 }
                 .animate-tabmap-zone-enter {
-                    animation: tabmapZoneCascade 0.48s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-                }
-                .tabmap-card-sheen {
-                    position: absolute;
-                    inset: -40% -120%;
-                    background: linear-gradient(
-                        115deg,
-                        transparent 38%,
-                        rgba(255, 255, 255, 0.12) 48%,
-                        rgba(255, 255, 255, 0.24) 50%,
-                        rgba(255, 255, 255, 0.08) 52%,
-                        transparent 62%
-                    );
-                    transform: translateX(-45%) rotate(8deg);
-                    transition: transform 0.65s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
-                    opacity: 0;
-                    pointer-events: none;
-                    z-index: 15;
-                }
-                .group\\/card:hover .tabmap-card-sheen {
-                    transform: translateX(45%) rotate(8deg);
-                    opacity: 1;
+                    animation: tabmapZoneCascade 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
                 }
                 .tabmap-slot-ghost-dark {
-                    background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(18, 20, 30, 0.42) 100%);
-                    border: 1.5px dashed rgba(255, 255, 255, 0.14);
-                    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+                    background: rgba(255, 255, 255, 0.02);
+                    border: 1px dashed rgba(255, 255, 255, 0.12);
                 }
                 .tabmap-slot-ghost-dark:hover {
-                    background: linear-gradient(145deg, rgba(212, 188, 148, 0.1) 0%, rgba(28, 30, 44, 0.62) 100%);
-                    border-color: rgba(212, 188, 148, 0.48);
-                    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 0 rgba(212, 188, 148, 0.25);
+                    background: rgba(255, 255, 255, 0.04);
+                    border-color: rgba(255, 255, 255, 0.22);
                 }
                 .tabmap-slot-ghost-bright {
-                    background: linear-gradient(145deg, rgba(255, 255, 255, 0.55) 0%, rgba(242, 244, 248, 0.45) 100%);
-                    border: 1.5px dashed rgba(0, 0, 0, 0.14);
+                    background: rgba(0, 0, 0, 0.015);
+                    border: 1px dashed rgba(0, 0, 0, 0.1);
                 }
                 .tabmap-slot-ghost-bright:hover {
-                    background: linear-gradient(145deg, rgba(255, 255, 255, 0.85) 0%, rgba(248, 249, 252, 0.75) 100%);
-                    border-color: rgba(212, 188, 148, 0.65);
-                    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.06);
+                    background: rgba(0, 0, 0, 0.03);
+                    border-color: rgba(0, 0, 0, 0.2);
                 }
             `}</style>
 
-            {/* ============================================================== */}
-            {/* SHARED QBROWSE WALLPAPER BACKGROUND WITH PARALLAX & VEIL        */}
-            {/* ============================================================== */}
+            {/* Grounded Wallpaper Background */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
                 <div
-                    className="absolute -inset-[6%] bg-cover bg-center animate-tabmap-wallpaper will-change-transform transition-transform duration-150 ease-out"
+                    className="absolute inset-0 bg-cover bg-center will-change-transform"
                     style={{
                         backgroundImage: `url('${activeWallpaper}')`,
-                        filter: 'saturate(1.18) contrast(1.04)',
-                        transform: `translate3d(${Math.round(pan.x * 0.035 + mouseParallax.x * -12)}px, ${Math.round(pan.y * 0.035 + mouseParallax.y * -12)}px, 0) scale(1.08)`
+                        filter: 'saturate(1.04) contrast(1.02)'
                     }}
                 />
-                {/* Wallpaper Dimming Harmony Layer */}
                 <div
                     className="absolute inset-0 pointer-events-none"
                     style={{
                         backgroundColor: isBright
-                            ? `rgba(255, 255, 255, ${(wallpaperDimming / 100) * 0.16})`
-                            : `rgba(0, 0, 0, ${(wallpaperDimming / 100) * 0.42})`
+                            ? `rgba(255, 255, 255, ${(wallpaperDimming / 100) * 0.2})`
+                            : `rgba(0, 0, 0, ${(wallpaperDimming / 100) * 0.5})`
                     }}
                 />
-                {/* Frosted Liquid Glass Refractive Veil over Shared Wallpaper */}
                 <div
                     className="absolute inset-0 pointer-events-none"
                     style={{
-                        backdropFilter: 'blur(26px) saturate(145%)',
-                        WebkitBackdropFilter: 'blur(26px) saturate(145%)',
-                        backgroundColor: isBright ? 'rgba(244, 245, 250, 0.58)' : 'rgba(8, 9, 15, 0.58)'
+                        backdropFilter: 'blur(28px)',
+                        WebkitBackdropFilter: 'blur(28px)',
+                        backgroundColor: isBright ? 'rgba(245, 246, 250, 0.65)' : 'rgba(10, 11, 16, 0.72)'
                     }}
                 />
             </div>
 
-            {/* Ambient Refractive Light Orbs with Interactive Parallax & Drift */}
-            <div 
-                className="absolute inset-0 pointer-events-none overflow-hidden z-[1] transition-transform duration-200 ease-out"
-                style={{
-                    transform: `translate3d(${Math.round(mouseParallax.x * -22)}px, ${Math.round(mouseParallax.y * -22)}px, 0)`
-                }}
-            >
-                <div 
-                    className="animate-tabmap-orb absolute -top-[18%] -left-[8%] w-[52vw] h-[52vw] rounded-full opacity-25 blur-[130px] pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, var(--accent) 0%, transparent 70%)' }}
-                />
-                <div 
-                    className="animate-tabmap-orb absolute -bottom-[18%] -right-[8%] w-[52vw] h-[52vw] rounded-full opacity-20 blur-[130px] pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, #60a5fa 0%, transparent 70%)', animationDelay: '-3s' }}
-                />
-                <div 
-                    className="animate-tabmap-orb absolute top-[35%] right-[18%] w-[38vw] h-[38vw] rounded-full opacity-15 blur-[110px] pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, #a855f7 0%, transparent 70%)', animationDelay: '-6s' }}
-                />
-            </div>
-
-            {/* ============================================================== */}
-            {/* TOP HUD: UNIFIED FLOATING LIQUID GLASS COMMAND BAR              */}
-            {/* ============================================================== */}
+            {/* TOP HUD: Command Bar */}
             <header className={`absolute top-4 left-6 right-6 flex flex-col items-center z-[90000] pointer-events-none ${
                 isTabMapClosing ? 'animate-tabmap-exit' : 'animate-tabmap-enter'
             }`}>
-                <div className={`w-full max-w-7xl mx-auto px-5 py-2.5 rounded-3xl flex items-center justify-between pointer-events-auto transition-all ${
-                    isBright ? 'tabmap-hud-glass-bright' : 'tabmap-hud-glass-dark'
+                <div className={`w-full max-w-6xl mx-auto px-4 py-2 rounded-2xl flex items-center justify-between pointer-events-auto transition-all border ${
+                    isBright 
+                        ? 'bg-white/90 border-zinc-200/90 shadow-md text-zinc-900' 
+                        : 'bg-[#18191f]/90 border-white/10 shadow-xl text-white'
                 }`}>
-                    {/* Left Section: QBrowse Spatial Canvas Indicator */}
+                    {/* Left Section: Tab Map Indicator */}
                     <div className="flex items-center gap-3">
-                        <div className={`flex items-center gap-2.5 px-3.5 py-1.5 rounded-full ${
-                            isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
+                        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${
+                            isBright ? 'bg-zinc-100 border-zinc-200 text-zinc-800' : 'bg-white/[0.04] border-white/10 text-white/90'
                         }`}>
-                            <Compass size={15} className="text-accent animate-spin" style={{ animationDuration: '18s' }} />
-                            <span className={`text-xs font-bold tracking-tight ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
-                                Spatial Canvas
+                            <Layers size={14} className="text-accent" />
+                            <span className="text-xs font-semibold tracking-tight">
+                                Tab Map
                             </span>
                             <span className="w-1 h-1 rounded-full bg-accent/60" />
-                            <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/55'}`}>
+                            <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
                                 {layout.nodePositions.size} {layout.nodePositions.size === 1 ? 'tab' : 'tabs'}
                             </span>
                         </div>
@@ -1464,7 +1362,7 @@ export default function TabMap() {
                             <Copy size={14} strokeWidth={1.75} className="text-white/70 group-hover:text-accent transition-colors" />
                             <span className="hidden sm:inline">Deduplicate</span>
                             {duplicateCount > 0 && (
-                                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-accent text-zinc-950 shadow-sm animate-pulse">
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-accent text-zinc-950">
                                     {duplicateCount}
                                 </span>
                             )}
@@ -1482,17 +1380,17 @@ export default function TabMap() {
                             <span className="hidden sm:inline">Hibernate Idle</span>
                         </button>
 
-                        {/* Reset Layout (Clearly Labeled, No Mystery Icon or Focus Outline Ring!) */}
+                        {/* Reset Layout */}
                         <button
                             onClick={handleResetLayout}
                             title="Reset Layout: Snap freeform cards back into clean grid & re-center camera"
                             className={`h-9 px-3.5 rounded-full flex items-center gap-2 text-xs font-semibold transition-all hover:scale-[1.03] active:scale-95 outline-none focus:outline-none group ${
                                 hasCustomOffsets
-                                    ? 'bg-accent/20 hover:bg-accent/30 text-accent border border-accent/40 shadow-lg'
+                                    ? 'bg-accent/20 hover:bg-accent/30 text-accent border border-accent/40 shadow-sm'
                                     : (isBright ? 'liquid-pill-bright' : 'liquid-pill-dark')
                             }`}
                         >
-                            <RotateCcw size={13.5} strokeWidth={1.75} className={hasCustomOffsets ? 'text-accent' : 'text-white/70 group-hover:text-accent transition-transform duration-300 group-hover:-rotate-90'} />
+                            <RotateCcw size={13.5} strokeWidth={1.75} className={hasCustomOffsets ? 'text-accent' : 'text-white/70 group-hover:text-accent transition-colors'} />
                             <span className="hidden sm:inline">Reset Layout</span>
                         </button>
 
@@ -1500,19 +1398,19 @@ export default function TabMap() {
                         <button
                             onClick={handleCloseTabMap}
                             title="Close Tab Canvas (ESC)"
-                            className="w-9 h-9 rounded-full bg-white/10 hover:bg-red-500/80 text-white/80 hover:text-white flex items-center justify-center transition-all hover:rotate-90 active:scale-95 ml-1 border border-white/10 outline-none focus:outline-none"
+                            className="w-9 h-9 rounded-full bg-white/10 hover:bg-red-500/80 text-white/80 hover:text-white flex items-center justify-center transition-colors active:scale-95 ml-1 border border-white/10 outline-none focus:outline-none"
                         >
                             <X size={15} />
                         </button>
                     </div>
                 </div>
 
-                {/* Floating Liquid Glass Action Toast Pill */}
+                {/* Floating Action Toast Pill */}
                 {toastMessage && (
                     <div className={`mt-3 px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 pointer-events-auto animate-pop-in ${
                         isBright ? 'tabmap-hud-glass-bright text-zinc-900' : 'tabmap-hud-glass-dark text-accent'
                     }`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent" />
                         <span>{toastMessage}</span>
                     </div>
                 )}
@@ -1550,52 +1448,28 @@ export default function TabMap() {
                         }}
                     />
 
-                    {/* SVG TRAIL & RELATIONSHIP LAYER */}
+                    {/* SVG Relationship Layer */}
                     <svg 
                         className="absolute inset-0 pointer-events-none overflow-visible z-10"
                         style={{ width: layout.worldWidth + 500, height: layout.worldHeight + 500 }}
                     >
-                        <defs>
-                            <linearGradient id="openerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stopColor="#818cf8" stopOpacity="0.9" />
-                                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.9" />
-                            </linearGradient>
-                            <filter id="trailGlow" x="-20%" y="-20%" width="140%" height="140%">
-                                <feGaussianBlur stdDeviation="4" result="blur" />
-                                <feMerge>
-                                    <feMergeNode in="blur" />
-                                    <feMergeNode in="SourceGraphic" />
-                                </feMerge>
-                            </filter>
-                            <marker id="trailArrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                                <path d="M 0 1 L 9 5 L 0 9 z" fill="#38bdf8" />
-                            </marker>
-                        </defs>
-
-                        {/* Domain Cluster Connector Curves (Dual-Layer Glow + Flowing Dash) */}
+                        {/* Domain Cluster Connector Curves */}
                         {layout.domainTrails?.map(dTrail => {
                             const isMatch = !searchQuery || searchMatches.includes(dTrail.sourceId) || searchMatches.includes(dTrail.targetId);
                             return (
-                                <g key={dTrail.id} opacity={isMatch ? 1 : 0.1} className="transition-opacity duration-300">
+                                <g key={dTrail.id} opacity={isMatch ? 0.35 : 0.06} className="transition-opacity duration-200">
                                     <path
                                         d={dTrail.path}
                                         fill="none"
-                                        stroke="rgba(251, 191, 36, 0.18)"
-                                        strokeWidth="5"
-                                        filter="url(#trailGlow)"
-                                    />
-                                    <path
-                                        d={dTrail.path}
-                                        fill="none"
-                                        stroke="rgba(251, 191, 36, 0.45)"
-                                        strokeWidth="1.75"
-                                        className="trail-domain-flow"
+                                        stroke="rgba(255, 255, 255, 0.14)"
+                                        strokeWidth="1.5"
+                                        strokeDasharray="4 4"
                                     />
                                 </g>
                             );
                         })}
 
-                        {/* Opener Trails (parent-child relationship, follows live drag dynamically) */}
+                        {/* Opener Trails (parent-child relationship) */}
                         {layout.openerTrails.map(trail => {
                             const isMatch = !searchQuery || searchMatches.includes(trail.childId) || searchMatches.includes(trail.parentId);
                             const parentIsDragged = dragState?.isDragging && dragState.tabIds.includes(trail.parentId);
@@ -1614,34 +1488,20 @@ export default function TabMap() {
                             const dynamicPath = `M ${pcx} ${pcy} C ${p1x} ${p1y}, ${p2x} ${p2y}, ${ccx} ${ccy}`;
 
                             return (
-                                <g key={`trail-${trail.parentId}-${trail.childId}`} opacity={isMatch ? 1 : 0.15} className="transition-opacity duration-300">
-                                    {/* Soft Glowing Halo Path */}
+                                <g key={`trail-${trail.parentId}-${trail.childId}`} opacity={isMatch ? 0.4 : 0.08} className="transition-opacity duration-200">
                                     <path
                                         d={dynamicPath}
                                         fill="none"
-                                        stroke="url(#openerGradient)"
-                                        strokeWidth="6"
-                                        strokeOpacity="0.22"
-                                        filter="url(#trailGlow)"
+                                        stroke="rgba(255, 255, 255, 0.16)"
+                                        strokeWidth="1.5"
                                     />
-                                    {/* Animated Flowing Dashed Pulse Path */}
-                                    <path
-                                        d={dynamicPath}
-                                        fill="none"
-                                        stroke="url(#openerGradient)"
-                                        strokeWidth="2.5"
-                                        filter="url(#trailGlow)"
-                                        markerEnd="url(#trailArrow)"
-                                        className="trail-glow"
-                                    />
-                                    <circle cx={pcx} cy={pcy} r="5" fill="#818cf8" opacity="0.35" className="animate-ping" />
-                                    <circle cx={pcx} cy={pcy} r="4" fill="#818cf8" />
-                                    <circle cx={ccx} cy={ccy} r="4" fill="#38bdf8" />
+                                    <circle cx={pcx} cy={pcy} r="2.5" fill="rgba(255, 255, 255, 0.4)" />
+                                    <circle cx={ccx} cy={ccy} r="2.5" fill="rgba(255, 255, 255, 0.4)" />
                                 </g>
                             );
                         })}
 
-                        {/* Live Magnetic Connection line when actively dragging */}
+                        {/* Magnetic Drag Line */}
                         {dragState?.isDragging && dragState.target && (
                             <g>
                                 {dragState.target.type === 'tab' && layout.nodePositions.has(dragState.target.id) && (() => {
@@ -1658,10 +1518,8 @@ export default function TabMap() {
                                             x2={targetNode.cx}
                                             y2={targetNode.cy}
                                             stroke="var(--accent, #d4bc94)"
-                                            strokeWidth="3"
-                                            strokeDasharray="6,4"
-                                            filter="url(#trailGlow)"
-                                            className="trail-glow"
+                                            strokeWidth="1.5"
+                                            strokeDasharray="4 3"
                                         />
                                     );
                                 })()}
@@ -1669,7 +1527,7 @@ export default function TabMap() {
                         )}
                     </svg>
 
-                    {/* SPACE ZONES (KANBAN MACRO REGIONS WITH STAGGERED CASCADE ENTRANCE) */}
+                    {/* SPACE ZONES */}
                     {Object.values(layout.spaces).map((space, spaceIdx) => {
                         const isTargetSpace = dragState?.isDragging && dragState.target?.type === 'space' && dragState.target.id === space.id;
                         const isActiveSpaceZone = space.id === activeSpace;
@@ -1678,93 +1536,85 @@ export default function TabMap() {
                         return (
                             <div
                                 key={space.id}
-                                className={`tabmap-zone-spring animate-tabmap-zone-enter absolute rounded-[2.5rem] transition-colors duration-200 overflow-hidden ${
+                                className={`tabmap-zone-spring animate-tabmap-zone-enter absolute rounded-2xl transition-colors duration-150 overflow-hidden ${
                                     isBright ? 'tabmap-zone-glass-bright' : 'tabmap-zone-glass-dark'
                                 } ${
                                     isTargetSpace 
-                                        ? 'ring-3 ring-accent shadow-[0_0_55px_var(--accent-30)]' 
+                                        ? 'ring-2 ring-accent' 
                                         : isActiveSpaceZone 
-                                        ? 'ring-1 ring-white/20' 
+                                        ? 'ring-1 ring-white/15' 
                                         : ''
-                                } after:absolute after:inset-x-8 after:top-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-white/30 after:to-transparent after:pointer-events-none`}
+                                }`}
                                 style={{
                                     left: space.x,
                                     top: space.y,
                                     width: space.width,
                                     height: space.height,
-                                    animationDelay: `${spaceIdx * 55}ms`
+                                    animationDelay: `${spaceIdx * 40}ms`
                                 }}
                             >
-                                {/* Subtle Ambient Space Corner Glow */}
-                                <div 
-                                    className="absolute -top-24 -left-24 w-72 h-72 rounded-full pointer-events-none opacity-25 blur-3xl"
-                                    style={{ background: `radial-gradient(circle, ${space.color} 0%, transparent 70%)` }}
-                                />
-
-                                {/* Generous Space Header (72px height) */}
-                                <div className={`h-[72px] px-8 flex items-center justify-between border-b relative z-10 ${
-                                    isBright ? 'border-black/[0.06] bg-white/30' : 'border-white/[0.07] bg-white/[0.015]'
+                                {/* Space Header */}
+                                <div className={`h-[60px] px-6 flex items-center justify-between border-b relative z-10 ${
+                                    isBright ? 'border-zinc-200 bg-zinc-50/60' : 'border-white/[0.06] bg-white/[0.02]'
                                 }`}>
-                                    <div className="flex items-center gap-3.5">
+                                    <div className="flex items-center gap-3">
                                         <div 
-                                            className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg transition-transform duration-300 hover:scale-110"
-                                            style={{ backgroundColor: space.bgTint, color: space.color, border: `1px solid ${space.borderTint}` }}
+                                            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border"
+                                            style={{ backgroundColor: space.bgTint, color: space.color, borderColor: space.borderTint }}
                                         >
-                                            <space.icon size={19} />
+                                            <space.icon size={16} />
                                         </div>
-                                        <div>
-                                            <div className="flex items-center gap-2.5">
-                                                <h2 className={`text-base font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>
-                                                    {space.title}
-                                                </h2>
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold ${
-                                                    isBright ? 'bg-black/[0.06] text-zinc-700' : 'bg-white/10 text-white/75'
-                                                }`}>
-                                                    {space.tabCount} {space.tabCount === 1 ? 'tab' : 'tabs'}
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-sm font-semibold tracking-tight">
+                                                {space.title}
+                                            </h2>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+                                                isBright ? 'bg-zinc-100 border-zinc-200 text-zinc-600' : 'bg-white/[0.04] border-white/10 text-white/60'
+                                            }`}>
+                                                {space.tabCount} {space.tabCount === 1 ? 'tab' : 'tabs'}
+                                            </span>
+                                            {isActiveSpaceZone && (
+                                                <span 
+                                                    className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-semibold"
+                                                    style={{ backgroundColor: space.bgTint, color: space.color }}
+                                                >
+                                                    Current
                                                 </span>
-                                                {isActiveSpaceZone && (
-                                                    <span 
-                                                        className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider"
-                                                        style={{ backgroundColor: space.bgTint, color: space.color, border: `1px solid ${space.borderTint}` }}
-                                                    >
-                                                        Current
-                                                    </span>
-                                                )}
-                                            </div>
+                                            )}
                                         </div>
                                     </div>
 
                                     {/* Space Actions: + New Tab, + New Folder */}
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5">
                                         <button
                                             onClick={(e) => handleCreateNewTabInSpace(e, space.id)}
-                                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 ${
+                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition border cursor-pointer ${
                                                 isBright 
-                                                    ? 'bg-black/[0.06] hover:bg-black/10 text-zinc-800 border border-black/10' 
-                                                    : 'bg-white/10 hover:bg-white/20 text-white border border-white/10 shadow-sm'
+                                                    ? 'bg-white hover:bg-zinc-100 text-zinc-800 border-zinc-200' 
+                                                    : 'bg-white/[0.05] hover:bg-white/10 text-white border-white/10'
                                             }`}
                                         >
-                                            <Plus size={14} /> New Tab
+                                            <Plus size={13} /> New Tab
                                         </button>
                                         <button
                                             onClick={(e) => handleCreateFolderInSpace(e, space.id)}
-                                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 ${
+                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition border cursor-pointer ${
                                                 isBright 
-                                                    ? 'bg-black/[0.03] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border border-black/[0.06]' 
-                                                    : 'bg-white/[0.06] hover:bg-white/15 text-white/75 hover:text-white border border-white/[0.08]'
+                                                    ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-200' 
+                                                    : 'bg-white/[0.05] hover:bg-white/10 text-white/80 border-white/10'
                                             }`}
                                         >
-                                            <FolderPlus size={14} /> New Folder
+                                            <FolderPlus size={13} /> New Folder
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* Interactive Ghost Slot for 1-Tab (or 0-Tab) Space Zones so 2-Column Board Looks Balanced & Inviting */}
+                                {/* Interactive Ghost Slot for 1-Tab (or 0-Tab) Space Zones */}
                                 {showGhostSlot && (
                                     <button
                                         type="button"
                                         onClick={(e) => handleCreateNewTabInSpace(e, space.id)}
-                                        className={`absolute rounded-[1.35rem] flex flex-col items-center justify-center gap-2.5 transition-all duration-300 group/ghost cursor-pointer outline-none ${
+                                        className={`absolute rounded-xl flex flex-col items-center justify-center gap-2 transition group/ghost cursor-pointer outline-none ${
                                             isBright ? 'tabmap-slot-ghost-bright text-zinc-600' : 'tabmap-slot-ghost-dark text-white/55'
                                         }`}
                                         style={{
@@ -1775,16 +1625,16 @@ export default function TabMap() {
                                         }}
                                     >
                                         <div 
-                                            className="w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover/ghost:scale-110 group-hover/ghost:rotate-90 shadow-inner"
+                                            className="w-9 h-9 rounded-xl flex items-center justify-center transition group-hover/ghost:scale-105"
                                             style={{ backgroundColor: space.bgTint, color: space.color, border: `1px solid ${space.borderTint}` }}
                                         >
-                                            <Plus size={20} />
+                                            <Plus size={16} />
                                         </div>
                                         <div className="flex flex-col items-center">
-                                            <span className={`text-xs font-bold tracking-tight transition-colors ${
+                                            <span className={`text-xs font-medium transition-colors ${
                                                 isBright ? 'text-zinc-700 group-hover/ghost:text-zinc-950' : 'text-white/70 group-hover/ghost:text-white'
                                             }`}>
-                                                Open New Tab or Drop Here
+                                                Open New Tab
                                             </span>
                                             <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-400' : 'text-white/35'}`}>
                                                 Click to launch in {space.title}
@@ -1805,13 +1655,13 @@ export default function TabMap() {
                                     return (
                                         <div
                                             key={subzone.id}
-                                            className={`tabmap-zone-spring animate-tabmap-zone-enter group/subzone absolute rounded-3xl border transition-all ${
+                                            className={`tabmap-zone-spring animate-tabmap-zone-enter group/subzone absolute rounded-xl border transition-all ${
                                                 subzone.type === 'folder'
                                                     ? (isBright ? 'tabmap-subzone-glass-bright' : 'tabmap-subzone-glass-dark')
                                                     : subzone.type === 'cluster'
-                                                    ? (isBright ? 'bg-amber-500/[0.05] border-amber-500/25 border-dashed' : 'bg-amber-500/[0.04] border-amber-500/25 border-dashed')
-                                                    : (isBright ? 'bg-black/[0.025] border-black/[0.07]' : 'bg-white/[0.025] border-white/[0.07]')
-                                            } ${isTargetFolder ? 'ring-3 ring-accent border-accent shadow-[0_0_35px_var(--accent-30)] scale-[1.01]' : ''}`}
+                                                    ? (isBright ? 'bg-zinc-100/70 border-zinc-200' : 'bg-white/[0.03] border-white/10')
+                                                    : (isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.06]')
+                                            } ${isTargetFolder ? 'ring-2 ring-accent border-accent scale-[1.01]' : ''}`}
                                             style={{
                                                 left: subzone.x - space.x,
                                                 top: subzone.y - space.y,
@@ -1883,25 +1733,31 @@ export default function TabMap() {
                                                 ) : subzone.type === 'cluster' ? (
                                                     <div className="flex items-center justify-between w-full gap-3">
                                                         <div className="flex items-center gap-2.5 min-w-0">
-                                                            <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                                                            <div className="w-6 h-6 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0">
                                                                 <img
                                                                     src={`https://www.google.com/s2/favicons?sz=64&domain=${subzone.domain}`}
                                                                     alt=""
-                                                                    className="w-4 h-4 rounded"
+                                                                    className="w-3.5 h-3.5 rounded"
                                                                     onError={(e) => { e.target.style.display = 'none'; }}
                                                                 />
                                                             </div>
-                                                            <span className={`text-sm font-bold truncate ${isBright ? 'text-amber-700' : 'text-amber-300/95'}`}>
+                                                            <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
                                                                 {subzone.domain}
                                                             </span>
-                                                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300/90 font-mono font-semibold shrink-0">
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-medium shrink-0 ${
+                                                                isBright ? 'bg-black/[0.05] text-zinc-600' : 'bg-white/10 text-white/50'
+                                                            }`}>
                                                                 {subzone.tabs.length} tabs
                                                             </span>
                                                         </div>
                                                         <button
                                                             onClick={(e) => handleFolderizeCluster(e, subzone)}
                                                             title="Folderize: Convert domain cluster into a dedicated folder"
-                                                            className="px-3 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-amber-500/35 transition-all hover:scale-105 active:scale-95 shrink-0 shadow-sm"
+                                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shrink-0 border ${
+                                                                isBright
+                                                                    ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
+                                                                    : 'bg-white/[0.06] hover:bg-white/10 text-white/80 hover:text-white border-white/10'
+                                                            }`}
                                                         >
                                                             <FolderPlus size={12} /> Folderize
                                                         </button>
@@ -1933,7 +1789,7 @@ export default function TabMap() {
                         );
                     })}
 
-                    {/* TAB CARDS LAYER (RENDERED IN REAL-TIME WORLD SPACE WITH 3D TILT & SPRING PHYSICS) */}
+                    {/* TAB CARDS LAYER */}
                     {Array.from(layout.nodePositions.values()).map((node, nodeIndex) => {
                         const tab = node.tab;
                         const isSelected = selectedTabIds.has(tab.id);
@@ -1942,9 +1798,8 @@ export default function TabMap() {
                         const isBeingDragged = dragState?.isDragging && dragState.tabIds.includes(tab.id);
                         const isMergeTarget = dragState?.isDragging && dragState.target?.type === 'tab' && dragState.target.id === tab.id;
                         const isPinned = pinnedTabs.some(p => p.domain === node.domain);
-                        const isCardHovered = hoveredCardTilt?.tabId === tab.id && !isBeingDragged;
 
-                        // Real-time live card drag position: smoothly follows cursor with zero lag!
+                        // Real-time live card drag position: smoothly follows cursor with zero lag
                         const currentCardX = node.x + (isBeingDragged ? dragDeltaWorld.dx : 0);
                         const currentCardY = node.y + (isBeingDragged ? dragDeltaWorld.dy : 0);
 
@@ -1952,61 +1807,37 @@ export default function TabMap() {
                             <div
                                 key={tab.id}
                                 onPointerDown={(e) => handleTabPointerDown(e, tab, node.spaceId)}
-                                onPointerMove={(e) => {
-                                    if (dragState?.isDragging || isReducedMotion) return;
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width || 1)));
-                                    const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / (rect.height || 1)));
-                                    setHoveredCardTilt({
-                                        tabId: tab.id,
-                                        rotateX: (0.5 - relY) * 10,
-                                        rotateY: (relX - 0.5) * 12,
-                                        spotX: Math.round(relX * 100),
-                                        spotY: Math.round(relY * 100)
-                                    });
-                                }}
-                                onPointerLeave={() => {
-                                    if (hoveredCardTilt?.tabId === tab.id) {
-                                        setHoveredCardTilt(null);
-                                    }
-                                }}
-                                className={`absolute rounded-[1.35rem] group/card cursor-pointer select-none ${
+                                className={`absolute rounded-2xl group/card cursor-pointer select-none transition-transform duration-150 ${
                                     isBeingDragged 
-                                        ? 'z-50 scale-[1.05] -rotate-1 shadow-[0_32px_70px_rgba(0,0,0,0.8)] ring-2 ring-accent transition-none' 
-                                        : 'tabmap-node-spring animate-tabmap-card hover:z-30'
+                                        ? 'z-50 scale-[1.03] shadow-2xl ring-2 ring-accent transition-none' 
+                                        : 'hover:-translate-y-1 hover:shadow-lg hover:z-30'
                                 } ${isMatchesSearch ? 'opacity-100' : 'opacity-20'}`}
                                 style={{
                                     left: currentCardX,
                                     top: currentCardY,
                                     width: node.width,
                                     height: node.height,
-                                    animationDelay: `${Math.min(nodeIndex * 28, 320)}ms`,
-                                    transform: isBeingDragged
-                                        ? undefined
-                                        : isCardHovered
-                                        ? `perspective(900px) rotateX(${hoveredCardTilt.rotateX.toFixed(2)}deg) rotateY(${hoveredCardTilt.rotateY.toFixed(2)}deg) translateY(-5px) scale(1.025)`
-                                        : undefined
                                 }}
                             >
                                 {/* Drag Target Intent Badge floating directly above the live card */}
                                 {isBeingDragged && dragState?.target && (
-                                    <div className="absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap z-50 pointer-events-none animate-pop-in">
-                                        <div className="px-3.5 py-1.5 rounded-full bg-accent text-zinc-950 font-bold text-xs shadow-2xl border border-accent/40 flex items-center gap-1.5">
+                                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap z-50 pointer-events-none">
+                                        <div className="px-3 py-1 rounded-md bg-zinc-900 border border-white/20 text-white font-medium text-xs shadow-xl flex items-center gap-1.5">
                                             {dragState.target.type === 'tab' && (
                                                 <>
-                                                    <FolderPlus size={13} className="text-zinc-950" />
-                                                    <span>Merge into new Folder</span>
+                                                    <FolderPlus size={13} className="text-accent" />
+                                                    <span>Merge into new folder</span>
                                                 </>
                                             )}
                                             {dragState.target.type === 'folder' && (
                                                 <>
-                                                    <Folder size={13} className="text-zinc-950" />
-                                                    <span>Move to Folder: {dragState.target.name || 'Folder'}</span>
+                                                    <Folder size={13} className="text-accent" />
+                                                    <span>Move to folder: {dragState.target.name || 'Folder'}</span>
                                                 </>
                                             )}
                                             {dragState.target.type === 'space' && (
                                                 <>
-                                                    <ArrowRight size={13} className="text-zinc-950" />
+                                                    <ArrowRight size={13} className="text-accent" />
                                                     <span>Move to {SPACE_CONFIGS.find(s => s.id === dragState.target.id)?.title || 'Space'}</span>
                                                 </>
                                             )}
@@ -2014,157 +1845,138 @@ export default function TabMap() {
                                     </div>
                                 )}
 
-                                {/* Card Box with Crisp Specular Glass Styling & Interactive Sheen */}
-                                <div className={`w-full h-full rounded-[1.35rem] overflow-hidden relative transition-all duration-200 flex flex-col ${
+                                {/* Card Box with Clean Desktop Glass Styling */}
+                                <div className={`w-full h-full rounded-2xl overflow-hidden relative transition-colors duration-150 flex flex-col ${
                                     isBright ? 'tabmap-card-glass-bright' : 'tabmap-card-glass-dark'
                                 } ${
-                                    tab.active ? 'ring-2 ring-accent/75 shadow-[0_0_25px_var(--accent-30)]' : ''
+                                    tab.active ? 'ring-2 ring-accent' : ''
                                 } ${
-                                    isSelected ? 'ring-2 ring-accent shadow-[0_0_28px_var(--accent)]' : ''
+                                    isSelected ? 'ring-2 ring-white/60' : ''
                                 } ${
-                                    isFocusedSearchMatch ? 'ring-4 ring-amber-400 shadow-[0_0_35px_rgba(251,191,36,0.65)] scale-[1.03]' : ''
+                                    isFocusedSearchMatch ? 'ring-2 ring-amber-400' : ''
                                 } ${
-                                    isMergeTarget ? 'ring-4 ring-accent scale-[1.05] animate-pulse shadow-[0_0_40px_var(--accent)]' : ''
-                                } after:absolute after:inset-x-5 after:top-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-white/30 after:to-transparent after:pointer-events-none`}>
+                                    isMergeTarget ? 'ring-2 ring-accent' : ''
+                                }`}>
                                     
-                                    {/* Diagonal Specular Light Sweep on Hover */}
-                                    <div className="tabmap-card-sheen" />
-
-                                    {/* Interactive Cursor Specular Spotlight */}
-                                    {isCardHovered && (
-                                        <div
-                                            className="absolute inset-0 pointer-events-none z-20 transition-opacity duration-200"
-                                            style={{
-                                                background: `radial-gradient(220px circle at ${hoveredCardTilt.spotX}% ${hoveredCardTilt.spotY}%, ${
-                                                    isBright ? 'rgba(212, 188, 148, 0.22)' : 'rgba(255, 255, 255, 0.14)'
-                                                }, transparent 75%)`
-                                            }}
-                                        />
-                                    )}
-
                                     {/* Thumbnail / Visual Preview Area (108px height) */}
-                                    <div className="h-[108px] w-full relative overflow-hidden bg-black/30 flex items-center justify-center">
+                                    <div className="h-[108px] w-full relative overflow-hidden bg-black/20 flex items-center justify-center border-b border-white/[0.06]">
                                         {tab.thumbnail ? (
                                             <img 
                                                 src={tab.thumbnail} 
                                                 alt="" 
-                                                className="w-full h-full object-cover object-top opacity-90 group-hover/card:opacity-100 group-hover/card:scale-105 transition-all duration-300" 
+                                                className="w-full h-full object-cover object-top opacity-90 group-hover/card:opacity-100 transition-opacity duration-200" 
                                             />
                                         ) : (
-                                            <div className="w-full h-full flex flex-col items-center justify-center p-3.5 text-center relative overflow-hidden bg-gradient-to-br from-white/[0.05] via-transparent to-black/35">
-                                                {/* Ambient concentric rings with hover expansion */}
-                                                <div className="absolute w-28 h-28 rounded-full border border-accent/15 group-hover/card:scale-125 transition-transform duration-500 pointer-events-none" />
-                                                <div className="absolute w-44 h-44 rounded-full border border-accent/5 group-hover/card:scale-110 transition-transform duration-700 pointer-events-none" />
-                                                
+                                            <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-zinc-900/30">
                                                 {node.domain ? (
-                                                    <div className="w-11 h-11 rounded-2xl bg-white/[0.08] border border-white/15 flex items-center justify-center shadow-lg group-hover/card:scale-110 transition-transform duration-300">
+                                                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-center mb-2">
                                                         <img 
                                                             src={`https://www.google.com/s2/favicons?sz=64&domain=${node.domain}`}
                                                             alt=""
-                                                            className="w-6 h-6 rounded drop-shadow"
+                                                            className="w-5 h-5 rounded"
                                                             onError={(e) => { e.target.style.display = 'none'; }}
                                                         />
                                                     </div>
                                                 ) : (
-                                                    <div className="w-11 h-11 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center shadow-inner group-hover/card:scale-110 transition-transform duration-300">
+                                                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-center mb-2">
                                                         {node.spaceId === 'ghost' ? (
-                                                            <Ghost size={20} className="text-purple-400" />
+                                                            <Ghost size={16} className="text-purple-400" />
                                                         ) : node.spaceId === 'tor' ? (
-                                                            <OnionIcon size={20} className="text-purple-300" />
+                                                            <OnionIcon size={16} className="text-purple-300" />
                                                         ) : (
-                                                            <Compass size={20} className="text-accent" />
+                                                            <Globe size={16} className="text-white/60" />
                                                         )}
                                                     </div>
                                                 )}
-                                                <span className="text-[11px] font-semibold text-white/65 max-w-[210px] truncate mt-2">
+                                                <span className="text-[11px] font-medium text-white/50 max-w-[210px] truncate">
                                                     {tab.title || (node.spaceId === 'ghost' ? 'Ghost Session' : (node.spaceId === 'tor' ? 'Tor Session' : 'Zen Dashboard'))}
                                                 </span>
                                             </div>
                                         )}
 
-                                        {/* Status Badges (QBrowse Glass Pill styling) */}
-                                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10 pointer-events-none">
+                                        {/* Status Badges */}
+                                        <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10 pointer-events-none">
                                             {tab.active && (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-wider bg-accent/20 border border-accent/45 text-accent shadow-sm flex items-center gap-1.5">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)] animate-pulse" /> ACTIVE
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-accent/20 border border-accent/40 text-accent flex items-center gap-1.5">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-accent" /> Active
                                                 </span>
                                             )}
                                             {tab.suspended && (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-wider bg-purple-500/20 border border-purple-500/35 text-purple-300 shadow-sm flex items-center gap-1">
-                                                    <Feather size={9} /> SLEEP
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-purple-500/15 border border-purple-500/25 text-purple-300 flex items-center gap-1">
+                                                    <Feather size={10} /> Sleep
                                                 </span>
                                             )}
                                             {(tab.isAudible || tab.isAudioPlaying) && (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-wider bg-amber-500/20 border border-amber-500/35 text-amber-300 shadow-sm flex items-center gap-1 animate-pulse">
-                                                    <Volume2 size={9} /> AUDIO
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 border border-amber-500/25 text-amber-300 flex items-center gap-1">
+                                                    <Volume2 size={10} /> Audio
                                                 </span>
                                             )}
                                             {isSplitView && splitRightTabId === tab.id && (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-wider bg-sky-500/20 border border-sky-500/35 text-sky-300 shadow-sm flex items-center gap-1">
-                                                    <Columns size={9} /> SPLIT
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-sky-500/15 border border-sky-500/25 text-sky-300 flex items-center gap-1">
+                                                    <Columns size={10} /> Split
                                                 </span>
                                             )}
                                         </div>
 
-                                        {/* Hover Quick-Action Glass Bar */}
-                                        <div className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-black/85 rounded-xl p-1 border border-white/15 opacity-0 translate-y-1 group-hover/card:opacity-100 group-hover/card:translate-y-0 transition-all duration-200 shadow-2xl z-30 pointer-events-auto">
+                                        {/* Hover Quick-Action Toolbar */}
+                                        <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-zinc-950/90 backdrop-blur-md rounded-lg p-0.5 border border-white/10 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150 shadow-md z-30 pointer-events-auto">
                                             <button 
                                                 title="Open in Split View" 
                                                 onClick={(e) => handleOpenSplit(e, tab, node.spaceId)}
-                                                className="w-6 h-6 rounded-lg hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition-colors"
+                                                className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
-                                                <Columns size={12} />
+                                                <Columns size={11} />
                                             </button>
                                             <button 
                                                 title={tab.suspended ? "Wake tab" : "Sleep tab"} 
                                                 onClick={(e) => handleToggleSleep(e, tab, node.spaceId)}
-                                                className="w-6 h-6 rounded-lg hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition-colors"
+                                                className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
-                                                {tab.suspended ? <Zap size={12} className="text-amber-400" /> : <Feather size={12} />}
+                                                {tab.suspended ? <Zap size={11} className="text-amber-400" /> : <Feather size={11} />}
                                             </button>
                                             <button 
                                                 title={tab.isMuted ? "Unmute" : "Mute"} 
                                                 onClick={(e) => handleToggleMute(e, tab, node.spaceId)}
-                                                className="w-6 h-6 rounded-lg hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition-colors"
+                                                className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
-                                                {tab.isMuted ? <VolumeX size={12} className="text-red-400" /> : <Volume2 size={12} />}
+                                                {tab.isMuted ? <VolumeX size={11} className="text-red-400" /> : <Volume2 size={11} />}
                                             </button>
                                             <button 
                                                 title="Pin domain to sidebar" 
                                                 onClick={(e) => handleTogglePin(e, tab)}
-                                                className="w-6 h-6 rounded-lg hover:bg-white/20 text-white/80 hover:text-white flex items-center justify-center transition-colors"
+                                                className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
-                                                <Pin size={12} className={isPinned ? "text-accent fill-accent" : ""} />
+                                                <Pin size={11} className={isPinned ? "text-accent fill-accent" : ""} />
                                             </button>
                                             <button 
                                                 title="Close tab" 
                                                 onClick={(e) => handleCloseCard(e, tab)}
-                                                className="w-6 h-6 rounded-lg hover:bg-red-500 text-white/80 hover:text-white flex items-center justify-center transition-colors"
+                                                className="w-5 h-5 rounded hover:bg-red-500/80 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
-                                                <X size={12} />
+                                                <X size={11} />
                                             </button>
                                         </div>
                                     </div>
 
-                                    {/* Title & Hostname Row (64px height) */}
-                                    <div className="h-[64px] px-4 flex flex-col justify-center border-t border-white/[0.06] bg-black/25">
+                                    {/* Title & Hostname Row */}
+                                    <div className="h-[60px] px-3.5 flex flex-col justify-center">
                                         <div className="flex items-center gap-2">
                                             {node.domain ? (
                                                 <img
                                                     src={`https://www.google.com/s2/favicons?sz=64&domain=${node.domain}`}
                                                     alt=""
-                                                    className="w-4 h-4 rounded shrink-0"
+                                                    className="w-3.5 h-3.5 rounded shrink-0"
                                                     onError={(e) => { e.target.style.display = 'none'; }}
                                                 />
                                             ) : (
-                                                <Globe size={14} className="text-white/40 shrink-0" />
+                                                <Globe size={13} className="text-white/40 shrink-0" />
                                             )}
-                                            <span className={`text-[13px] font-bold truncate ${isBright ? 'text-zinc-800' : 'text-white/95'}`}>
+                                            <span className={`text-xs font-medium truncate ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
                                                 {tab.title || (node.spaceId === 'ghost' ? 'Ghost Session' : (node.spaceId === 'tor' ? 'Tor Session' : 'Zen Dashboard'))}
                                             </span>
                                         </div>
-                                        <div className={`flex items-center justify-between text-[11px] font-mono mt-1 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                                            <span className="truncate max-w-[175px]">
+                                        <div className={`flex items-center justify-between text-[11px] font-mono mt-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                            <span className="truncate max-w-[170px]">
                                                 {node.domain || (node.spaceId === 'ghost' ? 'Ghost Session' : (node.spaceId === 'tor' ? 'Tor Session' : 'Zen Dashboard'))}
                                             </span>
                                             <span>{formatRelativeTime(tab.lastActiveAt)}</span>
@@ -2173,14 +1985,14 @@ export default function TabMap() {
 
                                     {/* Freeform Dragged indicator badge */}
                                     {node.isOffset && (
-                                        <div className="absolute bottom-2 right-2.5 w-1.5 h-1.5 rounded-full bg-accent/80" title="Custom freeform position" />
+                                        <div className="absolute bottom-2 right-2 w-1.5 h-1.5 rounded-full bg-accent/60" title="Custom freeform position" />
                                     )}
 
                                     {/* Merge Into New Folder Hover Beacon */}
                                     {isMergeTarget && (
-                                        <div className="absolute inset-0 bg-accent/25 flex items-center justify-center pointer-events-none z-30">
-                                            <div className="px-3.5 py-1.5 rounded-xl bg-accent text-zinc-950 font-black text-xs shadow-2xl flex items-center gap-1.5">
-                                                <FolderPlus size={14} /> Merge into Folder
+                                        <div className="absolute inset-0 bg-accent/20 flex items-center justify-center pointer-events-none z-30">
+                                            <div className="px-3 py-1.5 rounded-lg bg-accent text-zinc-950 font-bold text-xs shadow-lg flex items-center gap-1.5">
+                                                <FolderPlus size={13} /> Merge into Folder
                                             </div>
                                         </div>
                                     )}
@@ -2323,36 +2135,28 @@ export default function TabMap() {
                         }}
                     />
 
-                    {/* Active Sliding Liquid Glass Pill */}
+                    {/* Active Sliding Pill */}
                     <div
-                        className="absolute top-1.5 bottom-1.5 rounded-full border transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
+                        className="absolute top-1.5 bottom-1.5 rounded-full border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
                         style={{
                             left: pillStyle.left,
                             width: pillStyle.width,
                             opacity: pillStyle.opacity,
-                            ...(activeCameraTarget === 'work'
-                                ? {
-                                    backgroundColor: 'rgba(96, 165, 250, 0.18)',
-                                    borderColor: 'rgba(96, 165, 250, 0.42)',
-                                    boxShadow: '0 4px 16px rgba(96, 165, 250, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.22)'
-                                }
+                            backgroundColor: activeCameraTarget === 'work'
+                                ? 'rgba(96, 165, 250, 0.15)'
                                 : activeCameraTarget === 'ghost'
-                                ? {
-                                    backgroundColor: 'rgba(168, 85, 247, 0.18)',
-                                    borderColor: 'rgba(168, 85, 247, 0.42)',
-                                    boxShadow: '0 4px 16px rgba(168, 85, 247, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.22)'
-                                }
+                                ? 'rgba(168, 85, 247, 0.15)'
                                 : activeCameraTarget === 'tor'
-                                ? {
-                                    backgroundColor: 'rgba(192, 132, 252, 0.18)',
-                                    borderColor: 'rgba(192, 132, 252, 0.42)',
-                                    boxShadow: '0 4px 16px rgba(192, 132, 252, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.22)'
-                                }
-                                : {
-                                    backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.18))',
-                                    borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.42))',
-                                    boxShadow: '0 4px 16px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.22)'
-                                })
+                                ? 'rgba(192, 132, 252, 0.15)'
+                                : 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                            borderColor: activeCameraTarget === 'work'
+                                ? 'rgba(96, 165, 250, 0.35)'
+                                : activeCameraTarget === 'ghost'
+                                ? 'rgba(168, 85, 247, 0.35)'
+                                : activeCameraTarget === 'tor'
+                                ? 'rgba(192, 132, 252, 0.35)'
+                                : 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                            boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
                         }}
                     />
 
@@ -2364,10 +2168,10 @@ export default function TabMap() {
                                 ref={el => { cameraBtnRefs.current[s.id] = el; }}
                                 onMouseEnter={() => setHoveredCameraTarget(s.id)}
                                 onClick={() => frameSpaceZone(s.id)}
-                                className={`relative z-10 px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 outline-none focus:outline-none ${
+                                className={`relative z-10 px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 transition-all duration-150 active:scale-95 outline-none focus:outline-none ${
                                     isActiveTarget
-                                        ? (isBright ? 'text-zinc-950 font-black scale-105' : 'text-white font-black scale-105')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-bold' : 'text-white/70 hover:text-white font-bold')
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold')
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/70 hover:text-white font-medium')
                                 }`}
                             >
                                 <span className={`font-mono text-[10px] transition-opacity ${isActiveTarget ? 'opacity-75' : 'opacity-40'}`}>
@@ -2376,7 +2180,6 @@ export default function TabMap() {
                                 <s.icon
                                     size={13}
                                     style={{ color: s.color }}
-                                    className={`transition-transform duration-300 ${isActiveTarget ? 'scale-110' : ''}`}
                                 />
                                 <span>{s.title.split(' ')[0]}</span>
                             </button>
@@ -2390,60 +2193,74 @@ export default function TabMap() {
                         onMouseEnter={() => setHoveredCameraTarget('all')}
                         onClick={() => frameAll()}
                         title="Fit All Spaces (0 / F)"
-                        className={`relative z-10 px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 outline-none focus:outline-none ${
+                        className={`relative z-10 px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 transition-all duration-150 active:scale-95 outline-none focus:outline-none ${
                             activeCameraTarget === 'all'
-                                ? 'text-accent font-black scale-105'
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-bold' : 'text-white/75 hover:text-accent font-bold')
+                                ? 'text-accent font-bold'
+                                : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/75 hover:text-accent font-medium')
                         }`}
                     >
                         <Maximize2
                             size={13}
-                            className={`transition-transform duration-300 ${activeCameraTarget === 'all' ? 'scale-110 text-accent' : ''}`}
+                            className={activeCameraTarget === 'all' ? 'text-accent' : ''}
                         />
                         <span>Fit All</span>
                         <kbd className={`text-[9px] font-mono transition-opacity ${activeCameraTarget === 'all' ? 'opacity-85' : 'opacity-50'}`}>0</kbd>
                     </button>
                 </div>
 
-                {/* Tool Mode Switcher (Pan / Lasso Sliding Pill) */}
-                <div className={`relative flex items-center p-1 rounded-full pointer-events-auto transition-all ${
+                {/* Tool Mode Switcher (Pan / Lasso Segmented Control) */}
+                <div 
+                    onMouseLeave={() => setHoveredToolMode(null)}
+                    className={`relative flex items-center p-1 rounded-full pointer-events-auto transition-all select-none ${
                     isBright ? 'tabmap-hud-glass-bright' : 'tabmap-hud-glass-dark'
                 }`}>
-                    {/* Sliding Liquid Glass Pill */}
+                    {/* Subtle Hover Preview Pill */}
+                    {hoveredToolMode && hoveredToolMode !== toolMode && (
+                        <div
+                            className={`absolute left-1 top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                            }`}
+                            style={{
+                                transform: hoveredToolMode === 'select' ? 'translateX(100%)' : 'translateX(0)',
+                            }}
+                        />
+                    )}
+
+                    {/* Active Sliding Pill */}
                     <div
                         className="absolute left-1 top-1 bottom-1 w-[calc(50%-4px)] rounded-full border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
                         style={{
                             transform: toolMode === 'select' ? 'translateX(100%)' : 'translateX(0)',
                             backgroundColor: toolMode === 'select'
-                                ? 'var(--accent-15, rgba(212, 188, 148, 0.22))'
-                                : (isBright ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.14)'),
+                                ? 'var(--accent-15, rgba(212, 188, 148, 0.16))'
+                                : (isBright ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.1)'),
                             borderColor: toolMode === 'select'
-                                ? 'var(--accent-30, rgba(212, 188, 148, 0.45))'
-                                : (isBright ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.22)'),
-                            boxShadow: toolMode === 'select'
-                                ? '0 4px 16px rgba(212, 188, 148, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.24)'
-                                : '0 2px 10px rgba(0, 0, 0, 0.15), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                ? 'var(--accent-30, rgba(212, 188, 148, 0.4))'
+                                : (isBright ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.15)'),
+                            boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
                         }}
                     />
 
                     <button
+                        onMouseEnter={() => setHoveredToolMode('pan')}
                         onClick={() => setToolMode('pan')}
                         title="Pan Tool (V / H)"
-                        className={`relative z-10 w-24 py-1.5 rounded-full text-xs flex items-center justify-center gap-1.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 outline-none focus:outline-none ${
+                        className={`relative z-10 w-24 py-1.5 rounded-full text-xs flex items-center justify-center gap-1.5 transition-all duration-300 active:scale-95 outline-none focus:outline-none cursor-pointer ${
                             toolMode === 'pan' 
-                                ? (isBright ? 'text-zinc-950 font-black scale-105' : 'text-white font-black scale-105') 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-bold' : 'text-white/55 hover:text-white font-bold')
+                                ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold') 
+                                : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/55 hover:text-white font-medium')
                         }`}
                     >
                         <Hand size={13} /> Pan
                     </button>
                     <button
+                        onMouseEnter={() => setHoveredToolMode('select')}
                         onClick={() => setToolMode('select')}
                         title="Lasso Selection Tool (S / Shift+Drag)"
-                        className={`relative z-10 w-24 py-1.5 rounded-full text-xs flex items-center justify-center gap-1.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 outline-none focus:outline-none ${
+                        className={`relative z-10 w-24 py-1.5 rounded-full text-xs flex items-center justify-center gap-1.5 transition-all duration-300 active:scale-95 outline-none focus:outline-none cursor-pointer ${
                             toolMode === 'select' 
-                                ? 'text-accent font-black scale-105' 
-                                : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-bold' : 'text-white/55 hover:text-white font-bold')
+                                ? 'text-accent font-bold' 
+                                : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/55 hover:text-white font-medium')
                         }`}
                     >
                         <MousePointer size={13} /> Lasso
@@ -2452,7 +2269,7 @@ export default function TabMap() {
 
                 {/* Corner Interactive Minimap */}
                 <div 
-                    className={`w-[228px] h-[142px] rounded-3xl relative overflow-hidden pointer-events-auto cursor-pointer transition-all hover:scale-[1.03] ${
+                    className={`w-[210px] h-[130px] rounded-2xl relative overflow-hidden pointer-events-auto cursor-pointer transition-transform hover:scale-[1.01] ${
                         isBright ? 'tabmap-hud-glass-bright' : 'tabmap-hud-glass-dark'
                     }`}
                     onPointerDown={(e) => {
@@ -2494,8 +2311,8 @@ export default function TabMap() {
                     {/* Minimap SVG */}
                     <svg className="w-full h-full">
                         {(() => {
-                            const mw = 228;
-                            const mh = 142;
+                            const mw = 210;
+                            const mh = 130;
                             const scale = Math.min((mw - 24) / layout.worldWidth, (mh - 24) / layout.worldHeight);
                             const offsetX = (mw - layout.worldWidth * scale) / 2;
                             const offsetY = (mh - layout.worldHeight * scale) / 2;

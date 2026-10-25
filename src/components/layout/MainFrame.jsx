@@ -4,7 +4,8 @@ import {
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
-    ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy
+    ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy,
+    Columns, Layers, Sparkles, CornerDownLeft
 } from 'lucide-react';
 
 function getToastIcon(message, isBright = false) {
@@ -70,6 +71,7 @@ import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
 import FindInPageBar from '../common/FindInPageBar';
 import ScreenshotBar from '../common/ScreenshotBar';
+import ReadAloudPlayer from '../common/ReadAloudPlayer';
 import SnippingOverlay from '../common/SnippingOverlay';
 import ReaderModeOverlay from '../features/ReaderModeOverlay';
 import BrowserDialogOverlay from './BrowserDialogOverlay';
@@ -112,8 +114,8 @@ const DownloadPopup = () => {
             id="download-toast-popup" 
             className={`fixed top-4 right-6 w-72 backdrop-blur-2xl rounded-2xl p-1.5 select-none outline-none z-[70000] ${
                 isBright 
-                    ? 'bg-white/85 border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] text-zinc-900' 
-                    : 'bg-[#0c0c0f]/94 border border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] text-white/90'
+                    ? 'bg-white/90 border border-black/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.1)] text-zinc-900' 
+                    : 'bg-[#0c0c0f]/94 border border-white/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.6)] text-white/90'
             } ${isClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
         >
             {/* Header: Section Header matching right-click menu */}
@@ -291,6 +293,7 @@ export default function MainFrame() {
     const openOmnibox = useUIStore(state => state.openOmnibox);
 
     const [localDarkExclusions, setLocalDarkExclusions] = useState(() => (darkExclusions || []).join('\n'));
+    const [hoveredThemePreview, setHoveredThemePreview] = useState(null);
 
     useEffect(() => {
         if (activePopover === 'darkmode') {
@@ -579,8 +582,7 @@ export default function MainFrame() {
 
     return (
         <main 
-            className={`flex-1 min-w-0 relative z-20 flex flex-col ${isFullscreen ? 'p-0 m-0' : ''}`}
-            style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
+            className="flex-1 min-w-0 relative z-20 flex flex-col"
         >
             
             <TopBar />
@@ -605,28 +607,47 @@ export default function MainFrame() {
                         <span className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 block ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                             Browser Appearance
                         </span>
-                        <div className={`relative flex p-1 rounded-full border shadow-xs backdrop-blur-2xl ${
+                        <div 
+                            onMouseLeave={() => setHoveredThemePreview(null)}
+                            className={`relative flex p-1 rounded-full border shadow-xs backdrop-blur-2xl select-none ${
                             isBright 
                                 ? 'bg-black/[0.03] border-black/[0.05]' 
-                                : 'bg-[#0c0d14]/78 border-white/[0.06]'
+                                : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                         }`}>
+                            {/* Hover Preview Pill */}
+                            {hoveredThemePreview && hoveredThemePreview !== theme && (
+                                <div
+                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                        isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                    }`}
+                                    style={{
+                                        transform: hoveredThemePreview === 'light' ? 'translateX(100%)' : 'translateX(0)',
+                                    }}
+                                />
+                            )}
                             {/* Sliding Pill Indicator */}
                             <div 
                                 className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                    theme === 'dark'
-                                        ? (isBright ? 'bg-zinc-900 text-white shadow-xs' : 'bg-accent text-zinc-950 font-bold shadow-xs')
-                                        : (isBright ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'bg-accent text-zinc-950 font-bold shadow-xs')
+                                    isBright
+                                        ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                        : 'border'
                                 }`}
                                 style={{ 
-                                    transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)'
+                                    transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)',
+                                    ...(!isBright ? {
+                                        borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                        backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                    } : {})
                                 }}
                             />
                             <button
                                 type="button"
+                                onMouseEnter={() => setHoveredThemePreview('dark')}
                                 onClick={() => setTheme('dark')}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${
                                     theme === 'dark'
-                                        ? (isBright ? 'text-white font-bold' : 'text-zinc-950 font-bold')
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-black' : 'text-white/60 hover:text-white')
                                 }`}
                             >
@@ -635,10 +656,11 @@ export default function MainFrame() {
                             </button>
                             <button
                                 type="button"
+                                onMouseEnter={() => setHoveredThemePreview('light')}
                                 onClick={() => setTheme('light')}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${
                                     theme === 'light'
-                                        ? (isBright ? 'text-zinc-900 font-bold' : 'text-zinc-950 font-bold')
+                                        ? (isBright ? 'text-zinc-900 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-black' : 'text-white/60 hover:text-white')
                                 }`}
                             >
@@ -808,23 +830,22 @@ export default function MainFrame() {
                 return (
                     <div 
                         ref={mainContainerRef} 
-                        className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} ${isFullscreen ? 'p-0 m-0' : 'pt-0'}`}
-                        style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
+                        className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} pt-0`}
                     >
                         <div 
-                            className={`relative w-full h-full overflow-hidden transition-[border-radius] duration-200 ease-out flex ${
+                            className={`relative w-full h-full overflow-hidden transition-[border-radius,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex ${
                                 isFullscreen 
-                                    ? 'is-fullscreen-frame rounded-none border-none shadow-none !border-0 !shadow-none' 
+                                    ? 'is-fullscreen-frame rounded-none border-transparent shadow-none !border-0 !shadow-none' 
                                     : uiScale === 'compact'
                                     ? `rounded-[1.25rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
                                     : `rounded-[2rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
                             }`}
-                            style={isFullscreen ? { border: 'none', borderWidth: 0, boxShadow: 'none', borderRadius: 0, margin: 0, padding: 0 } : undefined}
                         >
                     <DownloadPopup />
                     <SavePasswordBanner />
                     <FindInPageBar />
                     <ScreenshotBar />
+                    <ReadAloudPlayer />
                     <SnippingOverlay />
                     <ReaderModeOverlay />
                     <BrowserDialogOverlay />
@@ -901,19 +922,19 @@ export default function MainFrame() {
                             title="Drag to resize split panes"
                         >
                             {/* Sleek 1px Hairline */}
-                            <div className={`absolute top-0 bottom-0 w-[1px] pointer-events-none transition-colors ${
+                            <div className={`absolute top-0 bottom-0 w-[1px] pointer-events-none transition-all duration-200 ${
                                 isDraggingSplit 
-                                    ? 'bg-accent shadow-[0_0_10px_var(--accent)]' 
-                                    : (!isBright ? 'bg-white/[0.08] group-hover:bg-accent' : 'bg-black/[0.08] group-hover:bg-accent')
+                                    ? 'bg-accent shadow-[0_0_12px_var(--accent)]' 
+                                    : (!isBright ? 'bg-white/[0.08] group-hover:bg-accent/60' : 'bg-black/[0.08] group-hover:bg-accent/60')
                             }`} />
 
                             {/* Floating Grab Pill Handle */}
-                            <div className={`absolute w-3.5 h-9 rounded-full flex items-center justify-center transition-all duration-200 cursor-col-resize shadow-md ${
+                            <div className={`absolute w-4 h-10 rounded-full flex items-center justify-center transition-all duration-200 cursor-col-resize shadow-md ${
                                 isDraggingSplit 
-                                    ? 'bg-accent border border-accent text-zinc-950 scale-110 shadow-[0_0_15px_var(--accent)]' 
+                                    ? 'bg-accent border border-accent text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' 
                                     : (isBright
-                                        ? 'liquid-pill-bright hover:scale-105'
-                                        : 'liquid-pill-dark hover:scale-105')
+                                        ? 'liquid-pill-bright hover:scale-105 border-black/10'
+                                        : 'liquid-pill-dark hover:scale-105 border-white/15')
                             }`}>
                                 <div className="flex flex-col gap-0.5 items-center pointer-events-none">
                                     <div className="w-1 h-1 rounded-full bg-current opacity-60" />
@@ -939,27 +960,58 @@ export default function MainFrame() {
                             {rightTab ? (
                                 <div className="relative w-full h-full flex flex-col">
                                     {/* Right Pane Overlay Controls */}
-                                    <div className={`h-9 border-b px-3 flex items-center justify-between text-xs z-30 shrink-0 ${
-                                        isBright ? 'bg-white/40 border-black/[0.08] text-zinc-900' : 'bg-black/20 border-white/[0.08] text-white'
+                                    <div className={`h-10 border-b px-3.5 flex items-center justify-between text-xs z-30 shrink-0 backdrop-blur-2xl transition-colors ${
+                                        isBright 
+                                            ? 'bg-white/70 border-black/[0.08] text-zinc-900 shadow-xs' 
+                                            : 'bg-[#0c0d16]/80 border-white/[0.08] text-white shadow-xs'
                                     }`}>
-                                        <div className="flex items-center gap-2 truncate max-w-[60%]">
-                                            {rightTab.url ? (
-                                                <img src={`https://www.google.com/s2/favicons?sz=32&domain=${rightTab.url}`} className="w-3.5 h-3.5 rounded-sm flex-shrink-0" onError={e=>e.target.style.display='none'} />
-                                            ) : (
-                                                <Globe size={13} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
+                                        <div className="flex items-center gap-2.5 truncate max-w-[65%]">
+                                            <div className="w-5 h-5 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0">
+                                                {rightTab.url ? (
+                                                    <img 
+                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${rightTab.url}`} 
+                                                        className="w-3.5 h-3.5 rounded-full flex-shrink-0" 
+                                                        onError={e=>e.target.style.display='none'} 
+                                                    />
+                                                ) : (
+                                                    <Globe size={11} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
+                                                )}
+                                            </div>
+                                            <span className="font-semibold truncate text-xs">{rightTab.title}</span>
+                                            {rightTab.url && (
+                                                <span className="hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-white/50 truncate max-w-[140px]">
+                                                    {rightTab.url.replace(/^https?:\/\//, '').split('/')[0]}
+                                                </span>
                                             )}
-                                            <span className="font-semibold truncate text-[11px]">{rightTab.title}</span>
                                         </div>
 
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={handleSwapPanes} className={`p-1.5 rounded-full transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Swap Left/Right Panes">
-                                                <ArrowLeftRight size={13} />
+                                        <div className="flex items-center gap-1.5">
+                                            <button 
+                                                onClick={handleSwapPanes} 
+                                                className={`w-7 h-7 rounded-full border border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                                    isBright ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]' : ''
+                                                }`} 
+                                                title="Swap Left/Right Panes"
+                                            >
+                                                <ArrowLeftRight size={12} />
                                             </button>
-                                            <button onClick={() => setSplitRightTabId(null)} className={`p-1.5 rounded-full transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'hover:bg-white/10 text-white/70 hover:text-white'}`} title="Change Right Tab">
-                                                <Search size={13} />
+                                            <button 
+                                                onClick={() => setSplitRightTabId(null)} 
+                                                className={`w-7 h-7 rounded-full border border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                                    isBright ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]' : ''
+                                                }`} 
+                                                title="Change Right Tab"
+                                            >
+                                                <Search size={12} />
                                             </button>
-                                            <button onClick={() => toggleSplitView()} className="p-1.5 hover:bg-red-500/20 text-white/70 hover:text-red-400 rounded-full transition cursor-pointer" title="Close Split View">
-                                                <X size={13} />
+                                            <button 
+                                                onClick={() => toggleSplitView()} 
+                                                className={`w-7 h-7 rounded-full border border-white/[0.08] hover:border-rose-500/30 bg-white/[0.04] hover:bg-rose-500/15 text-white/70 hover:text-rose-300 transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                                    isBright ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-rose-600 hover:bg-rose-500/10' : ''
+                                                }`} 
+                                                title="Close Split View"
+                                            >
+                                                <X size={12} />
                                             </button>
                                         </div>
                                     </div>
@@ -971,18 +1023,38 @@ export default function MainFrame() {
                                 </div>
                             ) : (
                                 /* Split Screen Launcher / Picker */
-                                <div className="w-full h-full p-6 flex flex-col items-center justify-center text-center overflow-y-auto relative z-10">
-                                    <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px' }}></div>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden z-10 w-full h-full pointer-events-auto">
+                                    <div 
+                                        className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} 
+                                        style={{ backgroundSize: '24px 24px' }}
+                                    />
                                     
-                                    <div className="relative z-10 flex flex-col items-center max-w-md w-full animate-pop-in">
-                                        <div className="w-12 h-12 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent mb-4 shadow-[0_0_20px_var(--accent-20)]">
-                                            <MonitorPlay size={24} strokeWidth={2} />
+                                    <div className="relative z-10 flex flex-col items-center w-full max-w-lg px-6 mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
+                                        {/* Header Block matching Zen Dashboard clock header height exactly */}
+                                        <div className="flex flex-col items-center mb-10 md:mb-14 px-4 w-full text-center select-none">
+                                            <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${
+                                                isTor ? 'text-purple-300/60' : (!isBright ? 'text-white/50' : 'text-zinc-700 font-bold')
+                                            }`}>
+                                                DUAL WORKSPACE
+                                            </span>
+                                            <div className="h-[5rem] md:h-[8rem] flex flex-col items-center justify-center">
+                                                <h2 className={`text-3xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b leading-tight ${
+                                                    isTor 
+                                                        ? 'from-purple-200 via-purple-300/80 to-purple-500/20' 
+                                                        : (!isBright 
+                                                            ? 'from-white via-white/90 to-white/20' 
+                                                            : 'from-zinc-900 via-zinc-800 to-zinc-700')
+                                                }`} style={{ textShadow: !isBright ? '0 10px 30px rgba(0,0,0,0.4)' : 'none' }}>
+                                                    Split Screen
+                                                </h2>
+                                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/45'} mt-2 max-w-xs font-normal leading-relaxed`}>
+                                                    Search the web or choose an open tab to browse side-by-side
+                                                </p>
+                                            </div>
                                         </div>
-                                        <h2 className={`text-xl font-bold tracking-tight mb-1 ${!isBright ? 'text-white' : 'text-zinc-900'}`}>Split Screen View</h2>
-                                        <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/50'} mb-6`}>Select an open tab or enter a URL to view side-by-side</p>
 
-                                        {/* URL Input Form with Live Autocomplete */}
-                                        <form onSubmit={handleOpenSplitUrl} className="w-full mb-6 relative z-50">
+                                        {/* URL Input Form - clean sleek liquid pill */}
+                                        <form onSubmit={handleOpenSplitUrl} className="w-full relative z-50">
                                             <div className="relative w-full">
                                                 <input 
                                                     type="text"
@@ -990,44 +1062,53 @@ export default function MainFrame() {
                                                     value={splitSearchUrl}
                                                     onChange={e => setSplitSearchUrl(e.target.value)}
                                                     onKeyDown={handleSplitKeyDown}
-                                                    className={`w-full h-10 pl-4 pr-11 rounded-2xl text-xs outline-none transition-all duration-200 ${
+                                                    className={`w-full h-11 pl-4 pr-11 rounded-full text-xs outline-none transition-all duration-200 ${
                                                         isBright 
-                                                            ? 'liquid-pill-bright focus:border-accent/60 placeholder-zinc-500' 
-                                                            : 'liquid-pill-dark focus:border-accent/60 placeholder-white/40'
+                                                            ? 'liquid-pill-bright focus:border-accent/60 placeholder-zinc-500 text-zinc-900' 
+                                                            : 'liquid-pill-dark focus:border-accent/60 placeholder-white/40 text-white'
                                                     }`}
                                                 />
-                                                <button type="submit" className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-accent text-zinc-950 font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer">
-                                                    <Search size={12} />
+                                                <button 
+                                                    type="submit" 
+                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-accent text-zinc-950 font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center justify-center"
+                                                    title="Open in Right Pane (Enter)"
+                                                >
+                                                    <Search size={13} />
                                                 </button>
                                             </div>
 
-                                            {/* Live Autocomplete Dropdown */}
+                                            {/* Live Autocomplete Dropdown (Liquid glass matching Context Menu) */}
                                             {splitLiveSuggestions.length > 0 && (
-                                                <div className={`absolute top-full left-0 right-0 mt-2 py-1.5 rounded-2xl border backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.5)] z-[100] max-h-60 overflow-y-auto hide-scroll text-left animate-pop-in ${
-                                                    isBright 
-                                                        ? 'bg-white/95 border-black/10 text-zinc-900' 
-                                                        : 'bg-[#12131a]/95 border-white/10 text-white'
-                                                }`}>
+                                                <div 
+                                                    style={{ backdropFilter: 'blur(28px) saturate(180%)', WebkitBackdropFilter: 'blur(28px) saturate(180%)' }}
+                                                    className={`absolute top-full left-0 right-0 mt-2 p-1.5 rounded-2xl border backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.55)] z-[100] max-h-60 overflow-y-auto hide-scroll text-left animate-pop-in ${
+                                                        isBright 
+                                                            ? 'bg-white/90 border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.1)]' 
+                                                            : 'bg-[#181a24]/75 border-white/[0.08] text-white/90'
+                                                    }`}
+                                                >
                                                     {splitLiveSuggestions.map((item, idx) => (
                                                         <div
                                                             key={idx}
                                                             onClick={() => handleOpenSplitUrl(item.url || item.title)}
                                                             onMouseEnter={() => setSplitSelectedSuggestion(idx)}
-                                                            className={`flex items-center justify-between px-3.5 py-2 cursor-pointer transition-colors duration-150 ${
+                                                            className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all duration-150 outline-none ${
                                                                 splitSelectedSuggestion === idx
-                                                                    ? (isBright ? 'bg-black/5 text-accent' : 'bg-white/10 text-accent')
-                                                                    : (isBright ? 'hover:bg-black/5' : 'hover:bg-white/5')
+                                                                    ? (isBright ? 'bg-black/5 text-accent font-semibold' : 'bg-white/10 text-accent font-semibold')
+                                                                    : (isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/[0.06] text-white/80 hover:text-white')
                                                             }`}
                                                         >
                                                             <div className="flex items-center gap-2.5 truncate min-w-0">
                                                                 {item.isSite || item.isHistory ? (
-                                                                    <Globe size={13} className={splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')} />
+                                                                    <Globe size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')}`} />
                                                                 ) : (
-                                                                    <Search size={13} className={splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')} />
+                                                                    <Search size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')}`} />
                                                                 )}
-                                                                <span className="text-xs truncate font-medium">{item.title}</span>
+                                                                <span className="truncate">{item.title}</span>
                                                             </div>
-                                                            <span className={`text-[10px] font-mono shrink-0 ml-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
+                                                            <span className={`text-[10px] font-mono ml-2 shrink-0 ${
+                                                                isBright ? 'text-zinc-400' : 'text-white/35 font-mono'
+                                                            }`}>
                                                                 {item.isSite ? 'Website' : (item.isHistory ? 'History' : 'Google')}
                                                             </span>
                                                         </div>
@@ -1036,37 +1117,81 @@ export default function MainFrame() {
                                             )}
                                         </form>
 
-                                        {/* Available Tabs List */}
-                                        <div className="w-full flex flex-col gap-2 max-h-60 overflow-y-auto hide-scroll pr-1">
-                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'} text-left mb-1`}>Open Tabs in this Space</span>
+                                        {/* Available Tabs List - Absolute, so it NEVER alters the vertical center calculation! */}
+                                        <div className="absolute top-[calc(100%+1.25rem)] left-6 right-6 flex flex-col gap-2 max-h-[30vh] overflow-y-auto hide-scroll text-left">
+                                            <div className="flex items-center justify-between w-full mb-1 px-1">
+                                                <span className={`text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-1.5 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
+                                                    <Layers size={11} className="text-accent" />
+                                                    Open Tabs in this Space
+                                                </span>
+                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isBright ? 'bg-black/[0.03] text-zinc-500' : 'bg-white/[0.04] text-white/40'}`}>
+                                                    {availableRightTabs.length} {availableRightTabs.length === 1 ? 'tab' : 'tabs'}
+                                                </span>
+                                            </div>
+
                                             {availableRightTabs.length === 0 ? (
-                                                <div className={`text-center text-xs italic py-4 rounded-2xl border ${isBright ? 'bg-black/[0.02] text-zinc-500 border-black/[0.06]' : 'text-white/30 bg-white/[0.02] border-white/[0.06]'}`}>
-                                                    No other open tabs. Type a URL above to open a split tab!
+                                                <div className={`w-full p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-1 shadow-xs ${
+                                                    isBright 
+                                                        ? 'bg-black/[0.02] text-zinc-500 border-black/[0.06]' 
+                                                        : 'bg-white/[0.02] text-white/40 border-white/[0.06]'
+                                                }`}>
+                                                    <div className="w-8 h-8 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-white/40 mb-0.5">
+                                                        <Sparkles size={13} />
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-white/70">No other open tabs</span>
+                                                    <span className="text-[11px] text-white/40 max-w-[240px]">
+                                                        Type a search query or URL above to browse side-by-side.
+                                                    </span>
                                                 </div>
                                             ) : (
                                                 availableRightTabs.map(t => (
                                                     <div 
                                                         key={t.id} 
                                                         onClick={() => setSplitRightTabId(t.id)}
-                                                        className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 group ${
+                                                        className={`flex items-center justify-between px-3.5 py-2 rounded-2xl border cursor-pointer transition-all duration-200 group relative ${
                                                             isBright 
-                                                                ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.06] hover:border-accent/50 text-zinc-900' 
-                                                                : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/[0.06] hover:border-accent/40 text-white'
+                                                                ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.06] hover:border-accent/50 text-zinc-900 shadow-xs' 
+                                                                : 'bg-white/[0.025] hover:bg-white/[0.06] border-white/[0.06] hover:border-accent/40 text-white shadow-xs'
                                                         }`}
                                                     >
-                                                        <div className="flex items-center gap-3 truncate min-w-0">
-                                                            {t.url ? (
-                                                                <img src={`https://www.google.com/s2/favicons?sz=32&domain=${t.url}`} className="w-4 h-4 rounded-sm flex-shrink-0" onError={e=>e.target.style.display='none'} />
-                                                            ) : (
-                                                                <Globe size={14} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
-                                                            )}
-                                                            <div className="flex flex-col text-left truncate">
-                                                                <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900 group-hover:text-accent' : 'text-white/90 group-hover:text-white'}`}>{t.title}</span>
-                                                                {t.url && <span className={`text-[10px] font-mono truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t.url}</span>}
+                                                        <div className="flex items-center gap-3 truncate min-w-0 pr-2">
+                                                            <div className="w-7 h-7 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0 group-hover:border-accent/30 transition-all">
+                                                                {t.url ? (
+                                                                    <img 
+                                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${t.url}`} 
+                                                                        className="w-3.5 h-3.5 rounded-full flex-shrink-0" 
+                                                                        onError={e => e.target.style.display = 'none'} 
+                                                                    />
+                                                                ) : (
+                                                                    <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
+                                                                )}
+                                                            </div>
+                                                            <div className="flex flex-col text-left truncate min-w-0">
+                                                                <span className={`text-xs font-semibold truncate transition-colors ${
+                                                                    isBright ? 'text-zinc-900 group-hover:text-accent' : 'text-white/90 group-hover:text-accent'
+                                                                }`}>
+                                                                    {t.title}
+                                                                </span>
+                                                                {t.url && (
+                                                                    <span className={`text-[10px] font-mono truncate mt-0.5 ${
+                                                                        isBright ? 'text-zinc-500' : 'text-white/40'
+                                                                    }`}>
+                                                                        {t.url}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                        <button className="px-3 py-1 rounded-xl bg-accent/15 border border-accent/30 text-accent group-hover:bg-accent group-hover:text-zinc-950 text-[10px] font-bold transition-all duration-200 cursor-pointer">
-                                                            Open Side
+
+                                                        <button 
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSplitRightTabId(t.id);
+                                                            }}
+                                                            className="px-3 py-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent group-hover:bg-accent group-hover:text-zinc-950 text-[11px] font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-xs flex items-center gap-1.5 shrink-0"
+                                                        >
+                                                            <Columns size={12} strokeWidth={2.5} />
+                                                            <span>Open</span>
                                                         </button>
                                                     </div>
                                                 ))

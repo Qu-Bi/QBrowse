@@ -356,7 +356,7 @@ export default function LivingTour({ onExit }) {
                         animation: hudCardEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
                     }
                 `}</style>
-                <div id="living-tour-welcome-modal" className="max-w-xl w-full rounded-[2.5rem] bg-[#0c0d16]/75 backdrop-blur-3xl border border-white/[0.14] p-8 shadow-[0_35px_100px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.15),inset_0_1px_1px_0_rgba(255,255,255,0.25)] flex flex-col items-center text-center space-y-6 relative overflow-hidden animate-hud-enter">
+                <div id="living-tour-welcome-modal" className="max-w-xl w-full rounded-[2.5rem] bg-[#0c0d16]/85 backdrop-blur-3xl border border-white/[0.06] p-8 shadow-[0_30px_90px_rgba(0,0,0,0.75)] flex flex-col items-center text-center space-y-6 relative overflow-hidden animate-hud-enter">
                     {/* Glassmorphic Ambient Mesh Gradients */}
                     <div className="absolute -top-24 left-1/4 w-80 h-36 bg-accent/20 rounded-full blur-3xl pointer-events-none" />
                     <div className="absolute -bottom-24 right-1/4 w-80 h-36 bg-purple-500/12 rounded-full blur-3xl pointer-events-none" />
@@ -574,7 +574,7 @@ export default function LivingTour({ onExit }) {
                     left: '50%',
                     transform: 'translateX(-50%)'
                 }}
-                className="z-[600010] pointer-events-auto w-[94vw] max-w-[680px] rounded-[2rem] p-6 backdrop-blur-3xl transition-all duration-300 shadow-[0_30px_90px_rgba(0,0,0,0.75),0_0_1px_1px_rgba(255,255,255,0.15),inset_0_1px_1px_0_rgba(255,255,255,0.25),inset_0_0_20px_0_rgba(255,255,255,0.02)] border border-white/[0.12] bg-[#0c0d16]/75 text-white flex flex-col gap-4 overflow-hidden animate-hud-card-enter"
+                className="z-[600010] pointer-events-auto w-[94vw] max-w-[680px] rounded-[2rem] p-6 backdrop-blur-3xl transition-all duration-300 shadow-[0_30px_90px_rgba(0,0,0,0.75)] border border-white/[0.06] bg-[#0c0d16]/85 text-white flex flex-col gap-4 overflow-hidden animate-hud-card-enter"
             >
                 {/* Multi-layered Glassmorphic Ambient Mesh Gradients */}
                 <div className="absolute -top-24 left-1/4 w-80 h-36 bg-accent/20 rounded-full blur-3xl pointer-events-none" />

@@ -28,7 +28,16 @@ function isGoogleAuthTarget(urlOrHost) {
         if (str.includes('://')) {
             hostname = new URL(str).hostname.toLowerCase();
         }
-        return hostname.startsWith('accounts.google.') ||
+        return hostname === 'mail.google.com' ||
+               hostname === 'gmail.com' ||
+               hostname.endsWith('.google.com') ||
+               hostname === 'google.com' ||
+               hostname.endsWith('.googleusercontent.com') ||
+               hostname === 'googleusercontent.com' ||
+               hostname.endsWith('.gstatic.com') ||
+               hostname === 'gstatic.com' ||
+               hostname.endsWith('.googleapis.com') ||
+               hostname.startsWith('accounts.google.') ||
                hostname === 'oauth2.googleapis.com' ||
                hostname.startsWith('accounts.youtube.') ||
                hostname === 'myaccount.google.com' ||
@@ -39,7 +48,7 @@ function isGoogleAuthTarget(urlOrHost) {
                (hostname === 'apis.google.com' && (str.includes('/auth') || str.includes('/oauth') || str.includes('/gsi')));
     } catch (_) {
         const s = String(urlOrHost).toLowerCase();
-        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.') || s.includes('smartlock.google.');
+        return s.includes('mail.google.com') || s.includes('gmail.') || s.includes('googleusercontent.') || s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.') || s.includes('smartlock.google.');
     }
 }
 
@@ -1117,7 +1126,12 @@ function runSmartDark() {
         const docEl = document.documentElement;
         if (!docEl) return;
 
-        if (!isForceDark || isExcluded) {
+        const hostLower = (window.location.hostname || '').toLowerCase();
+        const isBuiltinExcluded = hostLower.includes('mail.google.com') ||
+                                  hostLower.includes('docs.google.com') ||
+                                  hostLower.includes('googleusercontent.com');
+
+        if (!isForceDark || isExcluded || isBuiltinExcluded) {
             if (smartDarkObserver) {
                 smartDarkObserver.disconnect();
                 smartDarkObserver = null;

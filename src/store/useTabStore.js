@@ -1,6 +1,20 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
 
+export const getPinDomain = (pin) => {
+  if (!pin || !pin.domain) return '';
+  return pin.domain.toLowerCase().trim().replace(/^https?:\/\//i, '').split('/')[0].replace(/^www\./i, '');
+};
+
+export const isTabForPin = (tab, pin) => {
+  if (!tab || !pin) return false;
+  if (tab.pinnedId === pin.id) return true;
+  if (!tab.url || typeof tab.url !== 'string') return false;
+  const domain = getPinDomain(pin);
+  if (!domain) return false;
+  return tab.url.toLowerCase().includes(domain);
+};
+
 export const isValidSyncTab = (tab) => {
   if (!tab || typeof tab !== 'object') return false;
   const url = typeof tab.url === 'string' ? tab.url.trim() : '';
@@ -530,9 +544,9 @@ const useTabStore = create((set, get) => ({
 
     const list = get().getActiveList();
     const now = Date.now();
-    // Prevent duplicate tab opening if same URL was opened within the last 800ms
+    // Prevent duplicate tab opening if same URL was opened within the last 1200ms
     if (cleanUrl && cleanUrl !== 'about:blank') {
-        const recentDuplicate = list.find(t => t.url === cleanUrl && now - (t.lastActiveAt || 0) < 800);
+        const recentDuplicate = list.find(t => t.url === cleanUrl && (now - (t.lastActiveAt || 0) < 1200 || now - (t.createdAt || 0) < 1200));
         if (recentDuplicate) return;
     }
     const defaultTitle = isGhost ? 'New Incognito Tab' : 'New Tab';
@@ -927,8 +941,58 @@ const useTabStore = create((set, get) => ({
 
     // CASE 1: THIS IS THE LAST ALIVE TAB IN THE SPACE
     if (isLastAliveTab) {
-        // If this tab was already an empty New Tab on Zen Dashboard, closing it keeps it on Zen Dashboard
-        if (!tabToClose.url || tabToClose.url === '' || tabToClose.url === 'about:blank') {
+        const isTabEmpty = !tabToClose.url || 
+            tabToClose.url === '' || 
+            tabToClose.url === 'about:blank' || 
+            tabToClose.url.startsWith('about:') || 
+            tabToClose.url.startsWith('qbrowse://newtab');
+
+        // If this tab was already an empty New Tab on Zen Dashboard, closing it checks if window should close (same as Ctrl+W)
+        if (isTabEmpty) {
+            const shouldCloseWindowOnEmpty = uiStore.settings?.closeWindowOnLastTab !== false;
+
+            const isTabWithContent = (tab) => {
+                if (!tab || tab.isClosing) return false;
+                const url = typeof tab.url === 'string' ? tab.url.trim() : '';
+                if (!url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('qbrowse://newtab')) {
+                    return false;
+                }
+                return true;
+            };
+
+            const pinnedTabs = get().pinnedTabs || [];
+            const isAnyPinnedTabOpen = (tabs, pins) => {
+                if (!Array.isArray(pins) || pins.length === 0 || !Array.isArray(tabs) || tabs.length === 0) return false;
+                return tabs.some(t => isTabWithContent(t) && pins.some(p => isTabForPin(t, p)));
+            };
+
+            const isAnyRegularTabOpen = (tabs, pins) => {
+                if (!Array.isArray(tabs) || tabs.length === 0) return false;
+                return tabs.some(t => isTabWithContent(t) && !(Array.isArray(pins) && pins.some(p => isTabForPin(t, p))));
+            };
+
+            const allTabs = [
+                ...(get().privateTabs || []),
+                ...(get().workTabs || []),
+                ...(get().ghostTabs || []),
+                ...(get().torTabs || [])
+            ];
+
+            const hasRegularTabOpen = isAnyRegularTabOpen(allTabs, pinnedTabs);
+            const hasPinnedTabOpen = isAnyPinnedTabOpen(allTabs, pinnedTabs);
+            const hasMultipleTabs = aliveTabs.length > 1;
+
+            if (shouldCloseWindowOnEmpty && !hasRegularTabOpen && !hasPinnedTabOpen && !hasMultipleTabs) {
+                if (window.electronAPI && typeof window.electronAPI.close === 'function') {
+                    window.electronAPI.close();
+                } else if (window.electronAPI && typeof window.electronAPI.closeCurrentWindow === 'function') {
+                    window.electronAPI.closeCurrentWindow();
+                } else {
+                    window.close();
+                }
+                return;
+            }
+
             uiStore.setCurrentUrl('');
             return;
         }

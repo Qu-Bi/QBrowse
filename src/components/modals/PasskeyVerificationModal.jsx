@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Globe, Check } from 'lucide-react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useVaultStore, { enrichPasswords } from '../../store/useVaultStore';
 
@@ -251,17 +251,17 @@ const PasskeyVerificationModal = () => {
         <div 
             className={`fixed inset-0 z-[300] flex items-center justify-center p-6 ${
                 isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/80 backdrop-blur-2xl text-white'
-            } font-sans ${isClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+            } font-sans ${isClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`}
             onClick={handleCancel}
         >
             <div 
                 id="passkey-modal"
-                className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 border ${
+                className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 border ${isClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'} ${
                     authStatus === 'success' 
                         ? 'border-emerald-500/40 shadow-[0_0_90px_rgba(16,185,129,0.35)]' 
                         : (isBright 
-                            ? 'liquid-glass-bright bg-white/78 border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14),0_1px_3px_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.9)] text-zinc-900' 
-                            : 'liquid-glass-dark bg-[#12131a]/78 border-white/[0.12] shadow-[0_30px_90px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08),inset_0_1px_0_0_rgba(255,255,255,0.16)] text-white')
+                            ? 'bg-white/85 border-black/[0.06] shadow-[0_20px_60px_rgba(0,0,0,0.12)] text-zinc-900' 
+                            : 'bg-[#12131a]/85 border-white/[0.06] shadow-[0_25px_80px_rgba(0,0,0,0.7)] text-white')
                 }`} 
                 style={{
                     backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',

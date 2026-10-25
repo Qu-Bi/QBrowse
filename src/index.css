@@ -104,11 +104,13 @@ body {
 @keyframes popInSpring {
   0% {
     opacity: 0;
-    transform: scale(0.96) translateY(-6px);
+    transform: scale(0.95) translateY(-8px);
+    filter: blur(4px);
   }
   100% {
     opacity: 1;
     transform: scale(1) translateY(0);
+    filter: blur(0);
   }
 }
 
@@ -116,10 +118,12 @@ body {
   0% {
     opacity: 1;
     transform: scale(1) translateY(0);
+    filter: blur(0);
   }
   100% {
     opacity: 0;
-    transform: scale(0.96) translateY(-6px);
+    transform: scale(0.94) translateY(-10px);
+    filter: blur(5px);
   }
 }
 
@@ -128,7 +132,7 @@ body {
 }
 
 .animate-pop-out, .animate-slide-up-fade-out {
-  animation: popOutSpring 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  animation: popOutSpring 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
 }
 
 /* Apple visionOS & macOS Fluid Modal System */
@@ -277,6 +281,151 @@ body {
 .animate-reader-exit {
   animation: readerFadeOutScale 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
   transform-origin: center center;
+}
+
+/* Row Collapse for Deleting / Terminating Rows */
+@keyframes rowCollapse {
+  0% {
+    opacity: 1;
+    max-height: 100px;
+    transform: scaleY(1);
+    margin-bottom: 0.25rem;
+  }
+  100% {
+    opacity: 0;
+    max-height: 0px;
+    transform: scaleY(0.7);
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+}
+
+.animate-row-collapse {
+  animation: rowCollapse 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  overflow: hidden;
+  will-change: max-height, opacity, transform;
+}
+
+/* Lateral Directional Slide Animations (Setup Journey & Popover Drawers) */
+@keyframes slideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(28px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes slideOutLeft {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-28px) scale(0.98);
+  }
+}
+
+@keyframes slideInLeft {
+  0% {
+    opacity: 0;
+    transform: translateX(-28px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes slideOutRight {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(28px) scale(0.98);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+.animate-slide-out-left {
+  animation: slideOutLeft 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+.animate-slide-out-right {
+  animation: slideOutRight 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+/* Bottom Bar Enter & Exit Animations (Reader Mode Audio HUD) */
+@keyframes slideUpFadeInBottom {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideDownFadeOutBottom {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+}
+
+.animate-bottom-bar-enter {
+  animation: slideUpFadeInBottom 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+.animate-bottom-bar-exit {
+  animation: slideDownFadeOutBottom 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+/* Fast Optical Dissolve (Tab Switcher Overlay, Hover Previews, Omnibox) */
+@keyframes dissolveOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96);
+    filter: blur(4px);
+  }
+}
+
+.animate-dissolve-out {
+  animation: dissolveOut 0.14s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
 }
 
 .sidebar-light {
@@ -544,8 +693,7 @@ aside#qbrowse-sidebar.is-hidden {
 
 /* True Edge-to-Edge Fullscreen Mode Overrides */
 .is-fullscreen-frame {
-  border: none !important;
-  border-width: 0 !important;
+  border-color: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
   padding: 0 !important;
@@ -553,6 +701,7 @@ aside#qbrowse-sidebar.is-hidden {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   background-color: transparent !important;
+  transition: border-radius 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.25s ease !important;
 }
 
 /* Sidebar Tab Item Fluid Transitions */
@@ -742,10 +891,10 @@ aside#qbrowse-sidebar.is-hidden {
    True optical refraction, 190% vibrancy saturation, and specular rim reflection
    ========================================================= */
 .liquid-glass-dark {
-  background-color: rgba(12, 13, 20, 0.48) !important;
-  backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(18, 20, 32, 0.44) !important;
+  backdrop-filter: blur(var(--glass-blur, 24px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28) !important;
   transform: translateZ(0);
   will-change: transform;
@@ -758,7 +907,7 @@ aside#qbrowse-sidebar.is-hidden {
   background-color: rgba(255, 255, 255, 0.44) !important;
   backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
   -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
   box-shadow: 0 16px 45px rgba(0, 0, 0, 0.05) !important;
   transform: translateZ(0);
   will-change: transform;
@@ -770,27 +919,27 @@ aside#qbrowse-sidebar.is-hidden {
 /* Floating Inner Liquid Glass Capsule / Pill Controls (Nested inside liquid-glass without secondary blur to prevent Chromium dark composite bug) */
 .liquid-pill-dark {
   background-color: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
   box-shadow: none !important;
   color: rgba(255, 255, 255, 0.90) !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 .liquid-pill-dark:hover {
   background-color: rgba(255, 255, 255, 0.10) !important;
-  border-color: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
   color: #ffffff !important;
 }
 
 .liquid-pill-bright {
   background-color: rgba(255, 255, 255, 0.55) !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
   color: #18181b !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 .liquid-pill-bright:hover {
   background-color: rgba(255, 255, 255, 0.80) !important;
-  border-color: rgba(0, 0, 0, 0.14) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
   color: #09090b !important;
 }
 
@@ -997,11 +1146,21 @@ html.theme-light.eco-mode .liquid-pill-bright:hover {
   border-color: rgba(0, 0, 0, 0.18) !important;
 }
 
-/* Snappy instant transitions on eco mode to avoid frame drops */
+/* Snappy instant transitions & lightweight animations on eco mode to avoid GPU frame drops */
 html.eco-mode button,
 html.eco-mode .liquid-pill-dark,
 html.eco-mode .liquid-pill-bright {
   transition-duration: 0.12s !important;
+}
+
+html.eco-mode [class*="animate-"] {
+  animation-duration: 0.12s !important;
+  filter: none !important;
+}
+
+html.eco-mode .animate-dissolve-out {
+  animation-duration: 0.08s !important;
+  filter: none !important;
 }
 
 /* Ultra Mode: Maximum GPU visual fidelity & deep liquid refraction */
@@ -1009,16 +1168,30 @@ html.ultra-mode:not([style*="--glass-blur"]) {
   --glass-blur: 28px;
 }
 
+html.ultra-mode .animate-modal-dialog {
+  animation-duration: 0.35s !important;
+}
+
+html.ultra-mode .animate-pop-in,
+html.ultra-mode .animate-slide-down-fade {
+  animation-duration: 0.26s !important;
+}
+
+html.ultra-mode .animate-slide-in-right,
+html.ultra-mode .animate-slide-in-left {
+  animation-duration: 0.28s !important;
+}
+
 html.ultra-mode .liquid-glass-dark {
-  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38), 0 0 1px 1px rgba(255, 255, 255, 0.08) inset !important;
+  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(180%) contrast(102%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(180%) contrast(102%) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38) !important;
 }
 
 html.ultra-mode .liquid-glass-bright {
   backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
   -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(125%) contrast(104%) !important;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(255, 255, 255, 0.6) inset !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08) !important;
 }
 
 /* ==============================================================================
@@ -1277,225 +1450,114 @@ html.a11y-focus-rings *:focus-visible {
   will-change: transform, opacity;
 }
 
-.animate-tabmap-orb {
-  animation: tabmapOrbFloat 9s ease-in-out infinite;
-  will-change: transform;
-}
-
-/* Specular diagonal glass light sweep on card hover (supports both child overlay & container pseudo-element) */
-.tabmap-card-sheen:empty {
-  position: absolute;
-  top: -10%;
-  bottom: -10%;
-  left: 0;
-  width: 55%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.05) 35%,
-    rgba(255, 255, 255, 0.16) 50%,
-    rgba(255, 255, 255, 0.05) 65%,
-    transparent 100%
-  );
-  transform: translateX(-140%) skewX(-20deg);
-  pointer-events: none;
-  z-index: 5;
-}
-
-.group:hover .tabmap-card-sheen:empty,
-.tabmap-card-glass-dark:hover .tabmap-card-sheen:empty,
-.tabmap-card-glass-bright:hover .tabmap-card-sheen:empty {
-  animation: tabmapSheenSweep 0.75s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.tabmap-card-sheen:not(:empty)::after {
-  content: '';
-  position: absolute;
-  top: -10%;
-  bottom: -10%;
-  left: 0;
-  width: 55%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.05) 35%,
-    rgba(255, 255, 255, 0.16) 50%,
-    rgba(255, 255, 255, 0.05) 65%,
-    transparent 100%
-  );
-  transform: translateX(-140%) skewX(-20deg);
-  pointer-events: none;
-  z-index: 5;
-}
-
-.tabmap-card-sheen:not(:empty):hover::after {
-  animation: tabmapSheenSweep 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+.tabmap-card-sheen {
+  display: none !important;
 }
 
 /* 2. True Liquid Glass Surfaces for #tabmap-container (Solving Chromium Scaled Blur Bug) */
 
-/* Root overlay backdrop & translucent refractive glass veil over shared wallpaper */
+/* Root overlay backdrop & clean frosted veil over shared wallpaper */
 .tabmap-overlay-dark {
-  background:
-    radial-gradient(circle at 50% 0%, rgba(212, 188, 148, 0.09), transparent 62%),
-    radial-gradient(circle at 85% 90%, rgba(99, 102, 241, 0.07), transparent 55%),
-    rgba(8, 9, 14, 0.56) !important;
-  backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
+  background: rgba(12, 13, 18, 0.75) !important;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
 }
 
 .tabmap-overlay-bright {
-  background:
-    radial-gradient(circle at 50% 0%, rgba(212, 188, 148, 0.14), transparent 62%),
-    radial-gradient(circle at 85% 90%, rgba(99, 102, 241, 0.06), transparent 55%),
-    rgba(244, 245, 248, 0.62) !important;
-  backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 36px)) saturate(145%);
+  background: rgba(245, 246, 250, 0.8) !important;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
 }
 
 /* Floating top/bottom HUD bars outside scaled canvas */
 .tabmap-hud-glass-dark {
-  background: linear-gradient(180deg, rgba(28, 30, 42, 0.72) 0%, rgba(14, 15, 22, 0.82) 100%) !important;
-  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 0 rgba(255, 255, 255, 0.04) !important;
+  background: rgba(24, 25, 32, 0.88) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4) !important;
 }
 
 .tabmap-hud-glass-bright {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(248, 249, 252, 0.78) 100%) !important;
-  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 28px)) saturate(160%);
-  border: 1px solid rgba(0, 0, 0, 0.09) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06) !important;
 }
 
-/* Space Macro-Zones on the canvas (Lush translucent frosted glass so blurred QBrowse wallpaper glows through) */
+/* Space Macro-Zones on the canvas */
 .tabmap-zone-glass-dark {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.065) 0%, rgba(16, 18, 28, 0.68) 45%, rgba(10, 12, 18, 0.78) 100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow:
-    0 32px 80px rgba(0, 0, 0, 0.62),
-    0 10px 28px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
-    inset 0 0 40px rgba(255, 255, 255, 0.022) !important;
+  background: rgba(18, 19, 26, 0.82) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4) !important;
 }
 
 .tabmap-zone-glass-bright {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.86) 0%, rgba(246, 247, 252, 0.74) 100%) !important;
-  border: 1px solid rgba(0, 0, 0, 0.1) !important;
-  box-shadow:
-    0 28px 68px rgba(0, 0, 0, 0.08),
-    0 8px 24px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 0 rgba(255, 255, 255, 1),
-    inset 0 0 36px rgba(255, 255, 255, 0.5) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 1px solid rgba(0, 0, 0, 0.07) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.05) !important;
 }
 
-/* Subzone / Folder Containers on the canvas (Clear glass header divider + subtle inner glow) */
+/* Subzone / Folder Containers on the canvas */
 .tabmap-subzone-glass-dark {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.045) 0%, rgba(20, 23, 35, 0.64) 48%, rgba(12, 14, 22, 0.74) 100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.46),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.13),
-    inset 0 42px 0 0 rgba(255, 255, 255, 0.018),
-    inset 0 43px 0 0 rgba(255, 255, 255, 0.06),
-    inset 0 0 28px rgba(255, 255, 255, 0.018) !important;
+  background: rgba(25, 27, 36, 0.75) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
 }
 
 .tabmap-subzone-glass-bright {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.82) 0%, rgba(241, 243, 249, 0.68) 100%) !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.05),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.95),
-    inset 0 42px 0 0 rgba(255, 255, 255, 0.35),
-    inset 0 43px 0 0 rgba(0, 0, 0, 0.05),
-    inset 0 0 24px rgba(255, 255, 255, 0.45) !important;
+  background: rgba(248, 249, 252, 0.85) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.03) !important;
 }
 
 /* Interactive "+ New Tab / Drop Here" Ghost Slot inside 1-tab Space Zones */
-@keyframes tabmapGhostPulseDark {
-  0%, 100% {
-    border-color: rgba(255, 255, 255, 0.18);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28), inset 0 0 20px rgba(255, 255, 255, 0.02);
-  }
-  50% {
-    border-color: rgba(255, 255, 255, 0.34);
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38), inset 0 0 28px rgba(255, 255, 255, 0.055);
-  }
-}
-
-@keyframes tabmapGhostPulseBright {
-  0%, 100% {
-    border-color: rgba(0, 0, 0, 0.14);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.04), inset 0 0 18px rgba(255, 255, 255, 0.5);
-  }
-  50% {
-    border-color: rgba(0, 0, 0, 0.28);
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.08), inset 0 0 24px rgba(255, 255, 255, 0.85);
-  }
-}
-
 .tabmap-slot-ghost-dark {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.022) 0%, rgba(16, 18, 28, 0.32) 100%);
-  border: 1.5px dashed rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-              background 0.25s ease,
-              border-color 0.25s ease,
-              box-shadow 0.25s ease;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.12) !important;
+  transition: all 0.2s ease;
 }
 
 .tabmap-slot-ghost-dark:hover {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.055) 0%, rgba(24, 27, 40, 0.52) 100%);
-  transform: translateY(-2px) scale(1.01);
-  animation: tabmapGhostPulseDark 2.2s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
 }
 
 .tabmap-slot-ghost-bright {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.42) 0%, rgba(240, 242, 248, 0.32) 100%);
-  border: 1.5px dashed rgba(0, 0, 0, 0.11);
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.65);
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-              background 0.25s ease,
-              border-color 0.25s ease,
-              box-shadow 0.25s ease;
+  background: rgba(0, 0, 0, 0.015) !important;
+  border: 1px dashed rgba(0, 0, 0, 0.1) !important;
+  transition: all 0.2s ease;
 }
 
 .tabmap-slot-ghost-bright:hover {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72) 0%, rgba(244, 246, 252, 0.58) 100%);
-  transform: translateY(-2px) scale(1.01);
-  animation: tabmapGhostPulseBright 2.2s ease-in-out infinite;
+  background: rgba(0, 0, 0, 0.03) !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
 }
 
-/* Tab Cards on the canvas (Razor-sharp multi-stop specular sheen + rim light) */
+/* Tab Cards on the canvas */
 .tabmap-card-glass-dark {
-  background: linear-gradient(160deg, rgba(34, 36, 48, 0.92) 0%, rgba(18, 19, 26, 0.96) 100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.11) !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.16) !important;
-  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-              box-shadow 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-              border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #18191f !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .tabmap-card-glass-dark:hover {
-  border-color: rgba(255, 255, 255, 0.24) !important;
-  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.68), inset 0 1px 0 0 rgba(255, 255, 255, 0.28) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
 }
 
 .tabmap-card-glass-bright {
-  background: linear-gradient(160deg, #ffffff 0%, #f7f8fb 100%) !important;
-  border: 1px solid rgba(0, 0, 0, 0.09) !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.07), inset 0 1px 0 0 #ffffff !important;
-  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-              box-shadow 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-              border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .tabmap-card-glass-bright:hover {
-  border-color: rgba(0, 0, 0, 0.18) !important;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.13), inset 0 1px 0 0 #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.16) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08) !important;
 }
 
 /* 3. Focus Ring Suppression & Fluid Node Spring Transitions */

@@ -64,6 +64,7 @@ export default function UserProfilePopover({ isClosing }) {
 
     // Active Category Navigation: 'sync' | 'tabs' | 'backups' | 'profile'
     const [activeCategory, setActiveCategory] = useState('sync');
+    const [hoveredCategory, setHoveredCategory] = useState(null);
 
     // Profile state
     const [username, setUsername] = useState(() => localStorage.getItem('qbrowse_profile_username') || activeProfile?.name || (user ? user.email.split('@')[0] : 'Zen Explorer'));
@@ -72,6 +73,15 @@ export default function UserProfilePopover({ isClosing }) {
     const [customAvatarUrl, setCustomAvatarUrl] = useState(() => localStorage.getItem('qbrowse_profile_avatar_url') || '');
     
     const [showAddProfile, setShowAddProfile] = useState(false);
+    const [isClosingAddProfile, setIsClosingAddProfile] = useState(false);
+
+    const handleCloseAddProfile = () => {
+        setIsClosingAddProfile(true);
+        setTimeout(() => {
+            setShowAddProfile(false);
+            setIsClosingAddProfile(false);
+        }, 180);
+    };
     const [newProfileName, setNewProfileName] = useState('');
     const [newProfileAvatar, setNewProfileAvatar] = useState('🚀');
     const [newProfileColor, setNewProfileColor] = useState('#d4bc94');
@@ -83,6 +93,15 @@ export default function UserProfilePopover({ isClosing }) {
     // Manual Backup Input state
     const [backupLabel, setBackupLabel] = useState('');
     const [showPushBackupForm, setShowPushBackupForm] = useState(false);
+    const [isClosingPushBackup, setIsClosingPushBackup] = useState(false);
+
+    const handleClosePushBackup = () => {
+        setIsClosingPushBackup(true);
+        setTimeout(() => {
+            setShowPushBackupForm(false);
+            setIsClosingPushBackup(false);
+        }, 180);
+    };
 
     // Security Password Change State
     const [currPass, setCurrPass] = useState('');
@@ -219,6 +238,19 @@ export default function UserProfilePopover({ isClosing }) {
         { id: 'profile', label: 'Profile', icon: User },
     ];
 
+    // Global Escape key dismiss listener
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closePopover();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [closePopover]);
+
     const activeIndex = CATEGORIES.findIndex(cat => cat.id === activeCategory);
 
     return (
@@ -226,11 +258,15 @@ export default function UserProfilePopover({ isClosing }) {
             id="user-profile-popover"
             className={`fixed top-[4.75rem] left-10 md:left-16 z-[70000] w-[420px] max-w-[calc(100vw-24px)] max-h-[85vh] flex flex-col overflow-hidden ${
                 isBright 
-                    ? 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14)]' 
-                    : 'bg-[#0c0d14]/92 backdrop-blur-3xl border border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
+                    ? 'liquid-glass-bright bg-white/80 border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.9)]' 
+                    : 'liquid-glass-dark bg-[#141624]/65 border border-white/12 text-white shadow-[0_25px_80px_rgba(0,0,0,0.75),inset_0_1px_1px_rgba(255,255,255,0.22)]'
             } rounded-3xl p-4 select-none origin-top-left ${
-                isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
-            }`} 
+                isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'
+            }`}
+            style={{
+                backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
+                WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
+            }} 
             onClick={e => e.stopPropagation()}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
         >
@@ -274,25 +310,40 @@ export default function UserProfilePopover({ isClosing }) {
             </div>
 
             {/* Spaces-Switcher Style Sliding Segmented Navigation */}
-            <div className={`relative flex p-1 rounded-full mb-3.5 border shadow-xs backdrop-blur-2xl ${
+            <div 
+                onMouseLeave={() => setHoveredCategory(null)}
+                className={`relative flex p-1 rounded-full mb-3.5 border shadow-xs backdrop-blur-2xl transition-colors duration-200 select-none ${
                 isBright 
                     ? 'bg-black/[0.04] border-black/[0.06]' 
                     : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
             }`}>
-                {/* Animated Sliding Pill (Matching Spaces Switcher Ease & Dynamics) */}
+                {/* Subtle Hover Preview Pill */}
+                {hoveredCategory && hoveredCategory !== activeCategory && (
+                    <div 
+                        className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
+                            isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                        }`}
+                        style={{ 
+                            left: '4px',
+                            transform: `translateX(${CATEGORIES.findIndex(c => c.id === hoveredCategory) * 100}%)`
+                        }}
+                    />
+                )}
+
+                {/* Signature Liquid Glass Sliding Pill */}
                 <div 
-                    className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                    className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
                         isBright
-                            ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                            : 'border shadow-xs'
+                            ? 'bg-white border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                            : 'shadow-xs'
                     }`}
                     style={{ 
                         left: '4px',
                         transform: `translateX(${activeIndex * 100}%)`,
                         ...(!isBright ? {
-                            borderColor: 'var(--accent-30)',
-                            backgroundColor: 'var(--accent-15)',
-                            boxShadow: '0 0 12px var(--accent-15)'
+                            borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                            backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                            boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
                         } : {})
                     }}
                 />
@@ -304,7 +355,8 @@ export default function UserProfilePopover({ isClosing }) {
                         <button
                             key={cat.id}
                             onClick={() => setActiveCategory(cat.id)}
-                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer whitespace-nowrap select-none ${
+                            onMouseEnter={() => setHoveredCategory(cat.id)}
+                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer whitespace-nowrap select-none outline-none ${
                                 isActive 
                                     ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
                                     : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/45 hover:text-white')
@@ -507,13 +559,19 @@ export default function UserProfilePopover({ isClosing }) {
                 {activeCategory === 'backups' && (
                     <div className="animate-fade-in space-y-3 text-left">
                         {/* Push Snapshot Drawer */}
-                        {showPushBackupForm && user && (
-                            <div className={`p-3.5 ${isBright ? 'bg-white/95 border-accent/40 shadow-xl' : 'bg-black/60 border-accent/30'} border rounded-2xl animate-slide-down-fade space-y-2.5`}>
+                        {(showPushBackupForm || isClosingPushBackup) && user && (
+                            <div className={`p-3.5 rounded-2xl border transition-all space-y-2.5 ${
+                                isClosingPushBackup ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'
+                            } ${
+                                isBright 
+                                    ? 'bg-white/70 border-black/[0.06] shadow-sm text-zinc-900' 
+                                    : 'bg-white/[0.03] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] text-white'
+                            }`}>
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs font-bold text-accent flex items-center gap-1.5">
                                         <UploadCloud size={12} /> New Cloud Snapshot
                                     </span>
-                                    <button onClick={() => setShowPushBackupForm(false)} className="text-white/40 hover:text-white text-xs cursor-pointer">Cancel</button>
+                                    <button type="button" onClick={handleClosePushBackup} className={`text-xs cursor-pointer transition ${isBright ? 'text-zinc-400 hover:text-zinc-800' : 'text-white/40 hover:text-white'}`}>Cancel</button>
                                 </div>
                                 <form onSubmit={handlePushBackup} className="space-y-2">
                                     <input
@@ -523,9 +581,9 @@ export default function UserProfilePopover({ isClosing }) {
                                         placeholder="Snapshot Name (e.g. Workstation Backup)"
                                         className={`w-full ${
                                             isBright 
-                                                ? 'bg-black/[0.04] border-black/10 text-zinc-900 focus:border-accent' 
-                                                : 'bg-white/[0.04] border-white/[0.08] text-white focus:border-accent'
-                                        } border rounded-xl px-3 py-1.5 text-xs outline-none`}
+                                                ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent/60 focus:bg-black/[0.05]' 
+                                                : 'bg-white/[0.04] border-white/[0.08] text-white placeholder-white/35 backdrop-blur-md focus:border-accent/60 focus:bg-white/[0.07]'
+                                        } border rounded-xl px-3 py-1.5 text-xs outline-none transition`}
                                     />
                                     <button
                                         type="submit"
@@ -702,7 +760,11 @@ export default function UserProfilePopover({ isClosing }) {
 
                             {/* Avatar Picker Drawer */}
                             {showAvatarPicker && (
-                                <div className={`p-2.5 ${isBright ? 'bg-white/95 border-black/10' : 'bg-black/80 border-white/10'} border rounded-2xl animate-slide-down-fade space-y-2`}>
+                                <div className={`p-2.5 rounded-2xl border transition-all space-y-2 animate-slide-down-fade ${
+                                    isBright 
+                                        ? 'bg-white/70 border-black/[0.06] shadow-sm text-zinc-900' 
+                                        : 'bg-white/[0.03] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] text-white'
+                                }`}>
                                     <div className="grid grid-cols-5 gap-1.5">
                                         {AVATAR_PRESETS.map(preset => (
                                             <button
@@ -750,14 +812,24 @@ export default function UserProfilePopover({ isClosing }) {
                             </div>
 
                             {/* Add Profile Drawer */}
-                            {showAddProfile && (
-                                <form onSubmit={handleCreateProfile} className={`p-3 ${isBright ? 'bg-white/95' : 'bg-black/60'} border border-accent/30 rounded-2xl space-y-2 animate-slide-down-fade`}>
+                            {(showAddProfile || isClosingAddProfile) && (
+                                <form onSubmit={handleCreateProfile} className={`p-3 rounded-2xl border transition-all space-y-2.5 ${
+                                    isClosingAddProfile ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'
+                                } ${
+                                    isBright 
+                                        ? 'bg-white/70 border-black/[0.06] shadow-sm text-zinc-900' 
+                                        : 'bg-white/[0.03] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] text-white'
+                                }`}>
                                     <input
                                         type="text"
                                         placeholder="New Profile Name"
                                         value={newProfileName}
                                         onChange={(e) => setNewProfileName(e.target.value)}
-                                        className={`w-full ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'} border border-white/10 rounded-xl px-2.5 py-1 text-xs outline-none`}
+                                        className={`w-full ${
+                                            isBright 
+                                                ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent/60' 
+                                                : 'bg-white/[0.04] border-white/[0.08] text-white placeholder-white/35 backdrop-blur-md focus:border-accent/60'
+                                        } border rounded-xl px-2.5 py-1.5 text-xs outline-none transition`}
                                     />
                                     <div className="flex items-center gap-1.5 py-0.5">
                                         {PROFILE_COLORS.map(col => (
@@ -773,8 +845,10 @@ export default function UserProfilePopover({ isClosing }) {
                                     <div className="flex gap-1.5 pt-0.5">
                                         <button
                                             type="button"
-                                            onClick={() => setShowAddProfile(false)}
-                                            className="flex-1 py-1 bg-white/5 text-white/60 rounded-full text-[10px] cursor-pointer"
+                                            onClick={handleCloseAddProfile}
+                                            className={`flex-1 py-1 rounded-full text-[10px] font-medium transition cursor-pointer ${
+                                                isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600' : 'bg-white/[0.06] hover:bg-white/[0.1] text-white/70'
+                                            }`}
                                         >
                                             Cancel
                                         </button>

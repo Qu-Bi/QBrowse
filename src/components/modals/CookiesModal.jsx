@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cookie, Search, Trash2, ShieldAlert, RefreshCw, X, Check, Lock, Database, Clock, Filter, AlertTriangle } from 'lucide-react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
 export default function CookiesModal() {
@@ -38,19 +38,31 @@ export default function CookiesModal() {
         }
     }, [activeModal]);
 
+    const [deletingCookieKeys, setDeletingCookieKeys] = useState(new Set());
+
     if (activeModal !== 'cookies' && !isModalClosing) return null;
 
     const handleDeleteSingle = async (cookie) => {
-        if (window.electronAPI && window.electronAPI.removeCookie) {
-            const protocol = cookie.secure ? 'https' : 'http';
-            const cleanDomain = cookie.domain.startsWith('.') ? cookie.domain.substring(1) : cookie.domain;
-            const url = `${protocol}://${cleanDomain}${cookie.path || '/'}`;
-            const success = await window.electronAPI.removeCookie(url, cookie.name);
-            if (success) {
-                setCookies(prev => prev.filter(c => !(c.domain === cookie.domain && c.name === cookie.name)));
-                showToast(`Deleted cookie: ${cookie.name}`);
+        const key = `${cookie.domain}-${cookie.name}`;
+        setDeletingCookieKeys(prev => new Set([...prev, key]));
+        const timeout = getAnimationTimeout(200);
+        setTimeout(async () => {
+            if (window.electronAPI && window.electronAPI.removeCookie) {
+                const protocol = cookie.secure ? 'https' : 'http';
+                const cleanDomain = cookie.domain.startsWith('.') ? cookie.domain.substring(1) : cookie.domain;
+                const url = `${protocol}://${cleanDomain}${cookie.path || '/'}`;
+                const success = await window.electronAPI.removeCookie(url, cookie.name);
+                if (success) {
+                    setCookies(prev => prev.filter(c => !(c.domain === cookie.domain && c.name === cookie.name)));
+                    showToast(`Deleted cookie: ${cookie.name}`);
+                }
             }
-        }
+            setDeletingCookieKeys(prev => {
+                const next = new Set(prev);
+                next.delete(key);
+                return next;
+            });
+        }, timeout);
     };
 
     const handleClearDomainCookies = async (domain) => {
@@ -211,8 +223,11 @@ export default function CookiesModal() {
                                     <p className={`text-xs mt-1 ${isBright ? 'text-zinc-400' : 'text-white/20'}`}>Try clearing search or picking another domain</p>
                                 </div>
                             ) : (
-                                filteredCookies.map((cookie, i) => (
-                                    <div key={`${cookie.domain}-${cookie.name}-${i}`} className={`p-3.5 rounded-2xl border transition flex items-start justify-between gap-4 group ${
+                                filteredCookies.map((cookie, i) => {
+                                    const cookieKey = `${cookie.domain}-${cookie.name}`;
+                                    const isDeleting = deletingCookieKeys.has(cookieKey);
+                                    return (
+                                    <div key={`${cookie.domain}-${cookie.name}-${i}`} className={`p-3.5 rounded-2xl border transition flex items-start justify-between gap-4 group ${isDeleting ? 'animate-row-collapse pointer-events-none' : ''} ${
                                         isBright 
                                             ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/5' 
                                             : 'bg-white/5 hover:bg-white/10 border-white/5'
@@ -247,7 +262,8 @@ export default function CookiesModal() {
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
-                                ))
+                                );
+                            })
                             )}
                         </div>
 

@@ -103,14 +103,22 @@ export default function BrowserDialogOverlay() {
                 onConfirm(true);
             }
         }
-        closeActiveDialog();
+        if (typeof closeActiveDialog === 'function') {
+            closeActiveDialog();
+        } else {
+            useUIStore.getState().setActiveDialog(null);
+        }
     };
 
     const handleCancel = () => {
         if (typeof onCancel === 'function') {
             onCancel();
         }
-        closeActiveDialog();
+        if (typeof closeActiveDialog === 'function') {
+            closeActiveDialog();
+        } else {
+            useUIStore.getState().setActiveDialog(null);
+        }
     };
 
     const getIcon = () => {
@@ -151,8 +159,8 @@ export default function BrowserDialogOverlay() {
                     isClosing ? 'animate-pop-out' : 'animate-pop-in'
                 } p-5 flex flex-col gap-4 ${
                     isBright 
-                        ? 'bg-white/75 backdrop-blur-3xl border-black/[0.08] text-zinc-900 shadow-[0_24px_70px_rgba(0,0,0,0.12),0_0_1px_1px_rgba(0,0,0,0.04),inset_0_1px_0_0_rgba(255,255,255,0.9)]' 
-                        : 'bg-[#0c0d14]/78 backdrop-blur-3xl border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.7),0_0_1px_1px_rgba(255,255,255,0.06),inset_0_1px_0_0_rgba(255,255,255,0.12)]'
+                        ? 'bg-white/85 backdrop-blur-3xl border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.12)]' 
+                        : 'bg-[#0c0d14]/85 backdrop-blur-3xl border-white/[0.06] text-white shadow-[0_25px_70px_rgba(0,0,0,0.7)]'
                 }`}
                 onClick={(e) => e.stopPropagation()}
             >

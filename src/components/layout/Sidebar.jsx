@@ -7,11 +7,16 @@ import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
 import useTorStore from '../../store/useTorStore';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 import PinnedStackPopup, { isTabForPin } from './PinnedStackPopup';
+import GitHubLiveFolder from './GitHubLiveFolder';
+import GitHubGlancePopover from './GitHubGlancePopover';
+import { useGitHubStore } from '../../store/useGitHubStore';
 
 export default function Sidebar() {
     // UI Store State
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
+    const isSidebarPeeking = useUIStore(state => state.isSidebarPeeking);
+    const setIsSidebarPeeking = useUIStore(state => state.setIsSidebarPeeking);
     const uiScale = useUIStore(state => state.settings?.uiScale);
     const isHomeActive = useUIStore(state => !state.currentUrl || state.currentUrl === 'about:blank');
     const setHoverPreview = useUIStore(state => state.setHoverPreview);
@@ -30,6 +35,24 @@ export default function Sidebar() {
     const closePinnedStack = useUIStore(state => state.closePinnedStack);
 
     const activeProfileId = useProfileStore(state => state.activeProfileId);
+    const isPeeking = isFullscreen && isSidebarPeeking;
+    const isActuallyHidden = isFullscreen ? !isPeeking : isSidebarHidden;
+    const peekLeaveTimeoutRef = useRef(null);
+
+    const handleSidebarMouseEnter = () => {
+        if (peekLeaveTimeoutRef.current) {
+            clearTimeout(peekLeaveTimeoutRef.current);
+            peekLeaveTimeoutRef.current = null;
+        }
+    };
+
+    const handleSidebarMouseLeave = () => {
+        if (isFullscreen && isSidebarPeeking) {
+            peekLeaveTimeoutRef.current = setTimeout(() => {
+                setIsSidebarPeeking(false);
+            }, 200);
+        }
+    };
     const profiles = useProfileStore(state => state.profiles);
     const activeProfile = profiles.find(p => p.id === activeProfileId) || profiles[0];
 
@@ -77,6 +100,13 @@ export default function Sidebar() {
     const theme = useUIStore(state => state.theme);
     const isBright = theme === 'light' && !isIncognito && !isTor;
     const hoverTimeout = useRef(null);
+    const ghHoverTimeoutRef = useRef(null);
+    const openHoverGlance = useGitHubStore(state => state.openHoverGlance);
+    const closeHoverGlance = useGitHubStore(state => state.closeHoverGlance);
+
+    React.useEffect(() => {
+        useGitHubStore.getState().syncWithConfig();
+    }, []);
 
     // Vault Store state for folder open logic (since they belong to folders)
     const [isPrivateFolderOpen, setIsPrivateFolderOpen] = [true, () => {}]; // TODO: Link from useVaultStore or local state?
@@ -84,6 +114,7 @@ export default function Sidebar() {
     const [localPrivateOpen, setLocalPrivateOpen] = React.useState(true);
     const [localWorkOpen, setLocalWorkOpen] = React.useState(true);
     const [dragPos, setDragPos] = React.useState(null);
+    const [hoveredSpace, setHoveredSpace] = React.useState(null);
 
     React.useEffect(() => {
         if (!draggedItem) {
@@ -408,34 +439,48 @@ export default function Sidebar() {
                 ? 'liquid-glass-bright text-zinc-900 sidebar-light' 
                 : 'liquid-glass-dark text-white/90 sidebar-dark'
         } ${
-            isFullscreen || isSidebarHidden 
-                ? 'is-hidden pointer-events-none' 
-                : ''
+            isFullscreen
+                ? '!fixed !left-3 !top-3 !bottom-3 !z-[99980] shadow-[0_25px_70px_rgba(0,0,0,0.75)] backdrop-blur-3xl'
+                : (isSidebarHidden ? 'is-hidden pointer-events-none' : '')
         }`}
-        style={{
-            width: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 240 : 256),
+        style={isFullscreen ? {
+            position: 'fixed',
+            left: '12px',
+            top: '12px',
+            bottom: '12px',
+            width: uiScale === 'compact' ? 240 : 256,
+            maxWidth: uiScale === 'compact' ? 240 : 256,
+            zIndex: 99980,
+            transform: isSidebarPeeking ? 'translateX(0)' : 'translateX(calc(-100% - 24px))',
+            opacity: isSidebarPeeking ? 1 : 0,
+            pointerEvents: isSidebarPeeking ? 'auto' : 'none',
+            transition: 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease',
+            willChange: 'transform, opacity'
+        } : {
+            width: isSidebarHidden ? 0 : (uiScale === 'compact' ? 240 : 256),
             minWidth: 0,
-            maxWidth: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 240 : 256),
-            marginRight: (isFullscreen || isSidebarHidden) ? 0 : (uiScale === 'compact' ? 6 : 16),
-            opacity: (isFullscreen || isSidebarHidden) ? 0 : 1,
-            ...(isFullscreen ? { display: 'none', border: 'none', borderWidth: 0 } : {}),
-            transition: (isFullscreen || isSidebarHidden)
-                ? 'width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), max-width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), margin-right 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.44s cubic-bezier(0.25, 0.8, 0.25, 1)'
-                : 'width 0.48s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.48s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.48s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1)',
+            maxWidth: isSidebarHidden ? 0 : (uiScale === 'compact' ? 240 : 256),
+            marginRight: isSidebarHidden ? 0 : (uiScale === 'compact' ? 6 : 16),
+            opacity: isSidebarHidden ? 0 : 1,
+            pointerEvents: isSidebarHidden ? 'none' : 'auto',
+            transition: isSidebarHidden
+                ? 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease'
+                : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
             willChange: 'width, max-width, margin-right, opacity'
-        }}>
+        }}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
+        >
             {/* Fixed-Width Inner Container to prevent content squishing and text wrapping */}
             <div 
                 className="sidebar-inner h-full flex flex-col flex-shrink-0"
                 style={{
                     width: uiScale === 'compact' ? 240 : 256,
                     minWidth: uiScale === 'compact' ? 240 : 256,
-                    transform: (isFullscreen || isSidebarHidden) ? 'translateX(-40px)' : 'translateX(0)',
-                    opacity: (isFullscreen || isSidebarHidden) ? 0 : 1,
-                    transition: (isFullscreen || isSidebarHidden)
-                        ? 'transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.44s cubic-bezier(0.25, 0.8, 0.25, 1)'
-                        : 'transform 0.48s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1)',
-                    pointerEvents: (isFullscreen || isSidebarHidden) ? 'none' : 'auto',
+                    transform: (!isFullscreen && isSidebarHidden) ? 'translateX(-100%)' : 'translateX(0)',
+                    opacity: (!isFullscreen && isSidebarHidden) ? 0 : 1,
+                    transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
+                    pointerEvents: (!isFullscreen && isSidebarHidden) ? 'none' : 'auto',
                     willChange: 'transform, opacity'
                 }}
             >
@@ -506,6 +551,7 @@ export default function Sidebar() {
                     const hasActiveTab = pinTabs.some(t => t.active);
                     const isAudible = pinTabs.some(t => t.isAudioPlaying || t.isAudible);
                     const isPopupOpen = activePinnedStack?.pin?.id === pin.id;
+                    const isGitHubPin = pin.domain && pin.domain.toLowerCase().includes('github.com');
 
                     return (
                     <div key={pin.id} className="relative group flex justify-center animate-pin-in">
@@ -514,6 +560,21 @@ export default function Sidebar() {
                             onContextMenu={(e) => handlePinnedContextMenu(e, pin)}
                             onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
                             onAuxClick={(e) => handlePinnedAuxClick(e, pin)}
+                            onMouseEnter={(e) => {
+                                if (isGitHubPin) {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    if (ghHoverTimeoutRef.current) clearTimeout(ghHoverTimeoutRef.current);
+                                    ghHoverTimeoutRef.current = setTimeout(() => {
+                                        openHoverGlance(rect);
+                                    }, 280);
+                                }
+                            }}
+                            onMouseLeave={() => {
+                                if (ghHoverTimeoutRef.current) {
+                                    clearTimeout(ghHoverTimeoutRef.current);
+                                    ghHoverTimeoutRef.current = null;
+                                }
+                            }}
                             className={`relative w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all duration-200 active:scale-95 shadow-sm overflow-hidden ${
                                 hasActiveTab 
                                     ? 'bg-[color:var(--sidebar-bg-active)] border-accent/60 shadow-[0_0_12px_var(--accent)] scale-105' 
@@ -627,6 +688,8 @@ export default function Sidebar() {
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDropRoot(e, 'work')}
                     >
+                        {/* GitHub Live Integration (Pull Requests & Issues) */}
+                        <GitHubLiveFolder />
                         <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-work' ? 'border-blue-400 border-dashed bg-blue-500/10 py-1' : 'border-transparent'}`}>
                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
                             <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T • Middle-click for background)">
@@ -736,29 +799,55 @@ export default function Sidebar() {
             <div className="p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-2">
                 <div 
                     id="tour-spaces-container"
-                    className={`relative flex-1 flex p-1 rounded-full border shadow-xs ${
+                    onMouseLeave={() => setHoveredSpace(null)}
+                    className={`relative flex-1 flex p-1 rounded-full border shadow-xs transition-colors duration-200 select-none ${
                     isBright 
                         ? 'bg-black/[0.03] border-black/[0.05]' 
                         : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                 }`}>
+                    {/* Subtle Hover Preview Pill */}
                     <div 
-                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
+                            isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                        }`} 
+                        style={{ 
+                            transform: hoveredSpace === 'work' ? 'translateX(100%)' : 'translateX(0)',
+                            opacity: hoveredSpace && hoveredSpace !== activeSpace && !isIncognito && !isTor ? 1 : 0
+                        }}
+                    />
+
+                    {/* Signature Liquid Glass Sliding Pill */}
+                    <div 
+                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
                             isIncognito || isTor ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
                         } ${
                             isBright
-                                ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                                : 'border shadow-xs'
+                                ? 'bg-white border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                : 'shadow-xs'
                         }`} 
                         style={{ 
                             transform: activeSpace === 'work' ? 'translateX(100%)' : 'translateX(0)',
                             ...(!isBright ? {
-                                borderColor: 'var(--accent-30)',
-                                backgroundColor: 'var(--accent-15)'
+                                borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
                             } : {})
                         }}
                     />
-                    <button onClick={() => setActiveSpace('personal')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${activeSpace === 'personal' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><User size={14} /> <span className="hidden md:block">Personal</span></button>
-                    <button onClick={() => setActiveSpace('work')} className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${activeSpace === 'work' ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}><Layers size={14} /> <span className="hidden md:block">Work</span></button>
+                    <button 
+                        onClick={() => setActiveSpace('personal')} 
+                        onMouseEnter={() => setHoveredSpace('personal')}
+                        className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer outline-none ${activeSpace === 'personal' && !isIncognito && !isTor ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}
+                    >
+                        <User size={14} /> <span className="hidden md:block">Personal</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveSpace('work')} 
+                        onMouseEnter={() => setHoveredSpace('work')}
+                        className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer outline-none ${activeSpace === 'work' && !isIncognito && !isTor ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}
+                    >
+                        <Layers size={14} /> <span className="hidden md:block">Work</span>
+                    </button>
                 </div>
 
                 {/* Animated Morphing Ghost <-> Onion Button */}
@@ -872,6 +961,7 @@ export default function Sidebar() {
             </div>
         )}
         <PinnedStackPopup />
+        <GitHubGlancePopover />
         </>
     );
 }

@@ -49,7 +49,7 @@ export default function AddPinModal() {
     return (
         <div 
             className={`fixed inset-0 z-[50000] flex items-center justify-center p-4 font-sans ${
-                isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/75 backdrop-blur-2xl text-white'
+                isBright ? 'bg-black/10 backdrop-blur-xs text-zinc-900' : 'bg-black/15 backdrop-blur-xs text-white'
             } ${isModalClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
             onClick={closeModal}
         >
@@ -57,9 +57,13 @@ export default function AddPinModal() {
                 id="add-pin-modal"
                 className={`w-full max-w-md rounded-3xl p-6 flex flex-col gap-6 relative ${
                     isBright 
-                        ? 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900' 
-                        : 'bg-[#0d0d11]/95 border border-white/12 shadow-[0_30px_100px_rgba(0,0,0,0.9)] text-white'
+                        ? 'liquid-glass-bright bg-white/80 border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] ring-1 ring-black/[0.04] text-zinc-900' 
+                        : 'liquid-glass-dark bg-[#141624]/65 border border-white/12 shadow-[0_30px_90px_rgba(0,0,0,0.75),inset_0_1px_1px_rgba(255,255,255,0.22)] ring-1 ring-white/[0.08] text-white'
                 } ${isModalClosing ? 'animate-modal-spring-out' : 'animate-modal-spring'}`}
+                style={{
+                    backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
+                }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
@@ -86,11 +90,11 @@ export default function AddPinModal() {
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                     {/* Live Preview Card */}
-                    <div className={`p-4 border rounded-2xl flex items-center gap-3 ${
-                        isBright ? 'bg-black/[0.03] border-black/10' : 'bg-white/5 border-white/10'
+                    <div className={`p-4 border rounded-2xl flex items-center gap-3 backdrop-blur-xl ${
+                        isBright ? 'bg-black/[0.03] border-black/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]' : 'bg-white/[0.03] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
                     }`}>
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border ${
-                            isBright ? 'bg-white/80 border-black/10 shadow-sm' : 'bg-black/50 border-white/10'
+                            isBright ? 'bg-white/80 border-black/10 shadow-sm' : 'bg-white/[0.06] border-white/10 shadow-inner'
                         }`}>
                             {cleanDomain ? (
                                 <img 
@@ -120,8 +124,8 @@ export default function AddPinModal() {
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
                                 placeholder="e.g. GitHub, Gemini..."
-                                className={`w-full border rounded-xl px-3.5 py-2.5 text-xs transition focus:outline-none focus:border-accent ${
-                                    isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-black/40 border-white/10 text-white placeholder-white/30'
+                                className={`w-full border rounded-xl px-3.5 py-2.5 text-xs transition backdrop-blur-md focus:outline-none focus:border-accent ${
+                                    isBright ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:bg-black/[0.05]' : 'bg-white/[0.04] border-white/[0.08] text-white placeholder-white/30 focus:bg-white/[0.07]'
                                 }`}
                             />
                         </div>
@@ -154,10 +158,10 @@ export default function AddPinModal() {
                                     key={preset.domain}
                                     type="button"
                                     onClick={() => handleSelectPreset(preset)}
-                                    className={`p-2 border rounded-xl flex flex-col items-center gap-1 transition group cursor-pointer ${
+                                    className={`p-2 border rounded-xl flex flex-col items-center gap-1 transition group cursor-pointer backdrop-blur-md ${
                                         isBright 
-                                            ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/5 hover:border-black/15' 
-                                            : 'bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/15'
+                                            ? 'bg-black/[0.025] hover:bg-black/[0.06] border-black/[0.06] hover:border-black/15 shadow-xs' 
+                                            : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.06] hover:border-white/[0.15] shadow-xs'
                                     }`}
                                     title={preset.name}
                                 >
@@ -180,7 +184,7 @@ export default function AddPinModal() {
                             type="button"
                             onClick={closeModal}
                             className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                                isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/70 hover:text-white'
+                                isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/[0.06] hover:bg-white/[0.12] text-white/80 hover:text-white border border-white/[0.08]'
                             }`}
                         >
                             Cancel

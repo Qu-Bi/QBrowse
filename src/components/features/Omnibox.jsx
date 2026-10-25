@@ -6,7 +6,7 @@ import {
     RotateCw, Plus, Settings, History, Download, Maximize, Key, Activity, HardDrive, Users,
     Printer, FileDown, Camera, Crop, X, Video, Code, BookOpen, MessageSquare, Code2, ShoppingBag, Twitter, MapPin, Package, FileText, Bot, Folder
 } from 'lucide-react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useAIStore from '../../store/useAIStore';
@@ -249,6 +249,29 @@ export default function Omnibox() {
 
     const isBangSuggestionMode = !activeBang && (searchQuery.startsWith('!') || searchQuery.startsWith('@')) && !searchQuery.includes(' ');
     const bangSuggestions = isBangSuggestionMode ? matchBangSuggestions(searchQuery, customBangs) : [];
+
+    const shouldShowDropdown = Boolean(searchQuery.length > 0 || isBangSuggestionMode);
+    const [displayedDropdown, setDisplayedDropdown] = useState(false);
+    const [isDropdownClosing, setIsDropdownClosing] = useState(false);
+    const dropdownCloseTimerRef = useRef(null);
+
+    useEffect(() => {
+        if (shouldShowDropdown) {
+            if (dropdownCloseTimerRef.current) clearTimeout(dropdownCloseTimerRef.current);
+            setDisplayedDropdown(true);
+            setIsDropdownClosing(false);
+        } else if (displayedDropdown && !isDropdownClosing) {
+            setIsDropdownClosing(true);
+            const timeout = getAnimationTimeout(110);
+            dropdownCloseTimerRef.current = setTimeout(() => {
+                setDisplayedDropdown(false);
+                setIsDropdownClosing(false);
+            }, timeout);
+        }
+        return () => {
+            if (dropdownCloseTimerRef.current) clearTimeout(dropdownCloseTimerRef.current);
+        };
+    }, [shouldShowDropdown]);
 
     const detectedBang = !activeBang ? parseBangFromQuery(searchQuery, customBangs) : null;
     const effectiveBang = activeBang || detectedBang?.bang || null;
@@ -1112,8 +1135,9 @@ export default function Omnibox() {
                     </div>
                 </div>
 
-                {(searchQuery.length > 0 || isBangSuggestionMode) && (
-                    <div className="w-full mt-2 animate-fade-in">
+                {(shouldShowDropdown || displayedDropdown) && (
+                    <div className={`w-full mt-2 ${isDropdownClosing ? 'animate-dissolve-out pointer-events-none' : 'animate-fade-in'}`}>
+
                         <div 
                             ref={omniboxContainerRef} 
                             id="omnibox-dropdown"

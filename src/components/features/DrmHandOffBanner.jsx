@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ExternalLink, Tv, Monitor, X, Play, ShieldAlert } from 'lucide-react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
 export const VMP_STREAMING_PLATFORMS = [
@@ -131,7 +131,9 @@ export default function DrmHandOffBanner({
 
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
     const collapseTimerRef = useRef(null);
+    const dismissTimerRef = useRef(null);
 
     // 8-second auto-collapse timer
     useEffect(() => {
@@ -151,10 +153,20 @@ export default function DrmHandOffBanner({
 
         return () => {
             if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current);
+            if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
         };
     }, [url, genericDrmError, isDismissed, isHovered]);
 
-    if (!info || isDismissed) return null;
+    if (!info || (isDismissed && !isClosing)) return null;
+
+    const handleDismissClick = () => {
+        setIsClosing(true);
+        const timeout = getAnimationTimeout(200);
+        dismissTimerRef.current = setTimeout(() => {
+            onDismiss?.();
+            setIsClosing(false);
+        }, timeout);
+    };
 
     const handleOpenWithDialog = () => {
         if (window.electronAPI && window.electronAPI.openWithDialog) {
@@ -200,7 +212,9 @@ export default function DrmHandOffBanner({
     // Render full floating action banner
     return (
         <div 
-            className="absolute top-3 inset-x-0 mx-auto z-40 max-w-xl px-4 pointer-events-none select-none animate-in fade-in slide-in-from-top-2 duration-300"
+            className={`absolute top-3 inset-x-0 mx-auto z-40 max-w-xl px-4 pointer-events-none select-none transition-all duration-300 ${
+                isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-pop-in'
+            }`}
             onMouseEnter={() => {
                 setIsHovered(true);
                 if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current);
@@ -267,7 +281,7 @@ export default function DrmHandOffBanner({
                     </button>
 
                     <button
-                        onClick={onDismiss}
+                        onClick={handleDismissClick}
                         title="Dismiss for this tab"
                         className={`p-1.5 rounded-lg transition ${
                             isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-zinc-400 hover:text-white hover:bg-white/10'

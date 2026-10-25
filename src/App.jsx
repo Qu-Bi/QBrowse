@@ -32,7 +32,6 @@ import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
 import UserProfilePopover from './components/popovers/UserProfilePopover';
-import ReadAloudPlayer from './components/common/ReadAloudPlayer';
 import { isLikelyDownloadUrl } from './utils/downloadHelpers';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
@@ -320,6 +319,12 @@ export default function App() {
                 });
             }
 
+            if (window.electronAPI.onFullscreenChanged) {
+                window.electronAPI.onFullscreenChanged((isFs) => {
+                    useUIStore.getState().setIsFullscreen(Boolean(isFs));
+                });
+            }
+
             if (window.electronAPI.onPasskeyPrompt) {
                 window.electronAPI.onPasskeyPrompt((promptData) => {
                     console.log("[App] Received passkey verification prompt:", promptData);
@@ -566,8 +571,11 @@ export default function App() {
     return (
         <ContextMenuProvider>
             <div
-                className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 ${isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'} ${isFullscreen ? 'p-0 m-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'}`}
-                style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
+                className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 ${
+                    isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'
+                } transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    isFullscreen ? '!p-0 !m-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'
+                }`}
                 onClick={() => closeContextMenus()}
                 onContextMenu={handleContextMenu}
                 onDragOver={(e) => onDragOver(e, 'root')}
@@ -608,10 +616,24 @@ export default function App() {
                         }} 
                     />
                 </div>
+                {/* Arc-Style Zen Fullscreen Edge Peek Hit Triggers */}
+                {isFullscreen && (
+                    <>
+                        <div 
+                            id="zen-left-peek-trigger"
+                            className="fixed left-0 top-0 bottom-0 w-2.5 z-[99975] pointer-events-auto bg-transparent"
+                            onMouseEnter={() => useUIStore.getState().setIsSidebarPeeking(true)}
+                        />
+                        <div 
+                            id="zen-top-peek-trigger"
+                            className="fixed top-0 left-0 right-0 h-2.5 z-[99975] pointer-events-auto bg-transparent"
+                            onMouseEnter={() => useUIStore.getState().setIsTopBarPeeking(true)}
+                        />
+                    </>
+                )}
                 <Sidebar />
                 <div 
-                    className={`flex-1 flex flex-col h-full relative z-20 min-w-0 ${isFullscreen ? 'p-0 m-0' : ''}`}
-                    style={isFullscreen ? { padding: 0, margin: 0 } : undefined}
+                    className="flex-1 flex flex-col h-full relative z-20 min-w-0"
                 >
                     <MainFrame />
                 </div>
@@ -655,15 +677,12 @@ export default function App() {
                 <Overlays />
                 <TabSwitcherOverlay />
                 <DefaultBrowserBanner />
-                <ReadAloudPlayer />
 
                 {/* USER PROFILE & CLOUD SYNC POPOVER */}
                 {((activePopover === 'user' || activePopover === 'userProfile') || (isPopoverClosing && (activePopover === 'user' || activePopover === 'userProfile'))) && (
                     <>
                         <div 
-                            className={`fixed inset-0 z-[69990] bg-black/35 backdrop-blur-[3px] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                isPopoverClosing ? 'opacity-0 pointer-events-none' : 'animate-fade-in'
-                            }`}
+                            className="fixed inset-0 z-[69990] bg-transparent cursor-default select-none"
                             onClick={closePopover} 
                         />
                         <UserProfilePopover isClosing={isPopoverClosing} />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PanelLeft, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -55,6 +55,25 @@ function formatDisplayUrl(rawUrl) {
 
 export default function TopBar() {
     const isFullscreen = useUIStore(state => state.isFullscreen);
+    const isTopBarPeeking = useUIStore(state => state.isTopBarPeeking);
+    const setIsTopBarPeeking = useUIStore(state => state.setIsTopBarPeeking);
+    const topBarLeaveTimeoutRef = useRef(null);
+
+    const handleTopBarMouseEnter = () => {
+        if (topBarLeaveTimeoutRef.current) {
+            clearTimeout(topBarLeaveTimeoutRef.current);
+            topBarLeaveTimeoutRef.current = null;
+        }
+    };
+
+    const handleTopBarMouseLeave = () => {
+        if (isFullscreen && isTopBarPeeking) {
+            topBarLeaveTimeoutRef.current = setTimeout(() => {
+                setIsTopBarPeeking(false);
+            }, 200);
+        }
+    };
+
     const theme = useUIStore(state => state.theme);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const currentUrl = useUIStore(state => state.currentUrl);
@@ -213,11 +232,21 @@ export default function TopBar() {
         };
     }, [activeTabId]);
 
+    const isPeeking = isFullscreen && isTopBarPeeking;
+
     return (
         <>
             <div 
-                className={`relative z-[60] transition-all duration-200 ease-out ${isFullscreen ? 'hidden' : 'mt-0 opacity-100'}`}
-                style={isFullscreen ? { display: 'none' } : undefined}
+                onMouseEnter={handleTopBarMouseEnter}
+                onMouseLeave={handleTopBarMouseLeave}
+                className={isFullscreen 
+                    ? `fixed top-2.5 left-4 right-4 z-[99990] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                        isPeeking 
+                            ? 'translate-y-0 opacity-100 pointer-events-auto shadow-[0_20px_60px_rgba(0,0,0,0.65)]' 
+                            : '-translate-y-[130%] opacity-0 pointer-events-none'
+                    }` 
+                    : 'relative z-[60] mt-0 opacity-100 translate-y-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto'
+                }
             >
                 {/* SINGLE BUBBLE TOPBAR */}
                 <div 
@@ -378,7 +407,7 @@ export default function TopBar() {
                                     </div>
 
                                     {/* Sleek Glassmorphic Micro-Tooltip on Hover */}
-                                    <div className="absolute left-0 top-full mt-2 hidden group-hover/tor:flex flex-col gap-0.5 min-w-[170px] max-w-[240px] p-2.5 bg-[#0c0c0f]/95 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] text-left text-white z-50 pointer-events-none animate-pop-in">
+                                    <div className="absolute left-0 top-full mt-2 hidden group-hover/tor:flex flex-col gap-0.5 min-w-[170px] max-w-[240px] p-2.5 bg-[#0c0c0f]/95 backdrop-blur-2xl border border-white/[0.06] rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.65)] text-left text-white z-50 pointer-events-none animate-pop-in">
                                         <div className="flex items-center gap-1.5 font-semibold text-[11px] tracking-wide">
                                             <span className={`w-1.5 h-1.5 rounded-full ${
                                                 torStatus === 'connected' 

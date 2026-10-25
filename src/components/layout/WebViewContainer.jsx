@@ -66,6 +66,19 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     activeNoteCardRef.current = activeNoteCard;
     const prevHostRef = useRef('');
 
+    // HTML5 Video Fullscreen state
+    const [isHtmlFullscreen, setIsHtmlFullscreen] = useState(false);
+    const htmlFullscreenTabId = useUIStore(state => state.htmlFullscreenTabId);
+    const isThisTabHtmlFullscreen = isHtmlFullscreen || htmlFullscreenTabId === tab.id;
+
+    useEffect(() => {
+        return () => {
+            if (useUIStore.getState().htmlFullscreenTabId === tab.id) {
+                useUIStore.getState().setHtmlFullscreen(tab.id, false);
+            }
+        };
+    }, [tab.id]);
+
     const theme = useUIStore(state => state.theme);
     const isBright = theme === 'light' && space !== 'ghost' && space !== 'tor';
 
@@ -584,7 +597,11 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             try {
                 const isCosmetic = useUIStore.getState().settings?.cosmetic !== false;
                 if (isCosmetic) {
-                    wv.insertCSS(`.ad-container, .adsbygoogle, div[id^="google_ads_"], div[aria-label="Advertisement"], .ytd-ad-slot-renderer, .trc_rbox_outer, .OUTBRAIN, #taboola-below-article-thumbnails { display: none !important; height: 0 !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }`).catch(() => {});
+                    wv.insertCSS(`.ad-container, .adsbygoogle, div[id^="google_ads_"], div[aria-label="Advertisement"], .ytd-ad-slot-renderer, .trc_rbox_outer, .OUTBRAIN, #taboola-below-article-thumbnails, [class*="reklama"], [id*="reklama"], [id*="Reklama"], [class*="Reklama"], .wp-header-panel, [class*="wp-header-panel"], [class*="bmjdxfegh"], [class*="screeningWallpaper"], [data-st-area*="reklama"], [data-vab-box], .cHJldmVudENC, .font-wp-native, [class*="Billboard"], [id*="Billboard"], [class*="Wallpaper"], [id*="Wallpaper"], [class*="Tapeta"], [id*="Tapeta"], [class*="Branding"], [id*="Branding"], [id^="wp-ad"], [class*="wp-ad"], [id^="gpt-ad"], [class*="gpt-ad"], [id^="ad-desktop"], [class*="ad-desktop"], [class*="AdSlot"], [class*="ad-slot"], [class*="ad_slot"] { display: none !important; height: 0 !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }`).catch(() => {});
+                    const currentTabUrl = tab.url ? tab.url.toLowerCase() : '';
+                    if (currentTabUrl.includes('wp.pl')) {
+                        wv.insertCSS(`body, html, #root, #app { background-image: none !important; } .wp-header-panel, [class*="wp-header-panel"], [class*="screeningWallpaper"] { display: none !important; height: 0 !important; } div[class^="_"] > style + div[class] { display: none !important; }`).catch(() => {});
+                    }
                 }
             } catch(e) {}
 
@@ -618,16 +635,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
         
         const handleEnterHtmlFullScreen = () => {
-            if (window.electronAPI && window.electronAPI.setFullscreen) {
-                window.electronAPI.setFullscreen(true);
-            }
-            useUIStore.getState().setIsFullscreen(true);
+            setIsHtmlFullscreen(true);
+            useUIStore.getState().setHtmlFullscreen(tab.id, true);
         };
         const handleLeaveHtmlFullScreen = () => {
-            if (window.electronAPI && window.electronAPI.setFullscreen) {
-                window.electronAPI.setFullscreen(false);
-            }
-            useUIStore.getState().setIsFullscreen(false);
+            setIsHtmlFullscreen(false);
+            useUIStore.getState().setHtmlFullscreen(tab.id, false);
         };
 
         const handleStopLoading = () => {
@@ -1057,46 +1070,18 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 window.electronAPI?.logToTerminal?.(`[WebView ${tab.id}] new-window intercepted`, {
                     url: e.url || '(empty)',
                     disposition: e.disposition,
-                    frameName: e.frameName || '(none)'
+                    frameName: e.frameName || '(none)',
+                    features: e.features || '(none)'
                 });
             } catch (_) {}
-            const targetUrl = (e.url || '').toLowerCase();
-            const frameName = (e.frameName || '').toLowerCase();
-            const isAuthOrPopup = !e.url || e.url === 'about:blank' ||
-                targetUrl.includes('accounts.google.') ||
-                targetUrl.includes('smartlock.google.com') ||
-                targetUrl.includes('google.com/gsi') ||
-                targetUrl.includes('/gsi/') ||
-                targetUrl.includes('facebook.com') ||
-                targetUrl.includes('appleid.apple.com') ||
-                targetUrl.includes('github.com/login/oauth') ||
-                targetUrl.includes('twitter.com/i/oauth2') ||
-                targetUrl.includes('x.com/i/oauth2') ||
-                targetUrl.includes('microsoft.com') ||
-                targetUrl.includes('live.com') ||
-                targetUrl.includes('discord.com/oauth2') ||
-                targetUrl.includes('slack.com/oauth') ||
-                targetUrl.includes('linkedin.com/oauth') ||
-                targetUrl.includes('spotify.com/authorize') ||
-                targetUrl.includes('pinterest.com') ||
-                targetUrl.includes('/oauth') ||
-                targetUrl.includes('/auth') ||
-                targetUrl.includes('/login') ||
-                targetUrl.includes('/signin') ||
-                frameName.includes('auth') ||
-                frameName.includes('oauth') ||
-                frameName.includes('login') ||
-                frameName.includes('signin') ||
-                frameName.includes('google') ||
-                frameName.includes('gsi') ||
-                frameName.includes('credential') ||
-                frameName.includes('popup') ||
-                frameName.includes('dialog') ||
-                e.disposition === 'new-window';
 
-            // Critical: If it is an auth popup or script window, DO NOT call preventDefault!
-            // Let Electron's main process setWindowOpenHandler open the native child BrowserWindow!
-            if (isAuthOrPopup) {
+            // Distinguish explicit popup requests (with window features or new-popup disposition) from regular link clicks
+            const hasPopupDims = Boolean(e.features && (e.features.includes('width=') || e.features.includes('height=')));
+            const isBlank = !e.url || e.url === 'about:blank';
+            const isPopupRequest = hasPopupDims || e.disposition === 'new-popup' || (isBlank && Boolean(e.features && e.features.trim().length > 0));
+
+            // Let Electron's setWindowOpenHandler open the sleek native child popup window
+            if (isPopupRequest) {
                 return;
             }
 
@@ -1650,13 +1635,31 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         : 12;
 
     const shouldShow = isVisible && !tab.isClosing;
+    const isHtmlFs = isThisTabHtmlFullscreen && shouldShow;
 
     return (
         <div 
             className={`w-full absolute bg-transparent transition-opacity duration-200 ${
                 tab.isClosing ? 'webview-closing-anim' : ''
-            }`} 
-            style={{ 
+            } ${isHtmlFs ? 'fixed inset-0 !z-[999999] !w-screen !h-screen bg-black' : ''}`} 
+            style={isHtmlFs ? {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100vw',
+                height: '100vh',
+                zIndex: 999999,
+                backgroundColor: '#000000',
+                borderRadius: 0,
+                border: 'none',
+                margin: 0,
+                padding: 0,
+                opacity: 1,
+                pointerEvents: 'auto',
+                willChange: 'transform'
+            } : { 
                 top: '0px',
                 left: '0px',
                 width: '100%',
@@ -1761,7 +1764,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     />
                     <div
                         id="qbrowse-sticky-note-card"
-                        className="absolute z-[99999] w-[320px] bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] p-3.5 text-white flex flex-col gap-2.5 animate-pop-in select-none"
+                        className="absolute z-[99999] w-[320px] bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.65)] p-3.5 text-white flex flex-col gap-2.5 animate-pop-in select-none"
                         style={{
                             top: `${cardTop}px`,
                             left: `${cardLeft}px`
@@ -1842,7 +1845,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             {selectionPill && shouldShow && (
                 <div
                     id="qbrowse-highlight-pill"
-                    className="absolute z-[99998] flex items-center gap-1.5 px-3 py-1.5 bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/10 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] animate-pop-in select-none text-white font-sans"
+                    className="absolute z-[99998] flex items-center gap-1.5 px-3 py-1.5 bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/[0.06] rounded-full shadow-[0_16px_40px_rgba(0,0,0,0.65)] animate-pop-in select-none text-white font-sans"
                     style={{
                         top: `${pillTop}px`,
                         left: `${pillLeft}px`
@@ -1992,7 +1995,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
       <div 
         className={`absolute inset-0 z-20 pointer-events-none transition-opacity duration-200 ease-out ${
           isWebviewBlurred 
-            ? (isBright ? 'bg-black/[0.05] backdrop-blur-[2px] opacity-100' : 'bg-black/30 backdrop-blur-[2px] opacity-100')
+            ? (isBright ? 'bg-black/[0.03] backdrop-blur-[1px] opacity-100' : 'bg-black/[0.10] backdrop-blur-[1px] opacity-100')
             : 'opacity-0'
         }`}
       />

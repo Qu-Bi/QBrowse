@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Volume2, Globe, Trash2, PinOff } from 'lucide-react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
 export const getPinDomain = (pin) => {
@@ -57,6 +57,22 @@ export default function PinnedStackPopup() {
         window.addEventListener('keydown', handleKeyDown, true);
         return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [activePinnedStack, closePinnedStack]);
+
+    const [closingTabIds, setClosingTabIds] = useState(new Set());
+
+    const handleAnimateCloseTab = (e, tabId) => {
+        e?.stopPropagation?.();
+        setClosingTabIds(prev => new Set([...prev, tabId]));
+        const timeout = getAnimationTimeout(180);
+        setTimeout(() => {
+            handleCloseTab(tabId);
+            setClosingTabIds(prev => {
+                const next = new Set(prev);
+                next.delete(tabId);
+                return next;
+            });
+        }, timeout);
+    };
 
     const [displayedStack, setDisplayedStack] = useState(null);
     const [isClosing, setIsClosing] = useState(false);
@@ -252,10 +268,10 @@ export default function PinnedStackPopup() {
                                         if (e.button === 1) {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            handleCloseTab(tab.id);
+                                            handleAnimateCloseTab(e, tab.id);
                                         }
                                     }}
-                                    className={`group relative flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
+                                    className={`group relative flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${closingTabIds.has(tab.id) ? 'animate-row-collapse pointer-events-none' : ''} ${
                                         tab.active 
                                             ? (isBright ? 'bg-accent/20 border-accent/40 text-zinc-950 font-semibold shadow-sm' : 'bg-accent/20 border-accent/40 text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]')
                                             : (isBright ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/80 hover:text-white')
@@ -295,10 +311,7 @@ export default function PinnedStackPopup() {
                                             <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)] flex-shrink-0" />
                                         )}
                                         <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleCloseTab(tab.id);
-                                            }}
+                                            onClick={(e) => handleAnimateCloseTab(e, tab.id)}
                                             className={`p-1 rounded transition opacity-60 group-hover:opacity-100 ${
                                                 isBright ? 'text-zinc-400 hover:text-red-600 hover:bg-black/5' : 'text-white/30 hover:text-red-400 hover:bg-white/10'
                                             }`}

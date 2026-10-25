@@ -8,7 +8,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Window controls
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
-    setFullscreen: (state) => ipcRenderer.send('window-set-fullscreen', state),
+    setFullscreen: (state) => {
+        ipcRenderer.send('window-set-fullscreen', state);
+        ipcRenderer.send('set-fullscreen', state);
+    },
+    onFullscreenChanged: (callback) => {
+        const handler = (event, isFullscreen) => callback(isFullscreen);
+        ipcRenderer.on('window-fullscreen-changed', handler);
+        return () => ipcRenderer.removeListener('window-fullscreen-changed', handler);
+    },
     close: () => ipcRenderer.send('window-close'),
     openDevTools: () => ipcRenderer.send('open-devtools'),
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
@@ -108,7 +116,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('ai-stream-done', handler);
     },
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
-    setFullscreen: (value) => ipcRenderer.send('set-fullscreen', value),
+    setFullscreen: (value) => {
+        ipcRenderer.send('window-set-fullscreen', value);
+        ipcRenderer.send('set-fullscreen', value);
+    },
     setWebviewColorScheme: (webContentsId, colorScheme) => ipcRenderer.send('set-webview-color-scheme', { webContentsId, colorScheme }),
     getHistoryUrl: (webContentsId, offset) => ipcRenderer.invoke('get-webview-history-url', { webContentsId, offset }),
 
@@ -314,6 +325,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Insecure & Certificate Bypass
-    allowInsecureHost: (hostname) => ipcRenderer.invoke('allow-insecure-host', hostname)
+    allowInsecureHost: (hostname) => ipcRenderer.invoke('allow-insecure-host', hostname),
+
+    // GitHub Work Mode Integration
+    githubGetData: (profileId, force = false) => ipcRenderer.invoke('github-get-data', { profileId, force }),
+    githubUpdateConfig: (config, profileId) => ipcRenderer.invoke('github-update-config', { config, profileId }),
+    githubStop: () => ipcRenderer.invoke('github-stop')
 });
 

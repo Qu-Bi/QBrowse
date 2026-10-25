@@ -7,6 +7,7 @@ const os = require('os');
 const http = require('http');
 const { pathToFileURL, fileURLToPath } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
+const githubEngine = require('./githubEngine.cjs');
 let autoUpdater = null;
 try {
     autoUpdater = require('electron-updater').autoUpdater;
@@ -48,7 +49,16 @@ function isGoogleAuthUrl(targetUrl) {
     try {
         const u = new URL(targetUrl);
         const h = u.hostname.toLowerCase();
-        return h.startsWith('accounts.google.') ||
+        return h === 'mail.google.com' ||
+               h === 'gmail.com' ||
+               h.endsWith('.google.com') ||
+               h === 'google.com' ||
+               h.endsWith('.googleusercontent.com') ||
+               h === 'googleusercontent.com' ||
+               h.endsWith('.gstatic.com') ||
+               h === 'gstatic.com' ||
+               h.endsWith('.googleapis.com') ||
+               h.startsWith('accounts.google.') ||
                h === 'oauth2.googleapis.com' ||
                h.startsWith('accounts.youtube.') ||
                h === 'myaccount.google.com' ||
@@ -59,8 +69,42 @@ function isGoogleAuthUrl(targetUrl) {
                (h === 'apis.google.com' && (u.pathname.includes('/auth') || u.pathname.includes('/oauth') || u.pathname.includes('/gsi')));
     } catch (_) {
         const s = targetUrl.toLowerCase();
-        return s.includes('accounts.google.') || s.includes('oauth2.googleapis.com') || s.includes('consent.google.') || s.includes('smartlock.google.');
+        return s.includes('mail.google.com') || s.includes('gmail.') || s.includes('googleusercontent.') || s.includes('accounts.google.') || s.includes('smartlock.google.') || s.includes('oauth2.googleapis.com');
     }
+}
+
+function isTrueOAuthUrl(targetUrl, frameName) {
+    if (!targetUrl || targetUrl === 'about:blank') {
+        const fn = (frameName || '').toLowerCase();
+        return fn.includes('google') || fn.includes('gsi') || fn.includes('auth') || fn.includes('oauth') || fn.includes('credential');
+    }
+    try {
+        const u = new URL(targetUrl);
+        const host = u.hostname.toLowerCase();
+        const path = u.pathname.toLowerCase();
+
+        // Never treat webmail or Google productivity apps as OAuth popups
+        if (host === 'mail.google.com' || host === 'gmail.com' || host === 'drive.google.com' || host === 'docs.google.com' || host === 'calendar.google.com' || host === 'meet.google.com') {
+            return false;
+        }
+
+        // Google Identity / Sign-In
+        if (host.startsWith('accounts.google.') || host === 'oauth2.googleapis.com' || host === 'smartlock.google.com' || host.startsWith('consent.google.') || (host.includes('google.com') && (path.includes('/oauth') || path.includes('/signin') || path.includes('/gsi')))) {
+            return true;
+        }
+
+        // Major OAuth providers
+        if (host.includes('github.com') && path.includes('/login/oauth')) return true;
+        if (host.includes('facebook.com') && (path.includes('/dialog/oauth') || path.includes('/v'))) return true;
+        if (host.includes('appleid.apple.com')) return true;
+        if ((host.includes('twitter.com') || host.includes('x.com')) && path.includes('/oauth')) return true;
+        if (host.includes('discord.com') && (path.includes('/oauth') || path.includes('/api/oauth2'))) return true;
+        if (host.includes('slack.com') && path.includes('/oauth')) return true;
+        if (host.includes('linkedin.com') && path.includes('/oauth')) return true;
+        if (host.includes('firebaseapp.com') && path.includes('/__/auth')) return true;
+        if (path.includes('/oauth/authorize') || path.includes('/oauth2/authorize') || path.includes('/auth/callback') || path.includes('/auth/handler')) return true;
+    } catch (_) {}
+    return false;
 }
 
 function getSettingsStore() {
@@ -1543,7 +1587,8 @@ function createWindow(options = {}) {
       preload: path.join(__dirname, 'preload.cjs'),
       webviewTag: true, // Enable <webview>
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      disableHtmlFullscreenWindowResize: true
     }
   });
 
@@ -1621,6 +1666,18 @@ function createWindow(options = {}) {
   win.on('move', () => {
     if (!win.isMaximized() && !win.isFullScreen() && !win.isMinimized() && !windowAnimationState.has(win)) {
       normalBoundsMap.set(win, win.getBounds());
+    }
+  });
+
+  win.on('enter-full-screen', () => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('window-fullscreen-changed', true);
+    }
+  });
+
+  win.on('leave-full-screen', () => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('window-fullscreen-changed', false);
     }
   });
 
@@ -1773,8 +1830,17 @@ function createWindow(options = {}) {
                   return callback({ cancel: false });
               }
 
-              // 3. Auth & Identity bypass: NEVER block authentication, OAuth, or Firebase identity endpoints!
+              // 3. Auth, Webmail & Identity bypass: NEVER block Gmail/Google Workspace, authentication, OAuth, or Firebase identity endpoints!
+              const ref = (details.referrer || '').toLowerCase();
+              const init = (details.initiator || '').toLowerCase();
+              const isGmailTraffic = u.includes('mail.google.com') ||
+                                     u.includes('googleusercontent.com') ||
+                                     u.includes('gmail.com') ||
+                                     ref.includes('mail.google.com') ||
+                                     init.includes('mail.google.com');
+
               if (
+                  isGmailTraffic ||
                   u.includes('accounts.google.com') ||
                   u.includes('accounts.youtube.com') ||
                   u.includes('play.google.com/log') ||
@@ -1905,6 +1971,56 @@ function createWindow(options = {}) {
                   }
               }
 
+              // Allow core UI framework, stylesheets and essential bundles on wp.pl
+              const isWpCoreScript = reqHost.endsWith('wp.pl') && (
+                  u.includes('dwiubwlu') || // ui.min
+                  u.includes('z29mzxi') ||  // gofer
+                  u.includes('d3bqc2xpyjy') // wpjslib6
+              );
+              if (isWpCoreScript) {
+                  return callback({ cancel: false });
+              }
+
+              // 9.5. Regional & Polish/EU Ad Network & Obfuscated Script Blocking (wp.pl, onet.pl, interia.pl, etc.)
+              const isRegionalAdNetwork = Boolean(
+                  reqHost.includes('gemius.') ||
+                  reqHost.includes('adocean.') ||
+                  reqHost.includes('adform.') ||
+                  reqHost.includes('smartadserver.') ||
+                  reqHost.includes('adkontekst.') ||
+                  reqHost.includes('netsprint.') ||
+                  reqHost.includes('teads.tv') ||
+                  reqHost.includes('criteo.') ||
+                  reqHost.includes('rubiconproject.') ||
+                  reqHost.includes('pubmatic.') ||
+                  reqHost.includes('openx.') ||
+                  reqHost.includes('adnxs.') ||
+                  reqHost === 'dot.wp.pl' ||
+                  reqHost.endsWith('.dot.wp.pl') ||
+                  reqHost === 'adv.wp.pl' ||
+                  reqHost === 'dynacrems.wp.pl' ||
+                  reqHost === 'corto.www.wp.pl' ||
+                  // WP Header-Bidding (<script id="hb">) & Ad Telemetry / Detectors on wp.pl:
+                  (reqHost.endsWith('wp.pl') && (
+                      u.includes('d3aucgwu') ||
+                      u.includes('nmvlytaz') ||
+                      u.includes('pwa_adbd') ||
+                      u.includes('pvid=')
+                  )) ||
+                  // WP Ad Media & Creatives on wpimg.pl
+                  (reqHost.endsWith('wpimg.pl') && (
+                      u.includes('/b/') ||
+                      u.includes('/advert/') ||
+                      u.includes('/b-') ||
+                      u.includes('/rek/') ||
+                      u.includes('/banner')
+                  ))
+              );
+              if (isRegionalAdNetwork) {
+                  notifyBlocked();
+                  return callback({ cancel: true });
+              }
+
               if (!globalBlocker) {
                   return callback({ cancel: false });
               }
@@ -1928,11 +2044,16 @@ function createWindow(options = {}) {
       }
   }
 
-    ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
+  ElectronBlocker.fromPrebuiltFull(fetch).then((blocker) => {
       globalBlocker = blocker;
-      console.log('Ghostery Adblocker initialized successfully (Hybrid Mode).');
-  }).catch(err => {
-      console.error('Failed to initialize Adblocker:', err);
+      console.log('Ghostery Full Adblocker initialized successfully (Hybrid Mode).');
+  }).catch(() => {
+      ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
+          globalBlocker = blocker;
+          console.log('Ghostery Adblocker initialized successfully (Standard Mode).');
+      }).catch(err => {
+          console.error('Failed to initialize Adblocker:', err);
+      });
   });
 
     ipcMain.on('debug-terminal-log', (event, message, data) => {
@@ -1989,57 +2110,16 @@ function createWindow(options = {}) {
                 return { action: 'deny' };
             }
 
-            // Distinguish true OAuth/dialog popup windows from tab navigations
+            // Distinguish explicit popup requests (with window dimensions or new-popup disposition) from regular link clicks
             const isPopupWithDims = Boolean(features && (features.includes('width=') || features.includes('height=')));
-            const isExplicitPopup = isPopupWithDims || Boolean(features && features.includes('popup=true'));
-            const hasPopupFeatures = Boolean(features && features.trim().length > 0);
+            const isExplicitPopup = isPopupWithDims || Boolean(features && (features.includes('popup=true') || features.includes('popup=1')));
             const isBlankTarget = !url || url === 'about:blank' || url === '';
 
-            const isAuthUrl = Boolean(url && (
-                url.includes('firebaseapp.com') ||
-                url.includes('accounts.google.') ||
-                url.includes('smartlock.google.com') ||
-                url.includes('google.com/gsi') ||
-                url.includes('/gsi/') ||
-                url.includes('facebook.com') ||
-                url.includes('appleid.apple.com') ||
-                url.includes('github.com/login/oauth') ||
-                url.includes('twitter.com/i/oauth2') ||
-                url.includes('x.com/i/oauth2') ||
-                url.includes('microsoft.com') ||
-                url.includes('live.com') ||
-                url.includes('discord.com/oauth2') ||
-                url.includes('discord.com/api/oauth2') ||
-                url.includes('slack.com/oauth') ||
-                url.includes('linkedin.com/oauth') ||
-                url.includes('spotify.com/authorize') ||
-                url.includes('pinterest.com/_/_/auth') ||
-                url.includes('pinterest.com/oauth') ||
-                url.includes('/oauth') ||
-                url.includes('/auth/handler') ||
-                url.includes('/auth/callback') ||
-                url.includes('/auth') ||
-                url.includes('/login') ||
-                url.includes('/signin')
-            ));
-            const isAuthFrameName = Boolean(frameName && (
-                frameName.includes('firebase') ||
-                frameName.includes('auth') ||
-                frameName.includes('oauth') ||
-                frameName.includes('login') ||
-                frameName.includes('signin') ||
-                frameName.includes('google') ||
-                frameName.includes('gsi') ||
-                frameName.includes('credential') ||
-                frameName.includes('popup') ||
-                frameName.includes('dialog')
-            ));
+            // Allow as a sleek child popup window whenever explicitly requested with dimensions (Gmail pop-out, OAuth popups, etc.)
+            const shouldOpenAsPopupWindow = disposition === 'new-popup' || isExplicitPopup || (isBlankTarget && features && features.trim().length > 0);
 
-            // Allow as a popup window if explicitly requested with popup features, blank script window, or OAuth target
-            const shouldAllowPopup = isBlankTarget || hasPopupFeatures || isExplicitPopup || isAuthUrl || isAuthFrameName || disposition === 'new-window';
-
-            if (shouldAllowPopup) {
-                let popupWidth = 620;
+            if (shouldOpenAsPopupWindow) {
+                let popupWidth = 800;
                 let popupHeight = 760;
                 if (features) {
                     const wMatch = features.match(/(?:^|,|\s)width=(\d+)/i);
@@ -2053,7 +2133,7 @@ function createWindow(options = {}) {
                         if (parsedH >= 400 && parsedH <= 1400) popupHeight = parsedH;
                     }
                 }
-                console.log('\x1b[32m[QBrowse Main] Allowing OAuth popup window for:\x1b[0m', {
+                console.log('\x1b[32m[QBrowse Main] Allowing popup window for:\x1b[0m', {
                     url: url || '(blank/script)',
                     dimensions: `${popupWidth}x${popupHeight}`,
                     frameName: frameName || '(none)'
@@ -2385,11 +2465,14 @@ function createWindow(options = {}) {
             contents.on('dom-ready', () => {
                 let isWhitelisted = false;
                 let isYouTube = false;
+                let isGoogleOrMail = false;
+                let currentUrl = '';
                 try {
-                    const currentUrl = contents.getURL() || latestActiveWebviewUrl || '';
+                    currentUrl = contents.getURL() || latestActiveWebviewUrl || '';
                     if (currentUrl && currentUrl !== 'about:blank') {
                         const host = new URL(currentUrl).hostname.toLowerCase().replace(/^www\./, '');
                         isYouTube = host === 'youtube.com' || host.endsWith('.youtube.com');
+                        isGoogleOrMail = host === 'mail.google.com' || host === 'gmail.com' || host.endsWith('.google.com') || host === 'google.com';
                         const allowlist = Array.isArray(settingsStore.adblockAllowlist) ? settingsStore.adblockAllowlist : [];
                         isWhitelisted = allowlist.some(d => {
                             if (!d || typeof d !== 'string') return false;
@@ -2399,11 +2482,19 @@ function createWindow(options = {}) {
                     }
                 } catch (_) {}
 
-                if (!isWhitelisted && isNativeAdblockActive) {
+                if (!isWhitelisted && isNativeAdblockActive && !isGoogleOrMail) {
                     if (!isYouTube && settingsStore.cosmetic !== false) {
                         const cosmeticCSS = `
-                            .ad, .ads, .ad-banner, .advertisement, [id*="google_ads"], [class*="google_ads"],
-                            .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder {
+                            .ad-banner, .advertisement, [id*="google_ads"], [class*="google_ads"],
+                            .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder,
+                            [class*="reklama"], [id*="reklama"], [id*="Reklama"], [class*="Reklama"],
+                            .wp-header-panel, [class*="wp-header-panel"], [class*="bmjdxfegh"],
+                            [class*="screeningWallpaper"], [class*="GGAGE"], .cHJldmVudENC,
+                            [data-st-area*="reklama"], [data-vab-box],
+                            [class*="Billboard"], [id*="Billboard"], [class*="Wallpaper"], [id*="Wallpaper"],
+                            [class*="Tapeta"], [id*="Tapeta"], [class*="Branding"], [id*="Branding"],
+                            [id^="wp-ad-"], [class^="wp-ad-"], [class*=" wp-ad-"], [id^="gpt-ad"], [class*="gpt-ad"], [id^="ad-desktop"],
+                            [class*="ad-desktop"], [class*="AdSlot"], [class*="ad-slot"], [class*="ad_slot"] {
                                 display: none !important;
                                 visibility: hidden !important;
                                 height: 0 !important;
@@ -2411,6 +2502,19 @@ function createWindow(options = {}) {
                             }
                         `;
                         try { contents.insertCSS(cosmeticCSS).catch(() => {}); } catch (_) {}
+
+                        if (currentUrl && currentUrl.toLowerCase().includes('wp.pl')) {
+                            const wpWallpaperCSS = `
+                                body, html, #root, #app {
+                                    background-image: none !important;
+                                }
+                                .wp-header-panel, [class*="wp-header-panel"], [class*="screeningWallpaper"], [class*="bmjdxfegh"] {
+                                    display: none !important;
+                                    height: 0 !important;
+                                }
+                            `;
+                            try { contents.insertCSS(wpWallpaperCSS).catch(() => {}); } catch (_) {}
+                        }
                     }
 
                     if (!isYouTube && settingsStore.adblockAnnoyances !== false) {
@@ -2557,6 +2661,8 @@ function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl) {
             reqHost.includes('google.com') ||
             reqHost.includes('gstatic.com') ||
             reqHost.includes('googleapis.com') ||
+            reqHost.includes('googleusercontent.com') ||
+            reqHost.includes('gmail.com') ||
             reqHost.includes('firebaseapp.com') ||
             reqHost.includes('firebaseinstallations.googleapis.com') ||
             reqHost.includes('appleid.apple.com') ||
@@ -7139,5 +7245,21 @@ ipcMain.handle('save-screenshot-dataurl', async (event, { dataUrl, title, copyTo
         return { success: false, error: e.message };
     }
 });
+
+// ==========================================
+// GitHub Work Mode Integration Engine
+// ==========================================
+ipcMain.handle('github-get-data', async (event, { profileId, force } = {}) => {
+    return await githubEngine.fetchWorkData(profileId, force);
+});
+
+ipcMain.handle('github-update-config', async (event, { config, profileId } = {}) => {
+    return githubEngine.updateConfig(config, profileId);
+});
+
+ipcMain.handle('github-stop', () => {
+    return githubEngine.stop();
+});
+
 
 

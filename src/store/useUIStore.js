@@ -91,7 +91,20 @@ const defaultSettings = {
     a11yMonoAudio: false,
 
     // Toolbar & Extensions Hub
-    hiddenTopBarIcons: []
+    hiddenTopBarIcons: [],
+
+    // GitHub Work Mode Integration (Zero-Resource footprint by default)
+    githubIntegrationEnabled: false,
+    githubAuthMode: 'auto', // 'auto' | 'token'
+    githubPersonalAccessToken: '',
+    githubSyncInterval: 10, // minutes (0 = manual only)
+    githubShowReviews: true,
+    githubShowMyPrs: true,
+    githubShowAssignedIssues: true,
+    githubIncludeDrafts: false,
+    githubHoverGlanceEnabled: true,
+    githubRepoFilter: '',
+    githubBadgeCountEnabled: true
 };
 
 const loadSettings = () => {
@@ -277,8 +290,21 @@ const useUIStore = create((set, get) => ({
 
   isFullscreen: false,
   setIsFullscreen: async (val) => {
-    set({ isFullscreen: val });
+    set({ isFullscreen: val, isSidebarPeeking: false, isTopBarPeeking: false });
   },
+  // Zen Fullscreen Hover Peeks (Arc-style)
+  isSidebarPeeking: false,
+  setIsSidebarPeeking: (val) => set({ isSidebarPeeking: val }),
+  isTopBarPeeking: false,
+  setIsTopBarPeeking: (val) => set({ isTopBarPeeking: val }),
+
+  // HTML5 Video Fullscreen (YouTube, Netflix overlay)
+  htmlFullscreenTabId: null,
+  isWebviewHtmlFullscreen: false,
+  setHtmlFullscreen: (tabId, isActive) => set({
+    htmlFullscreenTabId: isActive ? tabId : null,
+    isWebviewHtmlFullscreen: Boolean(isActive)
+  }),
   isSidebarHidden: false,
   setIsSidebarHidden: (val) => set({ isSidebarHidden: val }),
   
@@ -1059,7 +1085,9 @@ const useUIStore = create((set, get) => ({
   openPopover: (popover) => set({ activePopover: popover, isPopoverClosing: false }),
   closePopover: () => {
     set({ isPopoverClosing: true });
-    setTimeout(() => set({ activePopover: null, isPopoverClosing: false }), 200);
+    const tier = get().activePerformanceTier;
+    const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 260 : 230);
+    setTimeout(() => set({ activePopover: null, isPopoverClosing: false }), timeout);
   },
   togglePopover: (popover) => {
     if (useUIStore.getState().activePopover === popover) {
@@ -1069,8 +1097,14 @@ const useUIStore = create((set, get) => ({
     }
   },
   activePinnedStack: null, // { pin, anchorRect }
-  setActivePinnedStack: (stack) => set({ activePinnedStack: stack }),
-  closePinnedStack: () => set({ activePinnedStack: null }),
+  isPinnedStackClosing: false,
+  setActivePinnedStack: (stack) => set({ activePinnedStack: stack, isPinnedStackClosing: false }),
+  closePinnedStack: () => {
+    set({ isPinnedStackClosing: true });
+    const tier = get().activePerformanceTier;
+    const timeout = tier === 'eco' ? 100 : (tier === 'ultra' ? 220 : 180);
+    setTimeout(() => set({ activePinnedStack: null, isPinnedStackClosing: false }), timeout);
+  },
   mediaState: {
       isPlaying: false,
       title: '',
@@ -1162,6 +1196,7 @@ const useUIStore = create((set, get) => ({
   // Browser In-Tab Dialogs (Alerts, Confirms, Prompts, HTTP Auth)
   activeDialog: null,
   setActiveDialog: (dialog) => set({ activeDialog: dialog }),
+  closeActiveDialog: () => set({ activeDialog: null }),
   // Bootup State
   isBooting: true,
   isFirstBoot: typeof window !== 'undefined' ? localStorage.getItem('qbrowse_first_boot_completed') !== 'true' : false,
@@ -1184,7 +1219,9 @@ const useUIStore = create((set, get) => ({
   openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null, isRightPanelOpen: false }),
   closeModal: () => {
     set(state => ({ isModalClosing: true, closingModal: state.activeModal }));
-    setTimeout(() => set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 }), 200);
+    const tier = get().activePerformanceTier;
+    const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 280 : 240);
+    setTimeout(() => set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 }), timeout);
   },
 
   settingsTab: 'appearance',
@@ -1196,9 +1233,21 @@ const useUIStore = create((set, get) => ({
 
   // Read Aloud Floating Player
   isReadAloudOpen: false,
-  openReadAloud: () => set({ isReadAloudOpen: true }),
-  closeReadAloud: () => set({ isReadAloudOpen: false }),
-  toggleReadAloud: () => set(state => ({ isReadAloudOpen: !state.isReadAloudOpen })),
+  isReadAloudClosing: false,
+  openReadAloud: () => set({ isReadAloudOpen: true, isReadAloudClosing: false }),
+  closeReadAloud: () => {
+    set({ isReadAloudClosing: true });
+    const tier = get().activePerformanceTier;
+    const timeout = tier === 'eco' ? 100 : (tier === 'ultra' ? 240 : 200);
+    setTimeout(() => set({ isReadAloudOpen: false, isReadAloudClosing: false }), timeout);
+  },
+  toggleReadAloud: () => {
+    if (get().isReadAloudOpen) {
+      get().closeReadAloud();
+    } else {
+      get().openReadAloud();
+    }
+  },
   user: null,
   setUser: (user) => set({ user }),
 
@@ -1313,7 +1362,7 @@ const useUIStore = create((set, get) => ({
           const stored = localStorage.getItem('qbrowse_dark_exclusions');
           if (stored) return JSON.parse(stored);
       } catch (e) {}
-      return ['youtube.com', 'github.com', 'figma.com'];
+      return ['youtube.com', 'github.com', 'figma.com', 'mail.google.com'];
   })(),
   setDarkExclusions: (exclusions) => {
       set({ darkExclusions: exclusions });
@@ -2158,5 +2207,15 @@ export const syncInitialSettingsToElectron = () => {
 if (typeof window !== 'undefined') {
   window.__uiStore = useUIStore;
 }
+
+// Hardware-aware animation duration scaler for eco, balanced, and ultra performance tiers
+export const getAnimationTimeout = (baseMs = 200) => {
+    try {
+        const tier = (typeof document !== 'undefined' && document.documentElement?.dataset?.performanceTier) || useUIStore?.getState?.()?.activePerformanceTier;
+        if (tier === 'eco') return Math.max(70, Math.round(baseMs * 0.5));
+        if (tier === 'ultra') return Math.round(baseMs * 1.15);
+    } catch (_) {}
+    return baseMs;
+};
 
 export default useUIStore;

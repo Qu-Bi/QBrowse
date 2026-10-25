@@ -157,20 +157,24 @@ const AuthModal = () => {
 
     return (
         <div 
-            className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${
-                isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/80 backdrop-blur-3xl text-white'
-            } font-sans ${isModalClosing ? 'animate-pop-out' : 'animate-pop-in'}`} 
+            className={`fixed inset-0 z-[200] flex items-center justify-center p-6 ${
+                isBright ? 'bg-black/15 backdrop-blur-sm text-zinc-900' : 'bg-black/35 backdrop-blur-md text-white'
+            } font-sans ${isModalClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`} 
             onClick={authStatus !== 'success' ? closeModal : undefined}
         >
             <div 
                 id="auth-modal"
-                className={`w-full max-w-md rounded-3xl p-8 relative overflow-hidden transition-all duration-500 ${
+                className={`w-full max-w-md rounded-3xl p-8 relative overflow-hidden transition-all duration-300 ${
                     authStatus === 'success'
                         ? 'border-emerald-500/40 shadow-[0_0_90px_rgba(16,185,129,0.35)]'
                         : (isBright 
-                            ? 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900' 
-                            : 'bg-[#0d0e12]/90 border border-white/10 shadow-[0_30px_90px_rgba(0,0,0,0.8)] text-white')
-                }`} 
+                            ? 'liquid-glass-bright bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.9)] text-zinc-900' 
+                            : 'liquid-glass-dark bg-[#141624]/75 border border-white/12 shadow-[0_30px_90px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.20)] text-white')
+                } ${isModalClosing ? 'animate-modal-spring-out pointer-events-none' : 'animate-modal-spring'}`} 
+                style={{
+                    backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
+                }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Ambient Glows that bloom emerald upon success */}

@@ -78,9 +78,12 @@ export default function ToolHub() {
     };
 
     // Web Notes State
+    const [hoveredRightPanelTab, setHoveredRightPanelTab] = useState(null);
     const [notesSubTab, setNotesSubTab] = useState('web'); // 'web' | 'scratchpad'
+    const [hoveredNotesSubTab, setHoveredNotesSubTab] = useState(null);
     const [webNotesQuery, setWebNotesQuery] = useState('');
     const [webNotesSpaceFilter, setWebNotesSpaceFilter] = useState('all'); // 'all' | 'current'
+    const [hoveredWebNotesSpaceFilter, setHoveredWebNotesSpaceFilter] = useState(null);
     const [collapsedDomains, setCollapsedDomains] = useState({});
     const [editingNoteId, setEditingNoteId] = useState(null);
     const [editingNoteText, setEditingNoteText] = useState('');
@@ -546,23 +549,43 @@ export default function ToolHub() {
                             { id: 'downloads', label: 'Downloads', icon: Download, iconColor: isBright ? 'text-emerald-600' : 'text-emerald-400' }
                         ];
                         const activeTabIdx = Math.max(0, tabs.findIndex(t => t.id === rightPanelTab));
+                        const hoveredTabIdx = tabs.findIndex(t => t.id === hoveredRightPanelTab);
 
                         return (
-                            <div className={`relative flex p-1 rounded-full border shadow-xs ${
+                            <div 
+                                onMouseLeave={() => setHoveredRightPanelTab(null)}
+                                className={`relative flex p-1 rounded-full border shadow-xs select-none ${
                                 isBright 
                                     ? 'bg-black/[0.03] border-black/[0.06]' 
-                                    : 'bg-white/[0.03] border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                                    : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                             } font-mono text-[11px]`}>
+                                {/* Subtle Hover Preview Pill */}
+                                {hoveredTabIdx !== -1 && hoveredRightPanelTab !== rightPanelTab && (
+                                    <div
+                                        className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                            isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                        }`}
+                                        style={{
+                                            transform: `translateX(${hoveredTabIdx * 100}%)`,
+                                            left: '2px'
+                                        }}
+                                    />
+                                )}
                                 {/* Animated Sliding Pill Indicator */}
                                 <div 
-                                    className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                    className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
                                         isBright
                                             ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                                            : 'border border-white/10 bg-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)]'
+                                            : 'border'
                                     }`} 
                                     style={{ 
                                         transform: `translateX(${activeTabIdx * 100}%)`,
-                                        left: '2px'
+                                        left: '2px',
+                                        ...(!isBright ? {
+                                            borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                            backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                            boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                        } : {})
                                     }}
                                 />
                                 {tabs.map(tab => {
@@ -571,10 +594,11 @@ export default function ToolHub() {
                                     return (
                                         <button
                                             key={tab.id}
+                                            onMouseEnter={() => setHoveredRightPanelTab(tab.id)}
                                             onClick={() => setRightPanelTab(tab.id)}
-                                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full transition-colors duration-300 cursor-pointer ${
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${
                                                 isActive 
-                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-medium')
+                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                                     : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-zinc-400 hover:text-zinc-200')
                                             }`}
                                         >
@@ -592,22 +616,47 @@ export default function ToolHub() {
                     {/* NOTES TAB */}
                     <div className={`absolute inset-0 p-4 pb-2 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'notes' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 -translate-x-4 pointer-events-none z-0'}`}>
                         {/* Segmented Subtab Header */}
-                        <div className={`relative flex p-1 rounded-full border shadow-xs mb-3 flex-shrink-0 ${
-                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
+                        <div 
+                            onMouseLeave={() => setHoveredNotesSubTab(null)}
+                            className={`relative flex p-1 rounded-full border shadow-xs mb-3 flex-shrink-0 select-none ${
+                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                         }`}>
+                            {/* Subtle Hover Preview Pill */}
+                            {hoveredNotesSubTab && hoveredNotesSubTab !== notesSubTab && (
+                                <div
+                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                        isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                    }`}
+                                    style={{
+                                        transform: hoveredNotesSubTab === 'scratchpad' ? 'translateX(100%)' : 'translateX(0)',
+                                        left: '2px'
+                                    }}
+                                />
+                            )}
                             {/* Animated Sliding Indicator Pill */}
                             <div 
-                                className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] bg-accent shadow-[0_2px_12px_rgba(212,188,148,0.35)] pointer-events-none"
+                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                    isBright
+                                        ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                        : 'border'
+                                }`}
                                 style={{
                                     transform: notesSubTab === 'scratchpad' ? 'translateX(100%)' : 'translateX(0)',
-                                    left: '2px'
+                                    left: '2px',
+                                    ...(!isBright ? {
+                                        borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                        backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                    } : {})
                                 }}
                             />
                             <button
+                                type="button"
+                                onMouseEnter={() => setHoveredNotesSubTab('web')}
                                 onClick={() => setNotesSubTab('web')}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-semibold transition-colors duration-300 cursor-pointer ${
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 active:scale-95 cursor-pointer ${
                                     notesSubTab === 'web'
-                                        ? 'text-black font-bold'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                 }`}
                             >
@@ -615,10 +664,12 @@ export default function ToolHub() {
                                 <span>Web Notes ({annotations.length})</span>
                             </button>
                             <button
+                                type="button"
+                                onMouseEnter={() => setHoveredNotesSubTab('scratchpad')}
                                 onClick={() => setNotesSubTab('scratchpad')}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-semibold transition-colors duration-300 cursor-pointer ${
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 active:scale-95 cursor-pointer ${
                                     notesSubTab === 'scratchpad'
-                                        ? 'text-black font-bold'
+                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                 }`}
                             >
@@ -656,36 +707,59 @@ export default function ToolHub() {
                                     </div>
 
                                     <div className="flex items-center justify-between gap-2">
-                                        <div className={`relative flex items-center p-0.5 rounded-full border shadow-xs min-w-[210px] ${
-                                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.025] border-white/[0.05]'
+                                        <div 
+                                            onMouseLeave={() => setHoveredWebNotesSpaceFilter(null)}
+                                            className={`relative flex items-center p-0.5 rounded-full border shadow-xs min-w-[210px] select-none ${
+                                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                                         }`}>
+                                            {/* Subtle Hover Preview Pill */}
+                                            {hoveredWebNotesSpaceFilter && hoveredWebNotesSpaceFilter !== webNotesSpaceFilter && (
+                                                <div
+                                                    className={`absolute top-0.5 bottom-0.5 w-[calc(50%-1px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                                        isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                                    }`}
+                                                    style={{
+                                                        transform: hoveredWebNotesSpaceFilter === 'current' ? 'translateX(100%)' : 'translateX(0)',
+                                                        left: '1px'
+                                                    }}
+                                                />
+                                            )}
                                             {/* Animated Sliding Indicator Pill */}
                                             <div 
-                                                className={`absolute top-0.5 bottom-0.5 w-[calc(50%-1px)] rounded-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
-                                                    webNotesSpaceFilter === 'current'
-                                                        ? 'bg-accent/25 border border-accent/40 shadow-xs'
-                                                        : (isBright ? 'bg-white border border-black/[0.08] shadow-xs' : 'bg-white/15 border border-white/10 shadow-xs')
+                                                className={`absolute top-0.5 bottom-0.5 w-[calc(50%-1px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                                    isBright
+                                                        ? 'bg-white border border-black/[0.08] shadow-xs'
+                                                        : 'border'
                                                 }`}
                                                 style={{
                                                     transform: webNotesSpaceFilter === 'current' ? 'translateX(100%)' : 'translateX(0)',
-                                                    left: '1px'
+                                                    left: '1px',
+                                                    ...(!isBright ? {
+                                                        borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                                        backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                                    } : {})
                                                 }}
                                             />
                                             <button
+                                                type="button"
+                                                onMouseEnter={() => setHoveredWebNotesSpaceFilter('all')}
                                                 onClick={() => setWebNotesSpaceFilter('all')}
-                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-colors duration-300 cursor-pointer ${
+                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-all duration-300 active:scale-95 cursor-pointer ${
                                                     webNotesSpaceFilter === 'all' 
-                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold') 
+                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
                                                         : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
                                                 }`}
                                             >
                                                 All Spaces
                                             </button>
                                             <button
+                                                type="button"
+                                                onMouseEnter={() => setHoveredWebNotesSpaceFilter('current')}
                                                 onClick={() => setWebNotesSpaceFilter('current')}
-                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-colors duration-300 cursor-pointer ${
+                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-all duration-300 active:scale-95 cursor-pointer ${
                                                     webNotesSpaceFilter === 'current' 
-                                                        ? 'text-accent font-bold' 
+                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
                                                         : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
                                                 }`}
                                             >

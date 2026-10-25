@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { 
     X, ArrowLeft, Volume2, VolumeX, Play, Pause, SkipBack, SkipForward, 
@@ -95,6 +95,17 @@ export default function ReaderModeOverlay() {
 
     // TTS Read Aloud Audio State
     const [isAudioBarOpen, setIsAudioBarOpen] = useState(false);
+    const [isAudioBarClosing, setIsAudioBarClosing] = useState(false);
+    const audioBarCloseTimerRef = useRef(null);
+
+    const handleCloseAudioBar = () => {
+        setIsAudioBarClosing(true);
+        const timeout = getAnimationTimeout(200);
+        audioBarCloseTimerRef.current = setTimeout(() => {
+            handleStopAudio();
+            setIsAudioBarClosing(false);
+        }, timeout);
+    };
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [currentBlockIndex, setCurrentBlockIndex] = useState(0);
@@ -475,7 +486,7 @@ export default function ReaderModeOverlay() {
                                 setIsAudioBarOpen(true);
                                 speakBlock(currentBlockIndex || 0);
                             } else {
-                                handleStopAudio();
+                                handleCloseAudioBar();
                             }
                         }}
                         className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer active:scale-95 ${isAudioBarOpen ? 'shadow-md' : 'opacity-80 hover:opacity-100'}`}
@@ -666,8 +677,9 @@ export default function ReaderModeOverlay() {
             </div>
 
             {/* Floating TTS Audio Player Bar */}
-            {isAudioBarOpen && (
-                <div className="absolute bottom-6 inset-x-0 flex justify-center px-4 pointer-events-none z-30 animate-pop-in">
+            {(isAudioBarOpen || isAudioBarClosing) && (
+                <div className={`absolute bottom-6 inset-x-0 flex justify-center px-4 pointer-events-none z-30 ${isAudioBarClosing ? 'animate-bottom-bar-exit pointer-events-none' : 'animate-bottom-bar-enter'}`}>
+
                     <div 
                         className="pointer-events-auto flex items-center gap-3 md:gap-4 px-4 md:px-6 py-3 rounded-2xl border shadow-[0_20px_60px_rgba(0,0,0,0.6)] backdrop-blur-3xl transition-all duration-300"
                         style={{ 
@@ -783,7 +795,7 @@ export default function ReaderModeOverlay() {
                         {/* Close Audio Bar */}
                         <button
                             type="button"
-                            onClick={handleStopAudio}
+                            onClick={handleCloseAudioBar}
                             className="p-1.5 rounded-xl hover:bg-white/10 opacity-60 hover:opacity-100 transition cursor-pointer active:scale-95"
                             title="Stop & Close Narration"
                         >
@@ -797,7 +809,7 @@ export default function ReaderModeOverlay() {
             {floatingPill && (
                 <div 
                     id="reader-highlight-pill"
-                    className="fixed z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.08)] animate-pop-in select-none"
+                    className="fixed z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/[0.06] shadow-[0_16px_40px_rgba(0,0,0,0.65)] animate-pop-in select-none"
                     style={{ top: `${floatingPill.y}px`, left: `${floatingPill.x}px` }}
                     onClick={e => e.stopPropagation()}
                 >

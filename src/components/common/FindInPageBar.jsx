@@ -80,16 +80,22 @@ export default function FindInPageBar() {
 
     return (
         <div 
-            className={`absolute top-4 right-6 z-[60] flex items-center gap-1.5 backdrop-blur-3xl rounded-2xl p-1.5 pl-3 pr-2 ${
+            style={{ 
+                backdropFilter: 'blur(28px) saturate(180%)', 
+                WebkitBackdropFilter: 'blur(28px) saturate(180%)' 
+            }}
+            className={`absolute top-5 right-7 z-[60] flex items-center gap-1.5 backdrop-blur-2xl rounded-full h-11 px-3.5 ${
                 isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
-            } origin-top-right select-none transition-all duration-200 ${
+            } origin-top-right select-none transition-all duration-200 border ${
                 isBright
-                    ? 'bg-white/55 border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.12)] text-zinc-900'
-                    : 'bg-[#0e1015]/92 border border-white/20 shadow-[0_20px_60px_rgba(0,0,0,0.85)] text-white'
+                    ? 'bg-white/90 border-black/[0.06] shadow-[0_16px_40px_rgba(0,0,0,0.12)] text-zinc-900'
+                    : 'bg-[#181a24]/80 border-white/[0.08] shadow-[0_16px_40px_rgba(0,0,0,0.55)] text-white/90'
             }`}
             onClick={(e) => e.stopPropagation()}
         >
-            <Search size={14} className={`flex-shrink-0 mr-1 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
+            <div className="w-6 h-6 rounded-full bg-white/[0.04] flex items-center justify-center shrink-0">
+                <Search size={12} className={isBright ? 'text-zinc-500' : 'text-accent'} />
+            </div>
             
             <input
                 ref={inputRef}
@@ -99,7 +105,7 @@ export default function FindInPageBar() {
                 onKeyDown={handleKeyDown}
                 placeholder="Find in page..."
                 className={`w-44 md:w-56 bg-transparent text-xs outline-none border-none pr-1 ${
-                    isBright ? 'text-zinc-900 placeholder-zinc-400 font-medium' : 'text-white placeholder-white/40'
+                    isBright ? 'text-zinc-900 placeholder-zinc-400 font-medium' : 'text-white placeholder-white/40 font-medium'
                 }`}
                 spellCheck={false}
                 autoComplete="off"
@@ -107,10 +113,10 @@ export default function FindInPageBar() {
 
             {/* Match Counter Badge */}
             {hasQuery && (
-                <div className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-all border ${
+                <div className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold flex items-center gap-1 transition-all ${
                     hasMatches 
-                        ? (isBright ? 'bg-black/5 text-zinc-700 border-black/10' : 'bg-white/10 text-white/80 border-white/10')
-                        : (isBright ? 'bg-red-50 text-red-700 border-red-200' : 'bg-red-500/15 text-red-400 border-red-500/30')
+                        ? (isBright ? 'bg-black/[0.06] text-zinc-700' : 'bg-white/10 text-white/90')
+                        : (isBright ? 'bg-red-500/10 text-red-600' : 'bg-rose-500/15 text-rose-300')
                 }`}>
                     {hasMatches ? (
                         <span>{findResults.activeMatchOrdinal} of {findResults.matches}</span>
@@ -120,14 +126,16 @@ export default function FindInPageBar() {
                 </div>
             )}
 
-            <div className={`h-4 w-px mx-0.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
+            <div className={`h-4 w-px mx-0.5 ${isBright ? 'bg-black/[0.08]' : 'bg-white/[0.08]'}`} />
 
             {/* Previous Button */}
             <button
                 onClick={() => findNextMatch(false)}
                 disabled={!hasQuery || !hasMatches}
-                className={`p-1 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition cursor-pointer ${
-                    isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5' : 'text-white/60 hover:text-white hover:bg-white/10'
+                className={`w-7 h-7 rounded-full flex items-center justify-center disabled:opacity-25 disabled:pointer-events-none transition-all duration-200 cursor-pointer active:scale-95 ${
+                    isBright 
+                        ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' 
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
                 }`}
                 title="Previous match (Shift+Enter / Shift+F3)"
             >
@@ -138,8 +146,10 @@ export default function FindInPageBar() {
             <button
                 onClick={() => findNextMatch(true)}
                 disabled={!hasQuery || !hasMatches}
-                className={`p-1 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition cursor-pointer ${
-                    isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5' : 'text-white/60 hover:text-white hover:bg-white/10'
+                className={`w-7 h-7 rounded-full flex items-center justify-center disabled:opacity-25 disabled:pointer-events-none transition-all duration-200 cursor-pointer active:scale-95 ${
+                    isBright 
+                        ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' 
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
                 }`}
                 title="Next match (Enter / F3)"
             >
@@ -149,10 +159,10 @@ export default function FindInPageBar() {
             {/* Case Sensitive Toggle Button */}
             <button
                 onClick={() => setFindMatchCase(!findMatchCase)}
-                className={`px-1.5 py-0.5 rounded-lg text-[10px] font-bold tracking-tight transition cursor-pointer border ${
+                className={`h-6 px-2.5 rounded-full text-[10px] font-bold tracking-tight transition-all duration-200 cursor-pointer active:scale-95 ${
                     findMatchCase 
-                        ? 'bg-accent/20 border-accent/40 text-accent' 
-                        : (isBright ? 'border-black/10 text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'border-white/10 text-white/50 hover:text-white hover:bg-white/5')
+                        ? 'bg-accent/20 text-accent font-bold' 
+                        : (isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-white/50 hover:text-white hover:bg-white/5')
                 }`}
                 title="Match Case (Case Sensitive)"
             >
@@ -162,8 +172,8 @@ export default function FindInPageBar() {
             {/* Close Button */}
             <button
                 onClick={() => setIsFindOpen(false)}
-                className={`p-1 rounded-lg transition cursor-pointer ml-0.5 ${
-                    isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-95 ml-0.5 ${
+                    isBright ? 'text-zinc-400 hover:text-rose-600 hover:bg-black/5' : 'text-white/40 hover:text-rose-400 hover:bg-white/10'
                 }`}
                 title="Close (Esc)"
             >

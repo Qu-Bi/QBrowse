@@ -44,8 +44,8 @@ const ContextMenuThemeContext = React.createContext({ isBright: false });
 const getLiquidGlassMenuClasses = (isBright) =>
     `p-1.5 rounded-2xl border backdrop-blur-2xl select-none outline-none transition-colors ${
         isBright
-            ? 'liquid-glass-bright bg-white/78 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.14),0_1px_3px_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.9)]'
-            : 'liquid-glass-dark bg-[#12131a]/78 border-white/[0.12] text-white/90 shadow-[0_24px_64px_rgba(0,0,0,0.75),0_0_1px_1px_rgba(255,255,255,0.08),inset_0_1px_0_0_rgba(255,255,255,0.16)]'
+            ? 'bg-white/90 border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.12)]'
+            : 'bg-[#12131a]/85 border-white/[0.06] text-white/90 shadow-[0_20px_50px_rgba(0,0,0,0.55)]'
     }`;
 
 const liquidGlassInlineStyle = {
