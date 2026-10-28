@@ -106,7 +106,12 @@ const defaultSettings = {
     githubIncludeDrafts: false,
     githubHoverGlanceEnabled: true,
     githubRepoFilter: '',
-    githubBadgeCountEnabled: true
+    githubBadgeCountEnabled: true,
+
+    customSpaces: [
+        { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+        { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false },
+    ],
 };
 
 const loadSettings = () => {
@@ -122,6 +127,9 @@ const loadSettings = () => {
             }
             if (parsed.blurWallpaper === undefined) {
                 parsed.blurWallpaper = false;
+            }
+            if (!Array.isArray(parsed.customSpaces) || parsed.customSpaces.length === 0) {
+                parsed.customSpaces = defaultSettings.customSpaces;
             }
             return { ...defaultSettings, ...parsed };
         }
@@ -540,6 +548,22 @@ const useUIStore = create((set, get) => ({
     setTimeout(() => set({ toolHubContextMenu: null, isToolHubContextMenuClosing: false }), 200);
   },
 
+  spaceContextMenu: null,
+  isSpaceContextMenuClosing: false,
+  setSpaceContextMenu: (menu) => set({ spaceContextMenu: menu, isSpaceContextMenuClosing: false }),
+  closeSpaceContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ spaceContextMenu: null, isSpaceContextMenuClosing: false });
+      return;
+    }
+    set({ isSpaceContextMenuClosing: true });
+    setTimeout(() => set({ spaceContextMenu: null, isSpaceContextMenuClosing: false }), 200);
+  },
+
+  renamingSpaceId: null,
+  setRenamingSpaceId: (id) => set({ renamingSpaceId: id }),
+
   closeContextMenus: () => {
     const state = useUIStore.getState();
     const isReduced = Boolean(state.settings?.a11yReducedMotion || state.isSystemReducedMotion);
@@ -557,6 +581,8 @@ const useUIStore = create((set, get) => ({
         isTopBarContextMenuClosing: false,
         toolHubContextMenu: null,
         isToolHubContextMenuClosing: false,
+        spaceContextMenu: null,
+        isSpaceContextMenuClosing: false,
         activePinnedStack: null
       });
       return;
@@ -584,6 +610,10 @@ const useUIStore = create((set, get) => ({
     if (state.toolHubContextMenu) {
       set({ isToolHubContextMenuClosing: true });
       setTimeout(() => set({ toolHubContextMenu: null, isToolHubContextMenuClosing: false }), 200);
+    }
+    if (state.spaceContextMenu) {
+      set({ isSpaceContextMenuClosing: true });
+      setTimeout(() => set({ spaceContextMenu: null, isSpaceContextMenuClosing: false }), 200);
     }
     if (state.activePinnedStack) {
       set({ activePinnedStack: null });
@@ -1520,6 +1550,10 @@ const useUIStore = create((set, get) => ({
             ? { ...defaultSettings, ...diskSettings, ...localParsed }
             : { ...defaultSettings, ...diskSettings };
 
+          if (!Array.isArray(merged.customSpaces) || merged.customSpaces.length === 0) {
+            merged.customSpaces = defaultSettings.customSpaces;
+          }
+
           set({ settings: merged });
           try {
             localStorage.setItem('qbrowse_settings', JSON.stringify(merged));
@@ -1599,6 +1633,7 @@ const useUIStore = create((set, get) => ({
       });
   },
   setSetting: (key, value) => get().setSettingValue(key, value),
+  saveSetting: (key, value) => get().setSettingValue(key, value),
   setSettingValue: (key, value) => {
       set((state) => {
           const newSettings = { ...state.settings, [key]: value };
@@ -1686,6 +1721,82 @@ const useUIStore = create((set, get) => ({
   },
   setDefaultSearchEngine: (id) => {
       get().setSettingValue('searchEngine', id);
+  },
+
+  // Dynamic Workspace / Custom Spaces Management
+  addSpace: (name, icon = 'Layers', showGitHub = false) => {
+      const currentSpaces = Array.isArray(get().settings?.customSpaces) && get().settings.customSpaces.length > 0
+          ? get().settings.customSpaces
+          : defaultSettings.customSpaces;
+      if (currentSpaces.length >= 8) {
+          get().showToast('Maximum of 8 workspaces allowed', 'warning');
+          return null;
+      }
+
+      const id = `space_${Date.now()}`;
+      const cleanName = (typeof name === 'string' && name.trim()) ? name.trim() : 'New Space';
+      const newSpace = {
+          id,
+          name: cleanName,
+          icon: icon || 'Layers',
+          showGitHub: !!showGitHub,
+          isBuiltIn: false
+      };
+      const updated = [...currentSpaces, newSpace];
+      get().saveSetting('customSpaces', updated);
+
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      if (tabStore?.initSpaceTabs) {
+          tabStore.initSpaceTabs(id);
+      }
+      get().showToast(`Workspace "${cleanName}" created`);
+      return newSpace;
+  },
+
+  updateSpace: (id, updates) => {
+      const currentSpaces = Array.isArray(get().settings?.customSpaces) && get().settings.customSpaces.length > 0
+          ? get().settings.customSpaces
+          : defaultSettings.customSpaces;
+      const updated = currentSpaces.map(s => s.id === id ? { ...s, ...updates, id } : s);
+      get().saveSetting('customSpaces', updated);
+      get().showToast('Workspace updated');
+  },
+
+  removeSpace: (id) => {
+      if (id === 'personal') return;
+
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      if (tabStore?.migrateSpaceTabsToPersonal) {
+          tabStore.migrateSpaceTabsToPersonal(id);
+      }
+      if (tabStore?.activeSpace === id) {
+          tabStore.setActiveSpace('personal');
+      }
+
+      const currentSpaces = Array.isArray(get().settings?.customSpaces) && get().settings.customSpaces.length > 0
+          ? get().settings.customSpaces
+          : defaultSettings.customSpaces;
+      const updated = currentSpaces.filter(s => s.id !== id);
+      get().saveSetting('customSpaces', updated);
+
+      try {
+          const profileId = (() => {
+              try {
+                  return (typeof window !== 'undefined' && window.__profileStore?.getState()?.activeProfileId) || 
+                      localStorage.getItem('qbrowse_active_profile_id') || 'default';
+              } catch (_) {
+                  return 'default';
+              }
+          })();
+          localStorage.removeItem(`qbrowse_tabs_${profileId}_${id}`);
+      } catch (_) {}
+
+      get().showToast('Workspace removed. Open tabs moved to Personal.');
+  },
+
+  reorderSpaces: (reorderedList) => {
+      if (!Array.isArray(reorderedList)) return;
+      get().saveSetting('customSpaces', reorderedList);
   },
 
   // Secure DNS & Host Resolver Configuration

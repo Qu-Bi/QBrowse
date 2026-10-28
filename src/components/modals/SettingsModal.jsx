@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { 
     Palette, Shield, Cpu, ShieldAlert, Search, Download, X, 
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, History,
@@ -7,8 +7,31 @@ import {
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Server, Wifi, AlertCircle,
     Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch,
-    ArrowLeftRight, ListOrdered
+    ArrowLeftRight, ListOrdered, User, Briefcase, Code, Bookmark, Coffee, Folder,
+    Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical
 } from 'lucide-react';
+
+const SPACE_ICONS = [
+    { id: 'User', label: 'User', icon: User },
+    { id: 'Layers', label: 'Layers', icon: Layers },
+    { id: 'Briefcase', label: 'Briefcase', icon: Briefcase },
+    { id: 'Code', label: 'Code', icon: Code },
+    { id: 'Rocket', label: 'Rocket', icon: Rocket },
+    { id: 'Compass', label: 'Compass', icon: Compass },
+    { id: 'Bookmark', label: 'Bookmark', icon: Bookmark },
+    { id: 'Sparkles', label: 'Sparkles', icon: Sparkles },
+    { id: 'Globe', label: 'Globe', icon: Globe },
+    { id: 'Coffee', label: 'Coffee', icon: Coffee },
+    { id: 'Folder', label: 'Folder', icon: Folder },
+    { id: 'Terminal', label: 'Terminal', icon: Terminal },
+    { id: 'Shield', label: 'Shield', icon: Shield },
+    { id: 'Heart', label: 'Heart', icon: Heart }
+];
+
+const getSpaceIconComponent = (iconName) => {
+    const found = SPACE_ICONS.find(i => i.id === iconName);
+    return found ? found.icon : Layers;
+};
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 import useUIStore from '../../store/useUIStore';
@@ -32,14 +55,14 @@ const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     return (
-        <div className={`flex items-center justify-between p-3 px-3.5 rounded-xl transition-all duration-200 group ${
+        <div className={`flex items-center justify-between p-3 px-3.5 rounded-xl transition-all duration-200 group hover:-translate-y-0.5 hover:shadow-md ${
             isBright 
                 ? 'bg-white/75 hover:bg-white/95 border border-black/[0.08] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03),0_1px_2px_rgba(0,0,0,0.02)]' 
-                : 'bg-white/[0.025] hover:bg-white/[0.04] border border-white/[0.04] hover:border-white/[0.08]'
+                : 'bg-white/[0.025] hover:bg-white/[0.045] border border-white/[0.04] hover:border-white/[0.10]'
         }`}>
             <div className="flex items-center gap-3 min-w-0 pr-4">
                 {Icon && (
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
                         isBright 
                             ? 'bg-black/[0.04] text-accent border border-black/[0.06] group-hover:border-accent/40' 
                             : 'bg-white/[0.03] text-accent/80 border border-white/[0.05] group-hover:border-accent/25 group-hover:text-accent'
@@ -89,14 +112,16 @@ const SettingToggle = ({ isChecked, onToggle }) => {
                 e.stopPropagation();
                 if (onToggle) onToggle();
             }} 
-            className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-all duration-200 cursor-pointer ${
+            className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
                 isChecked 
-                    ? (isBright ? 'bg-accent shadow-[0_2px_8px_var(--accent-40)]' : 'bg-accent shadow-[0_0_10px_var(--accent-40)]') 
-                    : (isBright ? 'bg-zinc-200/90 hover:bg-zinc-300 border border-black/10' : 'bg-white/15 hover:bg-white/20')
+                    ? (isBright ? 'bg-accent shadow-[0_2px_8px_var(--accent-40)]' : 'bg-accent shadow-[0_0_12px_var(--accent-40)]') 
+                    : (isBright ? 'bg-zinc-200/90 hover:bg-zinc-300 border border-black/10' : 'bg-white/15 hover:bg-white/25')
             }`}
         >
             <div 
-                className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isChecked ? 'translate-x-4' : 'translate-x-0'}`}
+                className={`w-4 h-4 rounded-full bg-white shadow-md transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                    isChecked ? 'translate-x-4 scale-100' : 'translate-x-0 scale-90 opacity-90'
+                }`}
             />
         </button>
     );
@@ -279,11 +304,93 @@ const SettingsModal = () => {
         setDefaultSearchEngine,
         setDnsConfiguration,
         openReadAloud,
-        setZoomLevel
+        setZoomLevel,
+        addSpace,
+        updateSpace,
+        removeSpace,
+        reorderSpaces
     } = useUIStore();
 
     const activeSpace = useTabStore(state => state.activeSpace);
+    const privateTabs = useTabStore(state => state.privateTabs);
+    const workTabs = useTabStore(state => state.workTabs);
+    const customSpaceTabs = useTabStore(state => state.customSpaceTabs) || {};
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    // Workspaces & Spaces state
+    const [isCreatingSpace, setIsCreatingSpace] = useState(false);
+    const [newSpaceName, setNewSpaceName] = useState('');
+    const [newSpaceIcon, setNewSpaceIcon] = useState('Layers');
+    const [newSpaceShowGitHub, setNewSpaceShowGitHub] = useState(false);
+    const [editingSpaceId, setEditingSpaceId] = useState(null);
+    const [editingSpaceName, setEditingSpaceName] = useState('');
+    const [activeIconPickerSpaceId, setActiveIconPickerSpaceId] = useState(null);
+    const [deletingSpace, setDeletingSpace] = useState(null);
+    const [draggedSpaceIdx, setDraggedSpaceIdx] = useState(null);
+    const [dragOverSpaceIdx, setDragOverSpaceIdx] = useState(null);
+
+    // FLIP animation refs for smooth workspace reordering (up/down arrows & drag-and-drop)
+    const spaceItemRefs = useRef({});
+    const prevSpaceOffsetsRef = useRef({});
+    const spaceAnimTimersRef = useRef({});
+
+    useLayoutEffect(() => {
+        if (settingsTab !== 'spaces') return;
+        const currentSpaces = Array.isArray(settings?.customSpaces) && settings.customSpaces.length > 0
+            ? settings.customSpaces
+            : [
+                { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+                { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+            ];
+
+        const prevOffsets = prevSpaceOffsetsRef.current;
+        const newOffsets = {};
+
+        currentSpaces.forEach(sp => {
+            const el = spaceItemRefs.current[sp.id];
+            if (el) {
+                newOffsets[sp.id] = el.offsetTop;
+            }
+        });
+
+        currentSpaces.forEach(sp => {
+            const el = spaceItemRefs.current[sp.id];
+            const prevTop = prevOffsets[sp.id];
+            const newTop = newOffsets[sp.id];
+
+            if (el && prevTop !== undefined && newTop !== undefined && prevTop !== newTop) {
+                const deltaY = prevTop - newTop;
+
+                if (spaceAnimTimersRef.current[sp.id]) {
+                    clearTimeout(spaceAnimTimersRef.current[sp.id]);
+                }
+
+                // Invert: lock to previous visual position
+                el.style.transform = `translateY(${deltaY}px)`;
+                el.style.transition = 'none';
+                el.style.zIndex = '25';
+
+                // Play: animate back to origin
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        el.style.transition = 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 320ms ease';
+                        el.style.transform = 'translateY(0px)';
+
+                        spaceAnimTimersRef.current[sp.id] = setTimeout(() => {
+                            if (el) {
+                                el.style.transform = '';
+                                el.style.transition = '';
+                                el.style.zIndex = '';
+                            }
+                            delete spaceAnimTimersRef.current[sp.id];
+                        }, 340);
+                    });
+                });
+            }
+        });
+
+        prevSpaceOffsetsRef.current = newOffsets;
+    }, [settings?.customSpaces, settingsTab]);
 
     const { user, isSyncing, lastSyncTime, syncedItemsCount, syncNow, logout, autoSyncEnabled, toggleAutoSync } = useSyncStore();
     const isTorEnabled = useTorStore(state => state.isTorEnabled);
@@ -455,7 +562,7 @@ const SettingsModal = () => {
 
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
     const [updateData, setUpdateData] = useState(null);
-    const currentAppVersion = updateData?.currentVersion || '1.3.5';
+    const currentAppVersion = updateData?.currentVersion || '1.3.7';
     const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
     const [isCheckingDefault, setIsCheckingDefault] = useState(false);
     const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
@@ -484,7 +591,7 @@ const SettingsModal = () => {
                 setIsCheckingUpdates(false);
             }
             if (data.status === 'not-available' && !data.silent) {
-                const ver = data.currentVersion || data.version || '1.3.5';
+                const ver = data.currentVersion || data.version || '1.3.7';
                 showToast(`QBrowse is up to date! (v${String(ver).replace(/^v/i, '')})`);
             } else if (data.status === 'available') {
                 const nextVer = String(data.latestVersion || data.version || '').replace(/^v/i, '');
@@ -688,6 +795,99 @@ const SettingsModal = () => {
         }
     };
 
+    const handleCreateSpace = (e) => {
+        if (e) e.preventDefault();
+        const currentSpaces = Array.isArray(settings?.customSpaces) && settings.customSpaces.length > 0
+            ? settings.customSpaces
+            : [
+                { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+                { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+            ];
+        if (currentSpaces.length >= 8) {
+            showToast('Maximum of 8 workspaces reached');
+            return;
+        }
+        const cleanName = newSpaceName.trim();
+        if (!cleanName) {
+            showToast('Please enter a workspace name');
+            return;
+        }
+        addSpace(cleanName, newSpaceIcon, newSpaceShowGitHub);
+        setNewSpaceName('');
+        setNewSpaceIcon('Layers');
+        setNewSpaceShowGitHub(false);
+        setIsCreatingSpace(false);
+    };
+
+    const handleSpaceDrop = (e, targetIdx) => {
+        e.preventDefault();
+        if (draggedSpaceIdx === null || draggedSpaceIdx === targetIdx) {
+            setDraggedSpaceIdx(null);
+            setDragOverSpaceIdx(null);
+            return;
+        }
+        const currentSpaces = Array.isArray(settings?.customSpaces) && settings.customSpaces.length > 0
+            ? [...settings.customSpaces]
+            : [
+                { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+                { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+            ];
+        const next = [...currentSpaces];
+        const [movedItem] = next.splice(draggedSpaceIdx, 1);
+        next.splice(targetIdx, 0, movedItem);
+        reorderSpaces(next);
+        setDraggedSpaceIdx(null);
+        setDragOverSpaceIdx(null);
+        showToast(`Moved "${movedItem.name}" to position ${targetIdx + 1}`);
+    };
+
+    const handleSaveSpaceName = (id) => {
+        const cleanName = editingSpaceName.trim();
+        if (cleanName) {
+            updateSpace(id, { name: cleanName });
+        }
+        setEditingSpaceId(null);
+    };
+
+    const handleMoveSpaceUp = (index) => {
+        if (index <= 0) return;
+        const currentSpaces = Array.isArray(settings?.customSpaces) && settings.customSpaces.length > 0
+            ? [...settings.customSpaces]
+            : [
+                { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+                { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+            ];
+        const next = [...currentSpaces];
+        const temp = next[index - 1];
+        next[index - 1] = next[index];
+        next[index] = temp;
+        reorderSpaces(next);
+    };
+
+    const handleMoveSpaceDown = (index) => {
+        const currentSpaces = Array.isArray(settings?.customSpaces) && settings.customSpaces.length > 0
+            ? [...settings.customSpaces]
+            : [
+                { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+                { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+            ];
+        if (index >= currentSpaces.length - 1) return;
+        const next = [...currentSpaces];
+        const temp = next[index + 1];
+        next[index + 1] = next[index];
+        next[index] = temp;
+        reorderSpaces(next);
+    };
+
+    const handleDeleteSpace = (spaceId) => {
+        if (!spaceId || spaceId === 'personal') return;
+        if (useTabStore.getState().migrateSpaceTabsToPersonal) {
+            useTabStore.getState().migrateSpaceTabsToPersonal(spaceId);
+        }
+        removeSpace(spaceId);
+        setDeletingSpace(null);
+    };
+
     const handleResetAllSettings = () => {
         localStorage.removeItem('qbrowse_settings');
         localStorage.removeItem('qbrowse_theme');
@@ -705,6 +905,7 @@ const SettingsModal = () => {
 
     const navTabs = [
         { id: 'appearance', label: 'Appearance & UX', icon: Palette, color: 'text-purple-400', category: 'Preferences' },
+        { id: 'spaces', label: 'Workspaces', icon: Layers, color: 'text-indigo-400', category: 'Preferences' },
         { id: 'accessibility', label: 'Accessibility', icon: Eye, color: 'text-amber-400', category: 'Preferences' },
         { id: 'privacy', label: 'Privacy & Security', icon: Shield, color: 'text-emerald-400', category: 'Preferences' },
         { id: 'cookies', label: 'Cookies & Permissions', icon: Cookie, color: 'text-amber-400', category: 'Preferences' },
@@ -789,13 +990,16 @@ const SettingsModal = () => {
                             <button 
                                 key={tab.id}
                                 onClick={() => setSettingsTab(tab.id)} 
-                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition cursor-pointer text-left ${
+                                className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer text-left group active:scale-[0.98] ${
                                     isActive 
-                                        ? (isBright ? 'bg-accent/20 text-zinc-900 border border-accent/40 font-semibold shadow-sm' : 'bg-accent/15 text-white border border-accent/30 font-medium shadow-sm') 
-                                        : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900 border border-transparent' : 'hover:bg-white/[0.03] text-zinc-400 hover:text-zinc-200 border border-transparent')
+                                        ? (isBright ? 'bg-accent/20 text-zinc-950 font-semibold shadow-sm translate-x-1 border border-accent/40' : 'bg-accent/15 text-white font-medium shadow-sm translate-x-1 border border-accent/30') 
+                                        : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900 border border-transparent hover:translate-x-0.5' : 'hover:bg-white/[0.04] text-zinc-400 hover:text-zinc-200 border border-transparent hover:translate-x-0.5')
                                 }`}
                             >
-                                <Icon size={14} className={isActive ? 'text-accent' : (isBright ? 'text-zinc-500' : (tab.color || 'text-zinc-400'))} /> 
+                                {isActive && (
+                                    <div className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-accent animate-pop-in" />
+                                )}
+                                <Icon size={14} className={`transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-accent scale-105' : (isBright ? 'text-zinc-500' : (tab.color || 'text-zinc-400'))}`} /> 
                                 <span className="text-xs">{tab.label}</span>
                             </button>
                         );
@@ -823,14 +1027,14 @@ const SettingsModal = () => {
                 {/* Pinned Close Button (Fixed at top-right of panel, never scrolls away) */}
                 <button 
                     onClick={(e) => { e.stopPropagation(); closeModal(); }} 
-                    className={`absolute top-6 right-8 w-9 h-9 flex items-center justify-center rounded-xl border transition z-[300] cursor-pointer backdrop-blur-xl active:scale-90 ${
+                    className={`absolute top-6 right-8 w-9 h-9 flex items-center justify-center rounded-xl border transition-all duration-200 z-[300] cursor-pointer backdrop-blur-xl group active:scale-90 ${
                         isBright 
                             ? 'bg-white/80 hover:bg-white border-black/10 text-zinc-600 hover:text-zinc-900 shadow-sm' 
                             : 'bg-[#090a0f]/80 hover:bg-[#090a0f] border-white/10 text-zinc-400 hover:text-white shadow-sm'
                     }`}
                     title="Close Settings (Esc)"
                 >
-                    <X size={16} className="pointer-events-none" />
+                    <X size={16} className="pointer-events-none transition-transform duration-200 group-hover:rotate-90" />
                 </button>
 
                 {/* Scrollable Content Body */}
@@ -1340,6 +1544,508 @@ const SettingsModal = () => {
                             </div>
                         </div>
                     )}
+
+                    {/* TAB: WORKSPACES */}
+                    {settingsTab === 'spaces' && (() => {
+                        const spacesList = Array.isArray(settings?.customSpaces) && settings.customSpaces.length > 0
+                            ? settings.customSpaces
+                            : [
+                                { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+                                { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+                            ];
+
+                        return (
+                            <div className="animate-tab-fade space-y-6">
+                                {/* Header Section */}
+                                <div className="flex items-center justify-between flex-wrap gap-4 pr-14">
+                                    <div>
+                                        <h3 className="text-2xl font-bold mb-1 flex items-center gap-2.5">
+                                            <Layers className="text-accent" size={22} /> Workspaces
+                                        </h3>
+                                        <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Separate tab environments with independent history and GitHub Live tracking.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        disabled={spacesList.length >= 8 && !isCreatingSpace}
+                                        onClick={() => {
+                                            if (spacesList.length >= 8 && !isCreatingSpace) {
+                                                showToast('Maximum of 8 workspaces reached');
+                                                return;
+                                            }
+                                            setIsCreatingSpace(prev => !prev);
+                                            if (!isCreatingSpace) {
+                                                setNewSpaceName('');
+                                                setNewSpaceIcon('Layers');
+                                                setNewSpaceShowGitHub(false);
+                                            }
+                                        }}
+                                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition active:scale-95 shadow-sm ${
+                                            spacesList.length >= 8 && !isCreatingSpace
+                                                ? (isBright ? 'bg-black/5 text-zinc-400 cursor-not-allowed' : 'bg-white/5 text-zinc-500 cursor-not-allowed border border-white/5')
+                                                : isCreatingSpace
+                                                    ? (isBright ? 'bg-black/10 text-zinc-800 hover:bg-black/15 cursor-pointer' : 'bg-white/10 text-white hover:bg-white/15 cursor-pointer')
+                                                    : 'bg-accent hover:bg-accent-hover text-zinc-950 cursor-pointer'
+                                        }`}
+                                        title={spacesList.length >= 8 && !isCreatingSpace ? 'Maximum of 8 workspaces reached' : 'Create new workspace'}
+                                    >
+                                        <Plus size={14} className={`transition-transform duration-300 ${isCreatingSpace ? 'rotate-45' : ''}`} />
+                                        <span>{isCreatingSpace ? 'Cancel' : spacesList.length >= 8 ? 'Max 8 Reached' : 'New Workspace'}</span>
+                                    </button>
+                                </div>
+
+                                {/* Create Space Form */}
+                                <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isCreatingSpace ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}>
+                                    <div className="overflow-hidden min-h-0">
+                                        <form 
+                                            onSubmit={handleCreateSpace}
+                                            className={`p-4 rounded-2xl border flex flex-col gap-4 my-2 ${
+                                                isBright 
+                                                    ? 'bg-white/80 border-black/10 shadow-[0_2px_12px_rgba(0,0,0,0.03)]' 
+                                                    : 'bg-white/[0.03] border-white/[0.08]'
+                                            }`}
+                                        >
+                                            <div className="text-xs font-semibold tracking-wide text-zinc-300 dark:text-zinc-300">
+                                                Create Workspace
+                                            </div>
+
+                                            {/* Name Input */}
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Workspace name (e.g. Work, Research, Dev)..."
+                                                    value={newSpaceName}
+                                                    onChange={(e) => setNewSpaceName(e.target.value)}
+                                                    className={`w-full px-3.5 py-2 rounded-xl text-xs outline-none focus:border-accent border transition ${
+                                                        isBright ? 'bg-white border-black/15 text-zinc-900 placeholder:text-zinc-400' : 'bg-black/40 border-white/[0.1] text-white placeholder:text-white/30'
+                                                    }`}
+                                                    autoFocus={isCreatingSpace}
+                                                />
+                                            </div>
+
+                                            {/* Icon Picker (Clean icon buttons with tooltips, no ugly cut-off text) */}
+                                            <div>
+                                                <label className={`text-[11px] block mb-2 font-medium ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                                                    Choose Icon
+                                                </label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {SPACE_ICONS.map((item) => {
+                                                        const IconComp = item.icon;
+                                                        const isSelected = newSpaceIcon === item.id;
+                                                        return (
+                                                            <button
+                                                                key={item.id}
+                                                                type="button"
+                                                                onClick={() => setNewSpaceIcon(item.id)}
+                                                                title={item.label}
+                                                                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 cursor-pointer border hover:scale-110 active:scale-90 ${
+                                                                    isSelected
+                                                                        ? 'bg-accent border-accent text-zinc-950 font-bold shadow-sm ring-2 ring-accent/30'
+                                                                        : (isBright 
+                                                                            ? 'bg-black/[0.03] hover:bg-black/[0.07] border-black/[0.06] text-zinc-600' 
+                                                                            : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.06] text-white/70 hover:text-white')
+                                                                }`}
+                                                            >
+                                                                <IconComp size={16} />
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* GitHub Live Toggle */}
+                                            <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                                                isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.04]'
+                                            }`}>
+                                                <div className="flex items-center gap-2.5">
+                                                    <GitPullRequest size={16} className="text-emerald-400 shrink-0" />
+                                                    <div>
+                                                        <div className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                            Enable GitHub Live
+                                                        </div>
+                                                        <div className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                            Show open pull requests and notifications in the sidebar for this workspace.
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <SettingToggle
+                                                    isChecked={newSpaceShowGitHub}
+                                                    onToggle={() => setNewSpaceShowGitHub(prev => !prev)}
+                                                />
+                                            </div>
+
+                                            {/* Submit / Cancel Buttons */}
+                                            <div className="flex items-center justify-end gap-2 pt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIsCreatingSpace(false);
+                                                        setNewSpaceName('');
+                                                        setNewSpaceIcon('Layers');
+                                                        setNewSpaceShowGitHub(false);
+                                                    }}
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
+                                                        isBright ? 'hover:bg-black/5 text-zinc-600' : 'hover:bg-white/5 text-white/60'
+                                                    }`}
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
+                                                >
+                                                    <Plus size={14} /> Add Workspace
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                {/* Workspaces List Section */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className={`text-xs font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Active Workspaces ({spacesList.length} / 8)
+                                        </h4>
+                                        <span className={`text-[11px] ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                            Drag handle or rows to reorder
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {spacesList.map((sp, idx) => {
+                                            const IconComponent = getSpaceIconComponent(sp.icon);
+                                            const isPersonal = sp.id === 'personal';
+                                            const isEditingThis = editingSpaceId === sp.id;
+                                            const isDeletingThis = deletingSpace?.id === sp.id;
+                                            const isIconPickerOpen = activeIconPickerSpaceId === sp.id;
+                                            const tabCount = (useTabStore.getState().getTabsForSpace?.(sp.id) || []).length;
+                                            const isBeingDragged = draggedSpaceIdx === idx;
+                                            const isDragOver = dragOverSpaceIdx === idx && draggedSpaceIdx !== idx;
+
+                                            return (
+                                                <div 
+                                                    key={sp.id}
+                                                    ref={(el) => {
+                                                        if (el) spaceItemRefs.current[sp.id] = el;
+                                                        else delete spaceItemRefs.current[sp.id];
+                                                    }}
+                                                    draggable={!isEditingThis && !isDeletingThis && !isIconPickerOpen}
+                                                    onDragStart={(e) => {
+                                                        setDraggedSpaceIdx(idx);
+                                                        e.dataTransfer.effectAllowed = 'move';
+                                                        e.dataTransfer.setData('text/plain', String(idx));
+                                                    }}
+                                                    onDragOver={(e) => {
+                                                        e.preventDefault();
+                                                        e.dataTransfer.dropEffect = 'move';
+                                                        if (dragOverSpaceIdx !== idx) setDragOverSpaceIdx(idx);
+                                                    }}
+                                                    onDragLeave={(e) => {
+                                                        if (dragOverSpaceIdx === idx) setDragOverSpaceIdx(null);
+                                                    }}
+                                                    onDrop={(e) => handleSpaceDrop(e, idx)}
+                                                    onDragEnd={() => {
+                                                        setDraggedSpaceIdx(null);
+                                                        setDragOverSpaceIdx(null);
+                                                    }}
+                                                    className={`relative rounded-2xl border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                                        isIconPickerOpen ? 'z-40' : isDragOver ? 'z-30' : 'z-10'
+                                                    } ${
+                                                        isBeingDragged
+                                                            ? 'opacity-35 scale-[0.98] border-dashed border-accent/60 bg-accent/5 shadow-none'
+                                                            : isDragOver
+                                                                ? 'scale-[1.01] -translate-y-1 ring-2 ring-accent/60 shadow-xl border-accent'
+                                                                : (isBright 
+                                                                    ? 'bg-white/75 hover:bg-white/95 border-black/[0.08] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:-translate-y-0.5 hover:shadow-lg' 
+                                                                    : 'bg-white/[0.025] hover:bg-white/[0.045] border-white/[0.05] hover:border-white/[0.12] hover:-translate-y-0.5 hover:shadow-lg')
+                                                    }`}
+                                                >
+                                                    <div className="p-3 px-4 flex items-center justify-between gap-3">
+                                                        {/* Left: Grip, Icon & Details */}
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            {/* Reorder Drag Handle */}
+                                                            <div 
+                                                                className={`p-1 rounded text-zinc-500 transition-colors cursor-grab active:cursor-grabbing shrink-0 select-none ${
+                                                                    isBright ? 'hover:text-zinc-800 hover:bg-black/5' : 'hover:text-zinc-200 hover:bg-white/5'
+                                                                }`}
+                                                                title="Drag to reorder workspace"
+                                                            >
+                                                                <GripVertical size={14} />
+                                                            </div>
+
+                                                            {/* Icon button (Click to change icon) */}
+                                                            <div className="relative">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setActiveIconPickerSpaceId(isIconPickerOpen ? null : sp.id)}
+                                                                    title="Change workspace icon"
+                                                                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer group active:scale-90 ${
+                                                                        isBright 
+                                                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border border-black/[0.06]' 
+                                                                            : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/80 hover:text-white border border-white/[0.06]'
+                                                                    }`}
+                                                                >
+                                                                    <IconComponent size={16} className="transition-transform duration-200 group-hover:scale-110" />
+                                                                </button>
+
+                                                                {/* Icon Popover Dropdown (Liquid glass styling matching context menu) */}
+                                                                {isIconPickerOpen && (
+                                                                    <>
+                                                                        <div 
+                                                                            className="fixed inset-0 z-40 bg-transparent cursor-default" 
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setActiveIconPickerSpaceId(null);
+                                                                            }} 
+                                                                        />
+                                                                        <div 
+                                                                            className={`absolute top-full left-0 mt-2 z-50 p-2.5 rounded-2xl border shadow-2xl select-none outline-none grid grid-cols-7 gap-1.5 w-64 animate-pop-in ${
+                                                                                isBright 
+                                                                                    ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
+                                                                                    : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
+                                                                            }`}
+                                                                            style={{
+                                                                                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
+                                                                                backdropFilter: isBright
+                                                                                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
+                                                                                WebkitBackdropFilter: isBright
+                                                                                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+                                                                            }}
+                                                                        >
+                                                                            {SPACE_ICONS.map((ic) => {
+                                                                                const Ic = ic.icon;
+                                                                                const isCur = (sp.icon || 'Layers') === ic.id;
+                                                                                return (
+                                                                                    <button
+                                                                                        key={ic.id}
+                                                                                        type="button"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            updateSpace(sp.id, { icon: ic.id });
+                                                                                            setActiveIconPickerSpaceId(null);
+                                                                                            showToast('Workspace icon updated');
+                                                                                        }}
+                                                                                        title={ic.label}
+                                                                                        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer hover:scale-115 active:scale-90 ${
+                                                                                            isCur
+                                                                                                ? 'bg-accent text-zinc-950 font-bold shadow-sm'
+                                                                                                : (isBright 
+                                                                                                    ? 'hover:bg-black/5 text-zinc-700 hover:text-zinc-950' 
+                                                                                                    : 'hover:bg-white/10 text-white/70 hover:text-white')
+                                                                                        }`}
+                                                                                    >
+                                                                                        <Ic size={15} />
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Name & Subtitle Info */}
+                                                            <div className="min-w-0">
+                                                                {isEditingThis ? (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={editingSpaceName}
+                                                                            onChange={(e) => setEditingSpaceName(e.target.value)}
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === 'Enter') handleSaveSpaceName(sp.id);
+                                                                                if (e.key === 'Escape') setEditingSpaceId(null);
+                                                                            }}
+                                                                            maxLength={30}
+                                                                            className={`px-2.5 py-1 text-xs rounded-lg outline-none border focus:border-accent ${
+                                                                                isBright ? 'bg-white border-black/20 text-zinc-900' : 'bg-black/50 border-white/20 text-white'
+                                                                            }`}
+                                                                            autoFocus
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSaveSpaceName(sp.id)}
+                                                                            className="p-1 rounded-md text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                                                                            title="Save"
+                                                                        >
+                                                                            <Check size={14} />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setEditingSpaceId(null)}
+                                                                            className="p-1 rounded-md text-zinc-400 hover:bg-white/5 cursor-pointer"
+                                                                            title="Cancel"
+                                                                        >
+                                                                            <X size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex items-center gap-2 group/name">
+                                                                        <span className={`text-sm font-medium truncate ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
+                                                                            {sp.name}
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setEditingSpaceId(sp.id);
+                                                                                setEditingSpaceName(sp.name);
+                                                                            }}
+                                                                            title="Rename"
+                                                                            className={`opacity-0 group-hover/name:opacity-100 p-1 rounded-md transition cursor-pointer ${
+                                                                                isBright ? 'hover:bg-black/5 text-zinc-500' : 'hover:bg-white/5 text-zinc-400'
+                                                                            }`}
+                                                                        >
+                                                                            <Edit2 size={12} />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Clean Subtitle Info */}
+                                                                <div className="text-[11px] text-zinc-400 flex items-center gap-1.5 mt-0.5">
+                                                                    {isPersonal ? (
+                                                                        <>
+                                                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Default</span>
+                                                                            <span>•</span>
+                                                                            <span>{tabCount} open {tabCount === 1 ? 'tab' : 'tabs'}</span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <span>{tabCount} open {tabCount === 1 ? 'tab' : 'tabs'}</span>
+                                                                        </>
+                                                                    )}
+                                                                    {sp.showGitHub && (
+                                                                        <>
+                                                                            <span>•</span>
+                                                                            <span className="flex items-center gap-1 text-emerald-400">
+                                                                                <GitPullRequest size={10} /> GitHub Live
+                                                                            </span>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Right: Controls (GitHub Live toggle, Reorder, Delete) */}
+                                                        <div className="flex items-center gap-2 sm:gap-3">
+                                                            {/* GitHub Live Toggle */}
+                                                            <div className="flex items-center gap-2 pr-2.5 border-r border-black/10 dark:border-white/10">
+                                                                <span className={`text-xs hidden sm:inline ${
+                                                                    isBright ? 'text-zinc-600' : 'text-zinc-400'
+                                                                }`}>
+                                                                    GitHub Live
+                                                                </span>
+                                                                <SettingToggle
+                                                                    isChecked={!!sp.showGitHub}
+                                                                    onToggle={() => {
+                                                                        updateSpace(sp.id, { showGitHub: !sp.showGitHub });
+                                                                        setTimeout(() => {
+                                                                            useGitHubStore.getState().syncWithConfig?.();
+                                                                        }, 50);
+                                                                    }}
+                                                                />
+                                                            </div>
+
+                                                            {/* Reorder Buttons */}
+                                                            <div className="flex items-center">
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={idx === 0}
+                                                                    onClick={() => handleMoveSpaceUp(idx)}
+                                                                    title="Move Up"
+                                                                    className={`p-1.5 rounded-lg transition-all duration-150 cursor-pointer active:scale-75 hover:scale-110 ${
+                                                                        idx === 0 
+                                                                            ? 'opacity-20 cursor-not-allowed hover:scale-100 active:scale-100' 
+                                                                            : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-950' : 'hover:bg-white/10 text-zinc-300 hover:text-white')
+                                                                    }`}
+                                                                >
+                                                                    <ChevronUp size={15} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={idx === spacesList.length - 1}
+                                                                    onClick={() => handleMoveSpaceDown(idx)}
+                                                                    title="Move Down"
+                                                                    className={`p-1.5 rounded-lg transition-all duration-150 cursor-pointer active:scale-75 hover:scale-110 ${
+                                                                        idx === spacesList.length - 1 
+                                                                            ? 'opacity-20 cursor-not-allowed hover:scale-100 active:scale-100' 
+                                                                            : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-950' : 'hover:bg-white/10 text-zinc-300 hover:text-white')
+                                                                    }`}
+                                                                >
+                                                                    <ChevronDown size={15} />
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Delete Button (non-personal only) */}
+                                                            {!isPersonal && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setDeletingSpace(sp)}
+                                                                    title="Delete Workspace"
+                                                                    className={`p-1.5 rounded-lg transition-all duration-150 cursor-pointer active:scale-75 hover:scale-110 ${
+                                                                        isBright 
+                                                                            ? 'hover:bg-rose-50 text-zinc-400 hover:text-rose-600' 
+                                                                            : 'hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400'
+                                                                    }`}
+                                                                >
+                                                                    <Trash2 size={15} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Delete Confirmation Bar (Smooth accordion + rounded corners clipped to card) */}
+                                                    <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                                        isDeletingThis ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                                                    }`}>
+                                                        <div className="overflow-hidden min-h-0">
+                                                            <div className={`p-3 px-4 border-t rounded-b-[15px] flex items-center justify-between gap-3 flex-wrap ${
+                                                                isBright ? 'bg-rose-50/60 border-rose-100 text-rose-950' : 'bg-rose-500/10 border-rose-500/20 text-rose-200'
+                                                            }`}>
+                                                                <span className={`text-xs ${isBright ? 'text-rose-900' : 'text-rose-200'}`}>
+                                                                    Delete <strong>{sp.name}</strong>? Open tabs will move to <strong>Personal</strong>.
+                                                                </span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setDeletingSpace(null)}
+                                                                        className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer active:scale-95 ${
+                                                                            isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 text-white/70'
+                                                                        }`}
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteSpace(sp.id)}
+                                                                        className="px-3 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs transition active:scale-95 shadow-sm cursor-pointer"
+                                                                    >
+                                                                        Delete
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Private Modes Note */}
+                                <div className={`p-3.5 rounded-xl border flex items-center gap-3 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.06] text-zinc-600' : 'bg-white/[0.02] border-white/[0.05] text-zinc-400'
+                                }`}>
+                                    <Ghost size={16} className="text-accent shrink-0" />
+                                    <p className="text-xs">
+                                        <strong className={isBright ? 'text-zinc-800' : 'text-zinc-200'}>Private Browsing:</strong> Ghost and Tor modes run in RAM with zero disk persistence and can be launched directly from the sidebar.
+                                    </p>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* TAB: ACCESSIBILITY (EU European Accessibility Act / EN 301 549 & WCAG 2.1 AA) */}
                     {settingsTab === 'accessibility' && (

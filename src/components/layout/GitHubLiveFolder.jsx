@@ -7,7 +7,7 @@ import { useGitHubStore } from '../../store/useGitHubStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
-export default function GitHubLiveFolder() {
+export default function GitHubLiveFolder({ spaceId = 'work' }) {
     const settings = useUIStore(state => state.settings);
     const setSettingValue = useUIStore(state => state.setSettingValue);
     const openSettings = useUIStore(state => state.openSettings);
@@ -16,8 +16,14 @@ export default function GitHubLiveFolder() {
     const isBright = theme === 'light';
 
     const addTab = useTabStore(state => state.addTab);
-    const workTabs = useTabStore(state => state.workTabs);
-    const setWorkTabs = useTabStore(state => state.setWorkTabs);
+    const spaceTabs = useTabStore(state => state.getTabsForSpace ? state.getTabsForSpace(spaceId) : (spaceId === 'work' ? state.workTabs : state.privateTabs));
+    const setSpaceTabs = (updater) => {
+        if (useTabStore.getState().setTabsForSpace) {
+            useTabStore.getState().setTabsForSpace(spaceId, updater);
+        } else {
+            useTabStore.getState().setWorkTabs(updater);
+        }
+    };
     const setCurrentUrl = useUIStore(state => state.setCurrentUrl);
 
     const [contextMenuPos, setContextMenuPos] = useState(null);
@@ -59,9 +65,9 @@ export default function GitHubLiveFolder() {
         }
         if (!url) return;
 
-        const existingTab = (workTabs || []).find(t => t.url && t.url.toLowerCase() === url.toLowerCase());
+        const existingTab = (spaceTabs || []).find(t => t.url && t.url.toLowerCase() === url.toLowerCase());
         if (existingTab) {
-            setWorkTabs((workTabs || []).map(t => ({
+            setSpaceTabs((spaceTabs || []).map(t => ({
                 ...t,
                 active: t.id === existingTab.id
             })));
@@ -73,7 +79,7 @@ export default function GitHubLiveFolder() {
             url,
             active: true,
             title: 'GitHub'
-        });
+        }, spaceId);
     };
 
     const handleAuxClick = (e, url) => {
@@ -84,7 +90,7 @@ export default function GitHubLiveFolder() {
                 url,
                 active: false,
                 title: 'GitHub'
-            });
+            }, spaceId);
         }
     };
 
@@ -396,7 +402,7 @@ export default function GitHubLiveFolder() {
 
                         <button
                             onClick={() => {
-                                addTab({ url: 'https://github.com/', active: true, title: 'GitHub' });
+                                addTab({ url: 'https://github.com/', active: true, title: 'GitHub' }, spaceId);
                                 setContextMenuPos(null);
                             }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-[color:var(--sidebar-text-muted)] hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"

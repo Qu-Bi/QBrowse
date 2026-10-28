@@ -8,7 +8,7 @@ import {
     HelpCircle, RotateCcw, RotateCw, Scissors, Clipboard, CheckSquare,
     Code, Terminal, Briefcase, User, EyeOff, Shield, FolderOpen, Plus,
     CornerDownLeft, ChevronRight, ArrowRightLeft, Bookmark, Check, ShieldCheck,
-    SlidersHorizontal, Settings
+    SlidersHorizontal, Settings, Rocket, Compass, Coffee, Folder, Heart, GitBranch
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -35,6 +35,29 @@ const getEngineName = () => {
     const searchEngine = settings.searchEngine || 'google';
     const engine = getSearchEngineById(searchEngine, customEngines);
     return engine ? engine.name : 'Google';
+};
+
+const SPACE_ICON_MAP = {
+    User,
+    Layers,
+    Briefcase,
+    Code,
+    Rocket,
+    Compass,
+    Bookmark,
+    Sparkles,
+    Globe,
+    Coffee,
+    Folder,
+    Terminal,
+    Shield,
+    Heart
+};
+
+const getSpaceIcon = (iconName) => {
+    if (!iconName) return Layers;
+    if (typeof iconName === 'function' || typeof iconName === 'object') return iconName;
+    return SPACE_ICON_MAP[iconName] || Layers;
 };
 
 // Context for theme support in context menus
@@ -561,12 +584,22 @@ export default function ContextMenuProvider({ children }) {
     const toolHubContextMenu = useUIStore(state => state.toolHubContextMenu);
     const isToolHubContextMenuClosing = useUIStore(state => state.isToolHubContextMenuClosing);
     const closeToolHubContextMenu = useUIStore(state => state.closeToolHubContextMenu);
+
+    const spaceContextMenu = useUIStore(state => state.spaceContextMenu);
+    const isSpaceContextMenuClosing = useUIStore(state => state.isSpaceContextMenuClosing);
+    const closeSpaceContextMenu = useUIStore(state => state.closeSpaceContextMenu);
+    const setRenamingSpaceId = useUIStore(state => state.setRenamingSpaceId);
+    const addSpace = useUIStore(state => state.addSpace);
+    const updateSpace = useUIStore(state => state.updateSpace);
+    const removeSpace = useUIStore(state => state.removeSpace);
+    const openSettings = useUIStore(state => state.openSettings);
     
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
 
     // Tab store methods
     const activeSpace = useTabStore(state => state.activeSpace);
+    const setActiveSpace = useTabStore(state => state.setActiveSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
@@ -593,11 +626,21 @@ export default function ContextMenuProvider({ children }) {
         useUIStore.getState().closeContextMenus();
     }, []);
 
+    const customSpaces = useUIStore(state => state.settings?.customSpaces) || [
+        { id: 'personal', name: 'Personal', icon: 'User' },
+        { id: 'work', name: 'Work', icon: 'Layers' }
+    ];
+    const customSpaceTabs = useTabStore(state => state.customSpaceTabs) || {};
+
     const spaces = [
-        { id: 'personal', name: 'Personal Space', icon: User, count: (privateTabs || []).length },
-        { id: 'work', name: 'Work Space', icon: Briefcase, count: (workTabs || []).length },
+        ...customSpaces.map(sp => ({
+            id: sp.id,
+            name: sp.name,
+            icon: getSpaceIcon(sp.icon),
+            count: (useTabStore.getState().getTabsForSpace?.(sp.id) || []).length
+        })),
         { id: 'ghost', name: 'Ghost Space', icon: EyeOff, count: (ghostTabs || []).length },
-        { id: 'tor', name: 'Tor Space', icon: Shield, count: (torTabs || []).length },
+        { id: 'tor', name: 'Tor Space', icon: Shield, count: (torTabs || []).length }
     ];
 
     // Webview reference resolver
@@ -2077,6 +2120,114 @@ export default function ContextMenuProvider({ children }) {
                                 />
                             </>
                         )}
+                    </MenuContainer>
+                );
+            })()}
+
+            {/* ========================================================================= */}
+            {/* 7. SPACE / WORKSPACE CONTEXT MENU */}
+            {/* ========================================================================= */}
+            {(spaceContextMenu || isSpaceContextMenuClosing) && (() => {
+                const scm = spaceContextMenu || {};
+                const sp = scm.space;
+                if (!sp) return null;
+                const SpaceIcon = getSpaceIcon(sp.icon);
+                const isBuiltIn = sp.isBuiltIn || sp.id === 'personal';
+
+                return (
+                    <MenuContainer
+                        key={`space-${sp.id}-${scm.x}-${scm.y}`}
+                        x={scm.x}
+                        y={scm.y}
+                        isClosing={isSpaceContextMenuClosing}
+                        onClose={closeSpaceContextMenu}
+                        className="w-56"
+                    >
+                        <div className={`px-2.5 py-1 text-xs font-semibold border-b mb-1 flex items-center justify-between ${
+                            isBright ? 'text-zinc-500 border-black/[0.06]' : 'text-white/65 border-white/[0.08]'
+                        }`}>
+                            <div className="flex items-center gap-1.5 truncate min-w-0">
+                                <SpaceIcon size={12} className="opacity-70 shrink-0" />
+                                <span className="truncate">{sp.name.toUpperCase()}</span>
+                            </div>
+                            {sp.showGitHub && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 font-semibold border border-blue-500/20 shrink-0 ml-1">
+                                    GitHub
+                                </span>
+                            )}
+                        </div>
+
+                        <MenuItem
+                            icon={Pencil}
+                            label="Rename Workspace"
+                            onClick={() => {
+                                closeSpaceContextMenu();
+                                setRenamingSpaceId(sp.id);
+                            }}
+                        />
+
+                        <MenuItem
+                            icon={GitBranch}
+                            label="Toggle GitHub Live"
+                            shortcut={
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide font-mono ${
+                                    sp.showGitHub 
+                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                        : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
+                                }`}>
+                                    {sp.showGitHub ? 'ON' : 'OFF'}
+                                </span>
+                            }
+                            onClick={() => {
+                                updateSpace(sp.id, { showGitHub: !sp.showGitHub });
+                                showToast(sp.showGitHub ? `GitHub Live disabled for ${sp.name}` : `GitHub Live enabled for ${sp.name}`);
+                                closeSpaceContextMenu();
+                            }}
+                        />
+
+                        <MenuItem
+                            icon={Plus}
+                            label={customSpaces.length >= 8 ? "Add Workspace (Max 8 Reached)" : "Add New Workspace..."}
+                            disabled={customSpaces.length >= 8}
+                            onClick={() => {
+                                closeSpaceContextMenu();
+                                if (customSpaces.length >= 8) {
+                                    showToast('Maximum of 8 workspaces reached');
+                                    return;
+                                }
+                                const nextIdx = customSpaces.length + 1;
+                                const newName = `Workspace ${nextIdx}`;
+                                const newSp = addSpace(newName, 'Layers', false);
+                                if (newSp?.id) {
+                                    setActiveSpace(newSp.id);
+                                    setRenamingSpaceId(newSp.id);
+                                }
+                            }}
+                        />
+
+                        {!isBuiltIn && (
+                            <MenuItem
+                                icon={Trash2}
+                                label="Delete Workspace"
+                                danger
+                                onClick={() => {
+                                    closeSpaceContextMenu();
+                                    removeSpace(sp.id);
+                                    showToast(`Deleted workspace "${sp.name}"`);
+                                }}
+                            />
+                        )}
+
+                        <MenuDivider />
+
+                        <MenuItem
+                            icon={Settings}
+                            label="Manage Workspaces..."
+                            onClick={() => {
+                                closeSpaceContextMenu();
+                                openSettings('spaces');
+                            }}
+                        />
                     </MenuContainer>
                 );
             })()}

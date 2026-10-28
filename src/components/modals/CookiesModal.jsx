@@ -4,7 +4,7 @@ import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 
 export default function CookiesModal() {
-    const { activeModal, isModalClosing, closeModal, showToast, theme } = useUIStore();
+    const { activeModal, isModalClosing, closingModal, closeModal, showToast, theme } = useUIStore();
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     
@@ -40,7 +40,8 @@ export default function CookiesModal() {
 
     const [deletingCookieKeys, setDeletingCookieKeys] = useState(new Set());
 
-    if (activeModal !== 'cookies' && !isModalClosing) return null;
+    const isClosingThis = isModalClosing && closingModal === 'cookies';
+    if (activeModal !== 'cookies' && !isClosingThis) return null;
 
     const handleDeleteSingle = async (cookie) => {
         const key = `${cookie.domain}-${cookie.name}`;
@@ -95,14 +96,14 @@ export default function CookiesModal() {
 
     return (
         <div 
-            className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/70 backdrop-blur-3xl text-white'} font-sans ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} 
+            className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${isBright ? 'bg-black/25 backdrop-blur-xl text-zinc-900' : 'bg-black/70 backdrop-blur-3xl text-white'} font-sans ${isClosingThis ? 'animate-modal-out' : 'animate-modal'}`} 
             onClick={closeModal}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
         >
             <div 
                 id="cookies-modal"
                 className={`w-[750px] max-w-[92vw] h-[600px] max-h-[85vh] rounded-3xl overflow-hidden flex flex-col relative ${
-                    isModalClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
+                    isClosingThis ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
                 } ${
                     isBright 
                         ? 'bg-white/60 backdrop-blur-3xl border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.12)] text-zinc-900' 

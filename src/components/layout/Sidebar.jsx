@@ -1,5 +1,10 @@
 import React, { useRef } from 'react';
-import { X, Minus, Maximize2, UserPlus, Clock, Settings, Home, Plus, ChevronRight, User, Layers, Ghost, PictureInPicture2, VolumeX, Volume2, Pin, Globe, FolderPlus, Check, Edit2, FolderOpen } from 'lucide-react';
+import { 
+    X, Minus, Maximize2, UserPlus, Clock, Settings, Home, Plus, ChevronRight, 
+    User, Layers, Ghost, PictureInPicture2, VolumeX, Volume2, Pin, Globe, 
+    FolderPlus, Check, Edit2, FolderOpen, Briefcase, Code, Rocket, Compass, 
+    Bookmark, Sparkles, Coffee, Folder, Terminal, Shield, Heart
+} from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
@@ -11,6 +16,28 @@ import PinnedStackPopup, { isTabForPin } from './PinnedStackPopup';
 import GitHubLiveFolder from './GitHubLiveFolder';
 import GitHubGlancePopover from './GitHubGlancePopover';
 import { useGitHubStore } from '../../store/useGitHubStore';
+
+const SPACE_ICONS = {
+    User,
+    Layers,
+    Briefcase,
+    Code,
+    Rocket,
+    Compass,
+    Bookmark,
+    Sparkles,
+    Globe,
+    Coffee,
+    Folder,
+    Terminal,
+    Shield,
+    Heart,
+};
+
+const getSpaceIcon = (iconName, props = {}) => {
+    const IconComp = (iconName && SPACE_ICONS[iconName]) ? SPACE_ICONS[iconName] : Layers;
+    return <IconComp {...props} />;
+};
 
 export default function Sidebar() {
     // UI Store State
@@ -65,6 +92,9 @@ export default function Sidebar() {
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
     const torTabs = useTabStore(state => state.torTabs) || [];
+    const customSpaceTabs = useTabStore(state => state.customSpaceTabs) || {};
+    const getTabsForSpace = useTabStore(state => state.getTabsForSpace);
+    const setTabsForSpace = useTabStore(state => state.setTabsForSpace);
     const pinnedTabs = useTabStore(state => state.pinnedTabs);
     const draggedItem = useTabStore(state => state.draggedItem);
     const dragOverItem = useTabStore(state => state.dragOverItem);
@@ -115,6 +145,78 @@ export default function Sidebar() {
     // Actually folder state was in App.jsx. I will manage it with local state in Sidebar for now since it's just visual toggle.
     const [localPrivateOpen, setLocalPrivateOpen] = React.useState(true);
     const [localWorkOpen, setLocalWorkOpen] = React.useState(true);
+    const customSpaces = useUIStore(state => state.settings?.customSpaces || [
+        { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+        { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+    ]);
+    const addSpace = useUIStore(state => state.addSpace);
+    const updateSpace = useUIStore(state => state.updateSpace);
+    const removeSpace = useUIStore(state => state.removeSpace);
+    const reorderSpaces = useUIStore(state => state.reorderSpaces);
+    const openSettings = useUIStore(state => state.openSettings);
+
+    const renamingSpaceId = useUIStore(state => state.renamingSpaceId);
+    const setRenamingSpaceId = useUIStore(state => state.setRenamingSpaceId);
+    const [renameValue, setRenameValue] = React.useState('');
+    const [activeRenamingSpace, setActiveRenamingSpace] = React.useState(null);
+    const [isRenamingClosing, setIsRenamingClosing] = React.useState(false);
+    const closeRenameTimerRef = React.useRef(null);
+
+    React.useEffect(() => {
+        if (renamingSpaceId) {
+            const target = customSpaces.find(s => s.id === renamingSpaceId);
+            if (target) {
+                if (closeRenameTimerRef.current) clearTimeout(closeRenameTimerRef.current);
+                setActiveRenamingSpace(target);
+                setRenameValue(target.name || '');
+                setIsRenamingClosing(false);
+            }
+        } else {
+            if (activeRenamingSpace && !isRenamingClosing) {
+                setIsRenamingClosing(true);
+                closeRenameTimerRef.current = setTimeout(() => {
+                    setActiveRenamingSpace(null);
+                    setIsRenamingClosing(false);
+                }, 200);
+            }
+        }
+        return () => {
+            if (closeRenameTimerRef.current) clearTimeout(closeRenameTimerRef.current);
+        };
+    }, [renamingSpaceId, customSpaces, activeRenamingSpace, isRenamingClosing]);
+
+    const closeRenamePopover = React.useCallback(() => {
+        if (isRenamingClosing) return;
+        setRenamingSpaceId(null);
+    }, [isRenamingClosing, setRenamingSpaceId]);
+
+    const handleQuickAddSpace = () => {
+        if (customSpaces.length >= 8) {
+            showToast('Maximum of 8 workspaces reached');
+            return;
+        }
+        const nextIdx = customSpaces.length + 1;
+        const name = `Workspace ${nextIdx}`;
+        if (addSpace) {
+            const newSp = addSpace(name, 'Layers', false);
+            if (newSp?.id) {
+                setActiveSpace(newSp.id);
+                setRenamingSpaceId(newSp.id);
+            }
+        }
+    };
+
+    const handleSpaceContextMenu = (e, sp) => {
+        e.preventDefault();
+        e.stopPropagation();
+        useUIStore.getState().closeContextMenus();
+        useUIStore.getState().setSpaceContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            space: sp
+        });
+    };
+
     const [dragPos, setDragPos] = React.useState(null);
     const [hoveredSpace, setHoveredSpace] = React.useState(null);
 
@@ -146,11 +248,11 @@ export default function Sidebar() {
 
     // Safety auto-heal: guarantee the current space never gets stuck with zero tabs
     React.useEffect(() => {
-        const tabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
+        const tabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs)));
         if (tabs && tabs.length === 0) {
             handleNewTab('', true);
         }
-    }, [activeSpace, privateTabs, workTabs, ghostTabs, torTabs, handleNewTab]);
+    }, [activeSpace, privateTabs, workTabs, ghostTabs, torTabs, customSpaceTabs, getTabsForSpace, handleNewTab]);
 
     const handleTabContextMenuClick = (e, tab, spaceType) => {
         e.preventDefault();
@@ -161,8 +263,8 @@ export default function Sidebar() {
     };
 
     const handlePinnedTabClick = (e, pin) => {
-        const tabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
-        const setTabs = activeSpace === 'personal' ? setPrivateTabs : (activeSpace === 'work' ? setWorkTabs : (activeSpace === 'ghost' ? setGhostTabs : setTorTabs));
+        const tabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs)));
+        const setTabs = (updater) => setTabsForSpace ? setTabsForSpace(activeSpace, updater) : (activeSpace === 'personal' ? setPrivateTabs(updater) : (activeSpace === 'work' ? setWorkTabs(updater) : (activeSpace === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
         
         const pinTabs = tabs.filter(t => isTabForPin(t, pin));
         const activeTabInStack = pinTabs.find(t => t.active);
@@ -274,13 +376,13 @@ export default function Sidebar() {
                     setSplitRightTabId(tab.id);
                     ui.setCurrentUrl(tab.url || '');
                 } else {
+                    const list = getTabsForSpace ? getTabsForSpace(spaceType) : (spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs)));
+                    const setList = (updater) => setTabsForSpace ? setTabsForSpace(spaceType, updater) : (spaceType === 'personal' ? setPrivateTabs(updater) : (spaceType === 'work' ? setWorkTabs(updater) : (spaceType === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
                     if (isSplitView && splitRightTabId === tab.id) {
-                        const otherTab = spaceTabs.find(t => t.id !== tab.id);
+                        const otherTab = (list || []).find(t => t.id !== tab.id);
                         setSplitRightTabId(otherTab ? otherTab.id : null);
                     }
-                    const list = spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs));
-                    const setList = spaceType === 'personal' ? setPrivateTabs : (spaceType === 'work' ? setWorkTabs : (spaceType === 'ghost' ? setGhostTabs : setTorTabs));
-                    setList(list.map(t => ({ 
+                    setList((list || []).map(t => ({ 
                         ...t, 
                         active: t.id === tab.id,
                         suspended: t.id === tab.id ? false : t.suspended,
@@ -307,10 +409,12 @@ export default function Sidebar() {
                 hoverTimeout.current = setTimeout(() => {
                     // Always read the latest tab state from useTabStore so the freshest thumbnail is shown
                     const storeState = useTabStore.getState();
-                    const allTabs = spaceType === 'personal' ? storeState.privateTabs
+                    const allTabs = storeState.getTabsForSpace ? storeState.getTabsForSpace(spaceType) : (
+                        spaceType === 'personal' ? storeState.privateTabs
                         : spaceType === 'work' ? storeState.workTabs
                         : spaceType === 'ghost' ? storeState.ghostTabs
-                        : storeState.torTabs;
+                        : storeState.torTabs
+                    );
                     const latestTab = (allTabs || []).find(t => t.id === tab.id) || tab;
                     setHoverPreview({ tab: latestTab, top: rect.top, left: rect.right + 12 });
 
@@ -546,8 +650,8 @@ export default function Sidebar() {
 
             <div className={`px-4 ${uiScale === 'compact' ? 'py-2.5 gap-1.5' : 'py-4 gap-2'} hidden md:grid grid-cols-4 border-b border-[color:var(--sidebar-border)] relative z-10`}>
                 {pinnedTabs.map((pin) => {
-                    const tabs = activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs);
-                    const pinTabs = tabs.filter(t => isTabForPin(t, pin));
+                    const tabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
+                    const pinTabs = (tabs || []).filter(t => isTabForPin(t, pin));
                     const hasActiveTab = pinTabs.some(t => t.active);
                     const isAudible = pinTabs.some(t => t.isAudioPlaying || t.isAudible);
                     const isPopupOpen = activePinnedStack?.pin?.id === pin.id;
@@ -649,215 +753,391 @@ export default function Sidebar() {
             </div>
 
             <div className="relative flex-1 w-full overflow-hidden min-w-[64px]">
-                <div className="absolute inset-y-0 left-0 w-[400%] flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                    style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-25%)' : activeSpace === 'ghost' ? 'translateX(-50%)' : 'translateX(-75%)' }}>
+                {(() => {
+                    const allSpaces = [...customSpaces, { id: 'ghost', isGhost: true }, { id: 'tor', isTor: true }];
+                    const currentReelIndex = Math.max(0, allSpaces.findIndex(s => s.id === activeSpace));
 
-                    {/* PERSONAL TABS */}
-                    <div 
-                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
-                        onDragOver={(e) => { e.preventDefault(); handleDragOver('root-personal'); }}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDropRoot(e, 'personal')}
-                    >
-                        <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-personal' ? 'border-accent border-dashed bg-accent-10 py-1' : 'border-transparent'}`}>
-                            <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T • Middle-click for background)">
-                                <Plus size={12} strokeWidth={2.5} />
-                            </button>
-                        </div>
-                        {(() => {
-                            const filtered = privateTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
-                            if (filtered.length === 0) {
+                    return (
+                        <div 
+                            className="absolute inset-y-0 left-0 flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                            style={{ 
+                                width: `${allSpaces.length * 100}%`, 
+                                transform: `translateX(-${currentReelIndex * (100 / allSpaces.length)}%)` 
+                            }}
+                        >
+                            {customSpaces.map((sp) => {
+                                const rawTabs = getTabsForSpace ? getTabsForSpace(sp.id) : (sp.id === 'personal' ? privateTabs : (sp.id === 'work' ? workTabs : []));
+                                const spaceTabs = rawTabs || [];
+                                const filtered = spaceTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
+                                const isDragOverRoot = dragOverItem === `root-${sp.id}`;
+
                                 return (
-                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tab (Middle-click for background)">
-                                        <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                            <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
-                                        </div>
-                                    </button>
-                                );
-                            }
-                            return filtered.map(tab => renderTab(tab, 'personal'));
-                        })()}
-                    </div>
+                                    <div 
+                                        key={sp.id}
+                                        className={`h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
+                                        style={{ width: `${100 / allSpaces.length}%` }}
+                                        onDragOver={(e) => { e.preventDefault(); handleDragOver(`root-${sp.id}`); }}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={(e) => handleDropRoot(e, sp.id)}
+                                    >
+                                        {/* GitHub Live Integration (Pull Requests & Issues) if enabled for this workspace */}
+                                        {sp.showGitHub && <GitHubLiveFolder spaceId={sp.id} />}
 
-                    {/* WORK TABS */}
-                    <div 
-                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
-                        onDragOver={(e) => { e.preventDefault(); handleDragOver('root-work'); }}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDropRoot(e, 'work')}
-                    >
-                        {/* GitHub Live Integration (Pull Requests & Issues) */}
-                        <GitHubLiveFolder />
-                        <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-work' ? 'border-blue-400 border-dashed bg-blue-500/10 py-1' : 'border-transparent'}`}>
-                            <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest">Open Tabs</h3>
-                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-blue-400 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md" title="New Tab (CMD+T • Middle-click for background)">
-                                <Plus size={12} strokeWidth={2.5} />
-                            </button>
+                                        <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${
+                                            isDragOverRoot 
+                                                ? (sp.id === 'work' ? 'border-blue-400 border-dashed bg-blue-500/10 py-1' : 'border-accent border-dashed bg-accent-10 py-1') 
+                                                : 'border-transparent'
+                                        }`}>
+                                            <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest truncate">
+                                                {sp.name}
+                                            </h3>
+                                            <button 
+                                                onClick={() => handleNewTab()} 
+                                                onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} 
+                                                onAuxClick={handleNewTabAuxClick} 
+                                                className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md shrink-0" 
+                                                title={`New Tab in ${sp.name} (CMD+T • Middle-click for background)`}
+                                            >
+                                                <Plus size={12} strokeWidth={2.5} />
+                                            </button>
+                                        </div>
+                                        {(() => {
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <button 
+                                                        onClick={() => handleNewTab()} 
+                                                        onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} 
+                                                        onAuxClick={handleNewTabAuxClick} 
+                                                        className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} 
+                                                        title="New Tab (Middle-click for background)"
+                                                    >
+                                                        <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+                                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
+                                                            <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            }
+                                            return filtered.map(tab => renderTab(tab, sp.id));
+                                        })()}
+                                    </div>
+                                );
+                            })}
+
+                            {/* GHOST TABS */}
+                            <div 
+                                className={`h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
+                                style={{ width: `${100 / allSpaces.length}%` }}
+                                onDragOver={(e) => { e.preventDefault(); handleDragOver('root-ghost'); }}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDropRoot(e, 'ghost')}
+                            >
+                                <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-ghost' ? 'border-[#a855f7] border-dashed bg-[#a855f7]/10 py-1' : 'border-transparent'}`}>
+                                    <div className="flex items-center gap-1.5">
+                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">Incognito Tabs</h3>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button 
+                                            onClick={() => useTorStore.getState().toggleTorEnabled(true)}
+                                            className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition-all duration-200 hover:scale-105 active:scale-95 border border-purple-500/20" 
+                                            title="Enable Tor Onion Routing (converts private space to Tor space)"
+                                        >
+                                            <Globe size={11} /> Tor Mode
+                                        </button>
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T • Middle-click for background)">
+                                            <Plus size={12} strokeWidth={2.5} />
+                                        </button>
+                                    </div>
+                                </div>
+                                {(() => {
+                                    const filtered = ghostTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
+                                    if (filtered.length === 0) {
+                                        return (
+                                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (Middle-click for background)">
+                                                <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+                                                    <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
+                                                    <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    }
+                                    return filtered.map(tab => renderTab(tab, 'ghost'));
+                                })()}
+                            </div>
+
+                            {/* TOR TABS */}
+                            <div 
+                                className={`h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
+                                style={{ width: `${100 / allSpaces.length}%` }}
+                                onDragOver={(e) => { e.preventDefault(); handleDragOver('root-tor'); }}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDropRoot(e, 'tor')}
+                            >
+                                <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-tor' ? 'border-purple-400 border-dashed bg-purple-500/10 py-1' : 'border-transparent'}`}>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={`w-1.5 h-1.5 rounded-full ${torStatus === 'connected' ? 'bg-purple-400 shadow-[0_0_6px_#c084fc]' : 'bg-amber-400'}`}></span>
+                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-purple-400/80 tracking-widest">Tor Tabs</h3>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button 
+                                            onClick={() => useTorStore.getState().toggleTorEnabled(false)}
+                                            className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10" 
+                                            title="Turn off Tor and return to Ghost mode"
+                                        >
+                                            <Ghost size={11} /> Ghost
+                                        </button>
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T • Middle-click for background)">
+                                            <Plus size={12} strokeWidth={2.5} />
+                                        </button>
+                                    </div>
+                                </div>
+                                {(() => {
+                                    const filtered = (torTabs || []).filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
+                                    if (filtered.length === 0) {
+                                        return (
+                                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in" title="New Tor Tab (Middle-click for background)">
+                                                <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+                                                    <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
+                                                    <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    }
+                                    return filtered.map(tab => renderTab(tab, 'tor'));
+                                })()}
+                            </div>
+
                         </div>
-                        {(() => {
-                            const filtered = workTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
-                            if (filtered.length === 0) {
-                                return (
-                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tab (Middle-click for background)">
-                                        <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                            <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
-                                        </div>
-                                    </button>
-                                );
-                            }
-                            return filtered.map(tab => renderTab(tab, 'work'));
-                        })()}
-                    </div>
-
-                    {/* GHOST TABS */}
-                    <div 
-                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
-                        onDragOver={(e) => { e.preventDefault(); handleDragOver('root-ghost'); }}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDropRoot(e, 'ghost')}
-                    >
-                        <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-ghost' ? 'border-[#a855f7] border-dashed bg-[#a855f7]/10 py-1' : 'border-transparent'}`}>
-                            <div className="flex items-center gap-1.5">
-                                <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">Incognito Tabs</h3>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button 
-                                    onClick={() => useTorStore.getState().toggleTorEnabled(true)}
-                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition-all duration-200 hover:scale-105 active:scale-95 border border-purple-500/20" 
-                                    title="Enable Tor Onion Routing (converts private space to Tor space)"
-                                >
-                                    <Globe size={11} /> Tor Mode
-                                </button>
-                                <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T • Middle-click for background)">
-                                    <Plus size={12} strokeWidth={2.5} />
-                                </button>
-                            </div>
-                        </div>
-                        {(() => {
-                            const filtered = ghostTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
-                            if (filtered.length === 0) {
-                                return (
-                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (Middle-click for background)">
-                                        <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                            <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
-                                        </div>
-                                    </button>
-                                );
-                            }
-                            return filtered.map(tab => renderTab(tab, 'ghost'));
-                        })()}
-                    </div>
-
-                    {/* TOR TABS */}
-                    <div 
-                        className={`w-1/4 h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
-                        onDragOver={(e) => { e.preventDefault(); handleDragOver('root-tor'); }}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDropRoot(e, 'tor')}
-                    >
-                        <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-tor' ? 'border-purple-400 border-dashed bg-purple-500/10 py-1' : 'border-transparent'}`}>
-                            <div className="flex items-center gap-1.5">
-                                <span className={`w-1.5 h-1.5 rounded-full ${torStatus === 'connected' ? 'bg-purple-400 shadow-[0_0_6px_#c084fc]' : 'bg-amber-400'}`}></span>
-                                <h3 className="hidden md:block text-[10px] uppercase font-bold text-purple-400/80 tracking-widest">Tor Tabs</h3>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button 
-                                    onClick={() => useTorStore.getState().toggleTorEnabled(false)}
-                                    className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10" 
-                                    title="Turn off Tor and return to Ghost mode"
-                                >
-                                    <Ghost size={11} /> Ghost
-                                </button>
-                                <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T • Middle-click for background)">
-                                    <Plus size={12} strokeWidth={2.5} />
-                                </button>
-                            </div>
-                        </div>
-                        {(() => {
-                            const filtered = (torTabs || []).filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
-                            if (filtered.length === 0) {
-                                return (
-                                    <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in" title="New Tor Tab (Middle-click for background)">
-                                        <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
-                                            <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                            <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>
-                                        </div>
-                                    </button>
-                                );
-                            }
-                            return filtered.map(tab => renderTab(tab, 'tor'));
-                        })()}
-                    </div>
-
-                </div>
+                    );
+                })()}
             </div>
 
-            <div className="p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-2">
+            <div className="relative p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-1.5 items-center">
+                {/* Anchored Rename Workspace Popover */}
+                {(activeRenamingSpace || (renamingSpaceId && customSpaces.find(s => s.id === renamingSpaceId))) && (() => {
+                    const targetSpace = activeRenamingSpace || customSpaces.find(s => s.id === renamingSpaceId);
+                    if (!targetSpace) return null;
+                    const SpaceIcon = (targetSpace.icon && SPACE_ICONS[targetSpace.icon]) ? SPACE_ICONS[targetSpace.icon] : Layers;
+
+                    return (
+                        <>
+                            {/* Dismiss Backdrop (transparent like global context menu) */}
+                            <div 
+                                className={`fixed inset-0 z-40 bg-transparent cursor-default select-none transition-opacity ${
+                                    isRenamingClosing ? 'pointer-events-none' : ''
+                                }`}
+                                onClick={closeRenamePopover}
+                            />
+
+                            {/* Anchored Glass Popover directly above space pill */}
+                            <div 
+                                className={`absolute bottom-full mb-2 left-2.5 right-2.5 z-50 p-3 rounded-2xl border select-none outline-none ${
+                                    isRenamingClosing ? 'animate-pop-out' : 'animate-pop-in'
+                                } ${
+                                    isBright 
+                                        ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
+                                        : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
+                                }`}
+                                style={{
+                                    backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
+                                    backdropFilter: isBright
+                                        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                                        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
+                                    WebkitBackdropFilter: isBright
+                                        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                                        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <form
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const trimmed = renameValue.trim();
+                                        if (trimmed) {
+                                            updateSpace(targetSpace.id, { name: trimmed });
+                                        }
+                                        closeRenamePopover();
+                                    }}
+                                >
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+                                                isBright ? 'bg-black/5 text-zinc-700' : 'bg-white/10 text-accent'
+                                            }`}>
+                                                <SpaceIcon size={13} />
+                                            </div>
+                                            <span className="text-xs font-bold truncate">Rename Workspace</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={closeRenamePopover}
+                                            className={`p-1 rounded-md transition-colors cursor-pointer active:scale-90 ${
+                                                isBright ? 'hover:bg-black/10 text-zinc-500' : 'hover:bg-white/10 text-white/50 hover:text-white'
+                                            }`}
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    </div>
+
+                                    <div className="relative mb-2.5">
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            value={renameValue}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => setRenameValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Escape') {
+                                                    e.preventDefault();
+                                                    closeRenamePopover();
+                                                }
+                                            }}
+                                            maxLength={30}
+                                            placeholder="Workspace name..."
+                                            className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-medium transition outline-none ${
+                                                isBright 
+                                                    ? 'bg-black/[0.03] border-black/10 text-zinc-900 focus:border-accent focus:bg-white' 
+                                                    : 'bg-white/[0.05] border-white/[0.08] text-white placeholder-white/35 focus:border-accent/80 focus:bg-white/[0.08]'
+                                            }`}
+                                        />
+                                        <span className={`absolute right-2 top-2 text-[9px] font-mono select-none ${
+                                            isBright ? 'text-zinc-400' : 'text-white/30'
+                                        }`}>
+                                            {renameValue.length}/30
+                                        </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[10px] text-zinc-400 select-none">↵ to save</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={closeRenamePopover}
+                                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer active:scale-95 ${
+                                                    isBright ? 'hover:bg-black/5 text-zinc-600' : 'hover:bg-white/10 text-white/70'
+                                                }`}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="px-3 py-1 rounded-lg text-xs font-bold bg-accent text-zinc-950 hover:brightness-110 active:scale-95 transition cursor-pointer shadow-sm"
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </>
+                    );
+                })()}
                 <div 
                     id="tour-spaces-container"
                     onMouseLeave={() => setHoveredSpace(null)}
-                    className={`relative flex-1 flex p-1 rounded-full border shadow-xs transition-colors duration-200 select-none ${
+                    onDoubleClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            handleQuickAddSpace();
+                        }
+                    }}
+                    className={`relative flex-1 flex p-1 rounded-full border shadow-xs transition-colors duration-200 select-none overflow-hidden ${
                     isBright 
                         ? 'bg-black/[0.03] border-black/[0.05]' 
                         : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                 }`}>
-                    {/* Subtle Hover Preview Pill */}
-                    <div 
-                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
-                            isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
-                        }`} 
-                        style={{ 
-                            transform: hoveredSpace === 'work' ? 'translateX(100%)' : 'translateX(0)',
-                            opacity: hoveredSpace && hoveredSpace !== activeSpace && !isIncognito && !isTor ? 1 : 0
-                        }}
-                    />
+                    {/* Inner wrapper for sliding pills that matches content-box dimensions */}
+                    <div className="absolute inset-1 pointer-events-none overflow-hidden">
+                        {(() => {
+                            const activeSpaceIndex = Math.max(0, customSpaces.findIndex(s => s.id === activeSpace));
+                            const hoveredSpaceIndex = hoveredSpace ? customSpaces.findIndex(s => s.id === hoveredSpace) : -1;
+                            const slotWidthPercent = 100 / customSpaces.length;
 
-                    {/* Signature Liquid Glass Sliding Pill */}
-                    <div 
-                        className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
-                            isIncognito || isTor ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
-                        } ${
-                            isBright
-                                ? 'bg-white border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                                : 'shadow-xs'
-                        }`} 
-                        style={{ 
-                            transform: activeSpace === 'work' ? 'translateX(100%)' : 'translateX(0)',
-                            ...(!isBright ? {
-                                borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
-                                backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
-                                boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
-                            } : {})
-                        }}
-                    />
-                    <button 
-                        onClick={() => setActiveSpace('personal')} 
-                        onMouseEnter={() => setHoveredSpace('personal')}
-                        className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer outline-none ${activeSpace === 'personal' && !isIncognito && !isTor ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}
-                    >
-                        <User size={14} /> <span className="hidden md:block">Personal</span>
-                    </button>
-                    <button 
-                        onClick={() => setActiveSpace('work')} 
-                        onMouseEnter={() => setHoveredSpace('work')}
-                        className={`relative z-10 flex-1 flex items-center justify-center gap-2 p-1.5 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer outline-none ${activeSpace === 'work' && !isIncognito && !isTor ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'}`}
-                    >
-                        <Layers size={14} /> <span className="hidden md:block">Work</span>
-                    </button>
+                            return (
+                                <>
+                                    {/* Hover Preview Pill */}
+                                    <div 
+                                        className={`absolute top-0 bottom-0 rounded-full transition-all duration-200 pointer-events-none ${
+                                            isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                        }`} 
+                                        style={{ 
+                                            left: `calc(${hoveredSpaceIndex * slotWidthPercent}% + 2px)`,
+                                            width: `calc(${slotWidthPercent}% - 4px)`,
+                                            opacity: hoveredSpace && hoveredSpace !== activeSpace && !isIncognito && !isTor ? 1 : 0
+                                        }}
+                                    />
+
+                                    {/* Signature Liquid Glass Sliding Pill */}
+                                    <div 
+                                        className={`absolute top-0 bottom-0 rounded-full border pointer-events-none ${
+                                            isReducedMotion ? 'transition-none' : 'transition-[left,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'
+                                        } ${
+                                            isIncognito || isTor ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
+                                        } ${
+                                            isBright
+                                                ? 'bg-white border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                                : 'shadow-xs'
+                                        }`} 
+                                        style={{ 
+                                            left: `calc(${activeSpaceIndex * slotWidthPercent}% + 2px)`,
+                                            width: `calc(${slotWidthPercent}% - 4px)`,
+                                            ...(!isBright ? {
+                                                borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                                backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                                boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                            } : {})
+                                        }}
+                                    />
+                                </>
+                            );
+                        })()}
+                    </div>
+
+                    {(() => {
+                        const showSpaceLabels = 
+                            customSpaces.length === 1 
+                                ? (customSpaces[0]?.name || '').length <= 18
+                                : customSpaces.length === 2 
+                                    ? customSpaces.every(s => (s.name || '').length <= 8)
+                                    : false;
+
+                        return customSpaces.map((sp) => {
+                            const isActive = activeSpace === sp.id && !isIncognito && !isTor;
+
+                            return (
+                                <button 
+                                    key={sp.id}
+                                    onClick={() => setActiveSpace(sp.id)} 
+                                    onMouseEnter={() => setHoveredSpace(sp.id)}
+                                    onContextMenu={(e) => handleSpaceContextMenu(e, sp)}
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        setRenamingSpaceId(sp.id);
+                                    }}
+                                    className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 p-1.5 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer outline-none min-w-0 ${
+                                        isActive 
+                                            ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                            : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'
+                                    }`}
+                                    title={`${sp.name} (Right-click for options • Double-click to rename)`}
+                                >
+                                    {getSpaceIcon(sp.icon, { size: showSpaceLabels ? 14 : 15, className: 'shrink-0' })}
+                                    {showSpaceLabels && (
+                                        <span className="hidden md:inline whitespace-nowrap select-none">{sp.name}</span>
+                                    )}
+                                </button>
+                            );
+                        });
+                    })()}
                 </div>
 
                 {/* Animated Morphing Ghost <-> Onion Button */}
                 <button
                     onClick={() => {
                         if (isTorEnabled) {
-                            setActiveSpace(isTor ? 'personal' : 'tor');
+                            setActiveSpace(isTor ? (customSpaces[0]?.id || 'personal') : 'tor');
                             showToast(!isTor ? 'Tor Space: Activated' : 'Tor Space: Deactivated');
                         } else {
-                            setActiveSpace(isIncognito ? 'personal' : 'ghost');
+                            setActiveSpace(isIncognito ? (customSpaces[0]?.id || 'personal') : 'ghost');
                             showToast(!isIncognito ? 'Ghost Mode: Activated' : 'Ghost Mode: Deactivated');
                         }
                     }}

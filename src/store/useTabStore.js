@@ -54,13 +54,14 @@ export const getSpaceListName = (space) => {
   if (space === 'work') return 'workTabs';
   if (space === 'ghost') return 'ghostTabs';
   if (space === 'tor') return 'torTabs';
-  return 'privateTabs';
+  if (space === 'personal') return 'privateTabs';
+  return space;
 };
 
 export const getFallbackTabForSpace = (space) => {
   const isGhost = space === 'ghost';
   const isTor = space === 'tor';
-  const prefix = isGhost ? 'g' : (isTor ? 'tor' : (space === 'work' ? 'w' : 't'));
+  const prefix = isGhost ? 'g' : (isTor ? 'tor' : (space === 'work' ? 'w' : (space === 'personal' ? 't' : `s-${space}`)));
   const title = isGhost ? 'New Incognito Tab' : (isTor ? 'New Tor Tab' : 'New Tab');
   return {
     id: `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -87,15 +88,17 @@ export const uuidv4 = () => {
 const useTabStore = create((set, get) => ({
   activeSpace: 'personal',
   getActiveTab: () => {
-    const state = get();
-    const space = state.activeSpace;
-    const list = space === 'personal' ? state.privateTabs : (space === 'work' ? state.workTabs : (space === 'tor' ? (state.torTabs || []) : state.ghostTabs));
+    const list = get().getActiveList();
     return list.find(t => t.active) || list[0] || null;
   },
   getActiveList: () => {
     const state = get();
     const space = state.activeSpace;
-    return space === 'personal' ? state.privateTabs : (space === 'work' ? state.workTabs : (space === 'tor' ? (state.torTabs || []) : state.ghostTabs));
+    if (space === 'personal') return state.privateTabs;
+    if (space === 'work') return state.workTabs;
+    if (space === 'ghost') return state.ghostTabs;
+    if (space === 'tor') return state.torTabs || [];
+    return state.customSpaceTabs?.[space] || state.privateTabs;
   },
   setActiveSpace: (space) => set((state) => {
       const ui = useUIStore.getState();
@@ -350,6 +353,85 @@ const useTabStore = create((set, get) => ({
   ],
   setTorTabs: (tabs) => set({ torTabs: typeof tabs === 'function' ? tabs(get().torTabs) : tabs }),
 
+  customSpaceTabs: {},
+
+  getTabsForSpace: (spaceId) => {
+    if (spaceId === 'personal') return get().privateTabs;
+    if (spaceId === 'work') return get().workTabs;
+    if (spaceId === 'ghost') return get().ghostTabs;
+    if (spaceId === 'tor') return get().torTabs || [];
+    return get().customSpaceTabs?.[spaceId] || [];
+  },
+
+  setTabsForSpace: (spaceId, tabsOrUpdater) => {
+    if (spaceId === 'personal') return get().setPrivateTabs(tabsOrUpdater);
+    if (spaceId === 'work') return get().setWorkTabs(tabsOrUpdater);
+    if (spaceId === 'ghost') return get().setGhostTabs(tabsOrUpdater);
+    if (spaceId === 'tor') return get().setTorTabs(tabsOrUpdater);
+    set(state => {
+      const current = state.customSpaceTabs?.[spaceId] || [];
+      const updated = typeof tabsOrUpdater === 'function' ? tabsOrUpdater(current) : tabsOrUpdater;
+      return {
+        customSpaceTabs: {
+          ...state.customSpaceTabs,
+          [spaceId]: updated
+        }
+      };
+    });
+  },
+
+  initSpaceTabs: (spaceId) => {
+    if (!spaceId || spaceId === 'personal' || spaceId === 'work' || spaceId === 'ghost' || spaceId === 'tor') return;
+    const initialTabs = [{
+      id: `t-${spaceId}-${Date.now()}`,
+      title: 'New Tab',
+      url: '',
+      active: true,
+      folderId: null,
+      lastActiveAt: Date.now(),
+      suspended: false
+    }];
+    set(state => ({
+      customSpaceTabs: {
+        ...state.customSpaceTabs,
+        [spaceId]: initialTabs
+      }
+    }));
+  },
+
+  migrateSpaceTabsToPersonal: (spaceId) => {
+    if (!spaceId || spaceId === 'personal') return;
+    const currentTabs = get().getTabsForSpace(spaceId);
+    const validTabsToMigrate = currentTabs.filter(t => !t.isClosing);
+
+    const existingPersonal = get().privateTabs || [];
+    const hasPersonalActive = existingPersonal.some(t => t.active);
+
+    const migratedTabs = validTabsToMigrate.map(t => ({
+      ...t,
+      active: !hasPersonalActive && t.active
+    }));
+
+    const updatedFolders = (get().folders || []).map(f => {
+      if (f.spaceType === spaceId) {
+        return { ...f, spaceType: 'personal' };
+      }
+      return f;
+    });
+
+    set(state => {
+      const nextCustom = { ...state.customSpaceTabs };
+      delete nextCustom[spaceId];
+      return {
+        privateTabs: [...existingPersonal, ...migratedTabs],
+        customSpaceTabs: nextCustom,
+        folders: updatedFolders
+      };
+    });
+
+    get().saveSession?.();
+  },
+
   closedTabs: [],
   pushClosedTab: (tab) => set(state => ({ closedTabs: [...state.closedTabs, tab].slice(-20) })),
   reopenLastClosedTab: () => {
@@ -422,8 +504,8 @@ const useTabStore = create((set, get) => ({
     if (space === 'personal') return get().privateTabs;
     if (space === 'work') return get().workTabs;
     if (space === 'ghost') return get().ghostTabs;
-    if (space === 'tor') return get().torTabs;
-    return get().privateTabs;
+    if (space === 'tor') return get().torTabs || [];
+    return get().customSpaceTabs?.[space] || get().privateTabs;
   },
   
   getActiveTab: () => {
@@ -437,7 +519,7 @@ const useTabStore = create((set, get) => ({
     if (space === 'work') return get().setWorkTabs;
     if (space === 'ghost') return get().setGhostTabs;
     if (space === 'tor') return get().setTorTabs;
-    return get().setPrivateTabs;
+    return (tabs) => get().setTabsForSpace(space, tabs);
   },
 
   reorderTabs: (draggedId, targetId) => {
@@ -461,8 +543,12 @@ const useTabStore = create((set, get) => ({
     let space;
     let tabObj;
 
-    if (typeof arg1 === 'string' && (['personal', 'work', 'ghost', 'tor'].includes(arg1) || typeof arg2 === 'string')) {
-      space = ['personal', 'work', 'ghost', 'tor'].includes(arg1) ? arg1 : get().activeSpace;
+    const customSpaces = useUIStore.getState().settings?.customSpaces || [];
+    const customSpaceIds = customSpaces.map(s => s.id);
+    const validSpaces = ['personal', 'work', 'ghost', 'tor', ...customSpaceIds, ...Object.keys(get().customSpaceTabs || {})];
+
+    if (typeof arg1 === 'string' && (validSpaces.includes(arg1) || typeof arg2 === 'string')) {
+      space = validSpaces.includes(arg1) ? arg1 : get().activeSpace;
       const url = typeof arg2 === 'string' ? arg2 : '';
       const customProps = (typeof arg3 === 'object' && arg3 !== null) ? arg3 : {};
       tabObj = {
@@ -471,7 +557,11 @@ const useTabStore = create((set, get) => ({
       };
     } else if (typeof arg1 === 'object' && arg1 !== null) {
       tabObj = { ...arg1 };
-      space = tabObj.space || tabObj.spaceType || get().activeSpace;
+      if (typeof arg2 === 'string' && validSpaces.includes(arg2)) {
+        space = arg2;
+      } else {
+        space = tabObj.space || tabObj.spaceType || get().activeSpace;
+      }
     } else {
       tabObj = {};
       space = get().activeSpace;
@@ -503,14 +593,7 @@ const useTabStore = create((set, get) => ({
       openerTabId: resolvedOpenerId
     };
 
-    const getSetList = (sp) => {
-      if (sp === 'personal') return get().setPrivateTabs;
-      if (sp === 'work') return get().setWorkTabs;
-      if (sp === 'ghost') return get().setGhostTabs;
-      if (sp === 'tor') return get().setTorTabs;
-      return get().getActiveSetList();
-    };
-    const setList = getSetList(space);
+    const setList = (tabs) => get().setTabsForSpace(space, tabs);
 
     if (shouldBeActive) {
       setList(prev => [...(Array.isArray(prev) ? prev : []).map(t => ({ ...t, active: false })), newTab]);
@@ -518,6 +601,9 @@ const useTabStore = create((set, get) => ({
         const ui = useUIStore.getState();
         ui.setCurrentUrl(safeUrl);
         ui.setIsReaderAvailable(false);
+        if (ui.isFindOpen) {
+          ui.setIsFindOpen(false);
+        }
         if (ui.isReaderOpen || ui.isReaderClosing) {
           ui.closeReaderMode(true);
         }
@@ -565,36 +651,51 @@ const useTabStore = create((set, get) => ({
 
   setTabWebContentsId: (tabId, webContentsId) => {
     if (!tabId || !webContentsId) return;
-    const updateList = (list) => list.map(t => t.id === tabId ? { ...t, webContentsId } : t);
-    set(state => ({
+    const updateList = (list) => (list || []).map(t => t.id === tabId ? { ...t, webContentsId } : t);
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = updateList(tList);
+      });
+      return {
         privateTabs: updateList(state.privateTabs),
         workTabs: updateList(state.workTabs),
         ghostTabs: updateList(state.ghostTabs),
-        torTabs: updateList(state.torTabs || [])
-    }));
+        torTabs: updateList(state.torTabs || []),
+        customSpaceTabs: updatedCustom
+      };
+    });
   },
 
   setTabNavigatedToDocument: (tabId) => {
     if (!tabId) return;
-    const updateList = (list) => list.map(t => t.id === tabId ? { ...t, hasNavigatedToDocument: true } : t);
-    set(state => ({
+    const updateList = (list) => (list || []).map(t => t.id === tabId ? { ...t, hasNavigatedToDocument: true } : t);
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = updateList(tList);
+      });
+      return {
         privateTabs: updateList(state.privateTabs),
         workTabs: updateList(state.workTabs),
         ghostTabs: updateList(state.ghostTabs),
-        torTabs: updateList(state.torTabs || [])
-    }));
+        torTabs: updateList(state.torTabs || []),
+        customSpaceTabs: updatedCustom
+      };
+    });
   },
 
   closeDownloadTabIfOrphaned: (downloadData) => {
     if (!downloadData) return;
     const { url, urlChain, webContentsId, canGoBack } = downloadData;
-    const { privateTabs, workTabs, ghostTabs, torTabs, handleCloseTab } = get();
+    const { privateTabs, workTabs, ghostTabs, torTabs, customSpaceTabs, handleCloseTab } = get();
 
     const allSpaces = [
         { type: 'personal', list: privateTabs },
         { type: 'work', list: workTabs },
         { type: 'ghost', list: ghostTabs },
-        { type: 'tor', list: torTabs || [] }
+        { type: 'tor', list: torTabs || [] },
+        ...Object.entries(customSpaceTabs || {}).map(([sId, sList]) => ({ type: sId, list: sList || [] }))
     ];
 
     const targetUrls = new Set();
@@ -673,9 +774,9 @@ const useTabStore = create((set, get) => ({
   },
 
   suspendTab: (tabId, silent = false) => {
-      const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs, pinnedTabs } = get();
+      const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs, customSpaceTabs, pinnedTabs } = get();
       const updateList = (list, setList) => {
-          if (list.some(t => t.id === tabId)) {
+          if ((list || []).some(t => t.id === tabId)) {
               const tab = list.find(t => t.id === tabId);
               if (tab.active) {
                   if (!silent) useUIStore.getState().showToast('Cannot suspend active tab');
@@ -704,12 +805,15 @@ const useTabStore = create((set, get) => ({
       if (updateList(workTabs, setWorkTabs)) return;
       if (updateList(ghostTabs, setGhostTabs)) return;
       if (updateList(torTabs, setTorTabs)) return;
+      for (const [sId, tList] of Object.entries(customSpaceTabs || {})) {
+          if (updateList(tList, (tabs) => get().setTabsForSpace(sId, tabs))) return;
+      }
   },
 
   wakeTab: (tabId, silent = false) => {
-      const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs } = get();
+      const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs, customSpaceTabs } = get();
       const updateList = (list, setList) => {
-          if (list.some(t => t.id === tabId)) {
+          if ((list || []).some(t => t.id === tabId)) {
               setList(list.map(t => t.id === tabId ? { ...t, suspended: false, lastActiveAt: Date.now() } : t));
               if (!silent) useUIStore.getState().showToast('Tab restored from sleep');
               return true;
@@ -721,16 +825,43 @@ const useTabStore = create((set, get) => ({
       if (updateList(workTabs, setWorkTabs)) return;
       if (updateList(ghostTabs, setGhostTabs)) return;
       if (updateList(torTabs, setTorTabs)) return;
+      for (const [sId, tList] of Object.entries(customSpaceTabs || {})) {
+          if (updateList(tList, (tabs) => get().setTabsForSpace(sId, tabs))) return;
+      }
   },
 
   handleSwitchToTab: (tabId, targetSpace = null) => {
-    const { privateTabs, setPrivateTabs, workTabs, setWorkTabs, ghostTabs, setGhostTabs, torTabs, setTorTabs, activeSpace, setActiveSpace } = get();
+    const { privateTabs, workTabs, ghostTabs, torTabs, customSpaceTabs, activeSpace, setActiveSpace } = get();
     let space = targetSpace || activeSpace;
     let list, setList;
-    if (privateTabs.some(t => t.id === tabId)) { space = 'personal'; list = privateTabs; setList = setPrivateTabs; }
-    else if (workTabs.some(t => t.id === tabId)) { space = 'work'; list = workTabs; setList = setWorkTabs; }
-    else if (ghostTabs.some(t => t.id === tabId)) { space = 'ghost'; list = ghostTabs; setList = setGhostTabs; }
-    else if (torTabs.some(t => t.id === tabId)) { space = 'tor'; list = torTabs; setList = setTorTabs; }
+    if (privateTabs.some(t => t.id === tabId)) {
+      space = 'personal';
+      list = privateTabs;
+      setList = get().setPrivateTabs;
+    } else if (workTabs.some(t => t.id === tabId)) {
+      space = 'work';
+      list = workTabs;
+      setList = get().setWorkTabs;
+    } else if (ghostTabs.some(t => t.id === tabId)) {
+      space = 'ghost';
+      list = ghostTabs;
+      setList = get().setGhostTabs;
+    } else if ((torTabs || []).some(t => t.id === tabId)) {
+      space = 'tor';
+      list = torTabs;
+      setList = get().setTorTabs;
+    } else {
+      const foundEntry = Object.entries(customSpaceTabs || {}).find(([_, tabs]) => (tabs || []).some(t => t.id === tabId));
+      if (foundEntry) {
+        space = foundEntry[0];
+        list = foundEntry[1];
+        setList = (tabs) => get().setTabsForSpace(space, tabs);
+      } else if (targetSpace) {
+        space = targetSpace;
+        list = get().getTabsForSpace(targetSpace);
+        setList = (tabs) => get().setTabsForSpace(targetSpace, tabs);
+      }
+    }
     
     if (list && setList) {
       if (activeSpace !== space) {
@@ -744,7 +875,15 @@ const useTabStore = create((set, get) => ({
       })));
       const target = list.find(t => t.id === tabId);
       if (target) {
-        useUIStore.getState().setCurrentUrl(target.url || '');
+        const ui = useUIStore.getState();
+        ui.setCurrentUrl(target.url || '');
+        ui.setIsReaderAvailable(false);
+        if (ui.isFindOpen) {
+          ui.setIsFindOpen(false);
+        }
+        if (ui.isReaderOpen || ui.isReaderClosing) {
+          ui.closeReaderMode(true);
+        }
       }
     }
   },
@@ -754,8 +893,9 @@ const useTabStore = create((set, get) => ({
       if (ids.length === 0) return 0;
       const idSet = new Set(ids);
       const state = get();
-      const validSpaces = ['personal', 'work', 'ghost', 'tor'];
+      const validSpaces = ['personal', 'work', 'ghost', 'tor', ...Object.keys(state.customSpaceTabs || {})];
       const updates = {};
+      const updatedCustomTabs = { ...(state.customSpaceTabs || {}) };
       const nextOffsets = { ...(state.tabNodeOffsets || {}) };
       const newlyClosedForRestore = [];
       let closedCount = 0;
@@ -767,8 +907,9 @@ const useTabStore = create((set, get) => ({
       }
 
       validSpaces.forEach(space => {
+          const isBuiltIn = ['personal', 'work', 'ghost', 'tor'].includes(space);
           const listName = space === 'personal' ? 'privateTabs' : (space === 'work' ? 'workTabs' : (space === 'ghost' ? 'ghostTabs' : 'torTabs'));
-          const list = state[listName] || [];
+          const list = isBuiltIn ? (state[listName] || []) : (updatedCustomTabs[space] || []);
           const removed = [];
           const remaining = [];
 
@@ -789,9 +930,10 @@ const useTabStore = create((set, get) => ({
                   }
               });
 
+              let finalRemaining;
               if (remaining.length === 0) {
                   const fallback = get().getFallbackTabForSpace(space);
-                  updates[listName] = [fallback];
+                  finalRemaining = [fallback];
                   if (space === state.activeSpace) {
                       uiStore.setCurrentUrl('');
                   }
@@ -808,7 +950,14 @@ const useTabStore = create((set, get) => ({
                           uiStore.setCurrentUrl(remaining[nextActiveIdx].url || '');
                       }
                   }
-                  updates[listName] = remaining;
+                  finalRemaining = remaining;
+              }
+
+              if (isBuiltIn) {
+                  updates[listName] = finalRemaining;
+              } else {
+                  updatedCustomTabs[space] = finalRemaining;
+                  updates.customSpaceTabs = updatedCustomTabs;
               }
           }
       });
@@ -828,12 +977,22 @@ const useTabStore = create((set, get) => ({
   },
 
   closeTabById: (tabId) => {
-      const { privateTabs, workTabs, ghostTabs, torTabs, handleCloseTab, activeSpace } = get();
+      const { privateTabs, workTabs, ghostTabs, torTabs, customSpaceTabs, handleCloseTab, activeSpace } = get();
       let targetSpace = activeSpace;
-      if (privateTabs.some(t => t.id === tabId)) targetSpace = 'personal';
-      else if (workTabs.some(t => t.id === tabId)) targetSpace = 'work';
-      else if (ghostTabs.some(t => t.id === tabId)) targetSpace = 'ghost';
-      else if ((torTabs || []).some(t => t.id === tabId)) targetSpace = 'tor';
+      if (privateTabs.some(t => t.id === tabId)) {
+        targetSpace = 'personal';
+      } else if (workTabs.some(t => t.id === tabId)) {
+        targetSpace = 'work';
+      } else if (ghostTabs.some(t => t.id === tabId)) {
+        targetSpace = 'ghost';
+      } else if ((torTabs || []).some(t => t.id === tabId)) {
+        targetSpace = 'tor';
+      } else {
+        const found = Object.entries(customSpaceTabs || {}).find(([_, list]) => (list || []).some(t => t.id === tabId));
+        if (found) {
+          targetSpace = found[0];
+        }
+      }
 
       if (activeSpace === targetSpace) {
           handleCloseTab(tabId);
@@ -1106,8 +1265,8 @@ const useTabStore = create((set, get) => ({
 
   duplicateTab: (tabId, spaceType) => {
     const space = spaceType || get().activeSpace || 'personal';
-    const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    const list = get().getTabsForSpace(space);
+    const setList = (tabs) => get().setTabsForSpace(space, tabs);
 
     const sourceIdx = list.findIndex(t => t.id === tabId);
     if (sourceIdx === -1) return;
@@ -1137,8 +1296,8 @@ const useTabStore = create((set, get) => ({
 
   closeOtherTabs: (tabId, spaceType) => {
     const space = spaceType || get().activeSpace || 'personal';
-    const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    const list = get().getTabsForSpace(space);
+    const setList = (tabs) => get().setTabsForSpace(space, tabs);
 
     const targetTab = list.find(t => t.id === tabId);
     if (!targetTab) return;
@@ -1166,8 +1325,8 @@ const useTabStore = create((set, get) => ({
 
   closeTabsBelow: (tabId, spaceType) => {
     const space = spaceType || get().activeSpace || 'personal';
-    const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    const list = get().getTabsForSpace(space);
+    const setList = (tabs) => get().setTabsForSpace(space, tabs);
 
     const targetIdx = list.findIndex(t => t.id === tabId);
     if (targetIdx === -1 || targetIdx === list.length - 1) return;
@@ -1198,21 +1357,13 @@ const useTabStore = create((set, get) => ({
   moveTabToSpace: (tabId, sourceSpace, targetSpace) => {
     if (!tabId || !targetSpace) return;
 
-    const spaces = ['personal', 'work', 'ghost', 'tor'];
-    const listKeyBySpace = {
-      personal: 'privateTabs',
-      work: 'workTabs',
-      ghost: 'ghostTabs',
-      tor: 'torTabs'
-    };
-
     const state = get();
     let resolvedSourceSpace = null;
     let tabToMove = null;
 
     // Check sourceSpace first if provided
-    if (sourceSpace && spaces.includes(sourceSpace)) {
-      const list = state[listKeyBySpace[sourceSpace]] || [];
+    if (sourceSpace) {
+      const list = get().getTabsForSpace(sourceSpace);
       const found = list.find(t => t && t.id === tabId);
       if (found) {
         resolvedSourceSpace = sourceSpace;
@@ -1222,8 +1373,9 @@ const useTabStore = create((set, get) => ({
 
     // If not found in sourceSpace (or if sourceSpace was not passed), search across all spaces
     if (!tabToMove) {
-      for (const sp of spaces) {
-        const list = state[listKeyBySpace[sp]] || [];
+      const allSpaces = ['personal', 'work', 'ghost', 'tor', ...Object.keys(state.customSpaceTabs || {})];
+      for (const sp of allSpaces) {
+        const list = get().getTabsForSpace(sp);
         const found = list.find(t => t && t.id === tabId);
         if (found) {
           resolvedSourceSpace = sp;
@@ -1235,12 +1387,8 @@ const useTabStore = create((set, get) => ({
 
     if (!tabToMove || !resolvedSourceSpace || resolvedSourceSpace === targetSpace) return;
 
-    const srcKey = listKeyBySpace[resolvedSourceSpace];
-    const dstKey = listKeyBySpace[targetSpace];
-    if (!srcKey || !dstKey) return;
-
-    const srcList = state[srcKey] || [];
-    const dstList = state[dstKey] || [];
+    const srcList = get().getTabsForSpace(resolvedSourceSpace);
+    const dstList = get().getTabsForSpace(targetSpace);
 
     // Remove tabToMove from resolvedSourceSpace's list
     let nextSrc = srcList.filter(t => t && t.id !== tabId);
@@ -1254,26 +1402,19 @@ const useTabStore = create((set, get) => ({
     const movedTab = { ...tabToMove, folderId: null, active: true, lastActiveAt: Date.now() };
     const nextDst = [...dstList.map(t => ({ ...t, active: false })), movedTab];
 
-    const updates = {
-      [srcKey]: nextSrc,
-      [dstKey]: nextDst
-    };
+    get().setTabsForSpace(resolvedSourceSpace, nextSrc);
+    get().setTabsForSpace(targetSpace, nextDst);
 
     // Clear any tabNodeOffsets for tabId so the Spatial Tab Map stays in sync
     const currentOffsets = state.tabNodeOffsets || {};
     if (tabId in currentOffsets) {
       const nextOffsets = { ...currentOffsets };
       delete nextOffsets[tabId];
-      updates.tabNodeOffsets = nextOffsets;
+      set({ tabNodeOffsets: nextOffsets });
     }
-
-    set(updates);
 
     // Switch active space to target
     get().setActiveSpace(targetSpace);
-    if (targetSpace === 'ghost' || targetSpace === 'tor') {
-      set({ [dstKey]: nextDst });
-    }
 
     const ui = useUIStore.getState();
     ui.setCurrentUrl(movedTab.url || '');
@@ -1832,34 +1973,6 @@ const useTabStore = create((set, get) => ({
     useUIStore.getState().showToast('Closed all tabs in folder');
   },
 
-  handleSwitchToTab: (tabId, spaceType) => {
-    if (get().activeSpace !== spaceType) {
-        get().setActiveSpace(spaceType);
-    }
-    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : (spaceType === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : (spaceType === 'ghost' ? get().setGhostTabs : get().setTorTabs));
-    
-    const target = list.find(t => t.id === tabId);
-    if (target) {
-        const ui = useUIStore.getState();
-        ui.setCurrentUrl(target.url || '');
-        ui.setIsReaderAvailable(false);
-        if (ui.isFindOpen) {
-            ui.setIsFindOpen(false);
-        }
-        if (ui.isReaderOpen || ui.isReaderClosing) {
-            ui.closeReaderMode(true);
-        }
-    }
-
-    setList(list.map(t => ({
-        ...t,
-        active: t.id === tabId,
-        suspended: t.id === tabId ? false : t.suspended,
-        lastActiveAt: t.id === tabId ? Date.now() : t.lastActiveAt
-    })));
-  },
-
   setActiveTab: (tabId, spaceType) => {
     const space = spaceType || get().activeSpace || 'personal';
     get().handleSwitchToTab(tabId, space);
@@ -1867,21 +1980,27 @@ const useTabStore = create((set, get) => ({
 
   updateTabThumbnail: (tabId, thumbnail) => {
     if (!tabId || !thumbnail) return;
-    const updateList = (list) => list.map(t => t.id === tabId ? { ...t, thumbnail } : t);
-    set(state => ({
+    const updateList = (list) => (list || []).map(t => t.id === tabId ? { ...t, thumbnail } : t);
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = updateList(tList);
+      });
+      return {
         privateTabs: updateList(state.privateTabs),
         workTabs: updateList(state.workTabs),
         ghostTabs: updateList(state.ghostTabs),
         torTabs: updateList(state.torTabs || []),
-    }));
+        customSpaceTabs: updatedCustom
+      };
+    });
   },
 
   handleToggleMute: (id, spaceType) => {
-    const toggle = (list, setList) => setList(list.map(t => t.id === id ? { ...t, isMuted: !t.isMuted } : t));
-    if (spaceType === 'personal') toggle(get().privateTabs, get().setPrivateTabs);
-    if (spaceType === 'work') toggle(get().workTabs, get().setWorkTabs);
-    if (spaceType === 'ghost') toggle(get().ghostTabs, get().setGhostTabs);
-    if (spaceType === 'tor') toggle(get().torTabs, get().setTorTabs);
+    const toggle = (list, setList) => setList((list || []).map(t => t.id === id ? { ...t, isMuted: !t.isMuted } : t));
+    const space = spaceType || get().activeSpace || 'personal';
+    const list = get().getTabsForSpace(space);
+    toggle(list, (tabs) => get().setTabsForSpace(space, tabs));
   },
 
   handlePinTab: (tab) => {
@@ -1891,7 +2010,8 @@ const useTabStore = create((set, get) => ({
     const newPin = { id: `p-${tab.id}-${Date.now()}`, title: tab.title || cleanDomain, domain: cleanDomain };
     setPinnedTabs([...pinnedTabs, newPin]);
     if (activeSpace === 'personal') setPrivateTabs(privateTabs.filter(t => t.id !== tab.id));
-    if (activeSpace === 'work') setWorkTabs(workTabs.filter(t => t.id !== tab.id));
+    else if (activeSpace === 'work') setWorkTabs(workTabs.filter(t => t.id !== tab.id));
+    else get().setTabsForSpace(activeSpace, (tabs) => (tabs || []).filter(t => t.id !== tab.id));
     useUIStore.getState().showToast(`Pinned: ${newPin.title}`);
   },
 
@@ -1914,8 +2034,8 @@ const useTabStore = create((set, get) => ({
         useUIStore.getState().showToast('You can only move tabs within the same space');
         return;
     }
-    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : (spaceType === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : (spaceType === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    const list = get().getTabsForSpace(spaceType);
+    const setList = (tabs) => get().setTabsForSpace(spaceType, tabs);
     const draggedIdx = list.findIndex(t => t.id === draggedItem.tab.id);
     const originalTargetIdx = list.findIndex(t => t.id === targetTab.id);
     const newList = [...list];
@@ -1943,8 +2063,8 @@ const useTabStore = create((set, get) => ({
     get().setDragOverItem(null);
     if (!draggedItem || draggedItem.spaceType !== spaceType) return;
     
-    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : (spaceType === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : (spaceType === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    const list = get().getTabsForSpace(spaceType);
+    const setList = (tabs) => get().setTabsForSpace(spaceType, tabs);
     
     const newList = [...list];
     const draggedTab = newList.find(t => t.id === draggedItem.tab.id);
@@ -1964,8 +2084,8 @@ const useTabStore = create((set, get) => ({
     get().setDragOverItem(null);
     if (!draggedItem || draggedItem.spaceType !== spaceType) return;
 
-    const list = spaceType === 'personal' ? get().privateTabs : (spaceType === 'work' ? get().workTabs : (spaceType === 'ghost' ? get().ghostTabs : get().torTabs));
-    const setList = spaceType === 'personal' ? get().setPrivateTabs : (spaceType === 'work' ? get().setWorkTabs : (spaceType === 'ghost' ? get().setGhostTabs : get().setTorTabs));
+    const list = get().getTabsForSpace(spaceType);
+    const setList = (tabs) => get().setTabsForSpace(spaceType, tabs);
     
     const newList = [...list];
     const draggedTab = newList.find(t => t.id === draggedItem.tab.id);
@@ -1985,26 +2105,41 @@ const useTabStore = create((set, get) => ({
     if (activeSpace === 'personal') updateTab(get().privateTabs, get().setPrivateTabs);
     else if (activeSpace === 'work') updateTab(get().workTabs, get().setWorkTabs);
     else if (activeSpace === 'ghost') updateTab(get().ghostTabs, get().setGhostTabs);
-    else updateTab(get().torTabs, get().setTorTabs);
+    else if (activeSpace === 'tor') updateTab(get().torTabs, get().setTorTabs);
+    else updateTab(get().getTabsForSpace(activeSpace), (tabs) => get().setTabsForSpace(activeSpace, tabs));
 
     useUIStore.getState().setCurrentUrl('');
     useUIStore.getState().setIsFullscreen(false);
   },
 
   updateTabActivity: (tabId) => {
-    const update = (list) => list.map(t => t.id === tabId ? { ...t, lastActiveAt: Date.now(), suspended: false } : t);
+    const update = (list) => (list || []).map(t => t.id === tabId ? { ...t, lastActiveAt: Date.now(), suspended: false } : t);
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));
     get().setTorTabs(update(get().torTabs));
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = update(tList);
+      });
+      return { customSpaceTabs: updatedCustom };
+    });
   },
 
   updateTabAudible: (tabId, isAudible) => {
-    const update = (list) => list.map(t => t.id === tabId ? { ...t, isAudioPlaying: !!isAudible, isAudible: !!isAudible } : t);
+    const update = (list) => (list || []).map(t => t.id === tabId ? { ...t, isAudioPlaying: !!isAudible, isAudible: !!isAudible } : t);
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));
     get().setTorTabs(update(get().torTabs));
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = update(tList);
+      });
+      return { customSpaceTabs: updatedCustom };
+    });
   },
 
   updateTabTitle: (tabId, title) => {
@@ -2012,22 +2147,37 @@ const useTabStore = create((set, get) => ({
     const current = get().privateTabs.find(t => t.id === tabId) ||
                     get().workTabs.find(t => t.id === tabId) ||
                     get().ghostTabs.find(t => t.id === tabId) ||
-                    get().torTabs.find(t => t.id === tabId);
+                    get().torTabs.find(t => t.id === tabId) ||
+                    Object.values(get().customSpaceTabs || {}).flat().find(t => t.id === tabId);
     if (current && current.title === title) return;
-    const update = (list) => list.map(t => t.id === tabId ? { ...t, title } : t);
+    const update = (list) => (list || []).map(t => t.id === tabId ? { ...t, title } : t);
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));
     get().setTorTabs(update(get().torTabs));
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = update(tList);
+      });
+      return { customSpaceTabs: updatedCustom };
+    });
   },
 
   updateTabState: (tabId, updates) => {
     if (!tabId || !updates) return;
-    const update = (list) => list.map(t => t.id === tabId ? { ...t, ...updates } : t);
+    const update = (list) => (list || []).map(t => t.id === tabId ? { ...t, ...updates } : t);
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));
     get().setTorTabs(update(get().torTabs));
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = update(tList);
+      });
+      return { customSpaceTabs: updatedCustom };
+    });
   },
 
   handleNavigateTab: (tabId, url, title) => {
@@ -2046,7 +2196,7 @@ const useTabStore = create((set, get) => ({
       ? (get().activeSpace === 'ghost' ? 'New Incognito Tab' : 'New Tab')
       : (title || (targetUrl === 'qbrowse://flags' ? 'QBrowse Flags' : targetUrl));
 
-    const update = (list) => list.map(t => t.id === tabId ? { 
+    const update = (list) => (list || []).map(t => t.id === tabId ? { 
       ...t, 
       url: cleanUrl, 
       title: cleanTitle, 
@@ -2058,6 +2208,13 @@ const useTabStore = create((set, get) => ({
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));
     get().setTorTabs(update(get().torTabs));
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = update(tList);
+      });
+      return { customSpaceTabs: updatedCustom };
+    });
 
     const activeTab = get().getActiveTab();
     if (activeTab && activeTab.id === tabId) {
@@ -2123,22 +2280,36 @@ const useTabStore = create((set, get) => ({
   },
 
   updateTabNavState: (tabId, canGoBack, canGoForward) => {
-    const update = (list) => list.map(t => t.id === tabId ? { ...t, canGoBack: !!canGoBack, canGoForward: !!canGoForward } : t);
+    const update = (list) => (list || []).map(t => t.id === tabId ? { ...t, canGoBack: !!canGoBack, canGoForward: !!canGoForward } : t);
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
     get().setGhostTabs(update(get().ghostTabs));
     get().setTorTabs(update(get().torTabs));
+    set(state => {
+      const updatedCustom = {};
+      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
+        updatedCustom[sId] = update(tList);
+      });
+      return { customSpaceTabs: updatedCustom };
+    });
   },
 
   serializeCurrentProfileTabs: (profileId) => {
     if (!profileId) return;
-    const { privateTabs, workTabs, pinnedTabs, folders } = get();
+    const { privateTabs, workTabs, pinnedTabs, folders, customSpaceTabs } = get();
     try {
       localStorage.setItem(`qbrowse_tabs_${profileId}_personal`, JSON.stringify(privateTabs));
       localStorage.setItem(`qbrowse_tabs_${profileId}_work`, JSON.stringify(workTabs));
       // STRICT PRIVACY: Never persist ghost or tor tabs locally under any circumstances
       localStorage.removeItem(`qbrowse_tabs_${profileId}_ghost`);
       localStorage.removeItem(`qbrowse_tabs_${profileId}_tor`);
+
+      const customSpaces = useUIStore.getState().settings?.customSpaces || [];
+      customSpaces.forEach(s => {
+        if (!s || !s.id || s.id === 'personal' || s.id === 'work' || s.id === 'ghost' || s.id === 'tor') return;
+        localStorage.setItem(`qbrowse_tabs_${profileId}_${s.id}`, JSON.stringify(customSpaceTabs?.[s.id] || []));
+      });
+
       localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(pinnedTabs));
       localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(pinnedTabs));
       localStorage.setItem(`qbrowse_folders_${profileId}`, JSON.stringify(folders));
@@ -2166,6 +2337,32 @@ const useTabStore = create((set, get) => ({
 
       const pTabs = storedPersonal ? JSON.parse(storedPersonal) : defaultPersonal;
       const wTabs = storedWork ? JSON.parse(storedWork) : defaultWork;
+
+      const customSpaces = useUIStore.getState().settings?.customSpaces || [];
+      const loadedCustomSpaceTabs = {};
+      customSpaces.forEach(s => {
+        if (!s || !s.id || s.id === 'personal' || s.id === 'work' || s.id === 'ghost' || s.id === 'tor') return;
+        const storedCustom = localStorage.getItem(`qbrowse_tabs_${profileId}_${s.id}`);
+        if (storedCustom) {
+          try {
+            const parsed = JSON.parse(storedCustom);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              loadedCustomSpaceTabs[s.id] = parsed;
+              return;
+            }
+          } catch (_) {}
+        }
+        loadedCustomSpaceTabs[s.id] = [{
+          id: `t-${s.id}-${Date.now()}`,
+          title: 'New Tab',
+          url: '',
+          active: true,
+          folderId: null,
+          lastActiveAt: Date.now(),
+          suspended: false
+        }];
+      });
+
       let pins = null;
       if (storedPins) {
         try {
@@ -2187,6 +2384,7 @@ const useTabStore = create((set, get) => ({
         workTabs: wTabs,
         ghostTabs: defaultGhost,
         torTabs: defaultTor,
+        customSpaceTabs: loadedCustomSpaceTabs,
         pinnedTabs: pins,
         pinnedDomains: pins.map(p => p.domain).filter(Boolean),
         folders: folders,

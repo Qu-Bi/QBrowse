@@ -1945,8 +1945,8 @@ WebViewItem.displayName = 'WebViewItem';
 
 export default function WebViewContainer({ space, targetTabId, isSplitPane = false }) {
   const { 
-    privateTabs, workTabs, ghostTabs, torTabs, activeSpace,
-    setPrivateTabs, setWorkTabs, setGhostTabs, setTorTabs
+    privateTabs, workTabs, ghostTabs, torTabs, customSpaceTabs, activeSpace,
+    setPrivateTabs, setWorkTabs, setGhostTabs, setTorTabs, getTabsForSpace, setTabsForSpace
   } = useTabStore();
   const { 
     isRightPanelOpen, isFullscreen, isSplitView, 
@@ -1973,6 +1973,9 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
   } else if (space === 'tor') {
     spaceTabs = torTabs || [];
     setSpaceTabs = setTorTabs;
+  } else {
+    spaceTabs = (customSpaceTabs && customSpaceTabs[space]) || (getTabsForSpace ? getTabsForSpace(space) : []) || [];
+    setSpaceTabs = (updater) => setTabsForSpace ? setTabsForSpace(space, updater) : null;
   }
 
   let activeTab;

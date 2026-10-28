@@ -230,16 +230,19 @@ body {
 @keyframes tabFadeIn {
   0% {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px) scale(0.995);
+    filter: blur(1px);
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 
 .animate-tab-fade {
-  animation: tabFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: tabFadeIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity, filter;
 }
 
 @keyframes readerFadeInScale {

@@ -168,22 +168,30 @@ export const executeShortcut = (key, shift = false, alt = false) => {
     const tabStore = useTabStore.getState();
     const cleanKey = (key || '').toLowerCase();
 
-    switch (cleanKey) {
-        // Space Switching
-        case '1':
-            tabStore.setActiveSpace('personal');
-            uiStore.showToast('Space: Personal');
-            break;
-        case '2':
-            tabStore.setActiveSpace('work');
-            uiStore.showToast('Space: Work');
-            break;
-        case '3': {
+    // Dynamic Space Switching relative from the left (1 to 9)
+    if (/^[1-9]$/.test(cleanKey)) {
+        const customSpaces = uiStore.settings?.customSpaces || [
+            { id: 'personal', name: 'Personal' },
+            { id: 'work', name: 'Work' }
+        ];
+        const num = parseInt(cleanKey, 10);
+        const spaceIdx = num - 1;
+
+        if (spaceIdx < customSpaces.length) {
+            const target = customSpaces[spaceIdx];
+            tabStore.setActiveSpace(target.id);
+            uiStore.showToast(`Space: ${target.name}`);
+            return;
+        } else if (spaceIdx === customSpaces.length) {
+            // Next position corresponds to Ghost / Tor morphing button
             const isTor = useTorStore.getState().isTorEnabled;
             tabStore.setActiveSpace(isTor ? 'tor' : 'ghost');
             uiStore.showToast(isTor ? 'Space: Tor Onion' : 'Space: Ghost Mode');
-            break;
+            return;
         }
+    }
+
+    switch (cleanKey) {
 
         // New Window (Cmd+N) & New Private Window (Cmd+Shift+N)
         case 'n':

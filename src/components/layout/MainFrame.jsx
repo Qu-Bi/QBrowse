@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { 
     Command, Search, ChevronUp, ChevronDown, X, Moon, Sun, Trash2, 
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
@@ -312,11 +312,18 @@ export default function MainFrame() {
     const isPeekClosing = useUIStore(state => state.isPeekClosing);
     const closePeek = useUIStore(state => state.closePeek);
 
+    const customSpaces = useUIStore(state => state.settings?.customSpaces || [
+        { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
+        { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
+    ]);
+
     const activeSpace = useTabStore(state => state.activeSpace);
     const privateTabs = useTabStore(state => state.privateTabs);
     const workTabs = useTabStore(state => state.workTabs);
     const ghostTabs = useTabStore(state => state.ghostTabs);
     const torTabs = useTabStore(state => state.torTabs) || [];
+    const customSpaceTabs = useTabStore(state => state.customSpaceTabs) || {};
+    const getTabsForSpace = useTabStore(state => state.getTabsForSpace);
 
     const isIncognito = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
@@ -329,15 +336,18 @@ export default function MainFrame() {
         return tabs.find(t => t.active) || tabs[0];
     };
 
-    const effPrivateTab = getEffectiveLeftTab(privateTabs);
-    const effWorkTab = getEffectiveLeftTab(workTabs);
-    const effGhostTab = getEffectiveLeftTab(ghostTabs);
-    const effTorTab = getEffectiveLeftTab(torTabs);
+    const isSpaceEmpty = (spaceId) => {
+        const tabs = getTabsForSpace ? getTabsForSpace(spaceId) : (
+            spaceId === 'personal' ? privateTabs :
+            spaceId === 'work' ? workTabs :
+            spaceId === 'ghost' ? ghostTabs :
+            spaceId === 'tor' ? torTabs : []
+        );
+        const effTab = getEffectiveLeftTab(tabs || []);
+        return !effTab || effTab.url === '' || effTab.url === 'about:blank';
+    };
 
-    const isPrywatneEmpty = !effPrivateTab || effPrivateTab.url === '' || effPrivateTab.url === 'about:blank';
-    const isPracaEmpty = !effWorkTab || effWorkTab.url === '' || effWorkTab.url === 'about:blank';
-    const isGhostEmpty = !effGhostTab || effGhostTab.url === '' || effGhostTab.url === 'about:blank';
-    const isTorEmpty = !effTorTab || effTorTab.url === '' || effTorTab.url === 'about:blank';
+    const visibleSpaces = [...customSpaces, { id: 'ghost' }, { id: 'tor' }];
     
     const isAdblockActive = useUIStore(state => state.isAdblockActive);
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive);
@@ -411,7 +421,13 @@ export default function MainFrame() {
     const rightPaneRef = useRef(null);
     const currentRatioRef = useRef(splitRatio);
 
-    const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
+    useLayoutEffect(() => {
+        if (leftPaneRef.current) {
+            leftPaneRef.current.scrollLeft = 0;
+        }
+    }, [activeSpace, visibleSpaces.length]);
+
+    const spaceTabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs)));
     const activeLeftTab = isSplitView && splitRightTabId
         ? (spaceTabs.find(t => t.active && t.id !== splitRightTabId) || spaceTabs.find(t => t.id !== splitRightTabId) || spaceTabs[0])
         : (spaceTabs.find(t => t.active) || spaceTabs[0]);
@@ -870,10 +886,8 @@ export default function MainFrame() {
             )}
 
             {(() => {
-                const isZenActive = (isPrywatneEmpty && activeSpace === 'personal') || 
-                                    (isPracaEmpty && activeSpace === 'work') || 
-                                    (isGhostEmpty && activeSpace === 'ghost') ||
-                                    (isTorEmpty && activeSpace === 'tor');
+                const isZenActive = isSpaceEmpty(activeSpace);
+                const activeIndex = Math.max(0, visibleSpaces.findIndex(s => s.id === activeSpace));
                 return (
                     <div 
                         ref={mainContainerRef} 
@@ -900,49 +914,70 @@ export default function MainFrame() {
                     <div 
                         ref={leftPaneRef}
                         onClick={() => setFocusedPane('left')}
+                        onScroll={(e) => {
+                            if (e.currentTarget.scrollLeft !== 0) {
+                                e.currentTarget.scrollLeft = 0;
+                            }
+                        }}
                         className={`relative h-full overflow-hidden ${
                             isDraggingSplit ? 'pointer-events-none select-none' : (isReducedMotion ? 'transition-none' : 'transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]')
                         }`}
-                        style={{ width: isSplitView ? `${splitRatio}%` : '100%', contain: 'layout paint' }}
+                        style={{ 
+                            width: isSplitView ? `${splitRatio}%` : '100%', 
+                            contain: 'strict',
+                            overflowX: 'clip' 
+                        }}
                     >
-                        <div className={`absolute inset-y-0 left-0 w-[400%] flex ${isReducedMotion || isSwipeEnabled === false ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
-                            style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-25%)' : activeSpace === 'ghost' ? 'translateX(-50%)' : 'translateX(-75%)' }}>
+                        <div 
+                            className={`absolute inset-y-0 left-0 flex ${isReducedMotion || isSwipeEnabled === false ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
+                            style={{ 
+                                width: `${visibleSpaces.length * 100}%`,
+                                transform: `translateX(-${activeIndex * (100 / visibleSpaces.length)}%)` 
+                            }}
+                        >
+                            {visibleSpaces.map(sp => {
+                                const isActive = activeSpace === sp.id;
+                                const isEmpty = isSpaceEmpty(sp.id);
+                                const isSpaceTor = sp.id === 'tor';
+                                const isSpaceGhost = sp.id === 'ghost';
 
-                            {/* PERSONAL */}
-                            <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative">
-                                {isPrywatneEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('personal')}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPrywatneEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isPrywatneEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                                    <WebViewContainer space="personal" />
-                                </div>
-                            </div>
-
-                            {/* WORK */}
-                            <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${!isBright ? 'text-white' : 'text-zinc-900'}`}>
-                                {isPracaEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('work')}</div>}
-                                <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPracaEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isPracaEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                                    <WebViewContainer space="work" />
-                                </div>
-                            </div>
-
-                            {/* GHOST */}
-                            <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative text-white">
-                                {isGhostEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('ghost')}</div>}
-                                <div key="bg" className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 opacity-20 invert" style={{ backgroundSize: '24px 24px', opacity: isGhostEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isGhostEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                                    <WebViewContainer space="ghost" />
-                                </div>
-                            </div>
-
-                            {/* TOR ONION */}
-                            <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative text-white">
-                                {isTorEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('tor')}</div>}
-                                <div key="bg" className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_1px,transparent_1px)] pointer-events-none z-0 opacity-30 invert" style={{ backgroundSize: '24px 24px', opacity: isTorEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isTorEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                                    <WebViewContainer space="tor" />
-                                </div>
-                            </div>
+                                return (
+                                    <div 
+                                        key={sp.id} 
+                                        className={`flex-shrink-0 h-full flex flex-col items-center justify-center relative overflow-hidden ${
+                                            isActive ? 'pointer-events-auto' : 'pointer-events-none select-none'
+                                        } ${
+                                            isSpaceGhost || isSpaceTor ? 'text-white' : (!isBright ? 'text-white' : 'text-zinc-900')
+                                        }`}
+                                        style={{ width: `${100 / visibleSpaces.length}%` }}
+                                        aria-hidden={!isActive}
+                                        {...(!isActive ? { inert: '' } : {})}
+                                    >
+                                        {isEmpty && (
+                                            <div key="dash" className={`absolute inset-0 z-10 ${isActive ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+                                                {renderZenDashboard(sp.id)}
+                                            </div>
+                                        )}
+                                        <div 
+                                            key="bg" 
+                                            className={`absolute inset-0 pointer-events-none z-0 ${
+                                                isSpaceTor 
+                                                    ? 'bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_1px,transparent_1px)] opacity-30 invert' 
+                                                    : (isSpaceGhost 
+                                                        ? 'bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] opacity-20 invert' 
+                                                        : `bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] ${!isBright ? 'opacity-20 invert' : ''}`)
+                                            }`} 
+                                            style={{ backgroundSize: '24px 24px', opacity: isEmpty ? (isSpaceTor ? 0.3 : 1) : 0.2 }}
+                                        />
+                                        <div 
+                                            key="wv" 
+                                            className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                                        >
+                                            <WebViewContainer space={sp.id} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
