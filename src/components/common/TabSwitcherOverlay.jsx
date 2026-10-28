@@ -13,14 +13,17 @@ export default function TabSwitcherOverlay() {
     const cancelSwitcher = useUIStore(state => state.cancelSwitcher);
     const setSwitcherIndex = useUIStore(state => state.setSwitcherIndex);
     const theme = useUIStore(state => state.theme);
+    const settings = useUIStore(state => state.settings);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    const isVisual = settings?.visualTabSwitcher !== false;
 
     const [displayed, setDisplayed] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const closeTimerRef = useRef(null);
 
-    const isActuallyOpen = Boolean(showSwitcher && showSwitcherUI && switcherTabs && switcherTabs.length > 0);
+    const isActuallyOpen = Boolean(isVisual && showSwitcher && showSwitcherUI && switcherTabs && switcherTabs.length > 0);
 
     useEffect(() => {
         if (isActuallyOpen) {
@@ -41,7 +44,7 @@ export default function TabSwitcherOverlay() {
     }, [isActuallyOpen]);
 
     useEffect(() => {
-        if (!showSwitcher || !showSwitcherUI) return;
+        if (!isVisual || !showSwitcher || !showSwitcherUI) return;
 
         const handleKeyDown = (e) => {
             if (e.key === 'ArrowRight') {
@@ -75,7 +78,7 @@ export default function TabSwitcherOverlay() {
         };
     }, [showSwitcher, showSwitcherUI, cycleSwitcher, confirmSwitcher, cancelSwitcher]);
 
-    if (!displayed && !isActuallyOpen) {
+    if (!isVisual || (!displayed && !isActuallyOpen)) {
         return null;
     }
 
@@ -106,6 +109,14 @@ export default function TabSwitcherOverlay() {
                     <span className={`w-1 h-1 rounded-full ${isBright ? 'bg-zinc-400' : 'bg-white/30'} mx-1`}></span>
                     <span className={`${isBright ? 'text-zinc-600' : 'text-white/50'} text-xs font-mono`}>
                         {switcherIndex + 1} / {switcherTabs.length}
+                    </span>
+                    <span className={`w-1 h-1 rounded-full ${isBright ? 'bg-zinc-400' : 'bg-white/30'} mx-1`}></span>
+                    <span className={`text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full ${
+                        isBright 
+                            ? 'bg-black/[0.06] text-zinc-700' 
+                            : 'bg-white/[0.08] text-white/70'
+                    }`}>
+                        {(settings?.tabSwitcherOrder || 'mru') === 'sidebar' ? 'Sidebar Order' : 'Recently Used'}
                     </span>
                 </div>
             </div>

@@ -75,6 +75,8 @@ import ReadAloudPlayer from '../common/ReadAloudPlayer';
 import SnippingOverlay from '../common/SnippingOverlay';
 import ReaderModeOverlay from '../features/ReaderModeOverlay';
 import BrowserDialogOverlay from './BrowserDialogOverlay';
+import usePopoverAnchor from '../../hooks/usePopoverAnchor';
+import HomepageOmnibox from '../features/HomepageOmnibox';
 
 const DownloadPopup = () => {
     const downloads = useUIStore(state => state.downloads);
@@ -291,6 +293,11 @@ export default function MainFrame() {
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const refresh = useUIStore(state => state.refresh);
     const openOmnibox = useUIStore(state => state.openOmnibox);
+    const isReducedMotion = useUIStore(state => Boolean(state.settings?.a11yReducedMotion || state.isSystemReducedMotion));
+
+    const darkmodeAnchor = usePopoverAnchor('#tour-darkmode-trigger', 320, { defaultRight: 128 });
+    const adblockAnchor = usePopoverAnchor('#tour-shield-trigger', 288, { defaultRight: 48 });
+    const downloadsAnchor = usePopoverAnchor('#tour-downloads-trigger', 320, { defaultRight: 24 });
 
     const [localDarkExclusions, setLocalDarkExclusions] = useState(() => (darkExclusions || []).join('\n'));
     const [hoveredThemePreview, setHoveredThemePreview] = useState(null);
@@ -351,42 +358,42 @@ export default function MainFrame() {
     // Mock states for UI
     const [formEmail, setFormEmail] = useState('admin@qbrowse.local');
     const [formPassword, setFormPassword] = useState('super_secret_password_123');
+    const [zenDropdownOpenBySpace, setZenDropdownOpenBySpace] = useState({});
 
-
-    const renderZenDashboard = () => {
-        const isDark = !isBright;
-        const greeting = "Welcome";
+    const renderZenDashboard = (spaceName) => {
+        const isDark = spaceName === 'ghost' || spaceName === 'tor' ? true : !isBright;
+        const isSpaceTor = spaceName === 'tor';
+        const isSpaceBright = spaceName === 'ghost' || spaceName === 'tor' ? false : isBright;
+        const isActiveSpace = activeSpace === spaceName;
+        const isZenDropdownOpen = Boolean(zenDropdownOpenBySpace[spaceName]);
 
         return (
-            <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden animate-pop-in z-10 w-full h-full">
-                <div className="relative z-10 flex flex-col items-center transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] origin-center will-change-transform w-full mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
-                    <div className="flex flex-col items-center mb-10 md:mb-14 px-4 w-full text-center">
-                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')}`}>{dateString}</span>
-                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isTor ? 'from-purple-200 via-purple-300/80 to-purple-500/20' : (isDark ? 'from-white via-white/90 to-white/20' : 'from-zinc-900 via-zinc-800 to-zinc-700')} select-none transition-colors duration-500 px-4`} style={{ textShadow: isTor ? '0 20px 50px rgba(168,85,247,0.3)' : (isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)') }}>
+            <div className="absolute inset-0 flex flex-col items-center justify-center overflow-visible animate-pop-in z-10 w-full h-full">
+                <div 
+                    className="relative z-10 flex flex-col items-center transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] origin-center w-full mt-[-10vh]"
+                    style={{ transform: `translateY(${isZenDropdownOpen ? '-10vh' : '0px'}) scale(${zoomLevel / 100})` }}
+                >
+                    <div className={`flex flex-col items-center px-4 w-full text-center transition-[margin] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                        isZenDropdownOpen ? 'mb-6 md:mb-8' : 'mb-10 md:mb-14'
+                    }`}>
+                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isSpaceTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')}`}>{dateString}</span>
+                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isSpaceTor ? 'from-purple-200 via-purple-300/80 to-purple-500/20' : (isDark ? 'from-white via-white/90 to-white/20' : 'from-zinc-900 via-zinc-800 to-zinc-700')} select-none transition-colors duration-500 px-4`} style={{ textShadow: isSpaceTor ? '0 20px 50px rgba(168,85,247,0.3)' : (isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)') }}>
                             {timeString}
                         </h1>
                     </div>
 
-                    <button
-                        onClick={() => openOmnibox('')}
-                        className={`group relative w-[90%] max-w-[720px] rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 hover:scale-[1.015] ${
-                            isTor 
-                                ? 'bg-purple-950/40 border border-purple-500/30 hover:border-purple-400/60 shadow-[0_20px_50px_rgba(168,85,247,0.2)] hover:shadow-[0_0_35px_rgba(168,85,247,0.4),0_20px_80px_rgba(168,85,247,0.35)] backdrop-blur-3xl' 
-                                : (isDark 
-                                    ? 'liquid-pill-dark hover:border-accent/60 shadow-[0_20px_50px_rgba(0,0,0,0.4)] hover:shadow-[0_0_35px_var(--accent-40),0_15px_50px_var(--accent-20)]' 
-                                    : 'liquid-pill-bright hover:border-accent/60 shadow-[0_12px_36px_rgba(0,0,0,0.06)] hover:shadow-[0_0_30px_var(--accent-30),0_10px_35px_var(--accent-20)] text-zinc-900')
-                        }`}
-                    >
-                        <Search size={20} className={`transition-colors ${isTor ? 'text-purple-400 group-hover:text-purple-300' : (isDark ? 'text-white/40 group-hover:text-accent' : 'text-zinc-600 group-hover:text-accent')}`} />
-                        <span className={`text-base md:text-lg font-medium transition-colors flex-1 text-left ${isTor ? 'text-purple-200/70 group-hover:text-purple-100' : (isDark ? 'text-white/40 group-hover:text-white/85' : 'text-zinc-700 group-hover:text-zinc-950')}`}>
-                            {isTor ? 'Search the web via Tor, enter .onion address...' : 'Search the web, or type a command...'}
-                        </span>
-                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-colors duration-300 ${isTor ? 'bg-purple-500/20 border-purple-500/30 text-purple-300' : (isDark ? 'bg-white/5 border-white/10 group-hover:bg-accent/10 group-hover:border-accent/30 text-white/60' : 'bg-zinc-100 border border-black/10 group-hover:bg-white text-zinc-700 group-hover:text-zinc-950 shadow-2xs')}`}>
-                            <Command size={11} className={`transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-zinc-600 group-hover:text-zinc-900')}`} />
-                            <span className={`text-xs font-semibold transition-colors ${isTor ? 'text-purple-300' : (isDark ? 'text-white/60 group-hover:text-accent' : 'text-zinc-700 group-hover:text-zinc-950')}`}>K</span>
-                        </div>
-                    </button>
-
+                    <HomepageOmnibox 
+                        isTor={isSpaceTor} 
+                        isDark={isDark} 
+                        isBright={isSpaceBright} 
+                        isActiveSpace={isActiveSpace}
+                        onDropdownOpenChange={(isOpen) => {
+                            setZenDropdownOpenBySpace(prev => {
+                                if (Boolean(prev[spaceName]) === Boolean(isOpen)) return prev;
+                                return { ...prev, [spaceName]: Boolean(isOpen) };
+                            });
+                        }}
+                    />
                 </div>
             </div>
         );
@@ -441,6 +448,9 @@ export default function MainFrame() {
 
         const localItems = [...siteMatches, ...historyMatches];
 
+        let activeCallback = null;
+        let activeScript = null;
+
         if (splitSuggestDebounceRef.current) clearTimeout(splitSuggestDebounceRef.current);
         splitSuggestDebounceRef.current = setTimeout(() => {
             if (/^(https?:\/\/|file:\/\/|qbrowse:\/\/|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/.*)?$)/i.test(q) || q.length > 150) {
@@ -449,36 +459,58 @@ export default function MainFrame() {
             }
 
             const callbackName = 'splitSuggestCb_' + Math.round(100000 * Math.random());
+            activeCallback = callbackName;
             window[callbackName] = (data) => {
-                if (data && data[1]) {
-                    const searchItems = data[1].slice(0, 6).map(s => ({
-                        title: s,
-                        url: `https://www.google.com/search?q=${encodeURIComponent(s)}`,
-                        isSearch: true
-                    }));
-                    const combined = [...localItems];
-                    searchItems.forEach(item => {
-                        if (!combined.some(c => c.title.toLowerCase() === item.title.toLowerCase())) {
-                            combined.push(item);
-                        }
-                    });
-                    setSplitLiveSuggestions(combined);
-                } else {
-                    setSplitLiveSuggestions(localItems);
+                try {
+                    if (data && data[1]) {
+                        const searchItems = data[1].slice(0, 6).map(s => ({
+                            title: s,
+                            url: `https://www.google.com/search?q=${encodeURIComponent(s)}`,
+                            isSearch: true
+                        }));
+                        const combined = [...localItems];
+                        searchItems.forEach(item => {
+                            if (!combined.some(c => c.title.toLowerCase() === item.title.toLowerCase())) {
+                                combined.push(item);
+                            }
+                        });
+                        setSplitLiveSuggestions(combined);
+                    } else {
+                        setSplitLiveSuggestions(localItems);
+                    }
+                } catch (err) {
+                    console.warn('Error processing split suggestions:', err);
+                } finally {
+                    try { delete window[callbackName]; } catch (_) {}
+                    const scriptEl = document.getElementById(callbackName);
+                    if (scriptEl && scriptEl.parentNode) scriptEl.remove();
                 }
-                delete window[callbackName];
-                const scriptEl = document.getElementById(callbackName);
-                if (scriptEl) scriptEl.remove();
             };
 
             const script = document.createElement('script');
             script.id = callbackName;
             script.src = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(q)}&callback=${callbackName}`;
+            script.onerror = () => {
+                try { delete window[callbackName]; } catch (_) {}
+                if (script.parentNode) script.remove();
+            };
+            activeScript = script;
             document.body.appendChild(script);
         }, 120);
 
         return () => {
             if (splitSuggestDebounceRef.current) clearTimeout(splitSuggestDebounceRef.current);
+            if (activeCallback) {
+                window[activeCallback] = () => {
+                    try { delete window[activeCallback]; } catch (_) {}
+                };
+                setTimeout(() => {
+                    try { delete window[activeCallback]; } catch (_) {}
+                }, 10000);
+            }
+            if (activeScript && activeScript.parentNode) {
+                activeScript.remove();
+            }
         };
     }, [splitSearchUrl, isTor, isIncognito]);
 
@@ -582,6 +614,7 @@ export default function MainFrame() {
 
     return (
         <main 
+            id="qbrowse-main-frame"
             className="flex-1 min-w-0 relative z-20 flex flex-col"
         >
             
@@ -596,7 +629,8 @@ export default function MainFrame() {
                 <div 
                     id="popover-darkmode-container"
                     onClick={e => e.stopPropagation()} 
-                    className={`absolute top-16 right-32 z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-all border ${
+                    style={darkmodeAnchor.style}
+                    className={`absolute z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-all border ${
                         isBright 
                             ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
                             : 'bg-[#0c0d14]/85 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
@@ -721,7 +755,8 @@ export default function MainFrame() {
                 <div 
                     id="popover-adblock-container"
                     onClick={e => e.stopPropagation()} 
-                    className={`absolute top-16 right-12 z-[60] w-72 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
+                    style={adblockAnchor.style}
+                    className={`absolute z-[60] w-72 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
                         isBright 
                             ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
                             : 'bg-[#0c0d14]/78 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
@@ -769,7 +804,8 @@ export default function MainFrame() {
             {(activePopover === 'downloads' || (isPopoverClosing && activePopover === 'downloads')) && (
                 <div 
                     onClick={e => e.stopPropagation()} 
-                    className={`absolute top-16 right-6 z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
+                    style={downloadsAnchor.style}
+                    className={`absolute z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
                         isBright 
                             ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
                             : 'bg-[#0c0d14]/78 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
@@ -822,6 +858,17 @@ export default function MainFrame() {
                 </div>
             )}
 
+            <SavePasswordBanner />
+            {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
+                <QVaultPopover isClosing={isPopoverClosing} />
+            )}
+            {(activePopover === 'tor' || (isPopoverClosing && activePopover === 'tor')) && (
+                <TorCircuitPopover isClosing={isPopoverClosing} />
+            )}
+            {((activePopover && activePopover !== 'user' && activePopover !== 'userProfile') || (isPopoverClosing && activePopover !== 'user' && activePopover !== 'userProfile')) && (
+                <div className="absolute inset-0 z-[50] bg-transparent" onClick={closePopover} />
+            )}
+
             {(() => {
                 const isZenActive = (isPrywatneEmpty && activeSpace === 'personal') || 
                                     (isPracaEmpty && activeSpace === 'work') || 
@@ -842,67 +889,57 @@ export default function MainFrame() {
                             }`}
                         >
                     <DownloadPopup />
-                    <SavePasswordBanner />
                     <FindInPageBar />
                     <ScreenshotBar />
                     <ReadAloudPlayer />
                     <SnippingOverlay />
                     <ReaderModeOverlay />
                     <BrowserDialogOverlay />
-                    {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
-                        <QVaultPopover isClosing={isPopoverClosing} />
-                    )}
-                    {(activePopover === 'tor' || (isPopoverClosing && activePopover === 'tor')) && (
-                        <TorCircuitPopover isClosing={isPopoverClosing} />
-                    )}
-                    {((activePopover && activePopover !== 'user' && activePopover !== 'userProfile') || (isPopoverClosing && activePopover !== 'user' && activePopover !== 'userProfile')) && (
-                        <div className="absolute inset-0 z-[50] bg-transparent" onClick={closePopover} />
-                    )}
 
                     {/* LEFT PANE CONTAINER */}
                     <div 
                         ref={leftPaneRef}
                         onClick={() => setFocusedPane('left')}
                         className={`relative h-full overflow-hidden ${
-                            isDraggingSplit ? 'pointer-events-none select-none' : 'transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
+                            isDraggingSplit ? 'pointer-events-none select-none' : (isReducedMotion ? 'transition-none' : 'transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]')
                         }`}
                         style={{ width: isSplitView ? `${splitRatio}%` : '100%', contain: 'layout paint' }}
                     >
-                        <div className={`absolute inset-y-0 left-0 w-[400%] flex ${isSwipeEnabled !== false ? 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : 'transition-none'}`}
+                        <div className={`absolute inset-y-0 left-0 w-[400%] flex ${isReducedMotion || isSwipeEnabled === false ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
                             style={{ transform: activeSpace === 'personal' ? 'translateX(0)' : activeSpace === 'work' ? 'translateX(-25%)' : activeSpace === 'ghost' ? 'translateX(-50%)' : 'translateX(-75%)' }}>
 
                             {/* PERSONAL */}
                             <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative">
-                                {isPrywatneEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
+                                {isPrywatneEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('personal')}</div>}
                                 <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPrywatneEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPrywatneEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isPrywatneEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="personal" />
                                 </div>
                             </div>
 
                             {/* WORK */}
                             <div className={`w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative ${!isBright ? 'text-white' : 'text-zinc-900'}`}>
-                                {isPracaEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
+                                {isPracaEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('work')}</div>}
                                 <div key="bg" className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} style={{ backgroundSize: '24px 24px', opacity: isPracaEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isPracaEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isPracaEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="work" />
                                 </div>
                             </div>
 
                             {/* GHOST */}
                             <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative text-white">
-                                {isGhostEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
+                                {isGhostEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('ghost')}</div>}
                                 <div key="bg" className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 opacity-20 invert" style={{ backgroundSize: '24px 24px', opacity: isGhostEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isGhostEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isGhostEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="ghost" />
                                 </div>
                             </div>
 
                             {/* TOR ONION */}
                             <div className="w-1/4 flex-shrink-0 h-full flex flex-col items-center justify-center relative text-white">
-                                {isTorEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard()}</div>}
+                                {isTorEmpty && <div key="dash" className="absolute inset-0 z-10 pointer-events-auto">{renderZenDashboard('tor')}</div>}
                                 <div key="bg" className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_1px,transparent_1px)] pointer-events-none z-0 opacity-30 invert" style={{ backgroundSize: '24px 24px', opacity: isTorEmpty ? 1 : 0.2 }}></div>
-                                <div key="wv" className={`absolute inset-0 transition-opacity duration-300 ${isTorEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                <div key="wv" className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isTorEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <WebViewContainer space="tor" />
                                 </div>
                             </div>
@@ -953,7 +990,7 @@ export default function MainFrame() {
                         className={`relative h-full overflow-hidden flex flex-col bg-transparent ${
                             isDraggingSplit 
                                 ? 'pointer-events-none select-none' 
-                                : 'transition-[width,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
+                                : (isReducedMotion ? 'transition-none' : 'transition-[width,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]')
                         } ${isSplitView ? 'opacity-100' : 'w-0 opacity-0 pointer-events-none'}`}
                         style={{ width: isSplitView ? `${100 - splitRatio}%` : '0%', contain: 'layout paint' }}
                     >

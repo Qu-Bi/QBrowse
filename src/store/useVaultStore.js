@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { unlockVault, unlockVaultWindowsHello, getPasswords, addPassword, deletePassword, updatePassword } from '../services/electronIPC';
+import { unlockVault, unlockVaultWindowsHello, getPasswords, addPassword, deletePassword, updatePassword } from '../services/electronIPC.js';
 
 export function isRawCiphertextString(str) {
     return typeof str === 'string' && /^[0-9a-fA-F]{24}:[0-9a-fA-F]{32}:[0-9a-fA-F]+$/.test(str.trim());
@@ -31,6 +31,7 @@ export const enrichPasswords = (rawList) => {
         let meta = {
             type: p.itemType || 'login',
             notes: p.notes || '',
+            totpSecret: p.totpSecret || null,
             passkeyData: p.passkeyData || null,
             cardData: p.cardData || null,
             addressData: p.addressData || null
@@ -44,18 +45,22 @@ export const enrichPasswords = (rawList) => {
                 meta = {
                     type: parsed.type || meta.type,
                     notes: parsed.notes !== undefined ? parsed.notes : meta.notes,
+                    totpSecret: parsed.totpSecret !== undefined ? parsed.totpSecret : meta.totpSecret,
                     passkeyData: parsed.passkeyData || meta.passkeyData,
                     cardData: parsed.cardData || meta.cardData,
                     addressData: parsed.addressData || meta.addressData
                 };
             } catch (_) {}
         }
+        const effectiveType = p.itemType || meta.type || 'login';
+        const effectiveTotpSecret = p.totpSecret || meta.totpSecret || (effectiveType === 'totp' ? p.password : null) || null;
         return {
             ...p,
             rawTitle: p.title,
             title: cleanTitle,
-            itemType: p.itemType || meta.type || 'login',
+            itemType: effectiveType,
             notes: p.notes || meta.notes || '',
+            totpSecret: effectiveTotpSecret,
             passkeyData: p.passkeyData || meta.passkeyData || null,
             cardData: p.cardData || meta.cardData || null,
             addressData: p.addressData || meta.addressData || null
@@ -571,6 +576,7 @@ const useVaultStore = create((set, get) => ({
                             password: remoteItem.password || '',
                             url: remoteItem.url || '',
                             notes: remoteItem.notes || '',
+                            totpSecret: remoteItem.totpSecret || existing.totpSecret || null,
                             passkeyData: remoteItem.passkeyData || null,
                             cardData: remoteItem.cardData || null,
                             addressData: remoteItem.addressData || null
@@ -589,6 +595,7 @@ const useVaultStore = create((set, get) => ({
                         password: remoteItem.password || '',
                         url: remoteItem.url || '',
                         notes: remoteItem.notes || '',
+                        totpSecret: remoteItem.totpSecret || null,
                         passkeyData: remoteItem.passkeyData || null,
                         cardData: remoteItem.cardData || null,
                         addressData: remoteItem.addressData || null
@@ -605,7 +612,7 @@ const useVaultStore = create((set, get) => ({
         }
     },
 
-    addNewItem: async ({ type = 'login', title, username = '', password = '', url = '', passkeyData = null, cardData = null, addressData = null, notes = '' }) => {
+    addNewItem: async ({ type = 'login', title, username = '', password = '', url = '', passkeyData = null, cardData = null, addressData = null, notes = '', totpSecret = null }) => {
         const { isUnlocked, masterPassword } = get();
 
         set({ isLoading: true });
@@ -613,6 +620,7 @@ const useVaultStore = create((set, get) => ({
             const payload = {
                 type,
                 notes,
+                totpSecret: totpSecret || null,
                 passkeyData: type === 'passkey' ? (passkeyData || { rpId: url, created: Date.now() }) : null,
                 cardData: type === 'card' ? cardData : null,
                 addressData: type === 'address' ? addressData : null
@@ -653,12 +661,13 @@ const useVaultStore = create((set, get) => ({
         }
     },
 
-    updateItem: async ({ id, type = 'login', title, username = '', password = '', url = '', passkeyData = null, cardData = null, addressData = null, notes = '' }) => {
+    updateItem: async ({ id, type = 'login', title, username = '', password = '', url = '', passkeyData = null, cardData = null, addressData = null, notes = '', totpSecret = null }) => {
         set({ isLoading: true, error: null });
         try {
             const payload = {
                 type,
                 notes,
+                totpSecret: totpSecret || null,
                 passkeyData: type === 'passkey' ? (passkeyData || { rpId: url, created: Date.now() }) : null,
                 cardData: type === 'card' ? cardData : null,
                 addressData: type === 'address' ? addressData : null
@@ -689,6 +698,7 @@ const useVaultStore = create((set, get) => ({
                 const payload = {
                     type: item.type || 'login',
                     notes: item.notes || '',
+                    totpSecret: item.totpSecret || null,
                     passkeyData: item.passkeyData || null,
                     cardData: item.cardData || null,
                     addressData: item.addressData || null
@@ -744,6 +754,7 @@ const useVaultStore = create((set, get) => ({
                     password: p.password || '',
                     url: p.url || '',
                     notes: p.notes || meta.notes || '',
+                    totpSecret: p.totpSecret || meta.totpSecret || null,
                     cardData: p.cardData || meta.cardData || null,
                     addressData: p.addressData || meta.addressData || null
                 };
@@ -759,14 +770,15 @@ const useVaultStore = create((set, get) => ({
             a.click();
             URL.revokeObjectURL(url);
         } else {
-            const headers = ['title', 'type', 'username', 'password', 'url', 'notes'];
+            const headers = ['title', 'type', 'username', 'password', 'url', 'notes', 'totp'];
             const rows = exportable.map(i => [
                 `"${(i.title || '').replace(/"/g, '""')}"`,
                 `"${(i.type || 'login').replace(/"/g, '""')}"`,
                 `"${(i.username || '').replace(/"/g, '""')}"`,
                 `"${(i.password || '').replace(/"/g, '""')}"`,
                 `"${(i.url || '').replace(/"/g, '""')}"`,
-                `"${(i.notes || '').replace(/"/g, '""')}"`
+                `"${(i.notes || '').replace(/"/g, '""')}"`,
+                `"${(i.totpSecret || '').replace(/"/g, '""')}"`
             ]);
             const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -841,11 +853,12 @@ const useVaultStore = create((set, get) => ({
                 id: p.id,
                 title: p.title,
                 username: p.username,
-                password: p.password
+                password: p.password,
+                totpSecret: p.totpSecret || null
             }));
     },
 
-    saveOrUpdateCredential: async ({ domain, url, username, password, isUpdate, existingId }) => {
+    saveOrUpdateCredential: async ({ domain, url, username, password, isUpdate, existingId, totpSecret = null }) => {
         if (isUpdate && existingId) {
             await get().updateItem({
                 id: existingId,
@@ -853,7 +866,8 @@ const useVaultStore = create((set, get) => ({
                 title: domain,
                 username,
                 password,
-                url: url || `https://${domain}`
+                url: url || `https://${domain}`,
+                ...(totpSecret ? { totpSecret } : {})
             });
         } else {
             await get().addNewItem({
@@ -861,7 +875,8 @@ const useVaultStore = create((set, get) => ({
                 title: domain,
                 username,
                 password,
-                url: url || `https://${domain}`
+                url: url || `https://${domain}`,
+                ...(totpSecret ? { totpSecret } : {})
             });
         }
         set({ pendingSavePrompt: null });

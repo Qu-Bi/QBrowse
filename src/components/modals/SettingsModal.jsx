@@ -6,7 +6,8 @@ import {
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal,
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Server, Wifi, AlertCircle,
-    Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch
+    Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch,
+    ArrowLeftRight, ListOrdered
 } from 'lucide-react';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
@@ -21,10 +22,11 @@ import AIEngineSettings from '../settings/AIEngineSettings';
 import { getAllBangs } from '../../utils/searchBangs';
 import { DOH_PROVIDERS, DNS_MODES, formatCustomDohUrl, isValidDohUrl } from '../../utils/dnsProviders';
 import { PRESET_SEARCH_ENGINES, getAllSearchEngines, isValidSearchUrlTemplate } from '../../utils/searchEngines';
+import CustomSelect from '../common/CustomSelect';
 import qbrowseLogo from '../../assets/icon.png';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
-const SettingCard = ({ icon: Icon, title, description, children }) => {
+const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
@@ -46,11 +48,22 @@ const SettingCard = ({ icon: Icon, title, description, children }) => {
                     </div>
                 )}
                 <div className="min-w-0">
-                    <p className={`font-medium text-xs truncate transition-colors ${
-                        isBright 
-                            ? 'text-zinc-800 group-hover:text-zinc-950 font-semibold' 
-                            : 'text-zinc-200 group-hover:text-white'
-                    }`}>{title}</p>
+                    <div className="flex items-center gap-2">
+                        <p className={`font-medium text-xs truncate transition-colors ${
+                            isBright 
+                                ? 'text-zinc-800 group-hover:text-zinc-950 font-semibold' 
+                                : 'text-zinc-200 group-hover:text-white'
+                        }`}>{title}</p>
+                        {badge && (
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                                isBright
+                                    ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                                    : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                            }`}>
+                                {badge}
+                            </span>
+                        )}
+                    </div>
                     {description && <p className={`text-[11px] mt-0.5 leading-snug ${
                         isBright ? 'text-zinc-500' : 'text-zinc-400'
                     }`}>{description}</p>}
@@ -1183,6 +1196,48 @@ const SettingsModal = () => {
 
                             <SettingCard icon={XSquare} title="Close Window on Last Tab (Ctrl+W)" description="Close the browser window when pressing Ctrl+W with no open tabs or pinned tabs.">
                                 <SettingToggle isChecked={settings.closeWindowOnLastTab !== false} onToggle={() => toggleSetting('closeWindowOnLastTab')} />
+                            </SettingCard>
+
+                            <SettingCard icon={Layers} title="Visual Tab Switcher (Ctrl+Tab)" description="Show Windows-style card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.">
+                                <SettingToggle isChecked={settings.visualTabSwitcher !== false} onToggle={() => toggleSetting('visualTabSwitcher')} />
+                            </SettingCard>
+
+                            <SettingCard icon={ArrowLeftRight} title="Tab Switching Order (Ctrl+Tab)" description="Choose whether Ctrl+Tab navigates by most recently used tabs or in sequential sidebar order.">
+                                <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                    isBright 
+                                        ? 'bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]' 
+                                        : 'bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]'
+                                }`}>
+                                    {/* Smooth Morphing Pill Indicator */}
+                                    <div 
+                                        className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                        style={{
+                                            transform: (settings.tabSwitcherOrder || 'mru') === 'sidebar' ? 'translateX(100%)' : 'translateX(0)'
+                                        }}
+                                    />
+                                    {[
+                                        { id: 'mru', label: 'Recently Used', icon: History },
+                                        { id: 'sidebar', label: 'Sidebar Order', icon: ListOrdered }
+                                    ].map(s => {
+                                        const IconComp = s.icon;
+                                        const isSelected = (settings.tabSwitcherOrder || 'mru') === s.id;
+                                        return (
+                                            <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => setSettingValue('tabSwitcherOrder', s.id)}
+                                                className={`relative z-10 flex-1 min-w-[115px] py-1.5 px-3.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                    isSelected
+                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-black font-bold')
+                                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
+                                                }`}
+                                            >
+                                                <IconComp size={12} strokeWidth={2.4} className={`transition-transform duration-200 ${isSelected ? 'scale-110' : 'opacity-65'}`} />
+                                                <span>{s.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </SettingCard>
 
                             <SettingCard icon={Monitor} title="UI Density & Scale" description="Adjust spacing, padding, and tab density across navigation controls and sidebars.">
@@ -2757,26 +2812,23 @@ const SettingsModal = () => {
                                         title="Background Refresh Interval" 
                                         description="How frequently QBrowse checks GitHub for updates. Choose 'Manual Only' to eliminate all background polling."
                                     >
-                                        <select 
+                                        <CustomSelect 
                                             value={settings.githubSyncInterval ?? 10}
-                                            onChange={(e) => {
-                                                const val = Number(e.target.value);
-                                                setSettingValue('githubSyncInterval', val);
+                                            onChange={(val) => {
+                                                const numVal = Number(val);
+                                                setSettingValue('githubSyncInterval', numVal);
                                                 useGitHubStore.getState().syncWithConfig();
                                             }}
-                                            className={`text-xs px-2.5 py-1.5 rounded-lg border outline-none font-medium transition cursor-pointer ${
-                                                isBright 
-                                                    ? 'bg-white border-black/15 text-zinc-800 shadow-sm' 
-                                                    : 'bg-zinc-900 border-white/10 text-zinc-200'
-                                            }`}
-                                        >
-                                            <option value={0}>Manual Only (Zero background polling)</option>
-                                            <option value={2}>Every 2 minutes</option>
-                                            <option value={5}>Every 5 minutes</option>
-                                            <option value={10}>Every 10 minutes (Balanced)</option>
-                                            <option value={15}>Every 15 minutes</option>
-                                            <option value={30}>Every 30 minutes (Eco)</option>
-                                        </select>
+                                            isBright={isBright}
+                                            options={[
+                                                { value: 0, label: 'Manual Only', badge: 'Zero Polling' },
+                                                { value: 2, label: 'Every 2 minutes' },
+                                                { value: 5, label: 'Every 5 minutes' },
+                                                { value: 10, label: 'Every 10 minutes', badge: 'Balanced' },
+                                                { value: 15, label: 'Every 15 minutes' },
+                                                { value: 30, label: 'Every 30 minutes', badge: 'Eco' }
+                                            ]}
+                                        />
                                     </SettingCard>
 
                                     {/* Display Sections */}
@@ -3114,20 +3166,20 @@ const SettingsModal = () => {
                                 title="Memory Saver Inactivity Timeout" 
                                 description="Automatically hibernate inactive tabs to zero RAM consumption. Audio, pinned tabs, and downloads are always immune."
                             >
-                                <select 
+                                <CustomSelect 
                                     value={tabSleepTimeoutMinutes}
-                                    onChange={(e) => setTabSleepTimeoutMinutes(Number(e.target.value))}
-                                    className={`border rounded-xl px-3 py-1.5 text-xs font-medium outline-none focus:border-accent/40 cursor-pointer ${
-                                        isBright 
-                                            ? 'bg-white border-black/15 text-zinc-900 shadow-sm' 
-                                            : 'bg-[#101217] border-white/[0.06] text-white'
-                                    }`}
-                                >
-                                    <option value={5} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>5 Minutes (Aggressive)</option>
-                                    <option value={15} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>15 Minutes (Balanced)</option>
-                                    <option value={30} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>30 Minutes (Relaxed)</option>
-                                    <option value={0} className={isBright ? 'bg-white text-zinc-900' : 'bg-[#12141a] text-white'}>Never Hibernate</option>
-                                </select>
+                                    onChange={(val) => setTabSleepTimeoutMinutes(Number(val))}
+                                    isBright={isBright}
+                                    options={[
+                                        { value: 5, label: '5 Minutes', badge: 'Aggressive' },
+                                        { value: 15, label: '15 Minutes', badge: 'Balanced' },
+                                        { value: 30, label: '30 Minutes', badge: 'Recommended' },
+                                        { value: 60, label: '1 Hour', badge: 'Relaxed' },
+                                        { value: 120, label: '2 Hours', badge: 'Extended' },
+                                        { value: 240, label: '4 Hours', badge: 'Conservative' },
+                                        { value: 0, label: 'Never Hibernate', badge: 'Off' }
+                                    ]}
+                                />
                             </SettingCard>
 
                             {/* Instant Back/Forward Cache (bfcache) */}

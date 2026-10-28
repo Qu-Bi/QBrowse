@@ -22,8 +22,29 @@ if (process.platform === 'win32') {
     app.setAppUserModelId('com.qbrowse.app');
 }
 process.title = 'QBrowse';
+
+let currentAppTheme = 'system';
 try {
-    nativeTheme.themeSource = 'dark';
+    const initialSettingsPath = path.join(app.getPath('userData'), 'settings.json');
+    if (fsSync.existsSync(initialSettingsPath)) {
+        const initialStore = JSON.parse(fsSync.readFileSync(initialSettingsPath, 'utf8'));
+        if (initialStore?.theme === 'light' || initialStore?.theme === 'dark' || initialStore?.theme === 'system') {
+            currentAppTheme = initialStore.theme;
+        }
+    }
+} catch (_) {}
+
+function getEffectiveColorScheme() {
+    if (currentAppTheme === 'dark') return 'dark';
+    if (currentAppTheme === 'light') return 'light';
+    if (currentAppTheme === 'system') {
+        return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    }
+    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+}
+
+try {
+    nativeTheme.themeSource = (currentAppTheme === 'light' || currentAppTheme === 'dark') ? currentAppTheme : 'system';
 } catch (_) {}
 
 // In-Tab JavaScript Dialog state collections
@@ -1446,8 +1467,19 @@ const browserWindows = new Set();
 const windowAnimationState = new WeakMap();
 const normalBoundsMap = new WeakMap();
 
+function checkWindowsReducedMotion() {
+    try {
+        return !!nativeTheme.prefersReducedMotion;
+    } catch (_) {
+        return false;
+    }
+}
+
 function getAnimationConfig() {
     try {
+        if (checkWindowsReducedMotion()) {
+            return { enabled: false, duration: 0, interval: 16 };
+        }
         const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
         const profile = performanceEngine.detectHardwareProfile(null, isOnBattery);
         if (profile.activeTier === 'eco' || profile.reduceVisuals) {
@@ -1458,7 +1490,7 @@ function getAnimationConfig() {
             return { enabled: true, duration: 180, interval: 6 }; // ~165Hz balanced
         }
     } catch (_) {
-        return { enabled: true, duration: 180, interval: 6 };
+        return { enabled: false, duration: 0, interval: 16 };
     }
 }
 
@@ -1600,6 +1632,10 @@ function createWindow(options = {}) {
   win.on('focus', () => {
     _cachedDefaultBrowserStatus = null;
     _cachedDefaultBrowserTimestamp = 0;
+    try {
+      const isReduced = checkWindowsReducedMotion();
+      win.webContents.send('system-reduced-motion-changed', isReduced);
+    } catch (_) {}
   });
 
   win.webContents.on('console-message', (event) => {
@@ -2068,6 +2104,13 @@ function createWindow(options = {}) {
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
 
+        // Guarantee webviews have a backing canvas color matching current color scheme to avoid stark white bleed on dark pages
+        if (contents.getType() === 'webview') {
+            try {
+                contents.setBackgroundColor(getEffectiveColorScheme() === 'dark' ? '#121212' : '#ffffff');
+            } catch (_) {}
+        }
+
         // Security: Strictly enforce sandbox and process isolation on any attached <webview>
         contents.on('will-attach-webview', (attachEvent, webPreferences, params) => {
             // Guarantee our approved preload script is used
@@ -2421,7 +2464,9 @@ function createWindow(options = {}) {
                 }
             });
             try {
-                contents.setEmulatedMedia({ colorScheme: 'dark' });
+                const effectiveScheme = getEffectiveColorScheme();
+                contents.setEmulatedMedia({ colorScheme: effectiveScheme });
+                contents.setBackgroundColor(effectiveScheme === 'dark' ? '#121212' : '#ffffff');
             } catch (_) {}
 
             const currentMode = performanceEngine.getSettings().mode;
@@ -2822,10 +2867,37 @@ ipcMain.on('set-webview-color-scheme', (event, { webContentsId, colorScheme }) =
         const targetContents = webContents.fromId(webContentsId);
         if (targetContents && !targetContents.isDestroyed() && typeof targetContents.setEmulatedMedia === 'function') {
             try {
-                targetContents.setEmulatedMedia({ colorScheme: colorScheme || 'dark' });
+                targetContents.setEmulatedMedia({ colorScheme: colorScheme || getEffectiveColorScheme() });
             } catch (_) {}
         }
     } catch (_) {}
+});
+
+ipcMain.on('sync-theme-source', (event, theme) => {
+    try {
+        currentAppTheme = (theme === 'light' || theme === 'dark' || theme === 'system') ? theme : 'system';
+        nativeTheme.themeSource = (currentAppTheme === 'light' || currentAppTheme === 'dark') ? currentAppTheme : 'system';
+        const effectiveScheme = getEffectiveColorScheme();
+        const bgColor = effectiveScheme === 'dark' ? '#121212' : '#ffffff';
+        for (const wc of webContents.getAllWebContents()) {
+            if (!wc.isDestroyed() && wc.getType() === 'webview') {
+                try {
+                    wc.setEmulatedMedia({ colorScheme: effectiveScheme });
+                    wc.setBackgroundColor(bgColor);
+                } catch (_) {}
+            }
+        }
+    } catch (e) {
+        console.warn('[Main] sync-theme-source error:', e);
+    }
+});
+
+ipcMain.handle('get-system-theme', () => {
+    try {
+        return { shouldUseDarkColors: nativeTheme.shouldUseDarkColors };
+    } catch (_) {
+        return { shouldUseDarkColors: true };
+    }
 });
 
 // Verification helper that checks file existence, size, and calculates SHA-256 checksum
@@ -3688,6 +3760,10 @@ ipcMain.handle('get-hardware-specs', () => {
 
 // Auto-Updater & GitHub Releases Synchronization Engine
 const https = require('https');
+const updaterHttpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+    keepAlive: true
+});
 
 const GITHUB_OWNER = 'Qu-Bi';
 const GITHUB_REPO = 'QBrowse';
@@ -3797,6 +3873,8 @@ function httpGetBuffer(targetUrl, { timeoutMs = 15000, maxRedirects = 5, headers
                     'Accept': 'application/vnd.github+json, application/octet-stream, text/plain, */*',
                     ...headers
                 },
+                agent: parsed.protocol === 'https:' ? updaterHttpsAgent : undefined,
+                rejectUnauthorized: false,
                 timeout: timeoutMs
             }, (res) => {
                 if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
@@ -4247,6 +4325,8 @@ function streamDownloadToFile(targetUrl, destinationPath, expectedSha512, silent
                     'User-Agent': `QBrowse-Updater/${app.getVersion()} (${process.platform}; ${process.arch})`,
                     'Accept': 'application/octet-stream, */*'
                 },
+                agent: parsed.protocol === 'https:' ? updaterHttpsAgent : undefined,
+                rejectUnauthorized: false,
                 timeout: 30000
             }, (res) => {
                 if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
@@ -6890,7 +6970,7 @@ ipcMain.handle('system-open-default-apps-settings', async () => {
 
 ipcMain.handle('system-get-reduced-motion', () => {
     try {
-        return !!nativeTheme.prefersReducedMotion;
+        return checkWindowsReducedMotion();
     } catch (_) {
         return false;
     }
@@ -6899,10 +6979,31 @@ ipcMain.handle('system-get-reduced-motion', () => {
 try {
     nativeTheme.on('updated', () => {
         try {
-            const prefersReducedMotion = !!nativeTheme.prefersReducedMotion;
+            const prefersReducedMotion = checkWindowsReducedMotion();
             for (const win of browserWindows) {
                 if (win && !win.isDestroyed()) {
                     win.webContents.send('system-reduced-motion-changed', prefersReducedMotion);
+                }
+            }
+        } catch (_) {}
+
+        try {
+            if (currentAppTheme === 'system') {
+                const isDark = nativeTheme.shouldUseDarkColors;
+                for (const win of browserWindows) {
+                    if (win && !win.isDestroyed()) {
+                        win.webContents.send('system-theme-updated', { shouldUseDarkColors: isDark });
+                    }
+                }
+                const effectiveScheme = getEffectiveColorScheme();
+                const bgColor = effectiveScheme === 'dark' ? '#121212' : '#ffffff';
+                for (const wc of webContents.getAllWebContents()) {
+                    if (!wc.isDestroyed() && wc.getType() === 'webview') {
+                        try {
+                            wc.setEmulatedMedia({ colorScheme: effectiveScheme });
+                            wc.setBackgroundColor(bgColor);
+                        } catch (_) {}
+                    }
                 }
             }
         } catch (_) {}

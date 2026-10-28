@@ -4,23 +4,29 @@ import useUIStore from './useUIStore';
 const DEFAULT_PROFILE_ID = 'default';
 
 export const AVATAR_MAP = {
-    rocket: '🚀',
-    zap: '⚡',
-    fox: '🦊',
-    alien: '👾',
-    galaxy: '🌌',
-    gem: '💎',
-    dragon: '🐉',
-    crown: '👑',
-    shield: '🛡️',
-    dna: '🧬',
-    coffee: '☕',
-    target: '🎯'
+    rocket: 'rocket',
+    zap: 'zap',
+    fox: 'fox',
+    alien: 'alien',
+    galaxy: 'galaxy',
+    gem: 'gem',
+    dragon: 'dragon',
+    crown: 'crown',
+    shield: 'shield',
+    dna: 'dna',
+    coffee: 'coffee',
+    target: 'target'
+};
+
+const LEGACY_EMOJI_MAP = {
+    '\u{1F680}': 'rocket', '\u{26A1}': 'zap', '\u{1F98A}': 'fox', '\u{1F47E}': 'alien',
+    '\u{1F30C}': 'galaxy', '\u{1F48E}': 'gem', '\u{1F409}': 'dragon', '\u{1F451}': 'crown',
+    '\u{1F6E1}\u{FE0F}': 'shield', '\u{1F6E1}': 'shield', '\u{1F9EC}': 'dna', '\u{2615}': 'coffee', '\u{1F3AF}': 'target'
 };
 
 export const getAvatarEmoji = (avatarOrPreset) => {
-    if (!avatarOrPreset) return '🚀';
-    return AVATAR_MAP[avatarOrPreset] || avatarOrPreset;
+    if (!avatarOrPreset) return 'rocket';
+    return LEGACY_EMOJI_MAP[avatarOrPreset] || AVATAR_MAP[avatarOrPreset] || avatarOrPreset;
 };
 
 const loadInitialProfiles = () => {
@@ -80,7 +86,7 @@ const useProfileStore = create((set, get) => ({
         return profiles.find(p => p.id === activeProfileId) || profiles[0] || null;
     },
 
-    createProfile: ({ name, avatar = '🚀', color = '#d4bc94', avatarUrl = '' }) => {
+    createProfile: ({ name, avatar = 'rocket', color = '#d4bc94', avatarUrl = '' }) => {
         const id = `p_${Date.now()}`;
         const newProfile = {
             id,

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Lock, Unlock, ShieldCheck, MapPin, Camera, Bell, Clipboard, Volume2, Code, RotateCcw, Cookie, X, Trash2 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import CustomSelect from '../common/CustomSelect';
+import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 
 export default function SiteInfoPopover({ isClosing }) {
     const theme = useUIStore(state => state.theme);
@@ -103,11 +105,18 @@ export default function SiteInfoPopover({ isClosing }) {
         { key: 'javascript', label: 'JavaScript', icon: Code }
     ];
 
+    const anchor = usePopoverAnchor('#tour-siteinfo-trigger', 288, {
+        align: 'left',
+        defaultLeft: 160,
+        defaultTop: 52
+    });
+
     return (
         <div 
             id="site-info-popover"
             onClick={e => e.stopPropagation()} 
-            className={`absolute top-[52px] left-[calc(50%-320px)] z-[80] w-72 rounded-2xl backdrop-blur-3xl p-3.5 flex flex-col gap-3 transition-colors ${
+            style={anchor.style}
+            className={`absolute z-[80] w-72 rounded-2xl backdrop-blur-3xl p-3.5 flex flex-col gap-3 transition-colors ${
                 isBright
                     ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900'
                     : 'bg-[#0c0d14]/78 border border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-white'
@@ -194,21 +203,17 @@ export default function SiteInfoPopover({ isClosing }) {
                                         {item.label}
                                     </span>
                                 </div>
-                                <select
+                                <CustomSelect
                                     value={currentVal}
-                                    onChange={(e) => handlePermissionChange(item.key, e.target.value)}
-                                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-md outline-none cursor-pointer transition border ${
-                                        currentVal === 'allow'
-                                            ? 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30'
-                                            : currentVal === 'block'
-                                            ? 'bg-red-500/15 text-red-600 border-red-500/30'
-                                            : (isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10')
-                                    }`}
-                                >
-                                    <option value="allow" className={isBright ? "bg-white text-emerald-700" : "bg-[#121318] text-emerald-400"}>Allow</option>
-                                    <option value="block" className={isBright ? "bg-white text-red-700" : "bg-[#121318] text-red-400"}>Block</option>
-                                    <option value="ask" className={isBright ? "bg-white text-zinc-700" : "bg-[#121318] text-gray-300"}>Ask</option>
-                                </select>
+                                    onChange={(val) => handlePermissionChange(item.key, val)}
+                                    size="sm"
+                                    isBright={isBright}
+                                    options={[
+                                        { value: 'allow', label: 'Allow' },
+                                        { value: 'block', label: 'Block' },
+                                        { value: 'ask', label: 'Ask' }
+                                    ]}
+                                />
                             </div>
                         );
                     })}

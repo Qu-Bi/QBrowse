@@ -6,6 +6,7 @@ import {
 import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import CustomSelect from '../common/CustomSelect';
 
 export default function AIEngineSettings() {
     const theme = useUIStore(state => state.theme);
@@ -386,18 +387,18 @@ export default function AIEngineSettings() {
                         />
                     </div>
                     <div>
-                        <label className={`text-xs font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Context Size (-c): {contextSize}</label>
-                        <select
+                        <label className={`text-xs font-semibold block mb-1.5 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Context Size (-c)</label>
+                        <CustomSelect
                             value={contextSize}
-                            onChange={(e) => setContextSize(parseInt(e.target.value, 10))}
-                            className={`w-full border rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-accent ${
-                                isBright ? 'bg-white/90 border-black/15 text-zinc-900' : 'bg-[#0e0f13] border-white/10 text-white'
-                            }`}
-                        >
-                            <option className={isBright ? 'bg-white text-zinc-900' : 'bg-[#0e0f13] text-white'} value={2048}>2048 tokens</option>
-                            <option className={isBright ? 'bg-white text-zinc-900' : 'bg-[#0e0f13] text-white'} value={4096}>4096 tokens (Default)</option>
-                            <option className={isBright ? 'bg-white text-zinc-900' : 'bg-[#0e0f13] text-white'} value={8192}>8192 tokens (Extended)</option>
-                        </select>
+                            onChange={(val) => setContextSize(Number(val))}
+                            isBright={isBright}
+                            className="w-full !justify-between"
+                            options={[
+                                { value: 2048, label: '2048 tokens', badge: 'Compact' },
+                                { value: 4096, label: '4096 tokens', badge: 'Default' },
+                                { value: 8192, label: '8192 tokens', badge: 'Extended' }
+                            ]}
+                        />
                     </div>
                     <div>
                         <label className={`text-xs font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>GPU Offload Layers (-ngl): {gpuLayers}</label>

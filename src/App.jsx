@@ -98,8 +98,8 @@ export default function App() {
 
     useEffect(() => {
         if (activeWallpaper !== currentWallpaper) {
-            // While boot curtain is still active, immediately set wallpaper without a visible crossfade lag
-            if (isBooting) {
+            // While boot curtain is still active or animations are disabled, immediately set wallpaper without a visible crossfade lag
+            if (isBooting || a11yReducedMotion || isSystemReducedMotion) {
                 setCurrentWallpaper(activeWallpaper);
                 setPrevWallpaper(null);
                 return;
@@ -111,7 +111,7 @@ export default function App() {
             }, 750);
             return () => clearTimeout(timer);
         }
-    }, [activeWallpaper, currentWallpaper, isBooting]);
+    }, [activeWallpaper, currentWallpaper, isBooting, a11yReducedMotion, isSystemReducedMotion]);
 
 
     const { onDragOver, onDragLeave, onDropRoot } = useDragAndDrop();
@@ -603,7 +603,7 @@ export default function App() {
                             backgroundImage: `url('${currentWallpaper}')`,
                             filter: (blurWallpaper && wallpaperBlur > 0) ? `saturate(1.1) blur(${wallpaperBlur}px)` : 'saturate(1.1)',
                             transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)',
-                            transition: 'filter 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+                            transition: (a11yReducedMotion || isSystemReducedMotion) ? 'none' : 'filter 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
                         }}
                     />
                     {/* Dimming / Frosted overlay layer to ensure UI readability without bleaching */}

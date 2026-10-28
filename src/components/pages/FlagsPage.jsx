@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import CustomSelect from '../common/CustomSelect';
 
 const AVAILABLE_FLAGS = [
     // --- HARDWARE & GRAPHICS ---
@@ -637,19 +638,19 @@ export default function FlagsPage() {
                                         </div>
 
                                         <div className="flex items-center gap-3 flex-shrink-0">
-                                            <select 
+                                            <CustomSelect 
                                                 value={val}
-                                                onChange={e => handleFlagChange(flag.id, e.target.value)}
-                                                className={`border rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none transition cursor-pointer shadow-sm min-w-[130px] ${
-                                                    isModified
-                                                        ? 'bg-accent-20 border-accent text-accent font-bold'
-                                                        : (isBright ? 'bg-white border-black/15 text-zinc-900 focus:border-accent' : 'bg-black/60 border-white/15 text-white/90 focus:border-accent')
+                                                onChange={selected => handleFlagChange(flag.id, selected)}
+                                                isBright={isBright}
+                                                className={`min-w-[140px] ${
+                                                    isModified ? '!border-accent !text-accent font-bold' : ''
                                                 }`}
-                                            >
-                                                <option value="default" className={isBright ? "bg-white text-zinc-900" : "bg-[#121216] text-white"}>Default ({flag.defaultState})</option>
-                                                <option value="enabled" className={isBright ? "bg-white text-emerald-700 font-semibold" : "bg-[#121216] text-emerald-400 font-semibold"}>Enabled</option>
-                                                <option value="disabled" className={isBright ? "bg-white text-red-600 font-semibold" : "bg-[#121216] text-red-400 font-semibold"}>Disabled</option>
-                                            </select>
+                                                options={[
+                                                    { value: 'default', label: 'Default', badge: flag.defaultState },
+                                                    { value: 'enabled', label: 'Enabled' },
+                                                    { value: 'disabled', label: 'Disabled' }
+                                                ]}
+                                            />
                                         </div>
                                     </div>
                                 );

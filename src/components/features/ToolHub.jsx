@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     Puzzle, X, PenTool, ClipboardList, MessageSquare, 
     Copy, Cpu, Download, Zap, Globe, Send, FolderOpen, ExternalLink,
@@ -12,7 +12,7 @@ import remarkGfm from 'remark-gfm';
 import useUIStore from '../../store/useUIStore';
 import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useTabStore from '../../store/useTabStore';
-import { useAnnotationStore, normalizeAnnotationUrl, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
+import { useAnnotationStore, normalizeAnnotationUrl, deduplicateAnnotationList, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { startRecording, stopRecordingAndTranscribe } from '../../utils/whisperSTT';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -92,7 +92,8 @@ export default function ToolHub() {
         useAIStore.getState().fetchEngineStatus();
     }, []);
 
-    const annotations = useAnnotationStore(state => state.annotations);
+    const rawAnnotations = useAnnotationStore(state => state.annotations);
+    const annotations = useMemo(() => deduplicateAnnotationList(rawAnnotations), [rawAnnotations]);
     const removeAnnotation = useAnnotationStore(state => state.removeAnnotation);
     const updateAnnotation = useAnnotationStore(state => state.updateAnnotation);
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -702,7 +703,9 @@ export default function ToolHub() {
                                             className={`flex-1 bg-transparent text-xs ${isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/35'} outline-none`}
                                         />
                                         {webNotesQuery && (
-                                            <button onClick={() => setWebNotesQuery('')} className={`${isBright ? 'text-zinc-400 hover:text-zinc-900' : 'text-white/40 hover:text-white'} text-xs px-1`}>✕</button>
+                                            <button onClick={() => setWebNotesQuery('')} className={`${isBright ? 'text-zinc-400 hover:text-zinc-900' : 'text-white/40 hover:text-white'} text-xs px-1 cursor-pointer`} title="Clear search">
+                                                <X size={12} />
+                                            </button>
                                         )}
                                     </div>
 
@@ -913,6 +916,19 @@ export default function ToolHub() {
                                                                                     autoFocus
                                                                                 />
                                                                                 <div className="flex items-center justify-end gap-1.5">
+                                                                                    {ann.note ? (
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                updateAnnotation(ann.id, { note: '' });
+                                                                                                setEditingNoteId(null);
+                                                                                                showHubToast('Note removed');
+                                                                                            }}
+                                                                                            className={`px-2 py-1 rounded-lg text-[10px] ${isBright ? 'text-red-500 hover:bg-red-500/10' : 'text-red-400 hover:bg-red-500/10'} cursor-pointer`}
+                                                                                            title="Delete note text"
+                                                                                        >
+                                                                                            Delete Note
+                                                                                        </button>
+                                                                                    ) : null}
                                                                                     <button
                                                                                         onClick={() => setEditingNoteId(null)}
                                                                                         className={`px-2.5 py-1 rounded-lg text-[10px] ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/50 hover:text-white'} cursor-pointer`}
@@ -921,9 +937,10 @@ export default function ToolHub() {
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => {
-                                                                                            updateAnnotation(ann.id, { note: editingNoteText.trim() });
+                                                                                            const nextNote = editingNoteText.trim();
+                                                                                            updateAnnotation(ann.id, { note: nextNote });
                                                                                             setEditingNoteId(null);
-                                                                                            showHubToast('Note updated');
+                                                                                            showHubToast(nextNote ? 'Note updated' : 'Note removed');
                                                                                         }}
                                                                                         className="px-3 py-1 rounded-lg bg-accent text-black text-[10px] font-bold cursor-pointer hover:opacity-90 shadow-sm"
                                                                                     >

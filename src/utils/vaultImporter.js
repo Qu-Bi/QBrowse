@@ -56,6 +56,7 @@ export function parseVaultContent(text, filename = '') {
                         password: login.password || '',
                         url: uris[0]?.uri || '',
                         notes: item.notes || '',
+                        totpSecret: login.totp || null,
                         type: item.type === 3 ? 'card' : 'login'
                     };
                 });
@@ -72,6 +73,7 @@ export function parseVaultContent(text, filename = '') {
                             password: content.password || '',
                             url: (content.urls && content.urls[0]) || '',
                             notes: metadata.note || '',
+                            totpSecret: content.totpUri || content.totp || null,
                             type: 'login'
                         });
                     });
@@ -79,7 +81,10 @@ export function parseVaultContent(text, filename = '') {
             } else if (json.qvault_version && Array.isArray(json.items)) {
                 // QVault Backup JSON
                 sourceName = 'QVault Backup';
-                parsed = json.items;
+                parsed = json.items.map(item => ({
+                    ...item,
+                    totpSecret: item.totpSecret || null
+                }));
             } else if (Array.isArray(json)) {
                 // Generic JSON Array
                 sourceName = 'JSON Export';
@@ -89,6 +94,7 @@ export function parseVaultContent(text, filename = '') {
                     password: i.password || i.pass || '',
                     url: i.url || i.uri || i.website || '',
                     notes: i.notes || i.note || '',
+                    totpSecret: i.totpSecret || i.totp || i.otp || null,
                     type: i.type || 'login'
                 }));
             }
@@ -105,6 +111,7 @@ export function parseVaultContent(text, filename = '') {
             const colUser = header.findIndex(h => /^(username|login_username|user|email|login)$/i.test(h));
             const colPass = header.findIndex(h => /^(password|login_password|pass)$/i.test(h));
             const colNote = header.findIndex(h => /^(note|notes|comment)$/i.test(h));
+            const colTotp = header.findIndex(h => /^(totp|login_totp|otp|2fa|authenticator)$/i.test(h));
 
             if (header.includes('login_username') || header.includes('login_password')) {
                 sourceName = 'Bitwarden';
@@ -124,14 +131,16 @@ export function parseVaultContent(text, filename = '') {
                 const t = colTitle !== -1 ? (row[colTitle] || '').trim() : '';
                 const url = colUrl !== -1 ? (row[colUrl] || '').trim() : '';
                 const note = colNote !== -1 ? (row[colNote] || '').trim() : '';
+                const totp = colTotp !== -1 ? (row[colTotp] || '').trim() : '';
 
-                if (p || u || t) {
+                if (p || u || t || totp) {
                     parsed.push({
                         title: t || url || u || 'Untitled',
                         username: u,
                         password: p,
                         url: url,
                         notes: note,
+                        totpSecret: totp || null,
                         type: 'login'
                     });
                 }

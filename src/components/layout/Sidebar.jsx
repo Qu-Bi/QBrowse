@@ -3,7 +3,8 @@ import { X, Minus, Maximize2, UserPlus, Clock, Settings, Home, Plus, ChevronRigh
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
-import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
+import useProfileStore from '../../store/useProfileStore';
+import { renderProfileAvatar } from '../popovers/UserProfilePopover';
 import useTorStore from '../../store/useTorStore';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 import PinnedStackPopup, { isTabForPin } from './PinnedStackPopup';
@@ -28,6 +29,7 @@ export default function Sidebar() {
     const setPinnedContextMenu = useUIStore(state => state.setPinnedContextMenu);
     const setFolderContextMenu = useUIStore(state => state.setFolderContextMenu);
     const faviconGlow = useUIStore(state => state.settings?.faviconGlow);
+    const isReducedMotion = useUIStore(state => Boolean(state.settings?.a11yReducedMotion || state.isSystemReducedMotion));
     const togglePopover = useUIStore(state => state.togglePopover);
     const activePopover = useUIStore(state => state.activePopover);
     const activePinnedStack = useUIStore(state => state.activePinnedStack);
@@ -454,7 +456,7 @@ export default function Sidebar() {
             transform: isSidebarPeeking ? 'translateX(0)' : 'translateX(calc(-100% - 24px))',
             opacity: isSidebarPeeking ? 1 : 0,
             pointerEvents: isSidebarPeeking ? 'auto' : 'none',
-            transition: 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease',
+            transition: isReducedMotion ? 'none' : 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease',
             willChange: 'transform, opacity'
         } : {
             width: isSidebarHidden ? 0 : (uiScale === 'compact' ? 240 : 256),
@@ -463,9 +465,9 @@ export default function Sidebar() {
             marginRight: isSidebarHidden ? 0 : (uiScale === 'compact' ? 6 : 16),
             opacity: isSidebarHidden ? 0 : 1,
             pointerEvents: isSidebarHidden ? 'none' : 'auto',
-            transition: isSidebarHidden
+            transition: isReducedMotion ? 'none' : (isSidebarHidden
                 ? 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease'
-                : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
+                : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease'),
             willChange: 'width, max-width, margin-right, opacity'
         }}
         onMouseEnter={handleSidebarMouseEnter}
@@ -479,7 +481,7 @@ export default function Sidebar() {
                     minWidth: uiScale === 'compact' ? 240 : 256,
                     transform: (!isFullscreen && isSidebarHidden) ? 'translateX(-100%)' : 'translateX(0)',
                     opacity: (!isFullscreen && isSidebarHidden) ? 0 : 1,
-                    transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
+                    transition: isReducedMotion ? 'none' : 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
                     pointerEvents: (!isFullscreen && isSidebarHidden) ? 'none' : 'auto',
                     willChange: 'transform, opacity'
                 }}
@@ -512,9 +514,7 @@ export default function Sidebar() {
                         {localStorage.getItem('qbrowse_profile_avatar_url') ? (
                             <img src={localStorage.getItem('qbrowse_profile_avatar_url')} alt="Avatar" className="w-full h-full rounded-full object-cover" />
                         ) : (
-                            <span className="text-xs">
-                                {getAvatarEmoji(activeProfile?.avatar)}
-                            </span>
+                            renderProfileAvatar(activeProfile?.avatar, 13, isBright ? 'text-zinc-900' : 'text-white')
                         )}
                         {syncUser && (
                             <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-black ${

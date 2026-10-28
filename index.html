@@ -10,6 +10,11 @@
     <div id="error-container" style="color: red; padding: 20px; font-family: monospace; z-index: 99999; position: absolute; background: black; display: none;"></div>
     <script>
       window.onerror = function(message, source, lineno, colno, error) {
+        var strMsg = typeof message === 'string' ? message : (error ? error.message : '');
+        if (strMsg && (strMsg.includes('googleSuggestCb_') || strMsg.includes('splitSuggestCb_') || strMsg.includes('suggestqueries'))) {
+          console.warn('Suppressed transient search suggestion error:', strMsg);
+          return true;
+        }
         var el = document.getElementById('error-container');
         if (el) {
           el.style.display = 'block';

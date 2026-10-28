@@ -34,12 +34,12 @@ export default {
       },
       keyframes: {
         popIn: {
-          '0%': { opacity: '0', transform: 'scale(0.92)', filter: 'blur(4px)' },
-          '100%': { opacity: '1', transform: 'scale(1)', filter: 'blur(0)' },
+          '0%': { opacity: '0', transform: 'scale(0.92)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
         },
         popOut: {
-          '0%': { opacity: '1', transform: 'scale(1)', filter: 'blur(0)' },
-          '100%': { opacity: '0', transform: 'scale(0.92)', filter: 'blur(4px)' },
+          '0%': { opacity: '1', transform: 'scale(1)' },
+          '100%': { opacity: '0', transform: 'scale(0.92)' },
         },
         fadeIn: {
           '0%': { opacity: '0' },
@@ -61,12 +61,12 @@ export default {
           '100%': { opacity: '0', transform: 'translateY(-8px) scale(0.96)', transformOrigin: 'top right' },
         },
         modalSpring: {
-          '0%': { opacity: '0', transform: 'scale(0.88) translateY(16px)', filter: 'blur(8px)' },
-          '100%': { opacity: '1', transform: 'scale(1) translateY(0)', filter: 'blur(0)' },
+          '0%': { opacity: '0', transform: 'scale(0.88) translateY(16px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
         },
         modalSpringOut: {
-          '0%': { opacity: '1', transform: 'scale(1) translateY(0)', filter: 'blur(0)' },
-          '100%': { opacity: '0', transform: 'scale(0.92) translateY(12px)', filter: 'blur(6px)' },
+          '0%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+          '100%': { opacity: '0', transform: 'scale(0.92) translateY(12px)' },
         }
       }
     },

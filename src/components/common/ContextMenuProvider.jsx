@@ -42,16 +42,21 @@ const ContextMenuThemeContext = React.createContext({ isBright: false });
 
 // Shared Liquid Glass surface styling for context menus & submenus
 const getLiquidGlassMenuClasses = (isBright) =>
-    `p-1.5 rounded-2xl border backdrop-blur-2xl select-none outline-none transition-colors ${
+    `p-1.5 rounded-2xl border select-none outline-none transition-colors ${
         isBright
-            ? 'bg-white/90 border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.12)]'
-            : 'bg-[#12131a]/85 border-white/[0.06] text-white/90 shadow-[0_20px_50px_rgba(0,0,0,0.55)]'
+            ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]'
+            : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
     }`;
 
-const liquidGlassInlineStyle = {
-    backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
-    WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
-};
+const getLiquidGlassInlineStyle = (isBright) => ({
+    backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
+    backdropFilter: isBright
+        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
+    WebkitBackdropFilter: isBright
+        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+});
 
 // Reusable Glassmorphic Menu Container with Smart Edge Collision Detection & Keyboard Navigation
 function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {
@@ -173,7 +178,7 @@ function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {
                 style={{
                     top: `${pos.y}px`,
                     left: `${pos.x}px`,
-                    ...liquidGlassInlineStyle
+                    ...getLiquidGlassInlineStyle(isBright)
                 }}
                 onClick={(e) => e.stopPropagation()}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -189,7 +194,7 @@ function MenuHeaderPills({ items }) {
     const { isBright } = React.useContext(ContextMenuThemeContext);
     return (
         <div className={`flex items-center justify-between gap-1 p-1 border rounded-xl mb-1 ${
-            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.04] border-white/[0.06]'
+            isBright ? 'bg-black/[0.035] border-black/[0.06]' : 'bg-black/25 border-white/[0.08]'
         }`}>
             {items.map((it, idx) => {
                 const Icon = it.icon;
@@ -213,12 +218,12 @@ function MenuHeaderPills({ items }) {
                                     ? 'text-accent hover:bg-accent/20 active:scale-95 focus:bg-accent/15'
                                     : 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5 active:scale-95 focus:bg-black/5')
                                 : (it.disabled
-                                    ? 'opacity-25 pointer-events-none text-white/40'
+                                    ? 'opacity-30 pointer-events-none text-white/40'
                                     : it.danger
-                                    ? 'text-red-400/80 hover:text-red-300 hover:bg-red-500/20 active:scale-95 focus:bg-white/15'
+                                    ? 'text-red-400/90 hover:text-red-300 hover:bg-red-500/20 active:scale-95 focus:bg-white/15'
                                     : it.accent
                                     ? 'text-accent hover:bg-accent/20 active:scale-95 focus:bg-white/15'
-                                    : 'text-white/70 hover:text-white hover:bg-white/10 active:scale-95 focus:bg-white/15')
+                                    : 'text-white/80 hover:text-white hover:bg-white/10 active:scale-95 focus:bg-white/15')
                         }`}
                     >
                         <Icon size={14} />
@@ -265,7 +270,7 @@ function MenuItem({
                         ? 'text-red-400 hover:text-red-300 hover:bg-red-500/15 active:bg-red-500/25 focus:bg-white/10' 
                         : accent
                         ? 'text-accent hover:text-accent hover:bg-accent/15 active:bg-accent/25 focus:bg-white/10'
-                        : 'text-white/80 hover:text-white hover:bg-white/10 active:bg-white/15 focus:bg-white/10')
+                        : 'text-white/90 hover:text-white hover:bg-white/10 active:bg-white/15 focus:bg-white/10')
             } ${className}`}
         >
             <div className="flex items-center gap-2.5 min-w-0">
@@ -275,7 +280,7 @@ function MenuItem({
                         className={`flex-shrink-0 transition-transform duration-150 ${
                             isBright
                                 ? (danger ? 'text-red-500 group-hover:scale-110' : accent ? 'text-accent group-hover:scale-110' : 'text-zinc-400 group-hover:text-zinc-900 group-hover:scale-105')
-                                : (danger ? 'text-red-400 group-hover:scale-110' : accent ? 'text-accent group-hover:scale-110' : 'text-white/50 group-hover:text-white group-hover:scale-105')
+                                : (danger ? 'text-red-400 group-hover:scale-110' : accent ? 'text-accent group-hover:scale-110' : 'text-white/65 group-hover:text-white group-hover:scale-105')
                         }`} 
                     />
                 )}
@@ -283,7 +288,7 @@ function MenuItem({
             </div>
             {shortcut && (
                 <span className={`text-[10px] font-mono ml-2 flex-shrink-0 ${
-                    isBright ? 'text-zinc-400 group-hover:text-zinc-600' : 'text-white/35 font-mono group-hover:text-white/60'
+                    isBright ? 'text-zinc-400 group-hover:text-zinc-600' : 'text-white/50 font-mono group-hover:text-white/75'
                 }`}>
                     {shortcut}
                 </span>
@@ -304,7 +309,7 @@ function MenuSectionHeader({ children, label, icon: Icon, className = '' }) {
     const content = label || children;
     return (
         <div className={`px-2.5 py-1 text-xs font-semibold border-b mb-1 truncate flex items-center gap-1.5 ${
-            isBright ? 'text-zinc-500 border-black/[0.06]' : 'text-white/50 border-white/[0.06]'
+            isBright ? 'text-zinc-500 border-black/[0.06]' : 'text-white/65 border-white/[0.08]'
         } ${className}`}>
             {Icon && <Icon size={12} className="opacity-70 shrink-0" />}
             <span className="truncate">{content}</span>
@@ -414,7 +419,7 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disa
                             ? 'bg-white/10 text-white' 
                             : accent 
                             ? 'text-accent hover:bg-accent/15' 
-                            : 'text-white/80 hover:text-white hover:bg-white/10')
+                            : 'text-white/90 hover:text-white hover:bg-white/10')
                 }`}
                 onClick={(e) => {
                     e.stopPropagation();
@@ -436,7 +441,7 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disa
                             className={
                                 accent 
                                     ? 'text-accent group-hover:scale-105 transition-transform' 
-                                    : (isBright ? 'text-zinc-400 group-hover:text-zinc-900 group-hover:scale-105 transition-transform' : 'text-white/50 group-hover:text-white group-hover:scale-105 transition-transform')
+                                    : (isBright ? 'text-zinc-400 group-hover:text-zinc-900 group-hover:scale-105 transition-transform' : 'text-white/65 group-hover:text-white group-hover:scale-105 transition-transform')
                             } 
                         />
                     )}
@@ -445,7 +450,7 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disa
                 <ChevronRight size={13} className={`transition-transform duration-150 ${
                     isBright
                         ? (isOpen ? 'translate-x-0.5 text-zinc-950' : 'text-zinc-400 group-hover:text-zinc-950')
-                        : (isOpen ? 'translate-x-0.5 text-white' : 'text-white/40 group-hover:text-white')
+                        : (isOpen ? 'translate-x-0.5 text-white' : 'text-white/50 group-hover:text-white')
                 }`} />
             </button>
 
@@ -472,7 +477,7 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disa
                     />
                     <div
                         className={`w-full flex flex-col max-h-[320px] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden animate-pop-in ${getLiquidGlassMenuClasses(isBright)}`}
-                        style={liquidGlassInlineStyle}
+                        style={getLiquidGlassInlineStyle(isBright)}
                     >
                         {children}
                     </div>
@@ -772,7 +777,7 @@ export default function ContextMenuProvider({ children }) {
                         {/* MEDIA / IMAGE CONTEXT (Prioritized on image right-click) */}
                         {hasImage && srcURL && (
                             <>
-                                <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                                <div className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/65'}`}>
                                     Image
                                 </div>
                                 <MenuItem
@@ -810,7 +815,7 @@ export default function ContextMenuProvider({ children }) {
                         {/* LINK CONTEXT */}
                         {linkURL && (
                             <>
-                                <div className="px-2.5 py-1 text-[10px] font-mono text-accent truncate border-b border-white/[0.06] mb-1">
+                                <div className={`px-2.5 py-1 text-[10px] font-mono text-accent truncate border-b mb-1 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.08]'}`}>
                                     {linkURL}
                                 </div>
                                 <MenuItem
@@ -885,7 +890,7 @@ export default function ContextMenuProvider({ children }) {
                         {/* TEXT SELECTION CONTEXT */}
                         {hasSelection && (
                             <>
-                                <div className="px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold text-white/50 border-b border-white/[0.06] mb-1">
+                                <div className={`px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold border-b mb-1 ${isBright ? 'text-zinc-600 border-black/[0.06]' : 'text-white/70 border-white/[0.08]'}`}>
                                     <span className="truncate max-w-[150px]">"{selectionText}"</span>
                                     <span className="text-[10px] text-accent font-mono">Selected</span>
                                 </div>
@@ -1396,7 +1401,7 @@ export default function ContextMenuProvider({ children }) {
                     >
                         {/* Pinned App Info Banner */}
                         <div className={`flex items-center justify-between p-1.5 border rounded-xl mb-1.5 ${
-                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.04] border-white/[0.06]'
+                            isBright ? 'bg-black/[0.035] border-black/[0.06]' : 'bg-black/25 border-white/[0.08]'
                         }`}>
                             <div className="flex items-center gap-2 min-w-0">
                                 <div className={`w-6 h-6 rounded-lg border flex items-center justify-center p-1 flex-shrink-0 ${

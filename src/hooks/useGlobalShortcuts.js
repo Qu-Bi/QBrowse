@@ -82,6 +82,11 @@ export const handleEscapeDismissal = () => {
         return true;
     }
 
+    if (uiStore.isTopBarOmniboxActive) {
+        uiStore.setIsTopBarOmniboxActive(false);
+        return true;
+    }
+
     // 7. Tab Switcher Overlay (Ctrl+Tab switcher)
     if (uiStore.showSwitcher) {
         if (uiStore.cancelSwitcher) uiStore.cancelSwitcher();
@@ -318,13 +323,36 @@ export const executeShortcut = (key, shift = false, alt = false) => {
 
         // Omnibox & Address Bar (Cmd+K and Cmd+L)
         case 'k':
-        case 'l':
+            if (uiStore.isTopBarOmniboxActive) {
+                uiStore.setIsTopBarOmniboxActive(false);
+            }
             if (uiStore.isOmniboxOpen) {
                 uiStore.closeOmnibox();
             } else {
                 const activeTab = tabStore.getActiveTab();
                 const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
                 uiStore.openOmnibox(activeUrl);
+            }
+            break;
+
+        case 'l':
+            if (uiStore.isTopBarOmniboxActive) {
+                uiStore.setIsTopBarOmniboxActive(false);
+            } else {
+                const activeTab = tabStore.getActiveTab();
+                const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
+                if (!activeUrl) {
+                    // On Homepage: focus homepage omnibox directly
+                    const homeInput = document.getElementById('homepage-omnibox-card')?.querySelector('input');
+                    if (homeInput) {
+                        homeInput.focus();
+                        homeInput.select();
+                    } else {
+                        uiStore.setIsTopBarOmniboxActive(true);
+                    }
+                } else {
+                    uiStore.setIsTopBarOmniboxActive(true);
+                }
             }
             break;
 
@@ -526,19 +554,6 @@ export default function useGlobalShortcuts() {
                 return;
             }
 
-            // Do not trigger global shortcuts if the user is typing in an input or textarea,
-            // EXCEPT for global navigation shortcuts (Tab switching, new tab/window, close tab, etc.)
-            const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
-            if (isInput) {
-                const k = (e.key || '').toLowerCase();
-                const isNavShortcut = (e.ctrlKey || e.metaKey) && (
-                    k === 'tab' || k === 't' || k === 'w' || k === 'n' || k === '1' || k === '2' || k === '3' || k === 'h' || k === 'l'
-                );
-                if (!isNavShortcut && !(e.shiftKey && e.key === 'Escape')) {
-                    return;
-                }
-            }
-
             const cmdOrCtrl = e.metaKey || e.ctrlKey;
 
             if (e.key === 'F11' || e.key === 'F12' || e.key === 'F3') {
@@ -553,10 +568,39 @@ export default function useGlobalShortcuts() {
                 return;
             }
 
-            if (e.altKey && (e.key === 'r' || e.key === 'R')) {
+            if (e.altKey && !cmdOrCtrl && (e.key === 'r' || e.key === 'R')) {
                 e.preventDefault();
                 executeShortcut('alt_r');
                 return;
+            }
+
+            // Do not trigger global shortcuts if the user is typing in an input or textarea,
+            // EXCEPT for global browser shortcuts (only let the input consume non-modifier keys and native text-editing shortcuts)
+            const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+            if (isInput) {
+                if (!cmdOrCtrl) {
+                    return;
+                }
+                const k = (e.key || '').toLowerCase();
+                if (!e.altKey) {
+                    const isBasicEditShortcut = !e.shiftKey && (k === 'a' || k === 'c' || k === 'v' || k === 'x' || k === 'z');
+                    const isShiftEditShortcut = e.shiftKey && (k === 'v' || k === 'z');
+                    const isRedoY = !e.shiftKey && k === 'y' && (e.target.value || e.target.textContent || '').length > 0;
+                    const isTextNavOrDelete = (
+                        k === 'arrowleft' ||
+                        k === 'arrowright' ||
+                        k === 'arrowup' ||
+                        k === 'arrowdown' ||
+                        k === 'backspace' ||
+                        k === 'delete' ||
+                        k === 'home' ||
+                        k === 'end' ||
+                        k === 'enter'
+                    );
+                    if (isBasicEditShortcut || isShiftEditShortcut || isRedoY || isTextNavOrDelete) {
+                        return;
+                    }
+                }
             }
 
             if (cmdOrCtrl) {

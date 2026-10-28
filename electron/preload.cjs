@@ -121,6 +121,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.send('set-fullscreen', value);
     },
     setWebviewColorScheme: (webContentsId, colorScheme) => ipcRenderer.send('set-webview-color-scheme', { webContentsId, colorScheme }),
+    syncThemeSource: (theme) => ipcRenderer.send('sync-theme-source', theme),
+    getSystemTheme: () => ipcRenderer.invoke('get-system-theme'),
+    onSystemThemeUpdated: (callback) => {
+        const handler = (e, data) => callback(data);
+        ipcRenderer.on('system-theme-updated', handler);
+        return () => ipcRenderer.removeListener('system-theme-updated', handler);
+    },
     getHistoryUrl: (webContentsId, offset) => ipcRenderer.invoke('get-webview-history-url', { webContentsId, offset }),
 
     onOpenNewTab: (callback) => {

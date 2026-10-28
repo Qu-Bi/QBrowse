@@ -50,6 +50,7 @@ const AuthModal = () => {
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const [mode, setMode] = useState('login'); // 'login' | 'register'
+    const isSignUp = mode === 'register';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -354,9 +355,7 @@ const AuthModal = () => {
                             </div>
 
                             <p className={`text-[11px] text-center pt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                                {mode === 'register' 
-                                    ? '✨ Create a free QBrowse account to sync your data across devices.'
-                                    : '🔐 Sign in to synchronize your existing vault & spaces.'}
+                                {isSignUp ? 'Create a free QBrowse account to sync your data across devices.' : 'Sign in to synchronize your existing vault and spaces.'}
                             </p>
                         </div>
 

@@ -41,7 +41,9 @@ const isSameOrEquivalentUrl = (a, b) => {
 
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
-const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions }) => {
+const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions, theme: themeProp }) => {
+    const storeTheme = useUIStore(state => state.theme);
+    const theme = themeProp || storeTheme;
     const wvRef = useRef(null);
     const isDomReadyRef = useRef(false);
     const pendingScrollAnnotationRef = useRef(null);
@@ -62,6 +64,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     const [activeNoteCard, setActiveNoteCard] = useState(null);
     const [selectionPill, setSelectionPill] = useState(null);
     const [pillCopied, setPillCopied] = useState(false);
+    const isPillActionPendingRef = useRef(false);
     const activeNoteCardRef = useRef(null);
     activeNoteCardRef.current = activeNoteCard;
     const prevHostRef = useRef('');
@@ -79,7 +82,6 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
     }, [tab.id]);
 
-    const theme = useUIStore(state => state.theme);
     const isBright = theme === 'light' && space !== 'ghost' && space !== 'tor';
 
     const cleanHost = React.useMemo(() => {
@@ -833,6 +835,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 if (space === 'ghost' || space === 'tor') return;
                 const deleteId = e.args && (e.args[0]?.id || e.args[0]);
                 if (deleteId) {
+                    if (pendingScrollAnnotationRef.current?.id === deleteId || pendingScrollAnnotationRef.current === deleteId) {
+                        pendingScrollAnnotationRef.current = null;
+                    }
+                    if (activeNoteCardRef.current?.id === deleteId) {
+                        setActiveNoteCard(null);
+                    }
                     useAnnotationStore.getState().removeAnnotation(deleteId);
                 }
             } else if (e.channel === 'qbrowse-open-note-card') {
@@ -1296,6 +1304,22 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     // Live sync annotations when store changes
     useEffect(() => {
         const unsub = useAnnotationStore.subscribe((state) => {
+            if (pendingScrollAnnotationRef.current) {
+                const pendingId = typeof pendingScrollAnnotationRef.current === 'object'
+                    ? pendingScrollAnnotationRef.current.id
+                    : pendingScrollAnnotationRef.current;
+                if (pendingId && !state.annotations.some(a => a.id === pendingId)) {
+                    pendingScrollAnnotationRef.current = null;
+                }
+            }
+
+            if (activeNoteCardRef.current) {
+                const currentCardId = activeNoteCardRef.current.id;
+                if (currentCardId && !state.annotations.some(a => a.id === currentCardId)) {
+                    setActiveNoteCard(null);
+                }
+            }
+
             if (isActive && isSpaceActive && wvRef.current && isDomReadyRef.current && tab.url && tab.url !== 'about:blank') {
                 try {
                     const annotations = state.getAnnotationsForUrl(tab.url, space);
@@ -1427,12 +1451,16 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     }, [tab.isMuted]);
 
     // Smart Force Dark Mode Engine (Detects white sites and inverts, leaves native dark sites untouched)
+    const isBrightTab = theme === 'light' && space !== 'ghost' && space !== 'tor';
+    const exclusions = darkExclusions || [];
+    const isExcluded = exclusions.some(domain => tab.url && typeof tab.url === 'string' && tab.url.includes(domain));
+    const targetColorScheme = (isForceDark && !isExcluded)
+        ? 'dark'
+        : (isBrightTab ? 'light' : 'dark');
+
     useEffect(() => {
         const wv = wvRef.current;
         if (!wv) return;
-
-        const exclusions = darkExclusions || [];
-        const isExcluded = exclusions.some(domain => tab.url && typeof tab.url === 'string' && tab.url.includes(domain));
 
         const applySmartDark = () => {
             if (wv && typeof wv.send === 'function') {
@@ -1444,7 +1472,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 try {
                     const wId = wv.getWebContentsId();
                     if (wId && window.electronAPI && typeof window.electronAPI.setWebviewColorScheme === 'function') {
-                        window.electronAPI.setWebviewColorScheme(wId, isForceDark && !isExcluded ? 'dark' : 'light');
+                        window.electronAPI.setWebviewColorScheme(wId, targetColorScheme);
                     }
                 } catch (_) {}
             }
@@ -1469,7 +1497,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('did-navigate', onNav);
             wv.removeEventListener('did-navigate-in-page', onNav);
         };
-    }, [isForceDark, tab.url, darkExclusions]);
+    }, [isForceDark, tab.url, darkExclusions, theme, isBrightTab, targetColorScheme]);
 
     // Sync Accessibility Settings to webview
     const a11ySettings = useUIStore(state => state.settings);
@@ -1534,6 +1562,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     const handleDeleteNote = () => {
         if (!activeNoteCard) return;
         const { id } = activeNoteCard;
+        if (pendingScrollAnnotationRef.current?.id === id || pendingScrollAnnotationRef.current === id) {
+            pendingScrollAnnotationRef.current = null;
+        }
         useAnnotationStore.getState().removeAnnotation(id);
         if (wvRef.current) {
             wvRef.current.send('qbrowse-annotation-delete', id);
@@ -1571,6 +1602,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     };
 
     const handlePillHighlight = (colorKey) => {
+        if (isPillActionPendingRef.current) return;
+        isPillActionPendingRef.current = true;
+        setTimeout(() => {
+            isPillActionPendingRef.current = false;
+        }, 350);
+
         if (wvRef.current) {
             try {
                 wvRef.current.send('qbrowse-pill-create-highlight', { color: colorKey });
@@ -1580,6 +1617,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     };
 
     const handlePillAddNote = () => {
+        if (isPillActionPendingRef.current) return;
+        isPillActionPendingRef.current = true;
+        setTimeout(() => {
+            isPillActionPendingRef.current = false;
+        }, 350);
+
         if (wvRef.current) {
             try {
                 wvRef.current.send('qbrowse-pill-add-note');
@@ -1639,7 +1682,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
     return (
         <div 
-            className={`w-full absolute bg-transparent transition-opacity duration-200 ${
+            className={`w-full absolute ${isBright ? 'bg-white' : 'bg-[#0c0d14]'} transition-opacity duration-200 ${
                 tab.isClosing ? 'webview-closing-anim' : ''
             } ${isHtmlFs ? 'fixed inset-0 !z-[999999] !w-screen !h-screen bg-black' : ''}`} 
             style={isHtmlFs ? {
@@ -1743,7 +1786,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 id={`webview-${tab.id}`}
                 src={initialUrl}
                 partition={space === 'ghost' ? 'ghost' : (space === 'tor' ? 'tor' : `persist:profile_${activeProfileId || 'default'}`)}
-                className="w-full h-full"
+                className={`w-full h-full ${isBright ? 'bg-white' : 'bg-[#0c0d14]'}`}
                 style={{ display: 'flex', visibility: shouldShow && !isFlagsPage && !isLocalResource && !activeError ? 'visible' : 'hidden' }}
                 allowpopups="true"
                 plugins="true"
@@ -1987,6 +2030,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
                   zoomLevel={zoomLevel}
                   isForceDark={isForceDark}
                   darkExclusions={darkExclusions}
+                  theme={theme}
               />
           );
       })}

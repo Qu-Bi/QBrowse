@@ -4,27 +4,47 @@ import {
     Check, Camera, Edit3, Globe, Image as ImageIcon,
     Lock, ArrowRight, Sliders, Palette, Layers, History, 
     Cloud, UploadCloud, DownloadCloud, Trash2, Download, Upload,
-    ChevronDown, ChevronUp, Plus, ExternalLink
+    ChevronDown, ChevronUp, Plus, ExternalLink,
+    Rocket, Zap, Sparkles, Terminal, Compass, Gem, Flame, Crown, Shield, Activity
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTabStore, { isValidSyncTab, getCleanTabTitle } from '../../store/useTabStore';
 import useVaultStore from '../../store/useVaultStore';
 import useHistoryStore from '../../store/useHistoryStore';
-import useProfileStore, { getAvatarEmoji } from '../../store/useProfileStore';
+import useProfileStore from '../../store/useProfileStore';
 
-const AVATAR_PRESETS = [
-    { id: 'rocket', emoji: '🚀', name: 'Rocket' },
-    { id: 'zap', emoji: '⚡', name: 'Energy' },
-    { id: 'fox', emoji: '🦊', name: 'Cyber Fox' },
-    { id: 'alien', emoji: '👾', name: 'Pixel' },
-    { id: 'galaxy', emoji: '🌌', name: 'Cosmos' },
-    { id: 'gem', emoji: '💎', name: 'Diamond' },
-    { id: 'dragon', emoji: '🐉', name: 'Dragon' },
-    { id: 'crown', emoji: '👑', name: 'Royal' },
-    { id: 'shield', emoji: '🛡️', name: 'Guardian' },
-    { id: 'dna', emoji: '🧬', name: 'Genesis' }
+export const AVATAR_PRESETS = [
+    { id: 'rocket', icon: Rocket, name: 'Rocket' },
+    { id: 'zap', icon: Zap, name: 'Energy' },
+    { id: 'fox', icon: Sparkles, name: 'Cyber Fox' },
+    { id: 'alien', icon: Terminal, name: 'Pixel' },
+    { id: 'galaxy', icon: Compass, name: 'Cosmos' },
+    { id: 'gem', icon: Gem, name: 'Diamond' },
+    { id: 'dragon', icon: Flame, name: 'Dragon' },
+    { id: 'crown', icon: Crown, name: 'Royal' },
+    { id: 'shield', icon: Shield, name: 'Guardian' },
+    { id: 'dna', icon: Activity, name: 'Genesis' }
 ];
+
+export const AVATAR_ICON_MAP = {
+    rocket: Rocket,
+    zap: Zap,
+    fox: Sparkles,
+    alien: Terminal,
+    galaxy: Compass,
+    gem: Gem,
+    dragon: Flame,
+    crown: Crown,
+    shield: Shield,
+    dna: Activity
+};
+
+export function renderProfileAvatar(avatar, size = 13, className = "") {
+    const key = (avatar || 'rocket').toLowerCase();
+    const Icon = AVATAR_ICON_MAP[key] || Rocket;
+    return <Icon size={size} className={className} />;
+}
 
 const PROFILE_COLORS = [
     '#d4bc94', '#60a5fa', '#34d399', '#f472b6', 
@@ -83,7 +103,7 @@ export default function UserProfilePopover({ isClosing }) {
         }, 180);
     };
     const [newProfileName, setNewProfileName] = useState('');
-    const [newProfileAvatar, setNewProfileAvatar] = useState('🚀');
+    const [newProfileAvatar, setNewProfileAvatar] = useState('rocket');
     const [newProfileColor, setNewProfileColor] = useState('#d4bc94');
 
     const [isEditing, setIsEditing] = useState(false);
@@ -286,7 +306,7 @@ export default function UserProfilePopover({ isClosing }) {
                         {customAvatarUrl ? (
                             <img src={customAvatarUrl} alt="Avatar" className="w-full h-full object-cover" onError={() => setCustomAvatarUrl('')} />
                         ) : (
-                            <span className="font-mono">{getAvatarEmoji(activeProfile?.avatar) || (username || 'U').substring(0, 2).toUpperCase()}</span>
+                            renderProfileAvatar(activeProfile?.avatar, 15, isBright ? 'text-zinc-900' : 'text-white')
                         )}
                     </div>
                     <div className="min-w-0 text-left">
@@ -721,7 +741,7 @@ export default function UserProfilePopover({ isClosing }) {
                                         {customAvatarUrl ? (
                                             <img src={customAvatarUrl} alt="Avatar" className="w-full h-full object-cover" onError={() => setCustomAvatarUrl('')} />
                                         ) : (
-                                            <span className="font-mono text-sm">{getAvatarEmoji(activeProfile?.avatar) || (username || 'U').substring(0, 2).toUpperCase()}</span>
+                                            renderProfileAvatar(activeProfile?.avatar, 18, isBright ? 'text-zinc-900' : 'text-white')
                                         )}
                                     </div>
                                     <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/15 text-white'} flex items-center justify-center shadow-xs`}>
@@ -766,25 +786,30 @@ export default function UserProfilePopover({ isClosing }) {
                                         : 'bg-white/[0.03] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] text-white'
                                 }`}>
                                     <div className="grid grid-cols-5 gap-1.5">
-                                        {AVATAR_PRESETS.map(preset => (
-                                            <button
-                                                key={preset.id}
-                                                onClick={() => {
-                                                    setAvatarPreset(preset.id);
-                                                    setCustomAvatarUrl('');
-                                                    if (activeProfile) {
-                                                        updateProfile(activeProfile.id, { avatar: preset.emoji });
-                                                    }
-                                                }}
-                                                className={`h-7 rounded-xl border flex items-center justify-center text-xs transition cursor-pointer ${
-                                                    avatarPreset === preset.id && !customAvatarUrl 
-                                                        ? 'bg-accent/20 border-accent text-accent' 
-                                                        : 'bg-white/[0.02] border-white/8 hover:bg-white/[0.05]'
-                                                }`}
-                                            >
-                                                {preset.emoji}
-                                            </button>
-                                        ))}
+                                        {AVATAR_PRESETS.map(preset => {
+                                            const IconComponent = preset.icon;
+                                            return (
+                                                <button
+                                                    key={preset.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAvatarPreset(preset.id);
+                                                        setCustomAvatarUrl('');
+                                                        if (activeProfile) {
+                                                            updateProfile(activeProfile.id, { avatar: preset.id });
+                                                        }
+                                                    }}
+                                                    className={`h-7 rounded-xl border flex items-center justify-center text-xs transition cursor-pointer ${
+                                                        avatarPreset === preset.id && !customAvatarUrl 
+                                                            ? 'bg-accent/20 border-accent text-accent' 
+                                                            : 'bg-white/[0.02] border-white/8 hover:bg-white/[0.05]'
+                                                    }`}
+                                                    title={preset.name}
+                                                >
+                                                    <IconComponent size={14} />
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                     <input
                                         type="text"
@@ -880,7 +905,9 @@ export default function UserProfilePopover({ isClosing }) {
                                                 className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
                                                 onClick={() => { if (!isCurrent) handleSwitchProfile(p.id); }}
                                             >
-                                                <span className="text-xs">{getAvatarEmoji(p.avatar)}</span>
+                                                <span className="flex items-center justify-center w-5 h-5 rounded-lg bg-white/5 border border-white/10 shrink-0">
+                                                    {renderProfileAvatar(p.avatar, 12, 'text-accent')}
+                                                </span>
                                                 <span className="text-xs truncate">{p.name}</span>
                                             </div>
 

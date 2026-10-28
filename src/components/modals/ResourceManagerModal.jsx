@@ -583,7 +583,7 @@ export default function ResourceManagerModal() {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Filter by name, PID..."
-                            className={`border rounded-full h-8.5 pl-8.5 pr-7 text-xs transition-all w-60 font-mono outline-none ${
+                            className={`border rounded-full h-8 pl-9 pr-7 text-xs transition-all w-60 font-mono outline-none ${
                                 isBright 
                                     ? 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400 focus:bg-white focus:border-zinc-400 shadow-xs' 
                                     : 'bg-black/35 border-white/10 text-white placeholder-zinc-500 focus:border-white/25'

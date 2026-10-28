@@ -11,13 +11,15 @@ import useTabStore from '../../store/useTabStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useAIStore from '../../store/useAIStore';
 import useTorStore from '../../store/useTorStore';
+import OmniboxSuggestionsDropdown from '../common/OmniboxSuggestionsDropdown';
 import { topSites } from '../../utils/topSites';
 import { 
     getAllBangs, 
     parseBangFromQuery, 
     buildBangSearchUrl, 
     matchBangSuggestions, 
-    findBangByTrigger 
+    findBangByTrigger,
+    findBangByKeywordOrTrigger
 } from '../../utils/searchBangs';
 import { 
     getAllSearchEngines, 
@@ -250,28 +252,36 @@ export default function Omnibox() {
     const isBangSuggestionMode = !activeBang && (searchQuery.startsWith('!') || searchQuery.startsWith('@')) && !searchQuery.includes(' ');
     const bangSuggestions = isBangSuggestionMode ? matchBangSuggestions(searchQuery, customBangs) : [];
 
-    const shouldShowDropdown = Boolean(searchQuery.length > 0 || isBangSuggestionMode);
+    const shouldShowDropdown = Boolean(isOmniboxOpen && (searchQuery.trim().length > 0 || isBangSuggestionMode || activeBang));
     const [displayedDropdown, setDisplayedDropdown] = useState(false);
     const [isDropdownClosing, setIsDropdownClosing] = useState(false);
     const dropdownCloseTimerRef = useRef(null);
 
     useEffect(() => {
         if (shouldShowDropdown) {
-            if (dropdownCloseTimerRef.current) clearTimeout(dropdownCloseTimerRef.current);
+            if (dropdownCloseTimerRef.current) {
+                clearTimeout(dropdownCloseTimerRef.current);
+                dropdownCloseTimerRef.current = null;
+            }
             setDisplayedDropdown(true);
             setIsDropdownClosing(false);
-        } else if (displayedDropdown && !isDropdownClosing) {
+        } else if (displayedDropdown) {
             setIsDropdownClosing(true);
-            const timeout = getAnimationTimeout(110);
+            const timeout = getAnimationTimeout(160);
+            if (dropdownCloseTimerRef.current) clearTimeout(dropdownCloseTimerRef.current);
             dropdownCloseTimerRef.current = setTimeout(() => {
                 setDisplayedDropdown(false);
                 setIsDropdownClosing(false);
+                dropdownCloseTimerRef.current = null;
             }, timeout);
         }
+    }, [shouldShowDropdown, displayedDropdown]);
+
+    useEffect(() => {
         return () => {
             if (dropdownCloseTimerRef.current) clearTimeout(dropdownCloseTimerRef.current);
         };
-    }, [shouldShowDropdown]);
+    }, []);
 
     const detectedBang = !activeBang ? parseBangFromQuery(searchQuery, customBangs) : null;
     const effectiveBang = activeBang || detectedBang?.bang || null;
@@ -303,6 +313,13 @@ export default function Omnibox() {
             setLocalSuggestions([]);
         }
         
+        // Clean up any stray script tags from previous suggestions
+        const strayScripts = document.querySelectorAll('script[id^="googleSuggestCb_"]');
+        strayScripts.forEach(el => el.remove());
+
+        let activeCallback = null;
+        let activeScript = null;
+
         // Debounce Google Suggestions API
         const timer = setTimeout(() => {
             const trimmedQ = searchQuery.trim();
@@ -312,21 +329,46 @@ export default function Omnibox() {
             }
             
             const callbackName = 'googleSuggestCb_' + Math.round(100000 * Math.random());
+            activeCallback = callbackName;
             window[callbackName] = (data) => {
-                if (data && data[1]) {
-                    setLiveSuggestions(data[1].slice(0, 12));
+                try {
+                    if (data && data[1]) {
+                        setLiveSuggestions(data[1].slice(0, 12));
+                    }
+                } catch (err) {
+                    console.warn('Error processing omnibox search suggestions:', err);
+                } finally {
+                    try { delete window[callbackName]; } catch (_) {}
+                    const scriptEl = document.getElementById(callbackName);
+                    if (scriptEl && scriptEl.parentNode) scriptEl.remove();
                 }
-                delete window[callbackName];
-                const scriptEl = document.getElementById(callbackName);
-                if (scriptEl) scriptEl.remove();
             };
             
             const script = document.createElement('script');
             script.id = callbackName;
             script.src = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(searchQuery)}&jsonp=${callbackName}`;
+            script.onerror = () => {
+                try { delete window[callbackName]; } catch (_) {}
+                if (script.parentNode) script.remove();
+            };
+            activeScript = script;
             document.body.appendChild(script);
         }, 150);
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            if (activeCallback) {
+                // Keep a safe no-op stub so late in-flight network responses don't throw Uncaught ReferenceError
+                window[activeCallback] = () => {
+                    try { delete window[activeCallback]; } catch (_) {}
+                };
+                setTimeout(() => {
+                    try { delete window[activeCallback]; } catch (_) {}
+                }, 10000);
+            }
+            if (activeScript && activeScript.parentNode) {
+                activeScript.remove();
+            }
+        };
     }, [searchQuery, isBangSuggestionMode, isTor, isIncognito, liveSearch]);
 
     useEffect(() => {
@@ -369,21 +411,39 @@ export default function Omnibox() {
                 .map(site => ({ url: `${scheme}${site}`, title: `Go to ${scheme}${site}`, score: 100, visits: 10, lastVisit: Date.now() }))
             : [];
 
-        const historySource = (isTor || isIncognito) ? [] : historyStoreData;
-        return [...historySource, ...siteMatches]
-            .filter(item => {
-                const itemUrl = item.url.toLowerCase();
-                const itemTitle = item.title.toLowerCase();
-                return itemUrl.includes(q) || itemTitle.includes(q) || (cleanQ && (itemUrl.includes(cleanQ) || itemTitle.includes(cleanQ)));
-            })
-            .map(item => {
-                const hoursSinceVisit = (Date.now() - item.lastVisit) / (1000 * 60 * 60);
+        const rawHistory = (isTor || isIncognito) ? [] : (Array.isArray(historyStoreData) ? historyStoreData : []);
+        const historySource = rawHistory.length > 200 ? rawHistory.slice(0, 200) : rawHistory;
+
+        const results = [...siteMatches];
+        const now = Date.now();
+
+        for (let i = 0; i < historySource.length; i++) {
+            const item = historySource[i];
+            if (!item || !item.url) continue;
+            const itemUrl = item.url.toLowerCase();
+            const itemTitle = (item.title || '').toLowerCase();
+            if (
+                itemUrl.includes(q) || 
+                itemTitle.includes(q) || 
+                (cleanQ && (itemUrl.includes(cleanQ) || itemTitle.includes(cleanQ)))
+            ) {
+                const cleanedTitle = (item.title || '')
+                    .replace(/^Search [^:]+:\s*"?/i, '')
+                    .replace(/"$/, '')
+                    .trim() || item.title;
+                const hoursSinceVisit = (now - (item.lastVisit || now)) / 3600000;
                 const recencyBoost = Math.max(0, 24 - hoursSinceVisit) * 0.1;
-                const score = item.visits * (1 + recencyBoost);
-                return { ...item, score };
-            })
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 10);
+                const score = (item.visits || 1) * (1 + recencyBoost);
+                results.push({
+                    ...item,
+                    title: cleanedTitle,
+                    score
+                });
+            }
+        }
+
+        results.sort((a, b) => b.score - a.score);
+        return results.slice(0, 10);
     };
 
     const mathPrediction = (() => {
@@ -413,6 +473,9 @@ export default function Omnibox() {
         return null;
     })();
 
+    const normalizeUrl = (u) => (u || '').trim().toLowerCase().replace(/\/$/, '');
+    const normalizeTitle = (t) => (t || '').replace(/^Search [^:]+:\s*"?/i, '').replace(/"$/, '').trim().toLowerCase();
+
     const basePredictions = getSmartPredictions(searchQuery);
     const apiPredictions = liveSuggestions.map(s => ({
         url: effectiveBang ? buildBangSearchUrl(effectiveBang, s) : parseUrlInput(s, null, customBangs),
@@ -422,12 +485,16 @@ export default function Omnibox() {
         bang: effectiveBang
     }));
     
-    // Merge without duplicates by title
-    const merged = [...basePredictions];
-    apiPredictions.forEach(apiP => {
-        if (!merged.find(p => p.title.toLowerCase() === apiP.title.toLowerCase())) {
-            merged.push(apiP);
-        }
+    const merged = [];
+    const seenMergedUrls = new Set();
+    const seenMergedTitles = new Set();
+    [...basePredictions, ...apiPredictions].forEach(p => {
+        const normU = normalizeUrl(p.url);
+        const normT = normalizeTitle(p.title);
+        if ((normU && seenMergedUrls.has(normU)) || (normT && seenMergedTitles.has(normT))) return;
+        if (normU) seenMergedUrls.add(normU);
+        if (normT) seenMergedTitles.add(normT);
+        merged.push(p);
     });
 
     const parsedInput = parseUrlInput(searchQuery, activeBang, customBangs);
@@ -479,7 +546,7 @@ export default function Omnibox() {
         extension: match.extension
     }));
 
-    let finalPredictions = [
+    let rawFinalPredictions = [
         ...localPredictions,
         ...(aiPrediction 
             ? [aiPrediction, ...merged] 
@@ -488,9 +555,22 @@ export default function Omnibox() {
                 : [...searchPrediction, ...merged])
     ];
 
-    if (directUrlPrediction && !aiPrediction && !localPredictions.some(p => p.url === directUrlPrediction.url)) {
-        finalPredictions = [directUrlPrediction, ...finalPredictions.filter(p => p.url !== directUrlPrediction.url)];
+    if (directUrlPrediction && !aiPrediction && !localPredictions.some(p => normalizeUrl(p.url) === normalizeUrl(directUrlPrediction.url))) {
+        rawFinalPredictions = [directUrlPrediction, ...rawFinalPredictions];
     }
+
+    const finalPredictions = [];
+    const seenFinalUrls = new Set();
+    const seenFinalTitles = new Set();
+    rawFinalPredictions.forEach(p => {
+        if (!p) return;
+        const normU = normalizeUrl(p.url);
+        const normT = normalizeTitle(p.title);
+        if ((normU && seenFinalUrls.has(normU)) || (normT && seenFinalTitles.has(normT))) return;
+        if (normU) seenFinalUrls.add(normU);
+        if (normT) seenFinalTitles.add(normT);
+        finalPredictions.push(p);
+    });
 
     const filteredPredictions = finalPredictions.slice(0, 18);
 
@@ -806,6 +886,10 @@ export default function Omnibox() {
                 }
             }
 
+            const cleanTitle = pred.isSearch
+                ? ((pred.title || '').replace(/^Search [^:]+:\s*"?/i, '').replace(/"$/, '').trim() || effectiveQueryText || searchQuery.trim())
+                : pred.title;
+
             setCurrentUrl(targetUrl);
 
             const isSplit = useUIStore.getState().isSplitView;
@@ -823,7 +907,7 @@ export default function Omnibox() {
             }
 
             if (targetTab && !searchInNewTab) {
-                useTabStore.getState().handleNavigateTab(targetTab.id, targetUrl, pred.title);
+                useTabStore.getState().handleNavigateTab(targetTab.id, targetUrl, cleanTitle);
             } else {
                 useTabStore.getState().handleNewTab(targetUrl);
             }
@@ -847,7 +931,7 @@ export default function Omnibox() {
             const spaceIdx = val.indexOf(' ');
             const trigger = val.slice(0, spaceIdx).trim();
             const remainder = val.slice(spaceIdx + 1);
-            const matchedBang = findBangByTrigger(trigger, customBangs);
+            const matchedBang = findBangByTrigger(trigger, customBangs) || findBangByKeywordOrTrigger(trigger, customBangs, customSearchEngines);
             if (matchedBang) {
                 setActiveBang(matchedBang);
                 setSearchQuery(remainder);
@@ -915,16 +999,11 @@ export default function Omnibox() {
         if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
-            if (selectedOptionText !== null) {
-                setSelectedOptionText(null);
-                setSelectedIndex(0);
-                return;
-            }
-            if (activeBang) {
-                clearActiveBang();
-            } else {
-                handleCloseOmnibox(false);
-            }
+            setSelectedOptionText(null);
+            setSelectedIndex(0);
+            clearActiveBang();
+            handleCloseOmnibox(false);
+            return;
         } else if (e.key === 'Backspace' && searchQuery === '' && activeBang) {
             e.preventDefault();
             const trigger = activeBang.bangs?.[0] || `!${activeBang.prefix}`;
@@ -934,6 +1013,19 @@ export default function Omnibox() {
             originalQueryRef.current = trigger;
         } else if (e.key === 'Tab') {
             e.preventDefault();
+            if (!activeBang && !isCommandMode) {
+                const trimmedInput = searchQuery.trim();
+                const matchedBang = !trimmedInput.includes(' ')
+                    ? findBangByKeywordOrTrigger(trimmedInput, customBangs, customSearchEngines)
+                    : null;
+                if (matchedBang && (!isBangSuggestionMode || selectedOptionText === null)) {
+                    setActiveBang(matchedBang);
+                    setSelectedOptionText(null);
+                    setSearchQuery('');
+                    originalQueryRef.current = '';
+                    return;
+                }
+            }
             if (isBangSuggestionMode && bangSuggestions.length > 0) {
                 const target = bangSuggestions[selectedIndex] || bangSuggestions[0];
                 if (target) {
@@ -989,10 +1081,8 @@ export default function Omnibox() {
                 } else if (searchQuery.trim().length > 0 || activeBang) {
                     const val = selectedOptionText !== null ? selectedOptionText : (searchInputRef.current?.value || searchQuery);
                     const url = parseUrlInput(val, activeBang, customBangs);
-                    const title = activeBang 
-                        ? `Search ${activeBang.name}: ${val}` 
-                        : `Search/Go: ${val}`;
-                    handleSelectPrediction({ url, title });
+                    const title = val.trim();
+                    handleSelectPrediction({ url, title, isSearch: true });
                 }
             }
         }
@@ -1016,7 +1106,7 @@ export default function Omnibox() {
         <div id="omnibox-overlay" className={`fixed inset-0 z-[10000] flex items-start justify-center pt-[23vh] ${isBright ? 'bg-black/25 backdrop-blur-md' : 'bg-black/50 backdrop-blur-md'} transition-opacity duration-200 ${isOmniboxClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => handleCloseOmnibox(false)}>
             <div 
                 id="omnibox-palette"
-                className={`w-full max-w-[720px] mx-4 flex flex-col relative ${isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'}`} 
+                className="w-full max-w-[720px] mx-4 flex flex-col relative" 
                 onClick={e => { e.stopPropagation(); searchInputRef.current?.focus(); }} 
                 onKeyDown={handleOmniboxKeyDown}
             >
@@ -1026,6 +1116,8 @@ export default function Omnibox() {
                     onMouseEnter={() => setIsCardHovered(true)}
                     onMouseLeave={() => setIsCardHovered(false)}
                     className={`w-full rounded-[2rem] p-5 flex items-center gap-4 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] relative z-10 overflow-hidden ${
+                        isOmniboxClosing ? 'animate-pop-out' : 'animate-pop-in'
+                    } ${
                         isBright
                             ? 'bg-white/70 backdrop-blur-3xl border border-black/[0.06] hover:border-accent/50 text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.08)]'
                             : 'bg-[#0c0d14]/90 backdrop-blur-3xl border border-white/10 hover:border-accent/50 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
@@ -1136,241 +1228,38 @@ export default function Omnibox() {
                 </div>
 
                 {(shouldShowDropdown || displayedDropdown) && (
-                    <div className={`w-full mt-2 ${isDropdownClosing ? 'animate-dissolve-out pointer-events-none' : 'animate-fade-in'}`}>
-
-                        <div 
-                            ref={omniboxContainerRef} 
-                            id="omnibox-dropdown"
-                            style={{
-                                scrollbarWidth: 'none',
-                                msOverflowStyle: 'none'
-                            }}
-                            className={`w-full rounded-[2rem] p-3 flex flex-col gap-1 max-h-[58vh] overflow-y-auto hide-scroll [&::-webkit-scrollbar]:hidden border transition-all duration-200 ${
-                                isBright 
-                                    ? 'bg-white/95 backdrop-blur-3xl border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.1)]' 
-                                    : 'bg-[#0c0d14]/95 backdrop-blur-3xl border-white/10 text-white shadow-[0_25px_60px_rgba(0,0,0,0.7)]'
-                            } ${
-                                isCommandMode ? (isBright ? 'border-yellow-500/40' : 'border-yellow-500/20') : ''
-                            }`}
-                        >
-                            {isCommandMode ? (
-                                filteredCommands.length > 0 ? (
-                                    filteredCommands.map((cmd, i) => {
-                                        const isSelected = i === selectedIndex;
-                                        return (
-                                            <button 
-                                                key={i} 
-                                                data-selected={isSelected} 
-                                                onClick={() => handleExecuteCommand(cmd.id)} 
-                                                onMouseMove={(e) => handleOptionMouseMove(i, e)}
-                                                style={{ 
-                                                    animationFillMode: 'both', 
-                                                    animationDelay: `${i * 0.03}s`
-                                                }} 
-                                                className={`w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-150 group text-left border ${
-                                                    isSelected 
-                                                        ? (isBright ? 'bg-yellow-500/15 border-yellow-500/40 shadow-sm scale-[1.005]' : 'bg-yellow-500/15 border-yellow-500/30 scale-[1.005]') 
-                                                        : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.04]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
-                                                }`}
-                                            >
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${isSelected ? 'bg-yellow-500/25 scale-105' : (isBright ? 'bg-black/5 group-hover:scale-105' : 'bg-white/5 group-hover:scale-105')} ${cmd.color}`}>
-                                                    <cmd.icon size={16} />
-                                                </div>
-                                                <div className="flex flex-col flex-1 overflow-hidden">
-                                                    <span className={`font-mono font-medium truncate transition-colors ${isSelected ? (isBright ? 'text-yellow-700 font-bold' : 'text-yellow-300 font-semibold') : (isBright ? 'text-yellow-600 group-hover:text-yellow-700' : 'text-yellow-500 group-hover:text-yellow-400')}`}>{'> ' + cmd.cmd}</span>
-                                                    <span className={`text-xs truncate transition-colors ${isSelected ? (isBright ? 'text-zinc-700' : 'text-yellow-200/80') : (isBright ? 'text-zinc-500 group-hover:text-zinc-700' : 'text-white/40 group-hover:text-yellow-500/70')}`}>{cmd.title}</span>
-                                                </div>
-                                                {isSelected ? (
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        <span className={`border text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm ${isBright ? 'border-yellow-600/30 bg-yellow-500/20 text-yellow-800' : 'border-yellow-500/30 bg-yellow-500/15 text-yellow-300'}`}>↵ Enter</span>
-                                                        <Zap size={15} className="text-yellow-500 rotate-12" />
-                                                    </div>
-                                                ) : (
-                                                    <Zap size={15} className={`transition-all duration-200 ${isBright ? 'text-zinc-300 opacity-0 group-hover:opacity-100 group-hover:text-yellow-600' : 'text-white/20 opacity-0 group-hover:opacity-100 group-hover:text-yellow-400'}`} />
-                                                )}
-                                            </button>
-                                        );
-                                    })
-                                ) : (
-                                    <div className={`p-4 flex items-center gap-4 animate-pop-in ${isBright ? 'text-zinc-600' : 'text-white/50'}`}><Terminal size={18} className="animate-pulse text-red-500" /><span className="text-sm font-mono">Command not found: <strong className="text-red-500">"{commandQuery}"</strong></span></div>
-                                )
-                            ) : isBangSuggestionMode ? (
-                                bangSuggestions.length > 0 ? (
-                                    <div className="flex flex-col gap-1 p-1">
-                                        <div className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center justify-between border-b mb-1 ${
-                                            isBright ? 'text-zinc-500 border-black/5' : 'text-white/40 border-white/5'
-                                        }`}>
-                                            <span className="flex items-center gap-1.5">
-                                                <Sparkles size={12} className="text-accent" />
-                                                Search Bangs & Engines
-                                            </span>
-                                            <span className={`text-[10px] font-mono lowercase ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>Tab ⇥ or Enter ↵ to activate</span>
-                                        </div>
-                                        {bangSuggestions.map((bang, i) => {
-                                            const BangIcon = bang.icon || Search;
-                                            const isSelected = i === selectedIndex;
-                                            const bangColor = bang.color || '#a855f7';
-                                            return (
-                                                <button 
-                                                    key={bang.id} 
-                                                    data-selected={isSelected} 
-                                                    onClick={() => {
-                                                        setActiveBang(bang);
-                                                        setSearchQuery('');
-                                                        setSelectedOptionText(null);
-                                                        searchInputRef.current?.focus();
-                                                    }}
-                                                    onMouseMove={(e) => handleOptionMouseMove(i, e)}
-                                                    style={isSelected ? {
-                                                        backgroundColor: `${bangColor}15`,
-                                                        borderColor: `${bangColor}40`
-                                                    } : undefined}
-                                                    className={`w-full flex items-center justify-between p-2.5 rounded-2xl transition-all duration-150 group text-left border ${
-                                                        isSelected 
-                                                            ? 'scale-[1.005] shadow-sm' 
-                                                            : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.04]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3 min-w-0">
-                                                        <div 
-                                                            className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform ${isSelected ? 'scale-105' : 'group-hover:scale-105'}`}
-                                                            style={{ backgroundColor: `${bangColor}25`, color: bangColor }}
-                                                        >
-                                                            <BangIcon size={16} />
-                                                        </div>
-                                                        <div className="flex flex-col min-w-0">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`font-semibold text-sm ${isSelected ? (isBright ? 'text-zinc-950 font-bold' : 'text-white') : (isBright ? 'text-zinc-800' : 'text-white/90')}`}>{bang.name}</span>
-                                                                <div className="flex items-center gap-1">
-                                                                    {bang.bangs.slice(0, 3).map((b, bi) => (
-                                                                        <span key={bi} className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-semibold ${isSelected ? (isBright ? 'bg-black/10 text-zinc-900' : 'bg-white/20 text-white') : (isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/10 text-white/70')}`}>
-                                                                            {b}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                                <span className={`text-[10px] font-medium ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>({bang.category || 'Engine'})</span>
-                                                            </div>
-                                                            <span className={`text-xs truncate font-mono mt-0.5 ${isSelected ? (isBright ? 'text-zinc-600' : 'text-white/70') : (isBright ? 'text-zinc-400' : 'text-white/40')}`}>
-                                                                {bang.url}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                    <div className={`flex items-center gap-1.5 text-[10px] font-mono transition ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                        <span className={`border px-2 py-0.5 rounded font-medium shadow-sm ${isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/20 bg-white/10 text-white/90'}`}>Tab ⇥ or ↵ Enter</span>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className={`p-4 flex items-center gap-4 animate-pop-in ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                                        <Search size={18} className="text-accent" />
-                                        <span className="text-sm">No search engine bang found for <strong>"{searchQuery}"</strong></span>
-                                    </div>
-                                )
-                            ) : (
-                                filteredPredictions.length > 0 ? (
-                                    filteredPredictions.map((pred, i) => {
-                                        const BangIcon = pred.bang?.icon;
-                                        const isSelected = i === selectedIndex;
-                                        return (
-                                            <button 
-                                                key={i} 
-                                                data-selected={isSelected} 
-                                                onClick={() => handleSelectPrediction(pred)} 
-                                                onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
-                                                onAuxClick={(e) => {
-                                                    if (e.button === 1 && pred.url && !pred.isAI && !pred.isMath) {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        useTabStore.getState().handleNewTab(pred.url, false);
-                                                        showToast('Opened in background tab');
-                                                        handleCloseOmnibox(false);
-                                                    }
-                                                }}
-                                                onMouseMove={(e) => handleOptionMouseMove(i, e)}
-                                                className={`w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-150 group text-left border ${
-                                                    isSelected 
-                                                        ? (isBright ? 'bg-black/[0.06] border-black/10 shadow-sm scale-[1.005]' : 'bg-white/10 border-white/15 scale-[1.005]') 
-                                                        : (isBright ? 'border-transparent hover:border-black/5 hover:bg-black/[0.03]' : 'border-transparent hover:border-white/5 hover:bg-white/5')
-                                                }`}
-                                            >
-                                                <div 
-                                                    className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
-                                                        pred.isLocalFile
-                                                            ? (pred.isDirectory ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-accent/20 text-accent border border-accent/30')
-                                                            : (pred.bang 
-                                                                ? '' 
-                                                                : (pred.isMath 
-                                                                    ? (isSelected ? 'bg-accent/25 text-accent scale-105' : 'bg-accent/15 text-accent group-hover:bg-accent/25') 
-                                                                    : (pred.isSearch 
-                                                                        ? (isTor 
-                                                                            ? (isSelected ? 'bg-purple-500/25 text-purple-200 scale-105' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20')
-                                                                            : (isSelected 
-                                                                                ? (isBright ? 'bg-accent/15 text-accent font-bold scale-105' : 'bg-accent/20 text-accent font-bold scale-105') 
-                                                                                : (isBright ? 'bg-black/5 text-zinc-600 group-hover:bg-accent/10 group-hover:text-accent' : 'bg-white/5 text-white/50 group-hover:bg-accent/15 group-hover:text-accent'))
-                                                                        )
-                                                                        : (isSelected ? (isBright ? 'bg-accent/15 text-accent scale-105' : 'bg-white/20 text-accent scale-105') : (isBright ? 'bg-black/5 text-zinc-500 group-hover:bg-black/10 group-hover:text-accent' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-accent')))))
-                                                    } ${isSelected ? 'scale-105' : 'group-hover:scale-105'}`}
-                                                    style={pred.bang ? { backgroundColor: `${pred.bang.color}25`, color: pred.bang.color } : undefined}
-                                                >
-                                                    {pred.isLocalFile 
-                                                        ? (pred.isDirectory ? <Folder size={16} /> : <FileText size={16} />)
-                                                        : (pred.bang 
-                                                            ? (BangIcon ? <BangIcon size={16} /> : <Search size={16} />) 
-                                                            : (pred.isMath ? <Calculator size={16} /> : (pred.isSearch ? <Search size={16} /> : <Globe size={16} />)))}
-                                                </div>
-                                                <div className="flex flex-col flex-1 overflow-hidden">
-                                                    <span className={`font-medium truncate transition-colors ${pred.isMath ? 'text-accent text-lg font-bold' : (isSelected ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-semibold') : (isBright ? 'text-zinc-800 group-hover:text-zinc-950' : 'text-white/80 group-hover:text-white'))}`}>
-                                                        {pred.title}
-                                                    </span>
-                                                    <span className={`text-xs truncate font-mono transition-colors ${isSelected ? (isBright ? 'text-zinc-700' : 'text-white/70') : (isBright ? 'text-zinc-500' : 'text-white/40')}`}>
-                                                        {pred.isLocalFile ? (pred.subtitle || pred.url) : pred.url}
-                                                    </span>
-                                                </div>
-                                                {pred.isLocalFile && pred.isDirectory ? (
-                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                const text = getCompletedSuggestionText(pred, searchQuery);
-                                                                originalQueryRef.current = text;
-                                                                setSelectedOptionText(null);
-                                                                setSearchQuery(text);
-                                                                searchInputRef.current?.focus();
-                                                            }}
-                                                            className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-medium transition border flex items-center gap-1 cursor-pointer ${
-                                                                isBright 
-                                                                    ? 'border-black/10 bg-black/5 hover:bg-black/10 text-zinc-700' 
-                                                                    : 'border-white/15 bg-white/10 hover:bg-white/20 text-white/90'
-                                                            }`}
-                                                            title="Tab into folder"
-                                                        >
-                                                            <span>Tab</span>
-                                                            <span className="text-accent font-bold">⇥</span>
-                                                        </button>
-                                                        {isSelected && (
-                                                            <span className={`border text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm ${isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/15 bg-white/10 text-white/80'}`}>↵ Open</span>
-                                                        )}
-                                                    </div>
-                                                ) : isSelected ? (
-                                                    <div className="flex items-center gap-2 flex-shrink-0 animate-fade-in">
-                                                        <span className={`border text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm ${isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/15 bg-white/10 text-white/80'}`}>↵ Enter</span>
-                                                        <ArrowRight size={15} className="text-accent translate-x-0.5 transition-all" />
-                                                    </div>
-                                                ) : (
-                                                    <ArrowRight size={15} className={`${isBright ? 'text-zinc-300' : 'text-white/20'} opacity-0 group-hover:opacity-100 group-hover:text-accent transition-all duration-200`} />
-                                                )}
-                                            </button>
-                                        );
-                                    })
-                                ) : (
-                                    <div className={`p-4 flex items-center gap-4 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}><Search size={18} /><span className="text-sm">No results for "{searchQuery}"</span></div>
-                                )
-                            )}
-                        </div>
-                    </div>
+                    <OmniboxSuggestionsDropdown
+                        dropdownRef={omniboxContainerRef}
+                        isClosing={isDropdownClosing || isOmniboxClosing}
+                        className="mt-2"
+                        isCommandMode={isCommandMode}
+                        commandQuery={commandQuery}
+                        filteredCommands={filteredCommands}
+                        isBangSuggestionMode={isBangSuggestionMode}
+                        bangSuggestions={bangSuggestions}
+                        filteredPredictions={filteredPredictions}
+                        selectedIndex={selectedIndex}
+                        searchQuery={searchQuery}
+                        onSelectCommand={handleExecuteCommand}
+                        onSelectBang={(bang) => {
+                            setActiveBang(bang);
+                            setSearchQuery('');
+                            setSelectedOptionText(null);
+                            searchInputRef.current?.focus();
+                        }}
+                        onSelectPrediction={handleSelectPrediction}
+                        onOptionMouseMove={handleOptionMouseMove}
+                        onTabIntoFolder={(pred) => {
+                            const text = getCompletedSuggestionText(pred, searchQuery);
+                            originalQueryRef.current = text;
+                            setSelectedOptionText(null);
+                            setSearchQuery(text);
+                            searchInputRef.current?.focus();
+                        }}
+                        isBright={isBright}
+                        isTor={isTor}
+                        maxHeightClass="max-h-[56vh]"
+                    />
                 )}
             </div>
         </div>

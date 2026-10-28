@@ -1,15 +1,64 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Lock, Unlock, KeyRound, Eye, EyeOff, Copy, Plus, Search,
     ShieldCheck, Check, X, RefreshCw, Globe, Fingerprint,
     Zap, Settings, ArrowLeft, Shield, Sparkles, Pencil, Trash2,
     CreditCard, MapPin, Building2, Phone, Mail, Calendar, Hash,
-    ChevronLeft, ChevronRight, UploadCloud, Download
+    UploadCloud, Download, ChevronDown, ExternalLink
 } from 'lucide-react';
 import useVaultStore from '../../store/useVaultStore';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 import { parseVaultContent } from '../../utils/vaultImporter';
+import {
+    cleanTotpSecret, isValidTotpSecret, parseOtpAuthUri,
+    generateTotpCode, getTotpRemainingSeconds, formatTotpCode
+} from '../../utils/totp';
+
+function CountdownRing({ remaining, size = 26, strokeWidth = 2.5 }) {
+    const radius = (size - strokeWidth * 2) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference * (1 - remaining / 30);
+    const isUrgent = remaining <= 5;
+    const isWarning = remaining <= 10;
+    const strokeColor = isUrgent ? '#ef4444' : isWarning ? '#f59e0b' : 'var(--accent, #d4bc94)';
+
+    return (
+        <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+            <svg width={size} height={size} className="transform -rotate-90">
+                <circle
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={radius}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={strokeWidth}
+                    className="opacity-15"
+                />
+                <circle
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={radius}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    className="transition-[stroke-dashoffset,stroke] duration-1000 ease-linear"
+                />
+            </svg>
+            {size >= 22 && (
+                <span className={`absolute text-[9px] font-mono font-bold leading-none select-none ${
+                    isUrgent ? 'text-red-500' : isWarning ? 'text-amber-500' : 'opacity-85'
+                }`}>
+                    {remaining}
+                </span>
+            )}
+        </div>
+    );
+}
 
 export default function QVaultPopover({ isClosing }) {
     const {
@@ -25,6 +74,15 @@ export default function QVaultPopover({ isClosing }) {
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
+    // Live clock for TOTP updates
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+        const interval = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const totpRemaining = getTotpRemainingSeconds(now);
+
     // Sync vault status on mount
     useEffect(() => {
         useVaultStore.getState().syncVaultStatus?.().then(status => {
@@ -36,9 +94,24 @@ export default function QVaultPopover({ isClosing }) {
 
     // View Modes: 'vault' | 'add' | 'settings'
     const [viewMode, setViewMode] = useState('vault');
-    const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'logins' | 'cards' | 'addresses' | 'passkeys' | 'generator'
+    const [activePage, setActivePage] = useState('logins'); // 'logins' | '2fa' | 'wallet' | 'generator'
+    const [hoveredActivePage, setHoveredActivePage] = useState(null);
+    const [loginSubFilter, setLoginSubFilter] = useState('all'); // 'all' | 'passwords' | 'passkeys'
+    const [expandedItemIds, setExpandedItemIds] = useState(new Set());
     const [unlockMode, setUnlockMode] = useState(pinEnabled ? 'pin' : 'password');
     const [editingItemId, setEditingItemId] = useState(null);
+
+    const toggleItemExpanded = (id) => {
+        setExpandedItemIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
 
     const [deletingIds, setDeletingIds] = useState(new Set());
     const [isExitingSettings, setIsExitingSettings] = useState(false);
@@ -79,12 +152,14 @@ export default function QVaultPopover({ isClosing }) {
     const [confirmMasterPass, setConfirmMasterPass] = useState('');
     const [isChangingPass, setIsChangingPass] = useState(false);
 
-    // Add Item Form Inputs
-    const [newItemType, setNewItemType] = useState('login'); // 'login' | 'card' | 'address' | 'passkey'
+    // Add Item Form Inputs: 'login' | 'totp' | 'card' | 'address' | 'passkey'
+    const [newItemType, setNewItemType] = useState('login');
     const [title, setTitle] = useState('');
     const [url, setUrl] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [showNewItemPassword, setShowNewItemPassword] = useState(false);
+    const [totpSecret, setTotpSecret] = useState('');
     const [passkeyRpId, setPasskeyRpId] = useState('');
     const [passkeyCredId, setPasskeyCredId] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -115,16 +190,9 @@ export default function QVaultPopover({ isClosing }) {
     const [useNumbers, setUseNumbers] = useState(true);
     const [useSymbols, setUseSymbols] = useState(true);
     const [generatedResult, setGeneratedResult] = useState('');
-    const categoryScrollRef = useRef(null);
-    const categoryTabRefs = useRef({});
-    const [categoryPillStyle, setCategoryPillStyle] = useState({ left: 4, width: 0, opacity: 0 });
-    const [hoveredCategoryFilter, setHoveredCategoryFilter] = useState(null);
-    const [hoverCategoryPillStyle, setHoverCategoryPillStyle] = useState({ left: 4, width: 0, opacity: 0 });
+
     const [hoveredUnlockMode, setHoveredUnlockMode] = useState(null);
     const [hoveredNewItemType, setHoveredNewItemType] = useState(null);
-    const [isDraggingTabs, setIsDraggingTabs] = useState(false);
-    const [dragStartX, setDragStartX] = useState(0);
-    const [dragScrollLeft, setDragScrollLeft] = useState(0);
 
     const fileInputRef = useRef(null);
     const [isImporting, setIsImporting] = useState(false);
@@ -153,77 +221,6 @@ export default function QVaultPopover({ isClosing }) {
             setIsImporting(false);
             if (e.target) e.target.value = '';
         }
-    };
-
-    const updateCategoryPill = useCallback(() => {
-        const el = categoryTabRefs.current[categoryFilter];
-        if (el) {
-            setCategoryPillStyle({
-                left: el.offsetLeft,
-                width: el.offsetWidth,
-                opacity: 1
-            });
-        }
-    }, [categoryFilter]);
-
-    useEffect(() => {
-        updateCategoryPill();
-        const t1 = setTimeout(updateCategoryPill, 30);
-        const t2 = setTimeout(updateCategoryPill, 150);
-        return () => {
-            clearTimeout(t1);
-            clearTimeout(t2);
-        };
-    }, [updateCategoryPill, passwords.length, viewMode, isUnlocked]);
-
-    useEffect(() => {
-        window.addEventListener('resize', updateCategoryPill);
-        return () => window.removeEventListener('resize', updateCategoryPill);
-    }, [updateCategoryPill]);
-
-    useEffect(() => {
-        if (!hoveredCategoryFilter) {
-            setHoverCategoryPillStyle(prev => ({ ...prev, opacity: 0 }));
-            return;
-        }
-        const el = categoryTabRefs.current[hoveredCategoryFilter];
-        if (el) {
-            setHoverCategoryPillStyle({
-                left: el.offsetLeft,
-                width: el.offsetWidth,
-                opacity: hoveredCategoryFilter !== categoryFilter ? 1 : 0
-            });
-        }
-    }, [hoveredCategoryFilter, categoryFilter]);
-
-    const scrollCategories = (offset) => {
-        if (categoryScrollRef.current) {
-            categoryScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
-        }
-    };
-
-    const handleCategoryMouseDown = (e) => {
-        if (!categoryScrollRef.current) return;
-        setIsDraggingTabs(true);
-        setDragStartX(e.pageX - categoryScrollRef.current.offsetLeft);
-        setDragScrollLeft(categoryScrollRef.current.scrollLeft);
-    };
-
-    const handleCategoryMouseLeave = () => {
-        setIsDraggingTabs(false);
-        setHoveredCategoryFilter(null);
-    };
-
-    const handleCategoryMouseUp = () => {
-        setIsDraggingTabs(false);
-    };
-
-    const handleCategoryMouseMove = (e) => {
-        if (!isDraggingTabs || !categoryScrollRef.current) return;
-        e.preventDefault();
-        const x = e.pageX - categoryScrollRef.current.offsetLeft;
-        const walk = (x - dragStartX) * 1.5;
-        categoryScrollRef.current.scrollLeft = dragScrollLeft - walk;
     };
 
     useEffect(() => {
@@ -263,6 +260,24 @@ export default function QVaultPopover({ isClosing }) {
     const formatCardNumberInput = (val) => {
         const digits = val.replace(/\D/g, '').substring(0, 16);
         return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
+    };
+
+    const handleTotpSecretChange = (val) => {
+        setTotpSecret(val);
+        if (val.trim().toLowerCase().startsWith('otpauth://')) {
+            const parsed = parseOtpAuthUri(val.trim());
+            if (parsed) {
+                if (parsed.secret) {
+                    setTotpSecret(parsed.secret);
+                }
+                if (!title && parsed.issuer) {
+                    setTitle(parsed.issuer);
+                }
+                if (!username && parsed.account) {
+                    setUsername(parsed.account);
+                }
+            }
+        }
     };
 
     const handleUnlockSubmit = async (e) => {
@@ -377,12 +392,14 @@ export default function QVaultPopover({ isClosing }) {
         setEditingItemId(null);
         setNewItemType(type);
         setViewMode('add');
+        setTotpSecret('');
+        setShowNewItemPassword(false);
 
         if (currentUrl && currentUrl !== 'about:blank') {
             try {
                 const u = new URL(currentUrl);
                 const hostClean = u.hostname.replace('www.', '');
-                setTitle(type === 'login' ? hostClean : (type === 'card' ? 'My Card' : (type === 'address' ? 'Home Address' : hostClean)));
+                setTitle(type === 'login' ? hostClean : (type === 'totp' ? `${hostClean} (2FA)` : (type === 'card' ? 'My Card' : (type === 'address' ? 'Home Address' : hostClean))));
                 setUrl(currentUrl);
                 setPasskeyRpId(u.hostname);
             } catch {
@@ -423,7 +440,9 @@ export default function QVaultPopover({ isClosing }) {
         setTitle(item.title || '');
         setUsername(item.username || '');
         setPassword(item.password || '');
+        setShowNewItemPassword(false);
         setUrl(item.url || '');
+        setTotpSecret(item.totpSecret || (itemType === 'totp' ? item.password : '') || '');
         setPasskeyRpId(item.passkeyData?.rpId || item.url || '');
         setPasskeyCredId(item.passkeyData?.credentialId || '');
 
@@ -468,12 +487,19 @@ export default function QVaultPopover({ isClosing }) {
         setViewMode('add');
     };
 
-    const handleDeleteItem = async (id, title) => {
+    const handleDeleteItem = async (id, itemTitle) => {
         try {
+            setDeletingIds(prev => new Set(prev).add(id));
             await deleteItem(id);
-            showToast(`Deleted ${title} from QVault`);
+            showToast(`Deleted ${itemTitle} from QVault`);
         } catch (err) {
             showToast(`Delete failed: ${err.message || err}`, 'error');
+        } finally {
+            setDeletingIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
@@ -484,6 +510,11 @@ export default function QVaultPopover({ isClosing }) {
             return;
         }
 
+        if (newItemType === 'totp' && !cleanTotpSecret(totpSecret || password)) {
+            showToast('A valid 2FA Secret Key is required', 'error');
+            return;
+        }
+
         setIsSaving(true);
         try {
             let passkeyData = null;
@@ -491,8 +522,15 @@ export default function QVaultPopover({ isClosing }) {
             let addressData = null;
             let finalUsername = username;
             let finalPassword = password;
+            let finalTotpSecret = cleanTotpSecret(totpSecret);
 
-            if (newItemType === 'passkey') {
+            if (newItemType === 'totp') {
+                if (!finalTotpSecret && password) {
+                    finalTotpSecret = cleanTotpSecret(password);
+                }
+                finalUsername = username.trim() || '2FA Authenticator';
+                finalPassword = password.trim() || finalTotpSecret;
+            } else if (newItemType === 'passkey') {
                 const credId = passkeyCredId.trim() || ('pk_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36));
                 const existingPubKey = (editingItemId && passwords.find(p => p.id === editingItemId)?.passkeyData?.publicKey) || null;
                 let pubKey = existingPubKey;
@@ -545,6 +583,7 @@ export default function QVaultPopover({ isClosing }) {
                     username: finalUsername,
                     password: finalPassword,
                     url,
+                    totpSecret: finalTotpSecret,
                     passkeyData,
                     cardData,
                     addressData
@@ -557,6 +596,7 @@ export default function QVaultPopover({ isClosing }) {
                     username: finalUsername,
                     password: finalPassword,
                     url,
+                    totpSecret: finalTotpSecret,
                     passkeyData,
                     cardData,
                     addressData
@@ -596,19 +636,16 @@ export default function QVaultPopover({ isClosing }) {
                             let filled = false;
                             const card = ${JSON.stringify(entry.cardData)};
 
-                            // 1. Card Number
                             const numInputs = document.querySelectorAll('input[autocomplete*="cc-number"], input[name*="cardnumber" i], input[name*="card_number" i], input[name*="cardNumber" i], input[name*="creditcard" i], input[id*="card" i], input[id*="cc_num" i], input[name*="pan" i]');
                             if (numInputs.length > 0 && card.cardNumber) {
                                 filled = setVal(numInputs[0], card.cardNumber) || filled;
                             }
 
-                            // 2. Cardholder Name
                             const nameInputs = document.querySelectorAll('input[autocomplete*="cc-name"], input[name*="cardholder" i], input[name*="card_name" i], input[name*="ccname" i], input[id*="cardholder" i]');
                             if (nameInputs.length > 0 && card.cardholderName) {
                                 filled = setVal(nameInputs[0], card.cardholderName) || filled;
                             }
 
-                            // 3. Expiration Date (combined or separate)
                             const expCombined = document.querySelectorAll('input[autocomplete*="cc-exp"], input[name*="exp" i], input[id*="exp" i]');
                             if (expCombined.length > 0 && card.expMonth && card.expYear) {
                                 const yrShort = card.expYear.slice(-2);
@@ -623,7 +660,6 @@ export default function QVaultPopover({ isClosing }) {
                                 filled = setVal(yearInputs[0], card.expYear) || filled;
                             }
 
-                            // 4. CVV / CVC
                             const cvvInputs = document.querySelectorAll('input[autocomplete*="cc-csc"], input[name*="cvv" i], input[name*="cvc" i], input[name*="securitycode" i], input[id*="cvv" i], input[id*="cvc" i]');
                             if (cvvInputs.length > 0 && card.cvv) {
                                 filled = setVal(cvvInputs[0], card.cvv) || filled;
@@ -646,55 +682,46 @@ export default function QVaultPopover({ isClosing }) {
                             let filled = false;
                             const addr = ${JSON.stringify(entry.addressData)};
 
-                            // 1. Full Name / First Name / Last Name
                             const nameInputs = document.querySelectorAll('input[autocomplete="name"], input[name*="fullname" i], input[name*="name" i]:not([name*="user"]):not([name*="card"])');
                             if (nameInputs.length > 0 && addr.fullName) {
                                 filled = setVal(nameInputs[0], addr.fullName) || filled;
                             }
 
-                            // 2. Email
                             const emailInputs = document.querySelectorAll('input[type="email"], input[autocomplete*="email"], input[name*="email" i]');
                             if (emailInputs.length > 0 && addr.email) {
                                 filled = setVal(emailInputs[0], addr.email) || filled;
                             }
 
-                            // 3. Phone
                             const telInputs = document.querySelectorAll('input[type="tel"], input[autocomplete*="tel"], input[name*="phone" i], input[name*="tel" i]');
                             if (telInputs.length > 0 && addr.phone) {
                                 filled = setVal(telInputs[0], addr.phone) || filled;
                             }
 
-                            // 4. Street Address (Line 1)
                             const streetInputs = document.querySelectorAll('input[autocomplete*="address-line1"], input[autocomplete*="street-address"], input[name*="address1" i], input[name*="street" i], input[id*="address1" i]');
                             if (streetInputs.length > 0 && addr.streetAddress) {
                                 filled = setVal(streetInputs[0], addr.streetAddress) || filled;
                             }
 
-                            // 5. Unit / Apt (Line 2)
                             const unitInputs = document.querySelectorAll('input[autocomplete*="address-line2"], input[name*="address2" i], input[name*="apt" i], input[name*="suite" i]');
                             if (unitInputs.length > 0 && addr.unit) {
                                 filled = setVal(unitInputs[0], addr.unit) || filled;
                             }
 
-                            // 6. City
                             const cityInputs = document.querySelectorAll('input[autocomplete*="address-level2"], input[name*="city" i], input[id*="city" i]');
                             if (cityInputs.length > 0 && addr.city) {
                                 filled = setVal(cityInputs[0], addr.city) || filled;
                             }
 
-                            // 7. State / Region
                             const stateInputs = document.querySelectorAll('input[autocomplete*="address-level1"], select[autocomplete*="address-level1"], input[name*="state" i], select[name*="state" i], input[name*="province" i]');
                             if (stateInputs.length > 0 && addr.state) {
                                 filled = setVal(stateInputs[0], addr.state) || filled;
                             }
 
-                            // 8. ZIP / Postal Code
                             const zipInputs = document.querySelectorAll('input[autocomplete*="postal-code"], input[name*="zip" i], input[name*="postal" i], input[id*="zip" i]');
                             if (zipInputs.length > 0 && addr.postalCode) {
                                 filled = setVal(zipInputs[0], addr.postalCode) || filled;
                             }
 
-                            // 9. Country
                             const countryInputs = document.querySelectorAll('select[autocomplete*="country"], select[name*="country" i], input[name*="country" i]');
                             if (countryInputs.length > 0 && addr.country) {
                                 filled = setVal(countryInputs[0], addr.country) || filled;
@@ -704,7 +731,6 @@ export default function QVaultPopover({ isClosing }) {
                         })();
                     `;
                 } else {
-                    // Standard Login (Username & Password)
                     code = `
                         (() => {
                             const userInputs = document.querySelectorAll('input[type="text"], input[type="email"], input[name*="user"], input[name*="login"], input[autocomplete*="username"]');
@@ -755,6 +781,7 @@ export default function QVaultPopover({ isClosing }) {
     const parsedItems = passwords.map(p => {
         let meta = {
             type: p.itemType || 'login',
+            totpSecret: p.totpSecret || null,
             passkeyData: p.passkeyData || null,
             cardData: p.cardData || null,
             addressData: p.addressData || null
@@ -767,40 +794,79 @@ export default function QVaultPopover({ isClosing }) {
                 const parsed = JSON.parse(parts[1]);
                 meta = {
                     type: parsed.type || meta.type,
+                    totpSecret: parsed.totpSecret !== undefined ? parsed.totpSecret : meta.totpSecret,
                     passkeyData: parsed.passkeyData || meta.passkeyData,
                     cardData: parsed.cardData || meta.cardData,
                     addressData: parsed.addressData || meta.addressData
                 };
             } catch { }
         }
+        const effectiveType = p.itemType || meta.type || 'login';
+        const effectiveTotpSecret = p.totpSecret || meta.totpSecret || (effectiveType === 'totp' ? p.password : null) || null;
         return {
             ...p,
             title: cleanTitle,
-            itemType: p.itemType || meta.type || 'login',
+            itemType: effectiveType,
+            totpSecret: effectiveTotpSecret,
             passkeyData: p.passkeyData || meta.passkeyData || null,
             cardData: p.cardData || meta.cardData || null,
             addressData: p.addressData || meta.addressData || null
         };
     });
 
-    const filteredItems = parsedItems.filter(item => {
+    // Deduplicate parsedItems by unique signature to avoid duplicate cards in the list
+    const dedupedItemsMap = new Map();
+    parsedItems.forEach(p => {
+        const sig = `${p.itemType}::${(p.title || '').trim().toLowerCase()}::${(p.username || '').trim().toLowerCase()}::${(p.url || p.passkeyData?.rpId || '').trim().toLowerCase()}`;
+        if (!dedupedItemsMap.has(sig)) {
+            dedupedItemsMap.set(sig, p);
+        } else {
+            const existing = dedupedItemsMap.get(sig);
+            dedupedItemsMap.set(sig, {
+                ...existing,
+                passkeyData: existing.passkeyData || p.passkeyData,
+                totpSecret: existing.totpSecret || p.totpSecret,
+                password: existing.password || p.password
+            });
+        }
+    });
+    const cleanItems = Array.from(dedupedItemsMap.values());
+
+    const loginItems = cleanItems.filter(p => p.itemType === 'login' || p.itemType === 'passkey');
+    const passwordsCount = cleanItems.filter(p => p.itemType === 'login').length;
+    const passkeysCount = cleanItems.filter(p => p.itemType === 'passkey').length;
+    const loginsCount = loginItems.length;
+
+    const totpItems = cleanItems.filter(p => p.totpSecret || p.itemType === 'totp');
+    const walletItems = cleanItems.filter(p => p.itemType === 'card' || p.itemType === 'address');
+
+    const filterBySearch = (items) => {
+        if (!searchQuery.trim()) return items;
         const q = searchQuery.toLowerCase();
-        const matchesQuery = (
+        return items.filter(item => (
             item.title.toLowerCase().includes(q) ||
             item.username?.toLowerCase().includes(q) ||
             item.url?.toLowerCase().includes(q) ||
+            item.passkeyData?.rpId?.toLowerCase().includes(q) ||
             item.cardData?.cardholderName?.toLowerCase().includes(q) ||
             item.addressData?.fullName?.toLowerCase().includes(q) ||
             item.addressData?.city?.toLowerCase().includes(q)
-        );
-        if (!matchesQuery) return false;
-        if (categoryFilter === 'all') return true;
-        if (categoryFilter === 'logins') return item.itemType === 'login';
-        if (categoryFilter === 'cards') return item.itemType === 'card';
-        if (categoryFilter === 'addresses') return item.itemType === 'address';
-        if (categoryFilter === 'passkeys') return item.itemType === 'passkey';
-        return true;
-    });
+        ));
+    };
+
+    const currentTabFilteredItems = (() => {
+        if (activePage === 'logins') {
+            const subFiltered = loginItems.filter(item => {
+                if (loginSubFilter === 'passwords') return item.itemType === 'login';
+                if (loginSubFilter === 'passkeys') return item.itemType === 'passkey';
+                return true;
+            });
+            return filterBySearch(subFiltered);
+        }
+        if (activePage === '2fa') return filterBySearch(totpItems);
+        if (activePage === 'wallet') return filterBySearch(walletItems);
+        return [];
+    })();
 
     const currentDomain = (() => {
         if (!currentUrl || currentUrl === 'about:blank') return '';
@@ -829,13 +895,23 @@ export default function QVaultPopover({ isClosing }) {
         return r1.some(r => r2.includes(r));
     };
 
-    const matchingSiteItems = parsedItems.filter(item => {
+    const matchingSiteItems = loginItems.filter(item => {
         if (!currentDomain) return false;
-        const itemHost = item.url || item.title || '';
-        if (domainsMatch(currentDomain, itemHost)) return true;
-        if (item.passkeyData?.rpId && domainsMatch(currentDomain, item.passkeyData.rpId)) return true;
-        return false;
+        const itemHost = item.url || item.passkeyData?.rpId || item.title || '';
+        return domainsMatch(currentDomain, itemHost);
     });
+
+    const previewTotpCode = isValidTotpSecret(totpSecret) ? generateTotpCode(totpSecret, now) : null;
+
+    const cardClass = isBright ? 'bg-black/[0.035] border-black/[0.06]' : 'bg-black/25 border-white/[0.08]';
+    const inputClass = isBright
+        ? 'bg-black/[0.04] border-black/[0.10] focus:border-accent focus:bg-white text-zinc-900 placeholder-zinc-400'
+        : 'bg-black/30 border-white/[0.10] focus:border-accent focus:bg-black/40 text-white placeholder-white/45';
+    const labelClass = isBright
+        ? 'text-[10px] font-mono text-zinc-600 font-semibold'
+        : 'text-[10px] font-mono text-white/75';
+
+    const anchor = usePopoverAnchor('#tour-vault-trigger', 460, { defaultRight: 16 });
 
     return (
         <div
@@ -843,23 +919,33 @@ export default function QVaultPopover({ isClosing }) {
             data-testid="qvault-popover"
             onClick={e => e.stopPropagation()}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
-            className={`absolute top-4 right-4 z-[70000] w-[440px] max-w-[calc(100vw-32px)] rounded-3xl backdrop-blur-3xl overflow-hidden p-4 transition-all duration-200 border ${isBright
-                    ? 'bg-white/95 border-black/[0.08] shadow-[0_25px_70px_rgba(0,0,0,0.16)] text-zinc-900'
-                    : 'bg-[#141520]/92 border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.7)] text-white'
+            style={{
+                ...anchor.style,
+                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
+                backdropFilter: isBright
+                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
+                WebkitBackdropFilter: isBright
+                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+            }}
+            className={`absolute z-[70000] w-[460px] max-w-[calc(100vw-32px)] rounded-3xl overflow-hidden p-4 transition-all duration-200 border ${isBright
+                    ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]'
+                    : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
                 } ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}
         >
             {/* Header */}
-            <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
+            <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.08]'}`}>
                 <div className="flex items-center gap-2.5">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-colors ${isUnlocked
                             ? (isBright ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-xs' : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30')
-                            : (isBright ? 'bg-black/[0.04] text-zinc-700 border-black/10 shadow-xs' : 'bg-white/[0.06] text-white/70 border-white/[0.08]')
+                            : (isBright ? 'bg-black/[0.04] text-zinc-700 border-black/10 shadow-xs' : 'bg-white/[0.06] text-white/75 border-white/[0.08]')
                         }`}>
                         {isUnlocked ? <Unlock size={14} /> : <Lock size={14} />}
                     </div>
                     <div>
                         <h3 className={`text-xs font-bold tracking-tight ${isBright ? 'text-zinc-950' : 'text-white'}`}>QVault</h3>
-                        <p className={`text-[10px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{isUnlocked ? `${passwords.length} saved items` : 'AES-256 Encrypted Vault'}</p>
+                        <p className={`text-[10px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>{isUnlocked ? `${passwords.length} saved items` : 'AES-256 Encrypted Vault'}</p>
                     </div>
                 </div>
 
@@ -867,16 +953,16 @@ export default function QVaultPopover({ isClosing }) {
                     <div className="flex items-center gap-1.5">
                         <button onClick={() => setViewMode(viewMode === 'settings' ? 'vault' : 'settings')} className={`w-8 h-8 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${viewMode === 'settings'
                                 ? (isBright ? 'bg-accent/20 text-zinc-900 border-accent/40 font-bold' : 'bg-accent/20 text-accent border-accent/40')
-                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]' : 'bg-white/[0.06] border-white/[0.08] text-white/70 hover:text-white hover:bg-white/10')
+                                : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]' : 'bg-white/[0.06] border-white/[0.08] text-white/75 hover:text-white hover:bg-white/10')
                             }`} title="Vault Settings">
                             <Settings size={14} />
                         </button>
-                        <button onClick={() => handleOpenAddForm('login')} className="px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs" title="Add to Vault">
+                        <button onClick={() => handleOpenAddForm(activePage === '2fa' ? 'totp' : activePage === 'wallet' ? 'card' : 'login')} className="px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs" title="Add to Vault">
                             <Plus size={13} strokeWidth={2.5} /> Add
                         </button>
                         <button onClick={lock} className={`w-8 h-8 rounded-full flex items-center justify-center border text-xs transition active:scale-95 cursor-pointer ${isBright
                                 ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]'
-                                : 'bg-white/[0.06] border-white/[0.08] text-white/70 hover:text-white hover:bg-white/10'
+                                : 'bg-white/[0.06] border-white/[0.08] text-white/75 hover:text-white hover:bg-white/10'
                             }`} title="Lock Vault">
                             <Lock size={14} />
                         </button>
@@ -891,9 +977,8 @@ export default function QVaultPopover({ isClosing }) {
                     {pinEnabled && (
                         <div onMouseLeave={() => setHoveredUnlockMode(null)} className={`relative flex p-1 rounded-full border shadow-xs transition-colors duration-200 select-none ${isBright
                                 ? 'bg-black/[0.03] border-black/[0.05]'
-                                : 'bg-white/[0.05] border-white/[0.08]'
+                                : 'bg-black/25 border-white/[0.08]'
                             }`}>
-                            {/* Hover preview pill */}
                             {hoveredUnlockMode && hoveredUnlockMode !== unlockMode && (
                                 <div
                                     className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
@@ -919,7 +1004,7 @@ export default function QVaultPopover({ isClosing }) {
                                 onClick={() => setUnlockMode('pin')}
                                 className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${unlockMode === 'pin'
                                         ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/65 hover:text-white')
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                                     }`}
                             >
                                 Quick PIN
@@ -930,7 +1015,7 @@ export default function QVaultPopover({ isClosing }) {
                                 onClick={() => setUnlockMode('password')}
                                 className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${unlockMode === 'password'
                                         ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/65 hover:text-white')
+                                        : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                                     }`}
                             >
                                 Master Password
@@ -939,20 +1024,20 @@ export default function QVaultPopover({ isClosing }) {
                     )}
 
                     <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-3.5">
-                        <div className={`p-3.5 rounded-2xl flex items-center gap-3 border ${isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.05] border-white/[0.08]'}`}>
+                        <div className={`p-3.5 rounded-2xl flex items-center gap-3 border ${cardClass}`}>
                             <Shield size={18} className="text-accent shrink-0" />
                             <div className={`text-[11px] leading-relaxed ${isBright ? 'text-zinc-700 font-medium' : 'text-white/85 font-medium'}`}>
                                 {!isInitialized
                                     ? 'Set a Master Password to initialize your encrypted QVault.'
                                     : unlockMode === 'pin'
                                         ? 'Enter your quick PIN to unlock QVault.'
-                                        : 'Enter your Master Password to decrypt passwords, cards, and addresses.'}
+                                        : 'Enter your Master Password to decrypt passwords, 2FA codes, cards, and addresses.'}
                             </div>
                         </div>
 
                         {unlockMode === 'password' ? (
                             <div className="flex flex-col gap-1.5">
-                                <label className={`text-[10px] font-mono uppercase tracking-wider px-1 font-bold ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>
+                                <label className={`text-[10px] font-mono uppercase tracking-wider px-1 font-bold ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>
                                     {isInitialized ? 'Master Password' : 'Create Master Password'}
                                 </label>
                                 <input
@@ -961,15 +1046,12 @@ export default function QVaultPopover({ isClosing }) {
                                     value={masterPassInput}
                                     onChange={(e) => setMasterPassInput(e.target.value)}
                                     placeholder={isInitialized ? "Enter master password..." : "Create master password..."}
-                                    className={`w-full h-10 rounded-full px-4 text-xs font-mono outline-none transition-all border ${isBright
-                                            ? 'bg-white border-black/[0.12] focus:border-accent text-zinc-900 placeholder-zinc-400 shadow-xs'
-                                            : 'bg-white/[0.07] border-white/[0.12] focus:border-accent text-white placeholder-white/40 focus:bg-white/[0.10]'
-                                        }`}
+                                    className={`w-full h-10 rounded-full px-4 text-xs font-mono outline-none transition-all border ${inputClass}`}
                                 />
                             </div>
                         ) : (
                             <div className="flex flex-col gap-1.5">
-                                <label className={`text-[10px] font-mono uppercase tracking-wider px-1 font-bold ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>PIN Code</label>
+                                <label className={`text-[10px] font-mono uppercase tracking-wider px-1 font-bold ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>PIN Code</label>
                                 <input
                                     type="password"
                                     autoFocus
@@ -977,10 +1059,7 @@ export default function QVaultPopover({ isClosing }) {
                                     value={pinInput}
                                     onChange={(e) => setPinInput(e.target.value)}
                                     placeholder="••••"
-                                    className={`w-full h-10 rounded-full px-4 text-center text-lg font-mono tracking-[0.5em] outline-none transition-all border ${isBright
-                                            ? 'bg-white border-black/[0.12] focus:border-accent text-zinc-900 placeholder-zinc-400 shadow-xs'
-                                            : 'bg-white/[0.07] border-white/[0.12] focus:border-accent text-white placeholder-white/40 focus:bg-white/[0.10]'
-                                        }`}
+                                    className={`w-full h-10 rounded-full px-4 text-center text-lg font-mono tracking-[0.5em] outline-none transition-all border ${inputClass}`}
                                 />
                             </div>
                         )}
@@ -998,7 +1077,9 @@ export default function QVaultPopover({ isClosing }) {
                                             showToast("Local vault reset. You can now set a new Master Password.");
                                         }
                                     }}
-                                    className="text-[11px] text-white/60 hover:text-red-400 underline font-mono text-center cursor-pointer transition py-0.5 active:scale-95"
+                                    className={`text-[11px] underline font-mono text-center cursor-pointer transition py-0.5 active:scale-95 ${
+                                        isBright ? 'text-zinc-500 hover:text-red-600' : 'text-white/65 hover:text-red-400'
+                                    }`}
                                 >
                                     Forgot password? Reset local vault
                                 </button>
@@ -1036,27 +1117,31 @@ export default function QVaultPopover({ isClosing }) {
                 /* SETTINGS VIEW */
                 <div className={`flex flex-col gap-3.5 py-1 ${isExitingSettings ? 'animate-slide-out-right pointer-events-none' : 'animate-slide-in-right'}`}>
 
-                    <div className="flex justify-between items-center pb-2 border-b border-white/[0.06]">
-                        <button onClick={handleCloseSettings} className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-white/80 hover:text-white transition active:scale-95 cursor-pointer">
+                    <div className={`flex justify-between items-center pb-2 border-b ${isBright ? 'border-black/[0.06]' : 'border-white/[0.08]'}`}>
+                        <button onClick={handleCloseSettings} className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition active:scale-95 cursor-pointer ${
+                            isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.04]' : 'text-white/85 hover:text-white hover:bg-white/[0.06]'
+                        }`}>
                             <ArrowLeft size={13} /> Vault Settings
                         </button>
                     </div>
 
                     {/* Quick PIN Settings */}
-                    <form onSubmit={handleSavePin} className="p-3 bg-white/[0.05] border border-white/[0.08] rounded-2xl flex flex-col gap-2">
+                    <form onSubmit={handleSavePin} className={`p-3 border rounded-2xl flex flex-col gap-2 ${cardClass}`}>
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-white">Quick PIN Unlock</span>
+                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>Quick PIN Unlock</span>
                             {pinEnabled && (
                                 <button
                                     type="button"
                                     onClick={handleDisablePin}
-                                    className="text-[10px] text-red-400 hover:text-red-300 font-mono transition cursor-pointer active:scale-95"
+                                    className={`text-[10px] font-mono transition cursor-pointer active:scale-95 ${
+                                        isBright ? 'text-red-600 hover:text-red-700' : 'text-red-400 hover:text-red-300'
+                                    }`}
                                 >
                                     Remove PIN
                                 </button>
                             )}
                         </div>
-                        <p className="text-[11px] text-white/60 font-mono">Set a 4-6 digit PIN for fast vault access.</p>
+                        <p className={`text-[11px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>Set a 4-6 digit PIN for fast vault access.</p>
                         <div className="flex gap-2 mt-1">
                             <input
                                 type="password"
@@ -1064,7 +1149,7 @@ export default function QVaultPopover({ isClosing }) {
                                 placeholder={pinEnabled ? "Change PIN (4-6 digits)" : "Set PIN (4-6 digits)"}
                                 value={newPinInput}
                                 onChange={e => setNewPinInput(e.target.value.replace(/\D/g, ''))}
-                                className="flex-1 h-9 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-full px-3.5 text-center text-xs font-mono tracking-widest text-white outline-none"
+                                className={`flex-1 h-9 border rounded-full px-3.5 text-center text-xs font-mono tracking-widest outline-none transition-colors ${inputClass}`}
                             />
                             <button
                                 type="submit"
@@ -1077,12 +1162,12 @@ export default function QVaultPopover({ isClosing }) {
                     </form>
 
                     {/* Windows Hello Biometrics */}
-                    <div className="p-3 bg-white/[0.05] border border-white/[0.08] rounded-2xl flex items-center justify-between">
+                    <div className={`p-3 border rounded-2xl flex items-center justify-between ${cardClass}`}>
                         <div className="flex flex-col gap-0.5">
-                            <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                            <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                 <Fingerprint size={14} className="text-accent" /> Windows Hello Biometrics
                             </span>
-                            <p className="text-[11px] text-white/60 font-mono">Use fingerprint, facial recognition, or PIN.</p>
+                            <p className={`text-[11px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>Use fingerprint, facial recognition, or PIN.</p>
                         </div>
                         <button
                             type="button"
@@ -1090,8 +1175,8 @@ export default function QVaultPopover({ isClosing }) {
                             onClick={handleToggleBiometrics}
                             className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition active:scale-95 cursor-pointer ${
                                 biometricsEnabled
-                                    ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/35 font-bold'
-                                    : 'bg-white/10 text-white font-semibold border-white/15 hover:bg-white/15'
+                                    ? (isBright ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/25 font-bold' : 'bg-emerald-500/25 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/35 font-bold')
+                                    : (isBright ? 'bg-black/[0.05] text-zinc-800 font-semibold border-black/10 hover:bg-black/[0.09]' : 'bg-white/10 text-white font-semibold border-white/15 hover:bg-white/15')
                             }`}
                         >
                             {isTogglingBio ? 'Updating...' : (biometricsEnabled ? 'Enabled' : 'Enable')}
@@ -1099,15 +1184,15 @@ export default function QVaultPopover({ isClosing }) {
                     </div>
 
                     {/* Master Password Settings */}
-                    <form onSubmit={handleChangeMasterPassword} className="p-3 bg-white/[0.05] border border-white/[0.08] rounded-2xl flex flex-col gap-2.5">
-                        <span className="text-xs font-semibold text-white">Change Master Password</span>
+                    <form onSubmit={handleChangeMasterPassword} className={`p-3 border rounded-2xl flex flex-col gap-2.5 ${cardClass}`}>
+                        <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>Change Master Password</span>
                         <input
                             type="password"
                             required
                             placeholder="Current Master Password"
                             value={oldPassInput}
                             onChange={e => setOldPassInput(e.target.value)}
-                            className="h-9 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-full px-3.5 text-xs text-white placeholder-white/40 outline-none"
+                            className={`h-9 border rounded-full px-3.5 text-xs outline-none transition-colors ${inputClass}`}
                         />
                         <input
                             type="password"
@@ -1115,7 +1200,7 @@ export default function QVaultPopover({ isClosing }) {
                             placeholder="New Master Password"
                             value={newMasterPass}
                             onChange={e => setNewMasterPass(e.target.value)}
-                            className="h-9 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-full px-3.5 text-xs text-white placeholder-white/40 outline-none"
+                            className={`h-9 border rounded-full px-3.5 text-xs outline-none transition-colors ${inputClass}`}
                         />
                         <input
                             type="password"
@@ -1123,7 +1208,7 @@ export default function QVaultPopover({ isClosing }) {
                             placeholder="Confirm New Master Password"
                             value={confirmMasterPass}
                             onChange={e => setConfirmMasterPass(e.target.value)}
-                            className="h-9 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-full px-3.5 text-xs text-white placeholder-white/40 outline-none"
+                            className={`h-9 border rounded-full px-3.5 text-xs outline-none transition-colors ${inputClass}`}
                         />
                         <button type="submit" disabled={isChangingPass} className="w-full h-9 mt-1 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-xs transition cursor-pointer shadow-xs">
                             {isChangingPass ? 'Updating...' : 'Update Master Password'}
@@ -1131,17 +1216,16 @@ export default function QVaultPopover({ isClosing }) {
                     </form>
 
                     {/* Vault Migration & Backups */}
-                    <div className={`p-3 rounded-2xl flex flex-col gap-2.5 border ${isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.05] border-white/[0.08]'
-                        }`}>
+                    <div className={`p-3 rounded-2xl flex flex-col gap-2.5 border ${cardClass}`}>
                         <div className="flex items-center justify-between">
                             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                 <UploadCloud size={13} className="text-accent" /> Vault Migration & Backups
                             </span>
-                            <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/60'}`}>
+                            <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
                                 Bitwarden • Proton Pass • Chrome
                             </span>
                         </div>
-                        <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>
+                        <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-white/75'}`}>
                             Transition from external password managers by importing your CSV or JSON vault export directly into QVault.
                         </p>
 
@@ -1197,11 +1281,13 @@ export default function QVaultPopover({ isClosing }) {
                     </div>
 
                     {/* Reset Local Vault Section */}
-                    <div className="p-3 bg-red-500/[0.05] border border-red-500/20 rounded-2xl flex flex-col gap-2">
-                        <span className="text-xs font-semibold text-red-400 flex items-center gap-1.5">
+                    <div className={`p-3 rounded-2xl flex flex-col gap-2 border ${
+                        isBright ? 'bg-red-500/[0.06] border-red-500/20' : 'bg-red-500/[0.07] border-red-500/25'
+                    }`}>
+                        <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-red-600' : 'text-red-400'}`}>
                             <Trash2 size={13} /> Reset Local Vault
                         </span>
-                        <p className="text-[11px] text-white/70">
+                        <p className={`text-[11px] ${isBright ? 'text-zinc-600' : 'text-white/75'}`}>
                             Permanently wipe locally cached credentials on this device.
                         </p>
                         {confirmReset ? (
@@ -1216,7 +1302,9 @@ export default function QVaultPopover({ isClosing }) {
                                 <button
                                     type="button"
                                     onClick={() => setConfirmReset(false)}
-                                    className="px-4 h-9 rounded-full bg-white/10 hover:bg-white/15 text-white text-xs font-semibold transition active:scale-95 cursor-pointer"
+                                    className={`px-4 h-9 rounded-full text-xs font-semibold transition active:scale-95 cursor-pointer border ${
+                                        isBright ? 'bg-black/[0.05] hover:bg-black/[0.09] text-zinc-800 border-black/10' : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                                    }`}
                                 >
                                     Cancel
                                 </button>
@@ -1225,7 +1313,9 @@ export default function QVaultPopover({ isClosing }) {
                             <button
                                 type="button"
                                 onClick={() => setConfirmReset(true)}
-                                className="w-full h-9 mt-1 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 font-semibold text-xs transition active:scale-95 cursor-pointer"
+                                className={`w-full h-9 mt-1 rounded-full border font-semibold text-xs transition active:scale-95 cursor-pointer ${
+                                    isBright ? 'bg-red-500/10 hover:bg-red-500/20 border-red-500/25 text-red-600' : 'bg-red-500/15 hover:bg-red-500/25 border-red-500/30 text-red-400'
+                                }`}
                             >
                                 Reset Local Vault
                             </button>
@@ -1236,42 +1326,48 @@ export default function QVaultPopover({ isClosing }) {
                 /* ADD / EDIT ITEM VIEW */
                 <form onSubmit={handleSaveNewItem} className={`flex flex-col gap-3 py-1 ${isExitingAdd ? 'animate-slide-out-right pointer-events-none' : 'animate-slide-in-right'}`}>
 
-                    <div className="flex justify-between items-center pb-2 border-b border-white/[0.08]">
-                        <button type="button" onClick={handleCloseAdd} className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-white/80 hover:text-white transition active:scale-95 cursor-pointer">
+                    <div className={`flex justify-between items-center pb-2 border-b ${isBright ? 'border-black/[0.06]' : 'border-white/[0.08]'}`}>
+                        <button type="button" onClick={handleCloseAdd} className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition active:scale-95 cursor-pointer ${
+                            isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.04]' : 'text-white/85 hover:text-white hover:bg-white/[0.06]'
+                        }`}>
                             <ArrowLeft size={13} /> Back
                         </button>
-                        <span className="text-xs font-semibold text-white">{editingItemId ? 'Edit Item' : 'New Vault Item'}</span>
+                        <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{editingItemId ? 'Edit Item' : 'New Vault Item'}</span>
                     </div>
 
-                    {/* Type Selector (4 Types) */}
-                    <div onMouseLeave={() => setHoveredNewItemType(null)} className={`relative grid grid-cols-4 p-1 rounded-full border shadow-xs select-none ${isBright
+                    {/* Type Selector (5 Types: login, totp, card, address, passkey) */}
+                    <div onMouseLeave={() => setHoveredNewItemType(null)} className={`relative grid grid-cols-5 p-1 rounded-full border shadow-xs select-none ${isBright
                             ? 'bg-black/[0.03] border-black/[0.05]'
-                            : 'bg-white/[0.05] border-white/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                            : 'bg-black/25 border-white/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
                         }`}>
                         {/* Hover preview pill */}
                         {hoveredNewItemType && hoveredNewItemType !== newItemType && (
                             <div
-                                className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                className={`absolute top-1 bottom-1 w-[calc(20%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
                                     isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
                                 }`}
                                 style={{
+                                    left: 4,
                                     transform: hoveredNewItemType === 'login' ? 'translateX(0)' :
-                                        hoveredNewItemType === 'card' ? 'translateX(100%)' :
-                                            hoveredNewItemType === 'address' ? 'translateX(200%)' :
-                                                'translateX(300%)'
+                                        hoveredNewItemType === 'totp' ? 'translateX(100%)' :
+                                        hoveredNewItemType === 'card' ? 'translateX(200%)' :
+                                        hoveredNewItemType === 'address' ? 'translateX(300%)' :
+                                        'translateX(400%)'
                                 }}
                             />
                         )}
                         <div
-                            className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isBright
+                            className={`absolute top-1 bottom-1 w-[calc(20%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isBright
                                     ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                                     : 'border'
                                 }`}
                             style={{
+                                left: 4,
                                 transform: newItemType === 'login' ? 'translateX(0)' :
-                                    newItemType === 'card' ? 'translateX(100%)' :
-                                        newItemType === 'address' ? 'translateX(200%)' :
-                                            'translateX(300%)',
+                                    newItemType === 'totp' ? 'translateX(100%)' :
+                                    newItemType === 'card' ? 'translateX(200%)' :
+                                    newItemType === 'address' ? 'translateX(300%)' :
+                                    'translateX(400%)',
                                 ...(!isBright ? {
                                     borderColor: 'var(--accent, #d4bc94)',
                                     backgroundColor: 'rgba(212, 188, 148, 0.22)',
@@ -1279,75 +1375,190 @@ export default function QVaultPopover({ isClosing }) {
                                 } : {})
                             }}
                         />
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('login')} onClick={() => setNewItemType('login')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'login' ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') : 'text-white/60 hover:text-white'}`}>
-                            <Globe size={11} className={newItemType === 'login' ? (isBright ? 'text-sky-600' : 'text-sky-300') : 'text-white/60'} /> Login
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('login')} onClick={() => setNewItemType('login')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'login' ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                            <Globe size={11} className={newItemType === 'login' ? (isBright ? 'text-sky-600' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Login
                         </button>
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('card')} onClick={() => setNewItemType('card')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'card' ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') : 'text-white/60 hover:text-white'}`}>
-                            <CreditCard size={11} className={newItemType === 'card' ? (isBright ? 'text-blue-600' : 'text-blue-300') : 'text-white/60'} /> Card
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('totp')} onClick={() => setNewItemType('totp')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'totp' ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                            <ShieldCheck size={11} className={newItemType === 'totp' ? (isBright ? 'text-emerald-600' : 'text-emerald-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> 2FA
                         </button>
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('address')} onClick={() => setNewItemType('address')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'address' ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') : 'text-white/60 hover:text-white'}`}>
-                            <MapPin size={11} className={newItemType === 'address' ? (isBright ? 'text-amber-600' : 'text-amber-300') : 'text-white/60'} /> Address
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('card')} onClick={() => setNewItemType('card')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'card' ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                            <CreditCard size={11} className={newItemType === 'card' ? (isBright ? 'text-blue-600' : 'text-blue-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Card
                         </button>
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('passkey')} onClick={() => setNewItemType('passkey')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer ${newItemType === 'passkey' ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') : 'text-white/60 hover:text-white'}`}>
-                            <Fingerprint size={11} className={newItemType === 'passkey' ? (isBright ? 'text-purple-600' : 'text-purple-300') : 'text-white/60'} /> Passkey
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('address')} onClick={() => setNewItemType('address')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'address' ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                            <MapPin size={11} className={newItemType === 'address' ? (isBright ? 'text-amber-600' : 'text-amber-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Address
+                        </button>
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('passkey')} onClick={() => setNewItemType('passkey')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'passkey' ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                            <Fingerprint size={11} className={newItemType === 'passkey' ? (isBright ? 'text-purple-600' : 'text-purple-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Passkey
                         </button>
                     </div>
 
                     <div className="flex flex-col gap-2.5 max-h-80 overflow-y-auto hide-scroll pr-1">
                         {/* Title / Label */}
                         <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-mono text-white/70">
-                                {newItemType === 'card' ? 'Card Nickname' : newItemType === 'address' ? 'Address Nickname' : 'Title'}
+                            <label className={labelClass}>
+                                {newItemType === 'card' ? 'Card Nickname' : newItemType === 'address' ? 'Address Nickname' : newItemType === 'totp' ? 'Account / Service Title' : 'Title'}
                             </label>
                             <input
                                 type="text"
                                 required
-                                placeholder={newItemType === 'card' ? 'e.g. Chase Sapphire' : newItemType === 'address' ? 'e.g. Home or Office' : 'e.g. GitHub'}
+                                placeholder={newItemType === 'card' ? 'e.g. Chase Sapphire' : newItemType === 'address' ? 'e.g. Home or Office' : newItemType === 'totp' ? 'e.g. GitHub or Google' : 'e.g. GitHub'}
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
-                                className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                             />
                         </div>
 
-                        {/* LOGIN FIELDS */}
-                        {newItemType === 'login' && (
+                        {/* 2FA AUTHENTICATOR FIELDS */}
+                        {newItemType === 'totp' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-mono text-white/70">Website URL</label>
-                                    <input
-                                        type="text"
-                                        placeholder="https://example.com"
-                                        value={url}
-                                        onChange={e => setUrl(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-mono text-white/70">Username / Email</label>
+                                    <label className={labelClass}>Username / Email / Issuer (Optional)</label>
                                     <input
                                         type="text"
                                         placeholder="user@domain.com"
                                         value={username}
                                         onChange={e => setUsername(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-mono text-white/70">Password</label>
-                                        <button type="button" onClick={() => { generateCustomPassword(); setPassword(generatedResult); showToast('Generated password!'); }} className="text-[10px] text-accent hover:brightness-110 font-mono transition">
-                                            Generate Random
-                                        </button>
+                                        <label className={labelClass}>2FA Secret / Authenticator Key</label>
+                                        {totpSecret && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setTotpSecret('')}
+                                                className={`text-[10px] font-mono transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-white/60 hover:text-white'}`}
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
                                     </div>
                                     <input
                                         type="text"
                                         required
-                                        placeholder="Password"
-                                        value={password}
-                                        onChange={e => setPassword(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs font-mono text-white placeholder-white/40 outline-none"
+                                        placeholder="e.g. JBSWY3DPEHPK3PXP or otpauth://..."
+                                        value={totpSecret}
+                                        onChange={e => handleTotpSecretChange(e.target.value)}
+                                        className={`h-8 border rounded-lg px-3 text-xs font-mono outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
+                                {previewTotpCode && (
+                                    <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                                        isBright ? 'bg-emerald-500/[0.08] border-emerald-500/25 text-emerald-950' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2.5">
+                                            <CountdownRing remaining={totpRemaining} size={24} strokeWidth={2.5} />
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] uppercase font-mono font-bold tracking-wider opacity-75">
+                                                    Live Code Preview
+                                                </span>
+                                                <span className="font-mono text-sm font-bold tracking-widest">
+                                                    {formatTotpCode(previewTotpCode)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-mono opacity-80">
+                                            {totpRemaining}s left
+                                        </span>
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {/* LOGIN FIELDS */}
+                        {newItemType === 'login' && (
+                            <>
+                                <div className="flex flex-col gap-1">
+                                    <label className={labelClass}>Website URL</label>
+                                    <input
+                                        type="text"
+                                        placeholder="https://example.com"
+                                        value={url}
+                                        onChange={e => setUrl(e.target.value)}
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className={labelClass}>Username / Email</label>
+                                    <input
+                                        type="text"
+                                        placeholder="user@domain.com"
+                                        value={username}
+                                        onChange={e => setUsername(e.target.value)}
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex justify-between items-center">
+                                        <label className={labelClass}>Password</label>
+                                        <button type="button" onClick={() => { generateCustomPassword(); setPassword(generatedResult); showToast('Generated password!'); }} className={`text-[10px] hover:brightness-110 font-mono font-semibold transition cursor-pointer ${isBright ? 'text-amber-700' : 'text-accent'}`}>
+                                            Generate Random
+                                        </button>
+                                    </div>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type={showNewItemPassword ? "text" : "password"}
+                                            required
+                                            placeholder="Password"
+                                            value={password}
+                                            onChange={e => setPassword(e.target.value)}
+                                            className={`w-full h-8 border rounded-lg pl-3 pr-8 text-xs font-mono outline-none transition-colors ${inputClass}`}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewItemPassword(prev => !prev)}
+                                            className={`absolute right-2 p-1 rounded transition cursor-pointer ${
+                                                isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white/80'
+                                            }`}
+                                            title={showNewItemPassword ? "Hide password" : "Show password"}
+                                            tabIndex={-1}
+                                        >
+                                            {showNewItemPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex justify-between items-center">
+                                        <label className={labelClass}>2FA Secret / Authenticator Key (Optional)</label>
+                                        {totpSecret && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setTotpSecret('')}
+                                                className={`text-[10px] font-mono transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-white/60 hover:text-white'}`}
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. JBSWY3DPEHPK3PXP or otpauth://..."
+                                        value={totpSecret}
+                                        onChange={e => handleTotpSecretChange(e.target.value)}
+                                        className={`h-8 border rounded-lg px-3 text-xs font-mono outline-none transition-colors ${inputClass}`}
+                                    />
+                                </div>
+                                {previewTotpCode && (
+                                    <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                                        isBright ? 'bg-emerald-500/[0.08] border-emerald-500/25 text-emerald-950' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2.5">
+                                            <CountdownRing remaining={totpRemaining} size={24} strokeWidth={2.5} />
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] uppercase font-mono font-bold tracking-wider opacity-75">
+                                                    Live Code Preview
+                                                </span>
+                                                <span className="font-mono text-sm font-bold tracking-widest">
+                                                    {formatTotpCode(previewTotpCode)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-mono opacity-80">
+                                            {totpRemaining}s left
+                                        </span>
+                                    </div>
+                                )}
                             </>
                         )}
 
@@ -1355,19 +1566,19 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'card' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-mono text-white/70">Cardholder Name</label>
+                                    <label className={labelClass}>Cardholder Name</label>
                                     <input
                                         type="text"
                                         placeholder="Name on card"
                                         value={cardholderName}
                                         onChange={e => setCardholderName(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-mono text-white/70">Card Number</label>
-                                        <span className="text-[10px] text-accent font-mono">{cardBrand}</span>
+                                        <label className={labelClass}>Card Number</label>
+                                        <span className={`text-[10px] font-mono font-semibold ${isBright ? 'text-amber-700' : 'text-accent'}`}>{cardBrand}</span>
                                     </div>
                                     <input
                                         type="text"
@@ -1380,41 +1591,41 @@ export default function QVaultPopover({ isClosing }) {
                                             setCardNumber(formatted);
                                             setCardBrand(detectCardBrand(formatted));
                                         }}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs font-mono tracking-wider text-white placeholder-white/40 outline-none"
+                                        className={`h-8 border rounded-lg px-3 text-xs font-mono tracking-wider outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">Exp Month</label>
+                                        <label className={labelClass}>Exp Month</label>
                                         <input
                                             type="text"
                                             maxLength={2}
                                             placeholder="MM"
                                             value={cardExpMonth}
                                             onChange={e => setCardExpMonth(e.target.value.replace(/\D/g, ''))}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-2 text-xs text-center font-mono text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-2 text-xs text-center font-mono outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">Exp Year</label>
+                                        <label className={labelClass}>Exp Year</label>
                                         <input
                                             type="text"
                                             maxLength={4}
                                             placeholder="YYYY"
                                             value={cardExpYear}
                                             onChange={e => setCardExpYear(e.target.value.replace(/\D/g, ''))}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-2 text-xs text-center font-mono text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-2 text-xs text-center font-mono outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">CVV</label>
+                                        <label className={labelClass}>CVV</label>
                                         <input
                                             type="password"
                                             maxLength={4}
                                             placeholder="•••"
                                             value={cardCvv}
                                             onChange={e => setCardCvv(e.target.value.replace(/\D/g, ''))}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-2 text-xs text-center font-mono text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-2 text-xs text-center font-mono outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                 </div>
@@ -1425,90 +1636,90 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'address' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-mono text-white/70">Full Name</label>
+                                    <label className={labelClass}>Full Name</label>
                                     <input
                                         type="text"
                                         placeholder="Full recipient name"
                                         value={fullName}
                                         onChange={e => setFullName(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-mono text-white/70">Street Address</label>
+                                    <label className={labelClass}>Street Address</label>
                                     <input
                                         type="text"
                                         required
                                         placeholder="Street name and number"
                                         value={streetAddress}
                                         onChange={e => setStreetAddress(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">Apt / Suite</label>
+                                        <label className={labelClass}>Apt / Suite</label>
                                         <input
                                             type="text"
                                             placeholder="Apt 4B"
                                             value={unit}
                                             onChange={e => setUnit(e.target.value)}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">City</label>
+                                        <label className={labelClass}>City</label>
                                         <input
                                             type="text"
                                             required
                                             placeholder="City"
                                             value={city}
                                             onChange={e => setCity(e.target.value)}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">State / Province</label>
+                                        <label className={labelClass}>State / Province</label>
                                         <input
                                             type="text"
                                             placeholder="State or Region"
                                             value={stateProvince}
                                             onChange={e => setStateProvince(e.target.value)}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">ZIP / Postal Code</label>
+                                        <label className={labelClass}>ZIP / Postal Code</label>
                                         <input
                                             type="text"
                                             placeholder="Postal code"
                                             value={postalCode}
                                             onChange={e => setPostalCode(e.target.value)}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">Phone Number</label>
+                                        <label className={labelClass}>Phone Number</label>
                                         <input
                                             type="text"
                                             placeholder="+1 (555) 000-0000"
                                             value={phone}
                                             onChange={e => setPhone(e.target.value)}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-mono text-white/70">Email</label>
+                                        <label className={labelClass}>Email</label>
                                         <input
                                             type="email"
                                             placeholder="email@domain.com"
                                             value={email}
                                             onChange={e => setEmail(e.target.value)}
-                                            className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                            className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                 </div>
@@ -1519,31 +1730,33 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'passkey' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-mono text-white/70">Domain / RP ID</label>
+                                    <label className={labelClass}>Domain / RP ID</label>
                                     <input
                                         type="text"
                                         placeholder="github.com"
                                         value={passkeyRpId}
                                         onChange={e => setPasskeyRpId(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-mono text-white/70">Username / Account</label>
+                                    <label className={labelClass}>Username / Account</label>
                                     <input
                                         type="text"
                                         placeholder="user@domain.com"
                                         value={username}
                                         onChange={e => setUsername(e.target.value)}
-                                        className="h-8 bg-white/[0.07] border border-white/[0.12] focus:border-accent focus:bg-white/[0.10] rounded-lg px-3 text-xs text-white placeholder-white/40 outline-none"
+                                        className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                             </>
                         )}
                     </div>
 
-                    <div className="flex gap-2 mt-2 pt-2 border-t border-white/[0.08]">
-                        <button type="button" onClick={() => setViewMode('vault')} className="flex-1 h-9 rounded-full bg-white/[0.06] hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-xs font-semibold transition active:scale-95 cursor-pointer">
+                    <div className={`flex gap-2 mt-2 pt-2 border-t ${isBright ? 'border-black/[0.06]' : 'border-white/[0.08]'}`}>
+                        <button type="button" onClick={() => setViewMode('vault')} className={`flex-1 h-9 rounded-full border text-xs font-semibold transition active:scale-95 cursor-pointer ${
+                            isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/[0.07] hover:bg-white/[0.12] border-white/10 text-white/85 hover:text-white'
+                        }`}>
                             Cancel
                         </button>
                         <button type="submit" disabled={isSaving} className="flex-1 h-9 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-xs transition cursor-pointer shadow-xs">
@@ -1554,178 +1767,154 @@ export default function QVaultPopover({ isClosing }) {
             ) : (
                 /* UNLOCKED MAIN VAULT VIEW */
                 <div className="flex flex-col gap-3">
-                    {/* Category Filter Pills with Side Scrolling, Wheel & Drag Support */}
-                    <div className="relative flex items-center gap-1">
-                        <button
-                            type="button"
-                            onClick={() => scrollCategories(-100)}
-                            className={`flex items-center justify-center w-7 h-7 rounded-full border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
-                                }`}
-                            title="Scroll left"
-                        >
-                            <ChevronLeft size={13} />
-                        </button>
-
-                        <div
-                            ref={categoryScrollRef}
-                            onMouseDown={handleCategoryMouseDown}
-                            onMouseLeave={handleCategoryMouseLeave}
-                            onMouseUp={handleCategoryMouseUp}
-                            onMouseMove={handleCategoryMouseMove}
-                            onWheel={(e) => {
-                                if (e.deltaY !== 0) {
-                                    e.currentTarget.scrollLeft += e.deltaY;
-                                }
-                            }}
-                            className={`relative flex-1 flex items-center gap-1 p-1 rounded-full border overflow-x-auto hide-scroll scroll-smooth select-none cursor-grab active:cursor-grabbing ${isBright
-                                    ? 'bg-black/[0.04] border-black/10'
-                                    : 'bg-white/[0.05] border-white/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-                                }`}
-                        >
-                            {/* Hover preview indicator pill */}
-                            {hoverCategoryPillStyle.width > 0 && hoveredCategoryFilter && hoveredCategoryFilter !== categoryFilter && (
-                                <div
-                                    className={`absolute top-1 bottom-1 rounded-full transition-all duration-200 pointer-events-none ${
-                                        isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
-                                    }`}
-                                    style={{
-                                        left: `${hoverCategoryPillStyle.left}px`,
-                                        width: `${hoverCategoryPillStyle.width}px`,
-                                    }}
-                                />
-                            )}
-
-                            {/* Sliding Indicator Pill matching Spaces Switcher */}
+                    {/* Top Segmented Control (100% width, 4 distinct pages, zero emojis) */}
+                    <div
+                        onMouseLeave={() => setHoveredActivePage(null)}
+                        className={`relative grid grid-cols-4 p-1 rounded-full border shadow-xs select-none ${
+                            isBright
+                                ? 'bg-black/[0.03] border-black/[0.05]'
+                                : 'bg-black/25 border-white/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                        }`}
+                    >
+                        {/* Hover preview pill */}
+                        {hoveredActivePage && hoveredActivePage !== activePage && (
                             <div
-                                className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${isBright
-                                        ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                                        : 'border'
-                                    }`}
+                                className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                    isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                }`}
                                 style={{
-                                    left: `${categoryPillStyle.left}px`,
-                                    width: `${categoryPillStyle.width}px`,
-                                    opacity: categoryPillStyle.opacity,
-                                    ...(!isBright ? {
-                                        borderColor: 'var(--accent, #d4bc94)',
-                                        backgroundColor: 'rgba(212, 188, 148, 0.22)',
-                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.25)'
-                                    } : {})
+                                    left: 4,
+                                    transform: hoveredActivePage === 'logins' ? 'translateX(0)' :
+                                        hoveredActivePage === '2fa' ? 'translateX(100%)' :
+                                        hoveredActivePage === 'wallet' ? 'translateX(200%)' :
+                                        'translateX(300%)'
                                 }}
                             />
+                        )}
 
-                            <button
-                                ref={el => { categoryTabRefs.current['all'] = el; }}
-                                onMouseEnter={() => setHoveredCategoryFilter('all')}
-                                onClick={() => {
-                                    setCategoryFilter('all');
-                                    categoryTabRefs.current['all']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }}
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-all duration-300 active:scale-95 cursor-pointer flex-shrink-0 ${categoryFilter === 'all'
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
-                                    }`}
-                            >
-                                All ({parsedItems.length})
-                            </button>
-                            <button
-                                ref={el => { categoryTabRefs.current['logins'] = el; }}
-                                onMouseEnter={() => setHoveredCategoryFilter('logins')}
-                                onClick={() => {
-                                    setCategoryFilter('logins');
-                                    categoryTabRefs.current['logins']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }}
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-all duration-300 active:scale-95 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'logins'
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
-                                    }`}
-                            >
-                                <Globe size={11} className={categoryFilter === 'logins' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-sky-600' : 'text-sky-400')} /> Logins ({parsedItems.filter(p => p.itemType === 'login').length})
-                            </button>
-                            <button
-                                ref={el => { categoryTabRefs.current['cards'] = el; }}
-                                onMouseEnter={() => setHoveredCategoryFilter('cards')}
-                                onClick={() => {
-                                    setCategoryFilter('cards');
-                                    categoryTabRefs.current['cards']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }}
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-all duration-300 active:scale-95 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'cards'
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
-                                    }`}
-                            >
-                                <CreditCard size={11} className={categoryFilter === 'cards' ? (isBright ? 'text-blue-700' : 'text-blue-300') : (isBright ? 'text-blue-600' : 'text-blue-400')} /> Cards ({parsedItems.filter(p => p.itemType === 'card').length})
-                            </button>
-                            <button
-                                ref={el => { categoryTabRefs.current['addresses'] = el; }}
-                                onMouseEnter={() => setHoveredCategoryFilter('addresses')}
-                                onClick={() => {
-                                    setCategoryFilter('addresses');
-                                    categoryTabRefs.current['addresses']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }}
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-all duration-300 active:scale-95 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'addresses'
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
-                                    }`}
-                            >
-                                <MapPin size={11} className={categoryFilter === 'addresses' ? (isBright ? 'text-amber-700' : 'text-amber-300') : (isBright ? 'text-amber-600' : 'text-amber-400')} /> Addresses ({parsedItems.filter(p => p.itemType === 'address').length})
-                            </button>
-                            <button
-                                ref={el => { categoryTabRefs.current['passkeys'] = el; }}
-                                onMouseEnter={() => setHoveredCategoryFilter('passkeys')}
-                                onClick={() => {
-                                    setCategoryFilter('passkeys');
-                                    categoryTabRefs.current['passkeys']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }}
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-all duration-300 active:scale-95 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'passkeys'
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
-                                    }`}
-                            >
-                                <Fingerprint size={11} className={categoryFilter === 'passkeys' ? (isBright ? 'text-purple-700' : 'text-purple-300') : (isBright ? 'text-purple-600' : 'text-purple-400')} /> Passkeys ({parsedItems.filter(p => p.itemType === 'passkey').length})
-                            </button>
-                            <button
-                                ref={el => { categoryTabRefs.current['generator'] = el; }}
-                                onMouseEnter={() => setHoveredCategoryFilter('generator')}
-                                onClick={() => {
-                                    setCategoryFilter('generator');
-                                    categoryTabRefs.current['generator']?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                                }}
-                                className={`relative z-10 px-2.5 py-1 rounded-full text-[11px] font-mono whitespace-nowrap transition-all duration-300 active:scale-95 flex items-center gap-1 cursor-pointer flex-shrink-0 ${categoryFilter === 'generator'
-                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold')
-                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
-                                    }`}
-                            >
-                                <Sparkles size={11} className={categoryFilter === 'generator' ? (isBright ? 'text-emerald-700' : 'text-emerald-300') : (isBright ? 'text-emerald-600' : 'text-emerald-400')} /> Gen
-                            </button>
-                        </div>
+                        {/* Animated sliding indicator pill */}
+                        <div
+                            className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                isBright
+                                    ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                    : 'border'
+                            }`}
+                            style={{
+                                left: 4,
+                                transform: activePage === 'logins' ? 'translateX(0)' :
+                                    activePage === '2fa' ? 'translateX(100%)' :
+                                    activePage === 'wallet' ? 'translateX(200%)' :
+                                    'translateX(300%)',
+                                ...(!isBright ? {
+                                    borderColor: 'var(--accent, #d4bc94)',
+                                    backgroundColor: 'rgba(212, 188, 148, 0.22)',
+                                    boxShadow: '0 2px 10px rgba(212, 188, 148, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.25)'
+                                } : {})
+                            }}
+                        />
 
+                        {/* Page 1: Logins */}
                         <button
                             type="button"
-                            onClick={() => scrollCategories(100)}
-                            className={`flex items-center justify-center w-7 h-7 rounded-full border shadow-xs transition-all active:scale-90 cursor-pointer flex-shrink-0 ${isBright ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-black/10' : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
-                                }`}
-                            title="Scroll right"
+                            onMouseEnter={() => setHoveredActivePage('logins')}
+                            onClick={() => setActivePage('logins')}
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                                activePage === 'logins'
+                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
+                            }`}
                         >
-                            <ChevronRight size={13} />
+                            <KeyRound size={11} className={activePage === 'logins' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
+                            <span>Logins</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold leading-none ${
+                                activePage === 'logins'
+                                    ? (isBright ? 'bg-sky-500/20 text-sky-950' : 'bg-sky-400/25 text-sky-200')
+                                    : (isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/10 text-white/60')
+                            }`}>
+                                {loginsCount}
+                            </span>
+                        </button>
+
+                        {/* Page 2: 2FA */}
+                        <button
+                            type="button"
+                            onMouseEnter={() => setHoveredActivePage('2fa')}
+                            onClick={() => setActivePage('2fa')}
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                                activePage === '2fa'
+                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
+                            }`}
+                        >
+                            <ShieldCheck size={11} className={activePage === '2fa' ? (isBright ? 'text-emerald-700' : 'text-emerald-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
+                            <span>2FA</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold leading-none ${
+                                activePage === '2fa'
+                                    ? (isBright ? 'bg-emerald-500/20 text-emerald-950' : 'bg-emerald-400/25 text-emerald-200')
+                                    : (isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/10 text-white/60')
+                            }`}>
+                                {totpItems.length}
+                            </span>
+                        </button>
+
+                        {/* Page 3: Wallet */}
+                        <button
+                            type="button"
+                            onMouseEnter={() => setHoveredActivePage('wallet')}
+                            onClick={() => setActivePage('wallet')}
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                                activePage === 'wallet'
+                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
+                            }`}
+                        >
+                            <CreditCard size={11} className={activePage === 'wallet' ? (isBright ? 'text-blue-700' : 'text-blue-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
+                            <span>Wallet</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold leading-none ${
+                                activePage === 'wallet'
+                                    ? (isBright ? 'bg-blue-500/20 text-blue-950' : 'bg-blue-400/25 text-blue-200')
+                                    : (isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/10 text-white/60')
+                            }`}>
+                                {walletItems.length}
+                            </span>
+                        </button>
+
+                        {/* Page 4: Generator */}
+                        <button
+                            type="button"
+                            onMouseEnter={() => setHoveredActivePage('generator')}
+                            onClick={() => setActivePage('generator')}
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                                activePage === 'generator'
+                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
+                            }`}
+                        >
+                            <Sparkles size={11} className={activePage === 'generator' ? (isBright ? 'text-amber-700' : 'text-amber-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
+                            <span>Generator</span>
                         </button>
                     </div>
 
-                    {categoryFilter === 'generator' ? (
+                    {activePage === 'generator' ? (
                         /* GENERATOR TAB */
                         <div className="flex flex-col gap-3 py-1 animate-slide-down-fade">
-                            <div className="p-3 bg-white/[0.05] border border-white/[0.08] rounded-2xl flex flex-col gap-1.5 relative">
-                                <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">Generated Password</span>
-                                <div className="flex items-center justify-between font-mono text-sm text-white font-bold break-all select-all tracking-wider">
+                            <div className={`p-3 border rounded-2xl flex flex-col gap-1.5 relative ${cardClass}`}>
+                                <span className={`text-[10px] font-mono uppercase tracking-wider font-bold ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>Generated Password</span>
+                                <div className={`flex items-center justify-between font-mono text-sm font-bold break-all select-all tracking-wider ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                     <span>{generatedResult}</span>
-                                    <button onClick={() => copyToClipboard(generatedResult, 'generated password', 'gen')} className="w-7 h-7 rounded-full flex items-center justify-center bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 transition shrink-0 ml-2 border border-emerald-500/30 cursor-pointer active:scale-95" title="Copy">
+                                    <button onClick={() => copyToClipboard(generatedResult, 'generated password', 'gen')} className={`w-7 h-7 rounded-full flex items-center justify-center transition shrink-0 ml-2 border cursor-pointer active:scale-95 ${
+                                        isBright
+                                            ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 border-emerald-500/30'
+                                            : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30'
+                                    }`} title="Copy">
                                         <Copy size={13} />
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="flex flex-col gap-2.5 p-3 bg-white/[0.05] border border-white/[0.08] rounded-2xl">
+                            <div className={`flex flex-col gap-2.5 p-3 border rounded-2xl ${cardClass}`}>
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs font-mono text-white font-medium">Length: {genLength}</span>
+                                    <span className={`text-xs font-mono font-medium ${isBright ? 'text-zinc-900' : 'text-white'}`}>Length: {genLength}</span>
                                     <input
                                         type="range"
                                         min={8}
@@ -1736,74 +1925,301 @@ export default function QVaultPopover({ isClosing }) {
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 text-xs font-mono text-white/80 pt-2 border-t border-white/[0.08]">
-                                    <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+                                <div className={`grid grid-cols-2 gap-2 text-xs font-mono pt-2 border-t ${isBright ? 'text-zinc-700 border-black/[0.06]' : 'text-white/85 border-white/[0.08]'}`}>
+                                    <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
                                         <input type="checkbox" checked={useUpper} onChange={e => setUseUpper(e.target.checked)} className="rounded accent-accent" /> A-Z (Upper)
                                     </label>
-                                    <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+                                    <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
                                         <input type="checkbox" checked={useLower} onChange={e => setUseLower(e.target.checked)} className="rounded accent-accent" /> a-z (Lower)
                                     </label>
-                                    <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+                                    <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
                                         <input type="checkbox" checked={useNumbers} onChange={e => setUseNumbers(e.target.checked)} className="rounded accent-accent" /> 0-9 (Numbers)
                                     </label>
-                                    <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+                                    <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
                                         <input type="checkbox" checked={useSymbols} onChange={e => setUseSymbols(e.target.checked)} className="rounded accent-accent" /> !@#$ (Symbols)
                                     </label>
                                 </div>
                             </div>
                         </div>
-                    ) : (
-                        /* VAULT ITEMS LIST VIEW */
-                        <div className="flex flex-col gap-2.5">
-                            {/* Saved for this website section */}
-                            {currentDomain && matchingSiteItems.length > 0 && (
-                                <div className="p-3 bg-accent/[0.08] border border-accent/30 rounded-2xl flex flex-col gap-2 animate-slide-down-fade">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-mono text-accent uppercase tracking-wider flex items-center gap-1.5 font-bold">
-                                            <Globe size={12} /> Saved for {currentDomain}
-                                        </span>
-                                        <span className="text-[10px] bg-accent/20 border border-accent/35 px-2 py-0.5 rounded-full font-mono text-accent font-bold">
-                                            {matchingSiteItems.length} match
-                                        </span>
+                    ) : activePage === '2fa' ? (
+                        /* DEDICATED 2FA CODES PAGE */
+                        <div className="flex flex-col gap-2.5 animate-slide-down-fade">
+                            {/* Search bar */}
+                            <div className="relative shrink-0">
+                                <Search size={13} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isBright ? 'text-zinc-400' : 'text-white/60'}`} />
+                                <input
+                                    type="text"
+                                    placeholder="Search 2FA authenticator codes..."
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className={`w-full h-9 pl-9 pr-4 rounded-full text-xs outline-none font-mono border transition-colors ${inputClass}`}
+                                />
+                            </div>
+
+                            {/* 2FA Items List */}
+                            <div className="flex flex-col gap-2 max-h-[380px] overflow-y-auto hide-scroll pr-0.5">
+                                {currentTabFilteredItems.length === 0 ? (
+                                    <div className={`text-center text-xs py-8 font-mono flex flex-col items-center gap-2.5 ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
+                                        <span>{searchQuery ? 'No matching 2FA codes.' : 'No two-factor authenticators stored.'}</span>
+                                        {!searchQuery && (
+                                            <button
+                                                onClick={() => handleOpenAddForm('totp')}
+                                                className="px-4 py-2 rounded-full border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer active:scale-95 bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs"
+                                            >
+                                                <Plus size={12} strokeWidth={2.5} /> Add 2FA Code
+                                            </button>
+                                        )}
                                     </div>
-                                    <div className="flex flex-col gap-1.5">
-                                        {matchingSiteItems.map(item => (
-                                            <div key={item.id} className="flex items-center justify-between bg-white/[0.05] p-2 px-3 rounded-full border border-white/[0.08] hover:border-accent/40 transition">
-                                                <div className="flex flex-col truncate pr-2">
-                                                    <span className="text-xs font-semibold text-white truncate">{item.title}</span>
-                                                    {item.username && <span className="text-[10px] font-mono text-white/60 truncate">{item.username}</span>}
+                                ) : (
+                                    currentTabFilteredItems.map((item, index) => {
+                                        const secret = item.totpSecret || (item.itemType === 'totp' ? item.password : null) || (isValidTotpSecret(item.password) ? item.password : null);
+                                        const code = secret ? generateTotpCode(secret, now) : null;
+
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}
+                                                className={`p-3 rounded-2xl flex flex-col gap-2.5 shrink-0 min-h-[96px] transition-all group border animate-tile-in hover:-translate-y-0.5 hover:shadow-md ${
+                                                    deletingIds.has(item.id) ? 'animate-row-collapse pointer-events-none' : ''
+                                                } ${
+                                                    isBright
+                                                        ? 'bg-black/[0.035] hover:bg-black/[0.06] border-black/[0.08] hover:border-black/[0.15] shadow-xs'
+                                                        : 'bg-black/25 hover:bg-black/35 border-white/[0.08] hover:border-white/[0.14]'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border shrink-0 transition-colors ${
+                                                            isBright ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                                        }`}>
+                                                            <ShieldCheck size={14} />
+                                                        </div>
+                                                        <div className="flex flex-col min-w-0 flex-1 justify-center gap-0.5">
+                                                            <span className={`text-xs font-semibold truncate leading-snug ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                                {item.title}
+                                                            </span>
+                                                            <span className={`text-[11px] truncate font-mono leading-snug ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
+                                                                {item.username || item.url?.replace(/^https?:\/\//, '') || 'Authenticator'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => handleOpenEditForm(item)}
+                                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
+                                                                isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
+                                                            }`}
+                                                            title="Edit 2FA Item"
+                                                        >
+                                                            <Pencil size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteItem(item.id, item.title)}
+                                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
+                                                                isBright ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-600' : 'hover:bg-red-500/25 text-white/70 hover:text-red-400'
+                                                            }`}
+                                                            title="Delete 2FA Item"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <button onClick={() => handleAutofillPage(item)} className="px-3 py-1 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-[11px] flex items-center gap-1 transition shrink-0 cursor-pointer shadow-xs">
-                                                    <Zap size={11} strokeWidth={2.5} /> Autofill
-                                                </button>
+
+                                                {/* Live 6-digit TOTP code row */}
+                                                <div className={`flex items-center justify-between px-3 py-2 rounded-xl border ${
+                                                    isBright ? 'bg-black/[0.025] border-black/5 text-zinc-900' : 'bg-white/[0.04] border-white/[0.06] text-white'
+                                                }`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <CountdownRing remaining={totpRemaining} size={28} strokeWidth={2.5} />
+                                                        {code ? (
+                                                            <span className={`font-mono text-base font-bold tracking-widest select-all ${
+                                                                isBright ? 'text-zinc-950 font-extrabold' : 'text-white'
+                                                            }`}>
+                                                                {formatTotpCode(code)}
+                                                            </span>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs text-amber-400 font-mono font-medium">Setup Key Needed</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenEditForm(item)}
+                                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition active:scale-95 cursor-pointer ${
+                                                                        isBright
+                                                                            ? 'bg-amber-500/15 text-amber-900 border-amber-500/30 hover:bg-amber-500/25'
+                                                                            : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                                                    }`}
+                                                                    title="Add 2FA Secret Key"
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (code) {
+                                                                copyToClipboard(code, '2FA code', item.id);
+                                                            } else {
+                                                                handleOpenEditForm(item);
+                                                            }
+                                                        }}
+                                                        className={`px-3 py-1.5 rounded-full border text-[11px] font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                                                            copiedId === `2FA code-${item.id}`
+                                                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 font-bold'
+                                                                : isBright
+                                                                    ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
+                                                                    : 'bg-white/[0.08] hover:bg-white/[0.14] text-white border-white/10'
+                                                        }`}
+                                                        title={code ? "Copy 6-digit code" : "Configure 2FA key"}
+                                                    >
+                                                        {copiedId === `2FA code-${item.id}` ? (
+                                                            <>
+                                                                <Check size={12} className="text-emerald-500" />
+                                                                <span>Copied</span>
+                                                            </>
+                                                        ) : code ? (
+                                                            <>
+                                                                <Copy size={12} />
+                                                                <span>Copy</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Pencil size={12} />
+                                                                <span>Set Key</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </div>
-                                        ))}
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        /* LOGINS OR WALLET LIST VIEW */
+                        <div className="flex flex-col gap-2.5 animate-slide-down-fade">
+                            {/* Saved for this website section (sleek single-row banner on logins page) */}
+                            {activePage === 'logins' && currentDomain && matchingSiteItems.length > 0 && (
+                                <div className={`p-2 px-3 rounded-2xl flex items-center justify-between gap-2.5 animate-slide-down-fade border shrink-0 ${
+                                    isBright ? 'bg-accent/[0.12] border-accent/35 shadow-xs' : 'bg-accent/[0.08] border-accent/30'
+                                }`}>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="relative flex h-2 w-2 shrink-0">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                        </span>
+                                        <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                            <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-950 font-bold' : 'text-white'}`}>
+                                                {matchingSiteItems[0].title}
+                                            </span>
+                                            <span className={`text-[10px] font-mono truncate shrink-0 ${isBright ? 'text-zinc-600' : 'text-white/65'}`}>
+                                                ({matchingSiteItems.length} saved for {currentDomain})
+                                            </span>
+                                        </div>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAutofillPage(matchingSiteItems[0])}
+                                        className="px-3 py-1 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-[11px] flex items-center gap-1 transition shrink-0 cursor-pointer shadow-xs"
+                                        title={`Autofill ${matchingSiteItems[0].title}`}
+                                    >
+                                        <Zap size={11} strokeWidth={2.5} /> Autofill
+                                    </button>
                                 </div>
                             )}
 
                             {/* Search bar */}
-                            <div className="relative">
-                                <Search size={13} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isBright ? 'text-zinc-400' : 'text-white/50'}`} />
+                            <div className="relative shrink-0">
+                                <Search size={13} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isBright ? 'text-zinc-400' : 'text-white/60'}`} />
                                 <input
                                     type="text"
-                                    placeholder="Search credentials, cards, addresses..."
+                                    placeholder={activePage === 'logins' ? "Search logins & passkeys..." : "Search cards & addresses..."}
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className={`w-full h-9 pl-9 pr-4 rounded-full text-xs outline-none font-mono transition-colors ${isBright
-                                            ? 'bg-black/[0.04] border border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent'
-                                            : 'bg-white/[0.07] border border-white/[0.12] text-white placeholder-white/40 focus:border-accent focus:bg-white/[0.10]'
-                                        }`}
+                                    className={`w-full h-9 pl-9 pr-4 rounded-full text-xs outline-none font-mono border transition-colors ${inputClass}`}
                                 />
                             </div>
 
+                            {/* Sub-filter micro-pills for Logins tab */}
+                            {activePage === 'logins' && (
+                                <div className={`flex items-center gap-1.5 p-1 rounded-2xl border mb-0.5 select-none shrink-0 ${
+                                    isBright ? 'bg-black/[0.025] border-black/[0.06]' : 'bg-black/20 border-white/[0.06]'
+                                }`}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLoginSubFilter('all')}
+                                        className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-semibold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
+                                            loginSubFilter === 'all'
+                                                ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                                : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
+                                        }`}
+                                    >
+                                        <span>All</span>
+                                        <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
+                                            loginSubFilter === 'all' ? (isBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
+                                        }`}>
+                                            {loginsCount}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLoginSubFilter('passwords')}
+                                        className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-semibold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
+                                            loginSubFilter === 'passwords'
+                                                ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                                : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
+                                        }`}
+                                    >
+                                        <KeyRound size={10} className={loginSubFilter === 'passwords' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/50')} />
+                                        <span>Passwords</span>
+                                        <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
+                                            loginSubFilter === 'passwords' ? (isBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
+                                        }`}>
+                                            {passwordsCount}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLoginSubFilter('passkeys')}
+                                        className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-semibold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
+                                            loginSubFilter === 'passkeys'
+                                                ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                                : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
+                                        }`}
+                                    >
+                                        <Fingerprint size={10} className={loginSubFilter === 'passkeys' ? (isBright ? 'text-purple-700' : 'text-purple-300') : (isBright ? 'text-zinc-500' : 'text-white/50')} />
+                                        <span>Passkeys</span>
+                                        <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
+                                            loginSubFilter === 'passkeys' ? (isBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
+                                        }`}>
+                                            {passkeysCount}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Items List */}
-                            <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto hide-scroll pr-0.5">
-                                {filteredItems.length === 0 ? (
-                                    <div className="text-center text-white/60 text-xs py-8 font-mono flex flex-col items-center gap-2.5">
-                                        <span>{searchQuery ? 'No matching vault items.' : (passwords.length === 0 ? 'Your vault is currently empty.' : 'Category is empty. Click + Add to store credentials.')}</span>
+                            <div
+                                key={`${activePage}-${loginSubFilter}`}
+                                className="flex flex-col gap-2 max-h-[380px] overflow-y-auto hide-scroll pr-1"
+                            >
+                                {currentTabFilteredItems.length === 0 ? (
+                                    <div className={`text-center text-xs py-8 font-mono flex flex-col items-center gap-2.5 ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
+                                        <span>
+                                            {searchQuery
+                                                ? 'No matching vault items.'
+                                                : activePage === 'logins'
+                                                    ? (loginSubFilter === 'passwords' ? 'No passwords saved.' : loginSubFilter === 'passkeys' ? 'No passkeys saved.' : (passwords.length === 0 ? 'Your vault is currently empty.' : 'No logins or passkeys saved.'))
+                                                    : (passwords.length === 0 ? 'Your vault is currently empty.' : 'No cards or addresses saved.')
+                                            }
+                                        </span>
                                         {!searchQuery && passwords.length === 0 && (
                                             <button
+                                                type="button"
                                                 onClick={() => setViewMode('settings')}
                                                 className={`px-4 py-2 rounded-full border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer active:scale-95 ${isBright
                                                         ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/40 shadow-xs'
@@ -1815,134 +2231,458 @@ export default function QVaultPopover({ isClosing }) {
                                         )}
                                     </div>
                                 ) : (
-                                    filteredItems.map((item) => {
+                                    currentTabFilteredItems.map((item, index) => {
                                         const isRevealed = revealedPasswords[item.id];
                                         const isCard = item.itemType === 'card';
                                         const isAddress = item.itemType === 'address';
                                         const isPasskey = item.itemType === 'passkey';
+                                        const isLogin = !isCard && !isAddress && !isPasskey;
+                                        const isExpanded = expandedItemIds.has(item.id);
+                                        const inlineTotpSecret = item.totpSecret || (item.itemType === 'totp' ? item.password : null);
+                                        const inlineTotpCode = inlineTotpSecret ? generateTotpCode(inlineTotpSecret, now) : null;
+
+                                        const itemHost = item.url || item.passkeyData?.rpId || item.title || '';
+                                        const isSiteMatch = currentDomain ? domainsMatch(currentDomain, itemHost) : false;
+
+                                        // Subtitle calculation
+                                        const subtitle = isCard
+                                            ? (item.cardData?.cardNumber ? `•••• ${item.cardData.cardNumber.slice(-4)}` : (item.cardData?.cardholderName || 'Payment Card'))
+                                            : isAddress
+                                                ? (item.addressData?.fullName || [item.addressData?.city, item.addressData?.country].filter(Boolean).join(', ') || 'Address')
+                                                : isPasskey
+                                                    ? (item.passkeyData?.rpId || item.url || 'WebAuthn Passkey')
+                                                    : (item.username || item.url || 'Login');
+
+                                        // Quick copy action for the compact row
+                                        const handleQuickCopy = (e) => {
+                                            e.stopPropagation();
+                                            if (isCard) {
+                                                const num = item.cardData?.cardNumber || item.password;
+                                                if (num) copyToClipboard(num, 'card number', item.id);
+                                            } else if (isAddress && item.addressData) {
+                                                const fullAddr = `${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim();
+                                                copyToClipboard(fullAddr, 'address', item.id);
+                                            } else if (isPasskey) {
+                                                const cred = item.passkeyData?.credentialId || item.id;
+                                                copyToClipboard(cred, 'passkey credential', item.id);
+                                            } else if (item.password) {
+                                                copyToClipboard(item.password, 'password', item.id);
+                                            }
+                                        };
+
+                                        const quickCopyLabel = isCard ? 'card number' : isAddress ? 'address' : isPasskey ? 'passkey credential' : 'password';
+                                        const isQuickCopied = copiedId === `${quickCopyLabel}-${item.id}`;
 
                                         return (
-                                            <div key={item.id} className={`p-3 rounded-2xl flex flex-col gap-2.5 transition-all group border ${deletingIds.has(item.id) ? 'animate-row-collapse pointer-events-none' : ''} ${isBright
-                                                    ? 'bg-white/80 hover:bg-white border-black/[0.08] hover:border-black/[0.15] shadow-xs'
-                                                    : 'bg-white/[0.05] hover:bg-white/[0.08] border-white/[0.08] hover:border-white/[0.14]'
-                                                }`}>
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2.5 min-w-0">
-                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border shrink-0 transition-colors ${isPasskey ? (isBright ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-purple-500/15 text-purple-300 border-purple-500/30') :
-                                                                isCard ? (isBright ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-blue-500/15 text-blue-300 border-blue-500/30') :
-                                                                    isAddress ? (isBright ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-amber-500/15 text-amber-300 border-amber-500/30') :
-                                                                        (isBright ? 'bg-sky-100 text-sky-700 border-sky-200' : 'bg-sky-500/15 text-sky-300 border-sky-500/30')
-                                                            }`}>
-                                                            {isPasskey ? <Fingerprint size={13} /> :
-                                                                isCard ? <CreditCard size={13} /> :
-                                                                    isAddress ? <MapPin size={13} /> :
-                                                                        <Globe size={13} />}
+                                            <div
+                                                key={item.id}
+                                                style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}
+                                                className={`rounded-2xl shrink-0 min-h-[52px] transition-all duration-200 group border overflow-hidden animate-tile-in relative ${
+                                                    deletingIds.has(item.id) ? 'animate-row-collapse pointer-events-none' : ''
+                                                } ${
+                                                    isExpanded
+                                                        ? (isBright ? 'bg-black/[0.05] border-accent/60 shadow-md ring-1 ring-accent/20' : 'bg-black/45 border-accent/50 shadow-lg ring-1 ring-accent/30')
+                                                        : (isBright
+                                                            ? 'bg-black/[0.035] hover:bg-black/[0.06] border-black/[0.08] hover:border-black/[0.14] shadow-xs hover:-translate-y-0.5'
+                                                            : 'bg-black/25 hover:bg-black/35 border-white/[0.08] hover:border-white/[0.14] hover:-translate-y-0.5 hover:shadow-md')
+                                                }`}
+                                            >
+                                                {/* Compact Row Header (~52px) */}
+                                                <div
+                                                    onClick={() => toggleItemExpanded(item.id)}
+                                                    className="p-2.5 px-3 min-h-[52px] flex items-center justify-between gap-2.5 cursor-pointer select-none"
+                                                    title={isExpanded ? 'Click to collapse' : 'Click to view details'}
+                                                >
+                                                    {/* Left: Badge & Middle: Title/Subtitle */}
+                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                        <div
+                                                            className={`w-8 h-8 rounded-full flex items-center justify-center border shrink-0 transition-colors ${
+                                                                isPasskey
+                                                                    ? (isBright ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-purple-500/15 text-purple-300 border-purple-500/30')
+                                                                    : isCard
+                                                                        ? (isBright ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-blue-500/15 text-blue-300 border-blue-500/30')
+                                                                        : isAddress
+                                                                            ? (isBright ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-amber-500/15 text-amber-300 border-amber-500/30')
+                                                                            : (isBright ? 'bg-sky-100 text-sky-700 border-sky-200' : 'bg-sky-500/15 text-sky-300 border-sky-500/30')
+                                                            }`}
+                                                        >
+                                                            {isPasskey ? <Fingerprint size={14} /> :
+                                                             isCard ? <CreditCard size={14} /> :
+                                                             isAddress ? <MapPin size={14} /> :
+                                                             <Globe size={14} />}
                                                         </div>
-                                                        <div className="flex flex-col truncate">
-                                                            <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{item.title}</span>
-                                                            <span className={`text-[10px] truncate font-mono ${isBright ? 'text-zinc-500' : 'text-white/60'}`}>
-                                                                {isCard ? (item.cardData?.cardholderName || item.username || 'Payment Card') :
-                                                                    isAddress ? (item.addressData?.fullName || [item.addressData?.city, item.addressData?.country].filter(Boolean).join(', ') || 'Address') :
-                                                                        (item.username || item.url || 'Login')}
+                                                        <div className="flex flex-col min-w-0 flex-1 justify-center gap-0.5">
+                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                <span className={`text-xs font-semibold truncate leading-snug select-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                                    {item.title}
+                                                                </span>
+                                                                {isSiteMatch && (
+                                                                    <span className="px-1.5 py-0.2 rounded-full text-[8px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                                                        Site Match
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <span className={`text-[11px] truncate font-mono leading-snug select-none ${isBright ? 'text-zinc-500' : 'text-white/60'}`}>
+                                                                {subtitle}
                                                             </span>
                                                         </div>
                                                     </div>
 
-                                                    {/* Quick Actions (Hover revealed for clean density) */}
-                                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
-                                                        {/* Autofill button */}
-                                                        <button onClick={() => handleAutofillPage(item)} className={`px-2.5 py-1 rounded-full border text-[10px] flex items-center gap-1 transition active:scale-95 cursor-pointer ${isBright ? 'bg-accent/20 hover:bg-accent/30 text-zinc-900 font-bold border-accent/40' : 'bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 shadow-xs'
-                                                            }`} title="Autofill on active page">
-                                                            <Zap size={11} strokeWidth={2.5} /> Autofill
-                                                        </button>
+                                                    {/* Right: Actions & Expand Chevron */}
+                                                    <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                                                        {/* Site-Match Autofill Pill (only shown for matching sites) */}
+                                                        {isSiteMatch && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleAutofillPage(item)}
+                                                                className={`px-2 py-0.5 rounded-full border text-[10px] font-bold flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0 ${
+                                                                    isBright
+                                                                        ? 'bg-accent/20 hover:bg-accent/30 text-zinc-900 border-accent/40'
+                                                                        : 'bg-accent hover:brightness-110 text-zinc-950 border border-accent/40 shadow-xs'
+                                                                }`}
+                                                                title="Autofill on active page"
+                                                            >
+                                                                <Zap size={10} strokeWidth={2.5} />
+                                                                <span>Autofill</span>
+                                                            </button>
+                                                        )}
 
-                                                        {/* Copy actions */}
-                                                        {isCard && item.cardData?.cardNumber && (
-                                                            <button onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id)} className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
-                                                                }`} title="Copy Card Number">
-                                                                {copiedId === `card number-${item.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                                                            </button>
-                                                        )}
-                                                        {isAddress && item.addressData && (
-                                                            <button onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id)} className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
-                                                                }`} title="Copy Address">
-                                                                {copiedId === `address-${item.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                                                            </button>
-                                                        )}
-                                                        {!isCard && !isAddress && !isPasskey && item.password && (
-                                                            <>
-                                                                <button onClick={() => toggleReveal(item.id)} className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
-                                                                    }`} title={isRevealed ? 'Hide Password' : 'Show Password'}>
-                                                                    {isRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                        {/* Hover Quick Actions */}
+                                                        <div className={`${isExpanded ? 'max-w-[130px] opacity-100' : 'max-w-0 opacity-0 group-hover:max-w-[130px] group-hover:opacity-100'} transition-all duration-200 ease-out overflow-hidden flex items-center gap-1 shrink-0`}>
+                                                            {!isSiteMatch && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleAutofillPage(item)}
+                                                                    className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer shrink-0 ${
+                                                                        isBright
+                                                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10'
+                                                                            : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
+                                                                    }`}
+                                                                    title="Autofill on active page"
+                                                                >
+                                                                    <Zap size={11} strokeWidth={2} />
                                                                 </button>
-                                                                <button onClick={() => copyToClipboard(item.password, 'password', item.id)} className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
-                                                                    }`} title="Copy Password">
-                                                                {copiedId === `password-${item.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleQuickCopy}
+                                                                className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer shrink-0 ${
+                                                                    isBright
+                                                                        ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10'
+                                                                        : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
+                                                                }`}
+                                                                title={`Copy ${isCard ? 'Card Number' : isAddress ? 'Address' : isPasskey ? 'Credential' : 'Password'}`}
+                                                            >
+                                                                {isQuickCopied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                                                             </button>
-                                                            </>
-                                                        )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenEditForm(item)}
+                                                                className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0 ${
+                                                                    isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
+                                                                }`}
+                                                                title="Edit Item"
+                                                            >
+                                                                <Pencil size={11} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteItem(item.id, item.title)}
+                                                                className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0 ${
+                                                                    isBright ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-600' : 'hover:bg-red-500/25 text-white/70 hover:text-red-400'
+                                                                }`}
+                                                                title="Delete Item"
+                                                            >
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        </div>
 
-                                                        <button onClick={() => handleOpenEditForm(item)} className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
-                                                            }`} title="Edit Item">
-                                                            <Pencil size={12} />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteItem(item.id, item.title)} className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${isBright ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-600' : 'hover:bg-red-500/25 text-white/70 hover:text-red-400'
-                                                            }`} title="Delete Item">
-                                                            <Trash2 size={12} />
+                                                        {/* Chevron Toggle */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                toggleItemExpanded(item.id);
+                                                            }}
+                                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer ml-0.5 shrink-0 ${
+                                                                isBright
+                                                                    ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900'
+                                                                    : 'hover:bg-white/[0.12] text-white/60 hover:text-white'
+                                                                } ${isExpanded ? 'rotate-180 text-accent bg-accent/15' : ''}`}
+                                                            title={isExpanded ? 'Collapse' : 'Expand details'}
+                                                        >
+                                                            <ChevronDown size={13} className="transition-transform duration-300" />
                                                         </button>
                                                     </div>
                                                 </div>
 
-                                                {/* Details subrow */}
-                                                {isCard ? (
-                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-3 py-1.5 rounded-xl border ${isBright ? 'bg-black/[0.025] border-black/5 text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
+                                                {/* Expandable Details Drawer with Fluid Accordion Animation */}
+                                                <div className={`vault-accordion-wrapper ${isExpanded ? 'open' : 'pointer-events-none'}`}>
+                                                    <div className="vault-accordion-inner">
+                                                        <div className={`px-3 pb-3 pt-1 flex flex-col gap-2 border-t ${
+                                                            isBright ? 'border-black/[0.06] bg-black/[0.015]' : 'border-white/[0.06] bg-black/15'
                                                         }`}>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`font-semibold ${isBright ? 'text-blue-700' : 'text-blue-300'}`}>{item.cardData?.cardBrand || 'Card'}:</span>
-                                                            <span>•••• •••• •••• {item.cardData?.cardNumber?.slice(-4) || item.password?.slice(-4) || '••••'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-white/60">
-                                                            <span>{item.cardData?.expMonth || '••'}/{item.cardData?.expYear?.slice(-2) || '••'}</span>
-                                                            {item.cardData?.cvv && (
-                                                                <button onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id)} className={`px-2 py-0.5 rounded-full text-[9px] transition active:scale-95 cursor-pointer ${isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/10 hover:bg-white/15 text-white'
+                                                        {/* LOGIN / PASSWORD DETAILS */}
+                                                        {isLogin && (
+                                                            <div className="flex flex-col gap-2">
+                                                                {/* Password Row */}
+                                                                {item.password && (
+                                                                    <div className={`flex items-center justify-between text-[11px] font-mono px-3 py-1.5 rounded-xl border ${
+                                                                        isBright ? 'bg-black/[0.03] border-black/5 text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
                                                                     }`}>
-                                                                    {copiedId === `CVV-${item.id}` ? 'Copied' : 'CVV'}
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ) : isAddress ? (
-                                                    <div className={`flex flex-col gap-0.5 text-[10px] font-mono px-3 py-1.5 rounded-xl border leading-snug ${isBright ? 'bg-black/[0.025] border-black/5 text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
-                                                        }`}>
-                                                        <div className={`font-semibold truncate ${isBright ? 'text-amber-800' : 'text-amber-300'}`}>
-                                                            {item.addressData?.streetAddress} {item.addressData?.unit ? `(${item.addressData.unit})` : ''}
-                                                        </div>
-                                                        <div className="text-white/60 truncate">
-                                                            {[item.addressData?.city, item.addressData?.state, item.addressData?.postalCode, item.addressData?.country].filter(Boolean).join(', ')}
-                                                        </div>
-                                                    </div>
-                                                ) : isPasskey ? (
-                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-3 py-1.5 rounded-xl border ${isBright ? 'bg-purple-500/[0.06] border-purple-500/15 text-purple-900' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
-                                                        }`}>
-                                                        <span>Passkey: <span className={isBright ? 'text-purple-700 font-semibold' : 'text-purple-300'}>{item.passkeyData?.rpId || item.url || 'WebAuthn'}</span></span>
-                                                        <button onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id)} className={`px-2 py-0.5 rounded-full border text-[9px] font-medium transition active:scale-95 cursor-pointer ${isBright ? 'text-purple-700 border-purple-300 hover:bg-purple-50' : 'text-purple-300 border-purple-500/35 hover:bg-purple-500/15'
-                                                            }`}>
-                                                            {copiedId === `passkey credential-${item.id}` ? 'Copied' : 'Copy Credential'}
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-3 py-1.5 rounded-xl border ${isBright ? 'bg-black/[0.03] border-black/5 text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
-                                                        }`}>
-                                                        <span className={`truncate font-mono ${isBright ? 'text-zinc-700 font-medium' : 'text-white'}`}>
-                                                            {isRevealed ? item.password : '••••••••••••'}
-                                                        </span>
-                                                        {item.url && (
-                                                            <span className="text-[9px] text-white/50 truncate max-w-[120px]">
-                                                                {item.url.replace(/^https?:\/\//, '')}
-                                                            </span>
+                                                                        <div className="flex items-center gap-2 truncate flex-1 min-w-0">
+                                                                            <span className={`text-[10px] font-semibold opacity-60 shrink-0 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Password:</span>
+                                                                            <span className={`truncate select-all font-mono font-medium ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                                                {isRevealed ? item.password : '••••••••••••'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => toggleReveal(item.id)}
+                                                                                className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
+                                                                                    isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
+                                                                                }`}
+                                                                                title={isRevealed ? 'Hide Password' : 'Show Password'}
+                                                                            >
+                                                                                {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => copyToClipboard(item.password, 'password', item.id)}
+                                                                                className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${
+                                                                                    isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
+                                                                                }`}
+                                                                                title="Copy Password"
+                                                                            >
+                                                                                {copiedId === `password-${item.id}` ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* URL Link Row */}
+                                                                {item.url && (
+                                                                    <div className={`flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl border ${
+                                                                        isBright ? 'bg-black/[0.03] border-black/5' : 'bg-white/[0.04] border-white/[0.06]'
+                                                                    }`}>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const targetUrl = item.url.startsWith('http://') || item.url.startsWith('https://')
+                                                                                    ? item.url
+                                                                                    : `https://${item.url}`;
+                                                                                useTabStore.getState().addTab(targetUrl);
+                                                                            }}
+                                                                            className="flex items-center gap-1.5 text-[11px] font-mono text-sky-400 hover:text-sky-300 hover:underline truncate max-w-[230px] text-left cursor-pointer"
+                                                                            title={`Open ${item.url} in new tab`}
+                                                                        >
+                                                                            <Globe size={11} className="shrink-0 text-sky-400" />
+                                                                            <span className="truncate">{item.url.replace(/^https?:\/\//, '')}</span>
+                                                                            <ExternalLink size={10} className="shrink-0 opacity-70" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => copyToClipboard(item.url, 'url', item.id)}
+                                                                            className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${
+                                                                                isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
+                                                                            }`}
+                                                                            title="Copy URL"
+                                                                        >
+                                                                            {copiedId === `url-${item.id}` ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Inline 2FA Display */}
+                                                                {inlineTotpSecret && (
+                                                                    <div className={`flex items-center justify-between text-[10px] font-mono px-3 py-1.5 rounded-xl border transition-all ${
+                                                                        isBright
+                                                                            ? 'bg-emerald-500/[0.06] border-emerald-500/20 text-emerald-950'
+                                                                            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                                                                    }`}>
+                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                            <ShieldCheck size={12} className={isBright ? 'text-emerald-700' : 'text-emerald-400'} />
+                                                                            <span className="font-semibold text-[10px] tracking-wide opacity-80">2FA:</span>
+                                                                            {inlineTotpCode ? (
+                                                                                <span className={`font-mono font-bold tracking-widest text-[11px] select-all ${
+                                                                                    isBright ? 'text-zinc-950 font-extrabold' : 'text-white'
+                                                                                }`}>
+                                                                                    {formatTotpCode(inlineTotpCode)}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="text-[10px] text-amber-400 font-mono font-medium">Setup Key Needed</span>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleOpenEditForm(item)}
+                                                                                        className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold border transition active:scale-95 cursor-pointer ${
+                                                                                            isBright
+                                                                                                ? 'bg-amber-500/15 text-amber-900 border-amber-500/30 hover:bg-amber-500/25'
+                                                                                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                                                                        }`}
+                                                                                        title="Add 2FA Secret Key"
+                                                                                    >
+                                                                                        Edit
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 shrink-0">
+                                                                            <CountdownRing remaining={totpRemaining} size={20} strokeWidth={2} />
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    if (inlineTotpCode) {
+                                                                                        copyToClipboard(inlineTotpCode, '2FA code', item.id);
+                                                                                    } else {
+                                                                                        handleOpenEditForm(item);
+                                                                                    }
+                                                                                }}
+                                                                                className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${
+                                                                                    copiedId === `2FA code-${item.id}`
+                                                                                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                                                                        : isBright
+                                                                                            ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-700 border-black/10'
+                                                                                            : 'bg-white/[0.08] hover:bg-white/[0.14] text-white border-white/10'
+                                                                                }`}
+                                                                                title={inlineTotpCode ? "Copy 2FA code" : "Configure 2FA key"}
+                                                                            >
+                                                                                {copiedId === `2FA code-${item.id}` ? (
+                                                                                    <Check size={11} className="text-emerald-500" />
+                                                                                ) : inlineTotpCode ? (
+                                                                                    <Copy size={11} />
+                                                                                ) : (
+                                                                                    <Pencil size={11} />
+                                                                                )}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         )}
+
+                                                        {/* PASSKEY DETAILS */}
+                                                        {isPasskey && (
+                                                            <div className={`flex flex-col gap-1.5 text-[11px] font-mono px-3 py-2 rounded-xl border ${
+                                                                isBright ? 'bg-purple-500/[0.06] border-purple-500/15 text-purple-900' : 'bg-purple-500/10 border-purple-500/20 text-purple-200'
+                                                            }`}>
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] opacity-75">Relying Party:</span>
+                                                                    <span className={`font-semibold ${isBright ? 'text-purple-700' : 'text-purple-300'}`}>
+                                                                        {item.passkeyData?.rpId || item.url || 'WebAuthn'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="text-[10px] opacity-75 shrink-0">Credential ID:</span>
+                                                                    <span className="truncate text-[10px] opacity-80 max-w-[170px] select-all">
+                                                                        {item.passkeyData?.credentialId || item.id}
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id)}
+                                                                        className={`px-2 py-0.5 rounded-full border text-[9px] font-medium transition active:scale-95 cursor-pointer ${
+                                                                            isBright ? 'text-purple-700 border-purple-300 hover:bg-purple-50' : 'text-purple-300 border-purple-500/35 hover:bg-purple-500/15'
+                                                                        }`}
+                                                                    >
+                                                                        {copiedId === `passkey credential-${item.id}` ? 'Copied' : 'Copy'}
+                                                                    </button>
+                                                                </div>
+                                                                {item.createdAt && (
+                                                                    <div className="flex items-center justify-between text-[9px] opacity-60 pt-0.5 border-t border-purple-500/15">
+                                                                        <span>Registered:</span>
+                                                                        <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {/* PAYMENT CARD DETAILS */}
+                                                        {isCard && (
+                                                            <div className={`flex flex-col gap-1.5 text-[11px] font-mono px-3 py-2 rounded-xl border ${
+                                                                isBright ? 'bg-black/[0.025] border-black/5 text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
+                                                            }`}>
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`font-semibold ${isBright ? 'text-blue-700' : 'text-blue-300'}`}>
+                                                                            {item.cardData?.cardBrand || 'Card'}:
+                                                                        </span>
+                                                                        <span className="tracking-wider">
+                                                                            •••• •••• •••• {item.cardData?.cardNumber?.slice(-4) || item.password?.slice(-4) || '••••'}
+                                                                        </span>
+                                                                    </div>
+                                                                    {item.cardData?.cardNumber && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id)}
+                                                                            className={`px-2 py-0.5 rounded-full border text-[9px] font-medium transition active:scale-95 cursor-pointer ${
+                                                                                isBright ? 'border-black/10 hover:bg-black/5 text-zinc-700' : 'border-white/10 hover:bg-white/10 text-white'
+                                                                            }`}
+                                                                        >
+                                                                            {copiedId === `card number-${item.id}` ? 'Copied' : 'Copy Number'}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center justify-between pt-1 border-t border-black/5 dark:border-white/5 text-[10px]">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="opacity-60">Expires:</span>
+                                                                        <span>{item.cardData?.expMonth || '••'}/{item.cardData?.expYear?.slice(-2) || '••'}</span>
+                                                                    </div>
+                                                                    {item.cardData?.cvv && (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="opacity-60">CVV:</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id)}
+                                                                                className={`px-2 py-0.5 rounded-full text-[9px] font-medium transition active:scale-95 cursor-pointer ${
+                                                                                    isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/10 hover:bg-white/15 text-white'
+                                                                                }`}
+                                                                            >
+                                                                                {copiedId === `CVV-${item.id}` ? 'Copied' : 'Copy CVV'}
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* ADDRESS DETAILS */}
+                                                        {isAddress && (
+                                                            <div className={`flex flex-col gap-1.5 text-[11px] font-mono px-3 py-2 rounded-xl border leading-snug ${
+                                                                isBright ? 'bg-black/[0.025] border-black/5 text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
+                                                            }`}>
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div className="flex flex-col">
+                                                                        <span className={`font-semibold ${isBright ? 'text-amber-800' : 'text-amber-300'}`}>
+                                                                            {item.addressData?.streetAddress} {item.addressData?.unit ? `(${item.addressData.unit})` : ''}
+                                                                        </span>
+                                                                        <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>
+                                                                            {[item.addressData?.city, item.addressData?.state, item.addressData?.postalCode, item.addressData?.country].filter(Boolean).join(', ')}
+                                                                        </span>
+                                                                    </div>
+                                                                    {item.addressData && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id)}
+                                                                            className={`px-2 py-0.5 rounded-full border text-[9px] font-medium shrink-0 transition active:scale-95 cursor-pointer ${
+                                                                                isBright ? 'border-black/10 hover:bg-black/5 text-zinc-700' : 'border-white/10 hover:bg-white/10 text-white'
+                                                                            }`}
+                                                                        >
+                                                                            {copiedId === `address-${item.id}` ? 'Copied' : 'Copy Address'}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                {(item.addressData?.phoneNumber || item.addressData?.email) && (
+                                                                    <div className="flex items-center gap-3 pt-1 border-t border-black/5 dark:border-white/5 text-[10px] opacity-75">
+                                                                        {item.addressData?.phoneNumber && <span>Tel: {item.addressData.phoneNumber}</span>}
+                                                                        {item.addressData?.email && <span>{item.addressData.email}</span>}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        </div>
                                                     </div>
-                                                )}
+                                                </div>
                                             </div>
                                         );
                                     })
@@ -1955,4 +2695,3 @@ export default function QVaultPopover({ isClosing }) {
         </div>
     );
 }
-

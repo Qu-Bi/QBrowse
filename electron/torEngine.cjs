@@ -5,6 +5,11 @@ const net = require('net');
 const http = require('http');
 const https = require('https');
 
+const httpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+    keepAlive: true
+});
+
 function execPromise(cmd, timeoutMs = 4000) {
     return new Promise((resolve, reject) => {
         exec(cmd, { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout) => {
@@ -223,8 +228,15 @@ function downloadFile(url, destPath, onProgress) {
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(destPath);
         const protocol = url.startsWith('https') ? https : http;
+        const reqOptions = {
+            headers: { 'User-Agent': 'QBrowse-Downloader/1.2' },
+            rejectUnauthorized: false
+        };
+        if (url.startsWith('https')) {
+            reqOptions.agent = httpsAgent;
+        }
 
-        const request = protocol.get(url, { headers: { 'User-Agent': 'QBrowse-Downloader/1.2' } }, (res) => {
+        const request = protocol.get(url, reqOptions, (res) => {
             // Handle redirects
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                 file.close();

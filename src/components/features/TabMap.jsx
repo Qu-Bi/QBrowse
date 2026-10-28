@@ -611,6 +611,13 @@ export default function TabMap() {
 
     useEffect(() => {
         if (!isTabMapOpen) return;
+        if (
+            document.activeElement &&
+            document.activeElement !== searchInputRef.current &&
+            !containerRef.current?.contains(document.activeElement)
+        ) {
+            document.activeElement.blur?.();
+        }
         updateCameraPillGeometry();
         const raf = requestAnimationFrame(updateCameraPillGeometry);
         const timer = setTimeout(updateCameraPillGeometry, 60);
@@ -776,8 +783,13 @@ export default function TabMap() {
         if (!isTabMapOpen) return;
 
         const handleKeyDown = (e) => {
-            // Ignore if currently typing inside an input/textarea
-            const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+            // Ignore if currently typing inside an input/textarea inside TabMap; blur any leaked background inputs
+            const isRawInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+            const isTabMapInput = isRawInput && (e.target === searchInputRef.current || containerRef.current?.contains(e.target));
+            if (isRawInput && !isTabMapInput) {
+                e.target.blur?.();
+            }
+            const isInput = isTabMapInput;
 
             if (e.key === 'Escape') {
                 e.preventDefault();

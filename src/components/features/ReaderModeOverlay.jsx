@@ -906,7 +906,7 @@ export default function ReaderModeOverlay() {
                             onClick={() => setActiveNoteCard(null)}
                             className="text-white/40 hover:text-white text-xs cursor-pointer"
                         >
-                            ✕
+                            <X size={12} />
                         </button>
                     </div>
 

@@ -307,13 +307,19 @@ if (!isOAuthPopup && !isGoogleAuth) {
                     if (typeof document !== 'undefined' && !document.hidden) {
                         scanIframes();
                     }
-                }, 1500);
+                }, 2500);
 
-                // Also scan on user interactions so dynamically written iframes (like W3Schools Tryit Editor)
-                // are guaranteed to have their window.prompt/alert/confirm patched right when clicked
-                window.addEventListener('click', scanIframes, true);
-                window.addEventListener('pointerdown', scanIframes, true);
-                window.addEventListener('focus', scanIframes, true);
+                let lastInteractionScan = 0;
+                const throttledScanIframes = () => {
+                    const now = Date.now();
+                    if (now - lastInteractionScan < 2500) return;
+                    lastInteractionScan = now;
+                    scanIframes();
+                };
+
+                // Throttled scan on user interactions so dynamically written iframes
+                // are guaranteed to have their window.prompt/alert/confirm patched without lagging clicks/inputs
+                window.addEventListener('click', throttledScanIframes, true);
                 window.addEventListener('DOMContentLoaded', scanIframes);
                 window.addEventListener('load', scanIframes);
             })();
@@ -1013,7 +1019,7 @@ if (typeof window !== 'undefined') {
 ipcRenderer.on('media-control-command', (event, cmdData) => {
     try {
         const cmd = typeof cmdData === 'string' ? cmdData : (cmdData ? cmdData.action : '');
-        console.log('[Preload MediaControl] 📩 Received IPC command in page:', cmd, cmdData);
+        console.log('[Preload MediaControl] Received IPC command in page:', cmd, cmdData);
 
         const mediaEls = Array.from(document.querySelectorAll('video, audio'));
         console.log(`[Preload MediaControl] Found ${mediaEls.length} media element(s) in document`);
@@ -1046,7 +1052,7 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
         } else if (cmd === 'mute-toggle') {
             mediaEls.forEach(el => el.muted = !el.muted);
         } else if (cmd === 'toggle-pip' || cmd === 'pip') {
-            console.log('[Preload MediaControl] 📺 Executing toggle-pip action');
+            console.log('[Preload MediaControl] Executing toggle-pip action');
             try {
                 if (document.pictureInPictureElement) {
                     console.log('[Preload MediaControl] Exiting Picture-in-Picture mode');
@@ -1064,7 +1070,7 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
                         
                         activeVideo.requestPictureInPicture()
                             .then((pipWin) => {
-                                console.log('[Preload MediaControl] 🎉 Native OS Picture-in-Picture window opened successfully!', pipWin);
+                                console.log('[Preload MediaControl] Native OS Picture-in-Picture window opened successfully!', pipWin);
                             })
                             .catch((err) => {
                                 console.warn('[Preload MediaControl] Direct requestPictureInPicture failed:', err);
@@ -1127,9 +1133,10 @@ function runSmartDark() {
         if (!docEl) return;
 
         const hostLower = (window.location.hostname || '').toLowerCase();
-        const isBuiltinExcluded = hostLower.includes('mail.google.com') ||
-                                  hostLower.includes('docs.google.com') ||
-                                  hostLower.includes('googleusercontent.com');
+        const isBuiltinExcluded = hostLower.includes('google.com') ||
+                                  hostLower.includes('googleusercontent.com') ||
+                                  hostLower.includes('youtube.com') ||
+                                  hostLower.includes('github.com');
 
         if (!isForceDark || isExcluded || isBuiltinExcluded) {
             if (smartDarkObserver) {
@@ -1197,7 +1204,9 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
                     html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal,
                     html.qbrowse-smart-dark-active #qbrowse-oauth-header,
-                    html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar {
+                    html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar,
+                    html.qbrowse-smart-dark-active .qvault-autofill-dropdown,
+                    html.qbrowse-smart-dark-active .qvault-inline-key-btn {
                         filter: invert(1) hue-rotate(180deg) !important;
                     }
                 }
@@ -1216,7 +1225,9 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
                     html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal,
                     html.qbrowse-smart-dark-active #qbrowse-oauth-header,
-                    html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar {
+                    html.qbrowse-smart-dark-active #qbrowse-oauth-find-bar,
+                    html.qbrowse-smart-dark-active .qvault-autofill-dropdown,
+                    html.qbrowse-smart-dark-active .qvault-inline-key-btn {
                         filter: none !important;
                     }
                 }
@@ -1541,9 +1552,14 @@ function applyWebviewA11yStyles(config) {
         css += `
             *, *::before, *::after {
                 animation-duration: 0.001ms !important;
+                animation-delay: 0s !important;
                 animation-iteration-count: 1 !important;
                 transition-duration: 0.001ms !important;
+                transition-delay: 0s !important;
                 scroll-behavior: auto !important;
+            }
+            .qbrowse-highlight-pulse {
+                animation: none !important;
             }
         `;
     }
@@ -1651,6 +1667,9 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 // --- WEBPAGE HIGHLIGHTER & PERSISTENT STICKY NOTES ---
 // ==============================================================================
 (function() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (window !== window.top) return;
+
     const QB_HIGHLIGHT_COLORS = {
         accent: { id: 'accent', label: 'Accent', bg: 'rgba(212, 188, 148, 0.42)', border: '#d4bc94', text: '#d4bc94', dot: '#d4bc94' },
         yellow: { id: 'yellow', label: 'Yellow', bg: 'rgba(253, 224, 71, 0.42)', border: '#fde047', text: '#eab308', dot: '#fde047' },
@@ -1711,7 +1730,9 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
                 border-color: #d4bc94;
             }
             html.qbrowse-smart-dark-active .qbrowse-note-badge,
-            html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal {
+            html.qbrowse-smart-dark-active #qbrowse-passkey-popup-modal,
+            html.qbrowse-smart-dark-active .qvault-autofill-dropdown,
+            html.qbrowse-smart-dark-active .qvault-inline-key-btn {
                 filter: invert(1) hue-rotate(180deg) !important;
             }
         `;
@@ -1926,15 +1947,89 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 
     function createHighlightFromRange(range, colorKey = 'accent', initialNote = '') {
+        if (!range) return null;
         const text = range.toString().trim();
         if (!text) return null;
 
-        const { prefix, suffix } = extractPrefixAndSuffix(range);
-        const id = `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        // a) Check if the selection range is already inside an existing .qbrowse-highlight
+        const container = range.commonAncestorContainer;
+        const containerEl = container?.nodeType === 1 ? container : container?.parentElement;
+        const existingMark = containerEl ? containerEl.closest('.qbrowse-highlight') : null;
+        if (existingMark) {
+            const existingId = existingMark.getAttribute('data-qbrowse-id');
+            if (existingId) {
+                let updated = false;
+                const ann = currentAnnotations.find(a => a.id === existingId);
 
-        const marks = wrapRangeWithHighlight(range, id, colorKey, initialNote);
+                // Update color styling if colorKey is given
+                if (colorKey) {
+                    const colorConfig = QB_HIGHLIGHT_COLORS[colorKey] || QB_HIGHLIGHT_COLORS.accent;
+                    document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${existingId}"]`).forEach(m => {
+                        m.setAttribute('data-color', colorKey);
+                        m.style.backgroundColor = `${colorConfig.bg} !important`;
+                        m.style.borderBottom = `2px solid ${colorConfig.border} !important`;
+                    });
+                    if (ann && ann.color !== colorKey) {
+                        ann.color = colorKey;
+                        updated = true;
+                    }
+                }
+
+                if (initialNote) {
+                    if (ann && ann.note !== initialNote) {
+                        ann.note = initialNote;
+                        updated = true;
+                    }
+                    attachNoteBadge(existingMark, existingId);
+                }
+
+                // Send qbrowse-annotation-update if color or note is updated
+                if (updated || initialNote) {
+                    ipcRenderer.sendToHost('qbrowse-annotation-update', {
+                        id: existingId,
+                        color: colorKey || (ann ? ann.color : 'accent'),
+                        note: ann ? ann.note : (initialNote || '')
+                    });
+                }
+
+                // Clear currentSelectionState and lastRightClickSelection, clear window selection
+                currentSelectionState = null;
+                lastRightClickSelection = null;
+                if (window.getSelection) {
+                    try { window.getSelection().removeAllRanges(); } catch (_) {}
+                }
+
+                return { id: existingId, marks: [existingMark] };
+            }
+        }
+
+        // b) Check if currentAnnotations.some(a => (a.text || '').trim() === text)
+        const existingAnnotation = currentAnnotations.find(a => (a.text || '').trim() === text);
+        const id = existingAnnotation ? existingAnnotation.id : `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+        const marks = wrapRangeWithHighlight(range, id, colorKey, initialNote || (existingAnnotation ? existingAnnotation.note : ''));
         if (marks.length === 0) return null;
 
+        if (existingAnnotation) {
+            // Reuse its ID, clear currentSelectionState and lastRightClickSelection, and do not send qbrowse-annotation-create
+            if (initialNote && existingAnnotation.note !== initialNote) {
+                existingAnnotation.note = initialNote;
+                ipcRenderer.sendToHost('qbrowse-annotation-update', {
+                    id: existingAnnotation.id,
+                    color: colorKey || existingAnnotation.color,
+                    note: initialNote
+                });
+            }
+            currentSelectionState = null;
+            lastRightClickSelection = null;
+            if (window.getSelection) {
+                try { window.getSelection().removeAllRanges(); } catch (_) {}
+            }
+            return { id, marks, annotation: existingAnnotation };
+        }
+
+        // c) When creating a new highlight, always clear BOTH currentSelectionState = null; and lastRightClickSelection = null;
+        const { prefix, suffix } = extractPrefixAndSuffix(range);
         const annotation = {
             id,
             url: window.location.href,
@@ -1949,8 +2044,11 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         currentAnnotations.push(annotation);
         ipcRenderer.sendToHost('qbrowse-annotation-create', annotation);
 
+        currentSelectionState = null;
+        lastRightClickSelection = null;
+
         if (window.getSelection) {
-            window.getSelection().removeAllRanges();
+            try { window.getSelection().removeAllRanges(); } catch (_) {}
         }
 
         return { id, marks, annotation };
@@ -2049,10 +2147,16 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 
         if (note !== undefined) {
             const targetMarks = document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`);
+            const hasNote = note && (typeof note === 'string' ? note.trim() : note);
             if (targetMarks.length > 0) {
-                if (note) {
+                if (hasNote) {
                     attachNoteBadge(targetMarks[targetMarks.length - 1], id);
                 } else {
+                    const existingBadge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
+                    if (existingBadge) existingBadge.remove();
+                }
+            } else {
+                if (!hasNote) {
                     const existingBadge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
                     if (existingBadge) existingBadge.remove();
                 }
@@ -2063,14 +2167,19 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     ipcRenderer.on('qbrowse-annotation-delete', (event, id) => {
         document.querySelectorAll(`.qbrowse-highlight[data-qbrowse-id="${id}"]`).forEach(m => {
             const parent = m.parentNode;
-            while (m.firstChild) parent.insertBefore(m.firstChild, m);
-            m.remove();
+            if (parent) {
+                while (m.firstChild) parent.insertBefore(m.firstChild, m);
+                m.remove();
+            }
         });
         const badge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${id}"]`);
         if (badge) badge.remove();
 
         currentAnnotations = currentAnnotations.filter(a => a.id !== id);
-        if (activeAnchorId === id) activeAnchorId = null;
+        if (activeAnchorId === id) {
+            ipcRenderer.sendToHost('qbrowse-close-note-card');
+            activeAnchorId = null;
+        }
     });
 
     ipcRenderer.on('qbrowse-close-note-card', () => {
@@ -2160,12 +2269,12 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }, true);
 
     document.addEventListener('selectionchange', () => {
+        // Fast-path: do not inspect or stringify selection during normal typing unless selection pill is active
+        if (!selectionPillVisible) return;
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-            if (selectionPillVisible) {
-                selectionPillVisible = false;
-                ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
-            }
+            selectionPillVisible = false;
+            ipcRenderer.sendToHost('qbrowse-hide-selection-pill');
         }
     });
 
@@ -2219,22 +2328,25 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         const targetRange = currentSelectionState?.range || lastRightClickSelection?.range || (window.getSelection()?.rangeCount > 0 ? window.getSelection().getRangeAt(0) : null);
         if (targetRange) {
             createHighlightFromRange(targetRange, color);
-            currentSelectionState = null;
             try { window.getSelection().removeAllRanges(); } catch (_) {}
         }
+        currentSelectionState = null;
+        lastRightClickSelection = null;
     });
 
     // IPC: Add note triggered from host floating pill
     ipcRenderer.on('qbrowse-pill-add-note', () => {
         selectionPillVisible = false;
         const targetRange = currentSelectionState?.range || lastRightClickSelection?.range || (window.getSelection()?.rangeCount > 0 ? window.getSelection().getRangeAt(0) : null);
+        let res = null;
         if (targetRange) {
-            const res = createHighlightFromRange(targetRange, 'accent');
-            currentSelectionState = null;
+            res = createHighlightFromRange(targetRange, 'accent');
             try { window.getSelection().removeAllRanges(); } catch (_) {}
-            if (res && res.marks.length > 0) {
-                openNoteCard(res.id, res.marks[res.marks.length - 1]);
-            }
+        }
+        currentSelectionState = null;
+        lastRightClickSelection = null;
+        if (res && res.marks && res.marks.length > 0) {
+            openNoteCard(res.id, res.marks[res.marks.length - 1]);
         }
     });
 
@@ -2254,6 +2366,34 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     // IPC: Apply annotations from host
     ipcRenderer.on('qbrowse-apply-annotations', (event, annotations) => {
         if (!Array.isArray(annotations)) return;
+        const newIdSet = new Set(annotations.map(a => a.id));
+
+        // 1. Remove highlights from DOM that are no longer in annotations
+        document.querySelectorAll('.qbrowse-highlight').forEach(m => {
+            const id = m.getAttribute('data-qbrowse-id');
+            if (id && !newIdSet.has(id)) {
+                const parent = m.parentNode;
+                if (parent) {
+                    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+                    m.remove();
+                }
+            }
+        });
+
+        // 2. Remove note badges from DOM that are no longer in annotations
+        document.querySelectorAll('.qbrowse-note-badge').forEach(badge => {
+            const id = badge.getAttribute('data-qbrowse-id');
+            if (id && !newIdSet.has(id)) {
+                badge.remove();
+            }
+        });
+
+        // 3. Close open note card modal if its annotation was deleted
+        if (activeAnchorId && !newIdSet.has(activeAnchorId)) {
+            ipcRenderer.sendToHost('qbrowse-close-note-card');
+            activeAnchorId = null;
+        }
+
         currentAnnotations = annotations;
 
         annotations.forEach(ann => {
@@ -2265,7 +2405,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
                     m.style.backgroundColor = colorConfig.bg;
                     m.style.borderBottomColor = colorConfig.border;
                 });
-                if (ann.note) {
+                if (ann.note && (typeof ann.note === 'string' ? ann.note.trim() : ann.note)) {
                     attachNoteBadge(existingMarks[existingMarks.length - 1], ann.id);
                 } else {
                     const badge = document.querySelector(`.qbrowse-note-badge[data-qbrowse-id="${ann.id}"]`);
@@ -2380,17 +2520,20 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     ipcRenderer.on('qbrowse-context-highlight', (event, { color = 'accent' } = {}) => {
         if (lastRightClickSelection && lastRightClickSelection.range) {
             createHighlightFromRange(lastRightClickSelection.range, color);
-            lastRightClickSelection = null;
         }
+        currentSelectionState = null;
+        lastRightClickSelection = null;
     });
 
     ipcRenderer.on('qbrowse-context-add-note', () => {
+        let res = null;
         if (lastRightClickSelection && lastRightClickSelection.range) {
-            const res = createHighlightFromRange(lastRightClickSelection.range, 'accent');
-            lastRightClickSelection = null;
-            if (res && res.marks.length > 0) {
-                openNoteCard(res.id, res.marks[res.marks.length - 1]);
-            }
+            res = createHighlightFromRange(lastRightClickSelection.range, 'accent');
+        }
+        currentSelectionState = null;
+        lastRightClickSelection = null;
+        if (res && res.marks && res.marks.length > 0) {
+            openNoteCard(res.id, res.marks[res.marks.length - 1]);
         }
     });
 })();
@@ -2519,9 +2662,70 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         }
     }
 
+    function ensureQVaultStyles() {
+        if (document.getElementById('qvault-autofill-isolation-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'qvault-autofill-isolation-styles';
+        style.textContent = `
+            .qvault-autofill-dropdown,
+            .qvault-autofill-dropdown *,
+            .qvault-inline-key-btn,
+            .qvault-inline-key-btn * {
+                box-sizing: border-box !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                text-transform: none !important;
+                letter-spacing: normal !important;
+                text-shadow: none !important;
+                -webkit-font-smoothing: antialiased !important;
+            }
+            .qvault-autofill-dropdown {
+                background: rgba(18, 20, 32, 0.62) !important;
+                backdrop-filter: blur(32px) saturate(190%) brightness(0.75) !important;
+                -webkit-backdrop-filter: blur(32px) saturate(190%) brightness(0.75) !important;
+                border: 1px solid rgba(255, 255, 255, 0.10) !important;
+                border-radius: 16px !important;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.14) !important;
+                padding: 6px !important;
+                color: rgba(255, 255, 255, 0.95) !important;
+                color-scheme: dark !important;
+            }
+            .qvault-autofill-dropdown .qvault-dropdown-header,
+            .qvault-autofill-dropdown .qvault-dropdown-header span,
+            .qvault-autofill-dropdown .qvault-dropdown-header svg {
+                color: #d4bc94 !important;
+            }
+            .qvault-autofill-dropdown .qvault-dropdown-user {
+                color: rgba(255, 255, 255, 0.95) !important;
+                font-weight: 500 !important;
+                font-size: 12px !important;
+                line-height: 1.35 !important;
+            }
+            .qvault-autofill-dropdown .qvault-dropdown-sub {
+                color: #d4bc94 !important;
+                font-size: 10px !important;
+                line-height: 1.3 !important;
+            }
+            .qvault-inline-key-btn {
+                color: #d4bc94 !important;
+                color-scheme: dark !important;
+            }
+            .qvault-inline-key-btn svg {
+                color: #d4bc94 !important;
+                stroke: currentColor !important;
+                fill: none !important;
+            }
+            html.qbrowse-smart-dark-active .qvault-autofill-dropdown,
+            html.qbrowse-smart-dark-active .qvault-inline-key-btn {
+                filter: invert(1) hue-rotate(180deg) !important;
+            }
+        `;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
     function showAutofillDropdown(btnEl, targetInput, matches) {
         closeAutofillDropdown();
         if (!matches || matches.length === 0) return;
+        ensureQVaultStyles();
 
         const rect = targetInput.getBoundingClientRect();
         const dropdown = document.createElement('div');
@@ -2534,24 +2738,26 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         const idealLeft = rect.right - dropdownWidth;
         dropdown.style.left = `${Math.max(12, Math.min(idealLeft, window.innerWidth - dropdownWidth - 12))}px`;
         dropdown.style.width = `${dropdownWidth}px`;
-        dropdown.style.background = 'rgba(20, 20, 24, 0.96)';
-        dropdown.style.backdropFilter = 'blur(20px)';
-        dropdown.style.webkitBackdropFilter = 'blur(20px)';
-        dropdown.style.border = '1px solid rgba(212, 188, 148, 0.25)';
-        dropdown.style.borderRadius = '12px';
-        dropdown.style.boxShadow = '0 16px 40px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.05)';
+        dropdown.style.background = 'rgba(18, 20, 32, 0.62)';
+        dropdown.style.backdropFilter = 'blur(32px) saturate(190%) brightness(0.75)';
+        dropdown.style.webkitBackdropFilter = 'blur(32px) saturate(190%) brightness(0.75)';
+        dropdown.style.border = '1px solid rgba(255, 255, 255, 0.10)';
+        dropdown.style.borderRadius = '16px';
+        dropdown.style.boxShadow = '0 20px 50px rgba(0, 0, 0, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.14)';
         dropdown.style.padding = '6px';
-        dropdown.style.color = '#ffffff';
+        dropdown.style.color = 'rgba(255, 255, 255, 0.95)';
         dropdown.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         dropdown.style.fontSize = '12px';
+        dropdown.style.textAlign = 'left';
         dropdown.style.userSelect = 'none';
 
         // Header
         const header = document.createElement('div');
+        header.className = 'qvault-dropdown-header';
         header.style.display = 'flex';
         header.style.alignItems = 'center';
         header.style.gap = '6px';
-        header.style.padding = '6px 8px 6px';
+        header.style.padding = '6px 10px 6px';
         header.style.borderBottom = '1px solid rgba(255, 255, 255, 0.08)';
         header.style.marginBottom = '4px';
         header.style.color = '#d4bc94';
@@ -2559,36 +2765,38 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         header.style.fontSize = '11px';
         header.style.letterSpacing = '0.02em';
         header.innerHTML = `
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; color: #d4bc94 !important;">
                 <circle cx="7.5" cy="15.5" r="5.5"></circle>
                 <path d="m21 2-9.6 9.6"></path>
                 <path d="m15.5 7.5 3 3L22 7l-3-3"></path>
             </svg>
-            <span>QVault Suggestions (${matches.length})</span>
+            <span style="color: #d4bc94 !important; font-weight: 600 !important;">QVault Suggestions (${matches.length})</span>
         `;
         dropdown.appendChild(header);
 
         // Account Items
         matches.forEach(item => {
             const row = document.createElement('div');
+            row.className = 'qvault-dropdown-row';
             row.style.padding = '8px 10px';
-            row.style.borderRadius = '8px';
+            row.style.borderRadius = '12px';
             row.style.cursor = 'pointer';
             row.style.transition = 'background-color 0.15s ease';
             row.style.display = 'flex';
             row.style.flexDirection = 'column';
             row.style.gap = '2px';
+            row.style.backgroundColor = 'transparent';
 
             const userText = item.username || item.title || 'Saved Account';
             const secondLine = (item.locked || !item.password)
-                ? `<div style="font-size: 10px; color: rgba(212, 188, 148, 0.85); display: flex; align-items: center; gap: 4px;">🔒 Locked • Click to verify & autofill</div>`
-                : `<div style="font-size: 10px; font-family: monospace; color: rgba(212, 188, 148, 0.7); letter-spacing: 0.1em;">••••••••</div>`;
+                ? `<div class="qvault-dropdown-sub" style="font-size: 10px; color: #d4bc94 !important; display: flex; align-items: center; gap: 4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Locked - Click to verify & autofill</div>`
+                : `<div class="qvault-dropdown-sub" style="font-size: 10px; font-family: monospace !important; color: #d4bc94 !important; letter-spacing: 0.1em !important;">••••••••</div>`;
             row.innerHTML = `
-                <div style="font-weight: 500; color: rgba(255, 255, 255, 0.95); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(userText)}</div>
+                <div class="qvault-dropdown-user" style="font-weight: 500; color: rgba(255, 255, 255, 0.95) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(userText)}</div>
                 ${secondLine}
             `;
 
-            row.onmouseenter = () => { row.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'; };
+            row.onmouseenter = () => { row.style.backgroundColor = 'rgba(255, 255, 255, 0.10)'; };
             row.onmouseleave = () => { row.style.backgroundColor = 'transparent'; };
             row.onmousedown = (e) => {
                 e.preventDefault();
@@ -2622,6 +2830,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 
     function createKeyBadge(inputEl) {
+        ensureQVaultStyles();
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.tabIndex = -1;
@@ -2632,8 +2841,10 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         btn.style.width = '22px';
         btn.style.height = '22px';
         btn.style.borderRadius = '6px';
-        btn.style.border = '1px solid rgba(212, 188, 148, 0.4)';
-        btn.style.background = 'rgba(18, 18, 22, 0.85)';
+        btn.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+        btn.style.background = 'rgba(18, 19, 26, 0.88)';
+        btn.style.backdropFilter = 'blur(12px)';
+        btn.style.webkitBackdropFilter = 'blur(12px)';
         btn.style.color = '#d4bc94';
         btn.style.display = 'flex';
         btn.style.alignItems = 'center';
@@ -2642,8 +2853,8 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         btn.style.padding = '0';
         btn.style.margin = '0';
         btn.style.outline = 'none';
-        btn.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.35)';
-        btn.style.transition = 'transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease';
+        btn.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.35)';
+        btn.style.transition = 'transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease';
 
         btn.innerHTML = `
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
@@ -2655,13 +2866,15 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 
         btn.onmouseenter = () => {
             btn.style.transform = 'scale(1.1)';
-            btn.style.background = 'rgba(212, 188, 148, 0.2)';
-            btn.style.borderColor = '#d4bc94';
+            btn.style.background = 'rgba(24, 26, 36, 0.96)';
+            btn.style.borderColor = 'rgba(212, 188, 148, 0.65)';
+            btn.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.45)';
         };
         btn.onmouseleave = () => {
             btn.style.transform = 'scale(1)';
-            btn.style.background = 'rgba(18, 18, 22, 0.85)';
-            btn.style.borderColor = 'rgba(212, 188, 148, 0.4)';
+            btn.style.background = 'rgba(18, 19, 26, 0.88)';
+            btn.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+            btn.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.35)';
         };
         btn.onmousedown = (e) => {
             e.preventDefault();
@@ -2827,12 +3040,58 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         return (Array.isArray(qvaultMatches) && qvaultMatches.length > 0) || hasPasswordField();
     }
 
-    // Mutation observer to detect newly rendered login inputs
-    const observer = new MutationObserver(() => {
-        syncQVaultObservers();
-        if (qvaultMatches.length > 0) {
-            updateBadgePositions();
+    let badgeUpdateRaf = null;
+    let badgeUpdateTimer = null;
+
+    function scheduleBadgePositionsUpdate(delay = 100) {
+        if (qvaultMatches.length === 0) {
+            cleanUpBadges();
+            return;
         }
+        if (badgeUpdateTimer) clearTimeout(badgeUpdateTimer);
+        badgeUpdateTimer = setTimeout(() => {
+            badgeUpdateTimer = null;
+            if (badgeUpdateRaf) cancelAnimationFrame(badgeUpdateRaf);
+            badgeUpdateRaf = requestAnimationFrame(() => {
+                badgeUpdateRaf = null;
+                updateBadgePositions();
+            });
+        }, delay);
+    }
+
+    const handleScrollOrResize = () => {
+        if (qvaultMatches.length === 0 || activeBadgeMap.size === 0) return;
+        if (badgeUpdateRaf) return;
+        badgeUpdateRaf = requestAnimationFrame(() => {
+            badgeUpdateRaf = null;
+            updateBadgePositions();
+        });
+    };
+
+    let hasLoadedCredentials = false;
+    let mutationDebounceTimer = null;
+
+    // Mutation observer to detect newly rendered login inputs (debounced to avoid blocking typing/reflows)
+    const observer = new MutationObserver((mutations) => {
+        // Fast-path: only react if nodes were added or removed
+        let hasElementChange = false;
+        for (let i = 0; i < mutations.length; i++) {
+            const m = mutations[i];
+            if (m.addedNodes.length > 0 || m.removedNodes.length > 0) {
+                hasElementChange = true;
+                break;
+            }
+        }
+        if (!hasElementChange) return;
+
+        if (mutationDebounceTimer) clearTimeout(mutationDebounceTimer);
+        mutationDebounceTimer = setTimeout(() => {
+            mutationDebounceTimer = null;
+            syncQVaultObservers();
+            if (qvaultMatches.length > 0) {
+                scheduleBadgePositionsUpdate(50);
+            }
+        }, 150);
     });
 
     function syncQVaultObservers() {
@@ -2840,16 +3099,16 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         if (shouldObserve && !isQVaultObserving) {
             if (document.body) {
                 observer.observe(document.body, { childList: true, subtree: true });
-                window.addEventListener('scroll', updateBadgePositions, { passive: true, capture: true });
-                window.addEventListener('resize', updateBadgePositions, { passive: true });
+                window.addEventListener('scroll', handleScrollOrResize, { passive: true, capture: true });
+                window.addEventListener('resize', handleScrollOrResize, { passive: true });
                 isQVaultObserving = true;
             } else if (typeof document !== 'undefined') {
                 document.addEventListener('DOMContentLoaded', () => syncQVaultObservers(), { once: true });
             }
         } else if (!shouldObserve && isQVaultObserving) {
             observer.disconnect();
-            window.removeEventListener('scroll', updateBadgePositions, { passive: true, capture: true });
-            window.removeEventListener('resize', updateBadgePositions, { passive: true });
+            window.removeEventListener('scroll', handleScrollOrResize, { passive: true, capture: true });
+            window.removeEventListener('resize', handleScrollOrResize, { passive: true });
             isQVaultObserving = false;
             cleanUpBadges();
         }
@@ -2859,7 +3118,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     ipcRenderer.on('qvault-matching-credentials', (event, matches) => {
         qvaultMatches = Array.isArray(matches) ? matches : [];
         syncQVaultObservers();
-        updateBadgePositions();
+        scheduleBadgePositionsUpdate(30);
     });
 
     // Self-query matching credentials from main on page load & focus
@@ -2871,7 +3130,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             if (loginMatches.length > 0 && qvaultMatches.length === 0) {
                 qvaultMatches = loginMatches;
                 syncQVaultObservers();
-                updateBadgePositions();
+                scheduleBadgePositionsUpdate(30);
             } else {
                 syncQVaultObservers();
             }
@@ -2895,9 +3154,18 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     });
 
     document.addEventListener('focusin', (e) => {
-        if (e.target && e.target.tagName === 'INPUT') {
+        const target = e.target;
+        if (!target || target.tagName !== 'INPUT') return;
+
+        const isCredentialCandidate = target.type === 'password' || 
+            (target.autocomplete && (target.autocomplete.includes('username') || target.autocomplete.includes('email') || target.autocomplete.includes('current-password'))) ||
+            (target.name && /user|login|email|pass/i.test(target.name)) ||
+            (target.id && /user|login|email|pass/i.test(target.id));
+
+        if (isCredentialCandidate) {
             syncQVaultObservers();
-            if (qvaultMatches.length === 0) {
+            if (!hasLoadedCredentials && qvaultMatches.length === 0) {
+                hasLoadedCredentials = true;
                 refreshMatchingCredentialsFromMain();
             }
         }
@@ -3232,7 +3500,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         navPill.appendChild(reloadBtn);
         leftSection.appendChild(navPill);
 
-        // --- 2. Center: Sleek Content-Sized Domain Pill [ 🔒 domain.com ] ---
+        // --- 2. Center: Sleek Content-Sized Domain Pill [ domain.com ] ---
         const domainPill = document.createElement('div');
         domainPill.id = 'qbrowse-oauth-badge';
         domainPill.style.cssText = [
@@ -3298,7 +3566,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         domainPill.appendChild(hostSpan);
         centerSection.appendChild(domainPill);
 
-        // --- 3. Right: Sleek Window Control Buttons [ — | ✕ ] ---
+        // --- 3. Right: Sleek Window Control Buttons [ - | X ] ---
         rightSection.style.gap = '4px';
 
         const minBtn = document.createElement('button');

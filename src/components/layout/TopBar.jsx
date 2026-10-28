@@ -6,6 +6,7 @@ import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
 import { onGlobalNavigateBack, onGlobalNavigateForward } from '../../services/electronIPC';
 import { formatCompactNumber } from '../../utils/formatters';
+import TopBarMiniOmnibox from '../features/TopBarMiniOmnibox';
 
 function formatDisplayUrl(rawUrl) {
     if (!rawUrl || rawUrl === 'about:blank') return '';
@@ -75,6 +76,7 @@ export default function TopBar() {
     };
 
     const theme = useUIStore(state => state.theme);
+    const isTopBarOmniboxActive = useUIStore(state => state.isTopBarOmniboxActive);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const currentUrl = useUIStore(state => state.currentUrl);
     const isRefreshing = useUIStore(state => state.isRefreshing);
@@ -136,6 +138,7 @@ export default function TopBar() {
     const rawUrl = focusedTab && focusedTab.url !== 'about:blank' ? focusedTab.url : '';
     const showFullUrls = useUIStore(state => state.settings?.showFullUrls);
     const uiScale = useUIStore(state => state.settings?.uiScale);
+    const hiddenTopBarIcons = useUIStore(state => state.settings?.hiddenTopBarIcons) || [];
     const displayUrl = showFullUrls ? rawUrl : formatDisplayUrl(rawUrl);
 
     const canGoBack = focusedTab ? !!focusedTab.canGoBack : false;
@@ -351,182 +354,33 @@ export default function TopBar() {
                     </div>
 
                     {/* CENTER BLOCK: Multi-stage Centered to Fluid URL Bar */}
-                    <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-shrink flex-grow-0 w-full max-w-xl min-w-[140px] z-10 mx-2 flex items-center justify-center">
-                        <button
-                            id="tour-omnibox-trigger"
-                            onClick={() => openOmnibox(rawUrl)}
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const x = e.clientX + 220 > window.innerWidth ? window.innerWidth - 230 : e.clientX;
-                                const y = e.clientY + 200 > window.innerHeight ? window.innerHeight - 220 : e.clientY;
-                                useUIStore.getState().setTopBarContextMenu({ x, y, url: rawUrl, tabId: focusedTab?.id });
-                            }}
-                            className={`relative w-full flex items-center justify-between px-3.5 h-9 rounded-full transition-all duration-300 group cursor-pointer min-w-0 gap-2.5 ${
-                                isBright ? 'liquid-pill-bright hover:border-accent/60' : 'liquid-pill-dark hover:border-accent/50'
-                            }`}
-                            title={rawUrl || 'Search or enter address'}
-                        >
-                            {/* Refresh Progress Indicator */}
-                            <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
-                                <div className={`absolute bottom-0 left-0 h-[2px] bg-accent transition-all ease-out ${isRefreshing ? 'w-full duration-1000 opacity-100' : 'w-0 duration-0 opacity-0'}`} />
-                            </div>
-
-                            {/* Left Security Icon / Tor State Indicator */}
-                            {isTor ? (
-                                <div 
-                                    className="relative group/tor flex items-center flex-shrink-0 z-10 cursor-pointer"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        togglePopover('tor');
-                                    }}
-                                    title="Tor Onion Circuit & Identity (Click to view circuit)"
-                                >
-                                    <div 
-                                        className={`p-1.5 rounded-full transition-all duration-200 flex items-center justify-center relative select-none hover:scale-110 active:scale-95 ${
-                                            torStatus === 'connected'
-                                                ? 'text-purple-400 bg-purple-500/15 hover:bg-purple-500/25'
-                                                : (torStatus === 'starting' || torStatus === 'downloading')
-                                                ? 'text-purple-300 bg-purple-500/10 animate-pulse'
-                                                : 'text-purple-400/30 opacity-60 hover:opacity-100 hover:bg-purple-500/15'
-                                        }`}
-                                    >
-                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-200 group-hover/tor:scale-110">
-                                            <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
-                                            <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
-                                            <circle cx="12" cy="12" r="1.5"/>
-                                        </svg>
-                                        
-                                        {/* Status Dot */}
-                                        {torStatus === 'connected' && (
-                                            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
-                                        )}
-                                        {(torStatus === 'starting' || torStatus === 'downloading') && (
-                                            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-purple-300 animate-ping opacity-75" />
-                                        )}
-                                    </div>
-
-                                    {/* Sleek Glassmorphic Micro-Tooltip on Hover */}
-                                    <div className="absolute left-0 top-full mt-2 hidden group-hover/tor:flex flex-col gap-0.5 min-w-[170px] max-w-[240px] p-2.5 bg-[#0c0c0f]/95 backdrop-blur-2xl border border-white/[0.06] rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.65)] text-left text-white z-50 pointer-events-none animate-pop-in">
-                                        <div className="flex items-center gap-1.5 font-semibold text-[11px] tracking-wide">
-                                            <span className={`w-1.5 h-1.5 rounded-full ${
-                                                torStatus === 'connected' 
-                                                    ? 'bg-purple-400 shadow-[0_0_6px_#c084fc]' 
-                                                    : (torStatus === 'starting' || torStatus === 'downloading')
-                                                    ? 'bg-purple-300 animate-pulse'
-                                                    : 'bg-purple-400/40'
-                                            }`} />
-                                            <span className="text-purple-300 font-mono">
-                                                {torStatus === 'connected' ? 'Tor Connected' : 
-                                                 (torStatus === 'starting' || torStatus === 'downloading') ? 'Connecting Tor...' :
-                                                 torStatus === 'error' ? 'Tor Error' : 'Tor Offline'}
-                                            </span>
-                                        </div>
-                                        <div className="text-[10px] text-white/50 font-mono truncate pl-3">
-                                            {torStatus === 'connected' ? (torVerifiedExitIp ? `Exit: ${torVerifiedExitIp}` : 'Circuit Ready') :
-                                             (torStatus === 'starting' || torStatus === 'downloading') ? `Bootstrap: ${torBootstrapProgress || 0}%` :
-                                             torStatus === 'error' ? (torLastError || 'Connection error') : 'Ephemeral routing inactive'}
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div 
-                                    className={`p-1 rounded-lg ${isBright ? 'hover:bg-black/10' : 'hover:bg-white/20'} transition-colors z-10 cursor-pointer group/lock flex-shrink-0 relative`}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        togglePopover('siteinfo');
-                                    }}
-                                    title="Site Security & Permissions"
-                                >
-                                    {isRefreshing ? (
-                                        <X size={15} strokeWidth={1.85} className={isBright ? "text-zinc-500" : "text-gray-400"} />
-                                    ) : rawUrl ? (
-                                        (rawUrl.startsWith('http://') || focusedTab?.title?.startsWith('Insecure') || focusedTab?.title?.startsWith('Error')) ? (
-                                            <Unlock size={15} strokeWidth={1.85} className="text-amber-400 group-hover/lock:scale-110 transition-transform" />
-                                        ) : (
-                                            <Lock size={15} strokeWidth={1.85} className={`group-hover/lock:scale-110 transition-transform ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`} />
-                                        )
-                                    ) : (
-                                        <Search size={15} strokeWidth={1.85} className={isBright ? 'text-zinc-400 group-hover/lock:text-zinc-600' : 'text-white/40 group-hover/lock:text-white/70'} />
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Center URL Text (Clean truncation, no icon overlap) */}
-                            <span className={`flex-1 min-w-0 text-[13px] font-medium truncate transition-colors z-10 text-center select-none px-1 ${
-                                isBright 
-                                    ? (displayUrl ? 'text-zinc-800' : 'text-zinc-500 group-hover:text-zinc-700') 
-                                    : (displayUrl ? 'text-white/90' : 'text-white/50 group-hover:text-white/80')
-                            }`}>
-                                {displayUrl || 'Search or enter address'}
-                            </span>
-
-                            {/* Right Action Icons */}
-                            <div className="flex items-center gap-1.5 z-10 flex-shrink-0">
-                                {/* Reader Mode Toggle Button (pops up when available or open on a valid web page) */}
-                                {Boolean(rawUrl && !rawUrl.startsWith('qbrowse://') && (isReaderAvailable || isReaderOpen)) && (
-                                    <div
-                                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer animate-pop-in hover:scale-105 active:scale-95 ${
-                                            isReaderOpen 
-                                                ? 'bg-accent text-white font-bold shadow-md' 
-                                                : (isBright ? 'bg-accent/15 hover:bg-accent/25 text-accent border border-accent/40' : 'bg-white/10 hover:bg-white/20 text-accent border border-accent/30')
-                                        }`}
-                                        onClick={(e) => { 
-                                            e.stopPropagation(); 
-                                            toggleReaderMode(); 
-                                        }}
-                                        title="Toggle Reader Mode (Ctrl+Alt+R)"
-                                    >
-                                        <BookOpen size={14} strokeWidth={1.85} className={isReaderLoading ? 'animate-pulse' : ''} />
-                                        <span className="hidden sm:inline">Reader</span>
-                                    </div>
-                                )}
-
-                                {zoomLevel !== 100 && (
-                                    <div
-                                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider transition-all cursor-pointer animate-pop-in hover:scale-105 active:scale-95 ${isBright ? 'bg-black/10 text-zinc-700 hover:bg-black/15' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                                        onClick={(e) => { e.stopPropagation(); setZoomLevel(100); }}
-                                        title="Reset Zoom (CMD+0)"
-                                    >
-                                        {zoomLevel}%
-                                    </div>
-                                )}
-                                <div
-                                    className={`p-1 rounded-full transition-colors cursor-pointer ${isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}
-                                    onClick={(e) => { 
-                                        e.stopPropagation(); 
-                                        if (e.ctrlKey || e.metaKey) {
-                                            if (rawUrl && !rawUrl.startsWith('qbrowse://')) {
-                                                useTabStore.getState().handleNewTab(rawUrl, false);
-                                                showToast('Duplicated tab in background');
-                                            }
-                                        } else {
-                                            refresh(); 
-                                        }
-                                    }}
-                                    onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
-                                    onAuxClick={(e) => {
-                                        if (e.button === 1) {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            if (rawUrl && !rawUrl.startsWith('qbrowse://')) {
-                                                useTabStore.getState().handleNewTab(rawUrl, false);
-                                                showToast('Duplicated tab in background');
-                                            }
-                                        }
-                                    }}
-                                    title="Reload page (Middle-click to duplicate in background)"
-                                >
-                                    <RefreshCw size={14} strokeWidth={1.85} className={isRefreshing ? 'animate-spin' : ''} />
-                                </div>
-                            </div>
-                        </button>
+                    <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-shrink flex-grow-0 w-full min-w-[140px] z-30 mx-2 flex items-center justify-center relative transition-[max-width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isTopBarOmniboxActive ? 'max-w-2xl' : 'max-w-xl'}`}>
+                        <TopBarMiniOmnibox
+                            rawUrl={rawUrl}
+                            displayUrl={displayUrl}
+                            isTor={isTor}
+                            torStatus={torStatus}
+                            torVerifiedExitIp={torVerifiedExitIp}
+                            torBootstrapProgress={torBootstrapProgress}
+                            torLastError={torLastError}
+                            togglePopover={togglePopover}
+                            isRefreshing={isRefreshing}
+                            focusedTab={focusedTab}
+                            isReaderAvailable={isReaderAvailable}
+                            isReaderOpen={isReaderOpen}
+                            isReaderLoading={isReaderLoading}
+                            toggleReaderMode={toggleReaderMode}
+                            zoomLevel={zoomLevel}
+                            setZoomLevel={setZoomLevel}
+                            refresh={refresh}
+                            showToast={showToast}
+                            isBright={isBright}
+                        />
                     </div>
 
                     {/* RIGHT BLOCK: Extensions & Toggles */}
                     <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center justify-end min-w-max z-20 transition-opacity duration-300 ${isRightPanelOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                         {(() => {
-                            const hiddenTopBarIcons = useUIStore.getState().settings?.hiddenTopBarIcons || [];
                             const isVisible = (id) => !hiddenTopBarIcons.includes(id);
 
                             const hasSplitView = isVisible('splitview');
@@ -551,6 +405,7 @@ export default function TopBar() {
 
                             return (
                                 <div 
+                                    id="qbrowse-extensions-hub"
                                     onContextMenu={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -633,6 +488,7 @@ export default function TopBar() {
                                     {/* 4. Media Player */}
                                     {hasMedia && (
                                         <button 
+                                            id="tour-media-trigger"
                                             onClick={() => togglePopover('media')} 
                                             onContextMenu={(e) => handleIconContextMenu(e, 'media', 'Media Player')}
                                             className={`p-1.5 rounded-full transition group ${
@@ -649,6 +505,7 @@ export default function TopBar() {
                                     {/* 5. Downloads */}
                                     {hasDownloads && (
                                         <button 
+                                            id="tour-downloads-trigger"
                                             onClick={() => { setIsRightPanelOpen(true); setRightPanelTab('downloads'); }} 
                                             onContextMenu={(e) => handleIconContextMenu(e, 'downloads', 'Downloads')}
                                             className={`p-1.5 rounded-full transition group ${

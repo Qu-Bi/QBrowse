@@ -4,6 +4,12 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 
+// Permissive agent to bypass self-signed certificates or corporate/educational proxies (e.g. OSE network)
+const httpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+    keepAlive: true
+});
+
 let serverProcess = null;
 let nodeHttpServer = null;
 let serverLogs = [];
@@ -480,12 +486,17 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
             return new Promise((resolve, reject) => {
                 if (redirectCount > 5) return reject(new Error('Too many redirects'));
                 const client = url.startsWith('https') ? https : http;
-                const req = client.get(url, {
+                const reqOptions = {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QBrowse/1.0 Chrome/120.0.0.0 Safari/537.36',
                         'Accept': '*/*'
-                    }
-                }, (res) => {
+                    },
+                    rejectUnauthorized: false
+                };
+                if (url.startsWith('https')) {
+                    reqOptions.agent = httpsAgent;
+                }
+                const req = client.get(url, reqOptions, (res) => {
                     if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
                         const nextUrl = res.headers.location;
                         if (!nextUrl) return reject(new Error(`Redirect status ${res.statusCode} without location`));
@@ -827,12 +838,17 @@ async function updateEngine(onStatusChange = null) {
         return new Promise((resolve, reject) => {
             if (redirectCount > 5) return reject(new Error('Too many redirects'));
             const client = url.startsWith('https') ? https : http;
-            const req = client.get(url, {
+            const reqOptions = {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QBrowse/1.0 Chrome/120.0.0.0 Safari/537.36',
                     'Accept': '*/*'
-                }
-            }, (res) => {
+                },
+                rejectUnauthorized: false
+            };
+            if (url.startsWith('https')) {
+                reqOptions.agent = httpsAgent;
+            }
+            const req = client.get(url, reqOptions, (res) => {
                 if ([301, 302, 307, 308].includes(res.statusCode)) {
                     return resolve(downloadWithRedirects(res.headers.location, redirectCount + 1));
                 }
@@ -978,8 +994,12 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QBrowse/1.0 Chrome/120.0.0.0 Safari/537.36',
                     'Accept': '*/*'
-                }
+                },
+                rejectUnauthorized: false
             };
+            if (url.startsWith('https')) {
+                reqOptions.agent = httpsAgent;
+            }
 
             const req = client.get(url, reqOptions, (response) => {
                 if (isAborted) {

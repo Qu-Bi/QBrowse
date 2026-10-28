@@ -101,9 +101,9 @@ const HistoryModal = () => {
                             {historySearchQuery && (
                                 <button 
                                     onClick={() => setHistorySearchQuery('')} 
-                                    className={`absolute right-2.5 top-2 text-xs ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white'}`}
+                                    className={`absolute right-2.5 top-2.5 text-xs ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white'}`}
                                 >
-                                    ✕
+                                    <X size={12} />
                                 </button>
                             )}
                         </div>

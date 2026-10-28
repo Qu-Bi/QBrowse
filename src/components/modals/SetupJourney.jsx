@@ -1159,8 +1159,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             {/* Explanatory subtitle */}
                                             <p className="text-[11px] text-white/50 text-center pt-1">
                                                 {syncAuthTab === 'register' 
-                                                    ? '✨ Create a new QBrowse account to sync data across your devices.'
-                                                    : '🔐 Sign in to synchronize your existing bookmarks, spaces, and vault.'}
+                                                    ? 'Create a new QBrowse account to sync data across your devices.'
+                                                    : 'Sign in to synchronize your existing bookmarks, spaces, and vault.'}
                                             </p>
                                         </div>
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music, X, PictureInPicture2 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 
 function formatTime(seconds) {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -27,6 +28,7 @@ export default function MediaPlayerPopover() {
     });
 
     const isMuted = activeTab ? !!activeTab.isMuted : false;
+    const anchor = usePopoverAnchor('#tour-media-trigger', 320, { defaultRight: 64 });
 
     const handleMuteToggle = () => {
         if (activeTab) {
@@ -52,8 +54,10 @@ export default function MediaPlayerPopover() {
 
     return (
         <div 
+            id="popover-media-container"
             onClick={e => e.stopPropagation()}
-            className={`absolute top-16 right-16 z-[70] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-colors ${
+            style={anchor.style}
+            className={`absolute z-[70] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-colors ${
                 isBright
                     ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14),0_1px_2px_rgba(0,0,0,0.05)] text-zinc-900'
                     : 'bg-[#0c0d14]/78 border border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-white'

@@ -76,6 +76,8 @@ const defaultSettings = {
     wallpaperBlur: 24,
     blurWallpaper: false,
     closeWindowOnLastTab: true,
+    visualTabSwitcher: true, // Show Windows-style visual card switcher overlay on Ctrl+Tab
+    tabSwitcherOrder: 'mru', // 'mru' (Recently Used) | 'sidebar' (Sidebar Order)
     playStartupSound: false,
 
     // Accessibility (EU European Accessibility Act / EN 301 549 & WCAG 2.1 AA)
@@ -131,6 +133,10 @@ const useUIStore = create((set, get) => ({
   // Omnibox
   isOmniboxOpen: false,
   isOmniboxClosing: false,
+  isTopBarOmniboxActive: false,
+  setIsTopBarOmniboxActive: (val) => set({ isTopBarOmniboxActive: Boolean(val) }),
+  activateTopBarOmnibox: () => set({ isTopBarOmniboxActive: true }),
+  deactivateTopBarOmnibox: () => set({ isTopBarOmniboxActive: false }),
   searchQuery: '',
   historySearchQuery: '',
   activeBang: null,
@@ -138,7 +144,7 @@ const useUIStore = create((set, get) => ({
   clearActiveBang: () => set({ activeBang: null }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setHistorySearchQuery: (query) => set({ historySearchQuery: query }),
-  openOmnibox: (url = '') => set({ isOmniboxOpen: true, isOmniboxClosing: false, activeBang: null, searchQuery: (!url || url === 'about:blank') ? '' : url }),
+  openOmnibox: (url = '') => set({ isOmniboxOpen: true, isOmniboxClosing: false, isTopBarOmniboxActive: false, activeBang: null, searchQuery: (!url || url === 'about:blank') ? '' : url }),
   closeOmnibox: () => {
     set({ isOmniboxClosing: true });
     setTimeout(() => {
@@ -245,13 +251,21 @@ const useUIStore = create((set, get) => ({
     }
 
     // 2. Electron Main Process NativeTheme Sync (OS Level)
-    if (window.electronAPI?.getSystemReducedMotion) {
-      window.electronAPI.getSystemReducedMotion().then((nativeVal) => {
-        if (typeof nativeVal === 'boolean') {
-          set(state => ({ isSystemReducedMotion: nativeVal || state.isSystemReducedMotion }));
-        }
-      }).catch(() => {});
-    }
+    const refreshReducedMotionFromMain = () => {
+      if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+        set({ isSystemReducedMotion: motionQuery.matches });
+      }
+      if (window.electronAPI?.getSystemReducedMotion) {
+        window.electronAPI.getSystemReducedMotion().then((nativeVal) => {
+          if (typeof nativeVal === 'boolean') {
+            set({ isSystemReducedMotion: nativeVal });
+          }
+        }).catch(() => {});
+      }
+    };
+
+    refreshReducedMotionFromMain();
 
     if (window.electronAPI?.onSystemReducedMotionChanged) {
       window.electronAPI.onSystemReducedMotionChanged((nativeVal) => {
@@ -259,6 +273,11 @@ const useUIStore = create((set, get) => ({
           set({ isSystemReducedMotion: nativeVal });
         }
       });
+    }
+
+    // Re-verify on window focus (e.g. user toggles Windows Settings and tabs back)
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('focus', refreshReducedMotionFromMain);
     }
   },
 
@@ -268,6 +287,19 @@ const useUIStore = create((set, get) => ({
     if (!current.includes(iconId)) {
       const next = [...current, iconId];
       get().setSetting('hiddenTopBarIcons', next);
+
+      // Auto-close popover if its corresponding trigger icon was hidden
+      const iconToPopover = {
+        theme: 'darkmode',
+        shield: 'adblock',
+        media: 'media',
+        downloads: 'downloads',
+        tor: 'tor',
+        vault: 'vault'
+      };
+      if (iconToPopover[iconId] && get().activePopover === iconToPopover[iconId]) {
+        get().closePopover();
+      }
     }
   },
   showTopBarIcon: (iconId) => {
@@ -279,10 +311,25 @@ const useUIStore = create((set, get) => ({
   },
   toggleTopBarIcon: (iconId) => {
     const current = get().settings?.hiddenTopBarIcons || [];
-    const next = current.includes(iconId)
-      ? current.filter(id => id !== iconId)
-      : [...current, iconId];
+    const willHide = !current.includes(iconId);
+    const next = willHide
+      ? [...current, iconId]
+      : current.filter(id => id !== iconId);
     get().setSetting('hiddenTopBarIcons', next);
+
+    if (willHide) {
+      const iconToPopover = {
+        theme: 'darkmode',
+        shield: 'adblock',
+        media: 'media',
+        downloads: 'downloads',
+        tor: 'tor',
+        vault: 'vault'
+      };
+      if (iconToPopover[iconId] && get().activePopover === iconToPopover[iconId]) {
+        get().closePopover();
+      }
+    }
   },
   resetTopBarIcons: () => {
     get().setSetting('hiddenTopBarIcons', []);
@@ -419,6 +466,11 @@ const useUIStore = create((set, get) => ({
   isContextMenuClosing: false,
   setContextMenu: (menu) => set({ contextMenu: menu, isContextMenuClosing: false }),
   closeContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ contextMenu: null, isContextMenuClosing: false });
+      return;
+    }
     set({ isContextMenuClosing: true });
     setTimeout(() => set({ contextMenu: null, isContextMenuClosing: false }), 200);
   },
@@ -427,6 +479,11 @@ const useUIStore = create((set, get) => ({
   isTabContextMenuClosing: false,
   setTabContextMenu: (menu) => set({ tabContextMenu: menu, isTabContextMenuClosing: false }),
   closeTabContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ tabContextMenu: null, isTabContextMenuClosing: false });
+      return;
+    }
     set({ isTabContextMenuClosing: true });
     setTimeout(() => set({ tabContextMenu: null, isTabContextMenuClosing: false }), 200);
   },
@@ -435,6 +492,11 @@ const useUIStore = create((set, get) => ({
   isFolderContextMenuClosing: false,
   setFolderContextMenu: (menu) => set({ folderContextMenu: menu, isFolderContextMenuClosing: false }),
   closeFolderContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ folderContextMenu: null, isFolderContextMenuClosing: false });
+      return;
+    }
     set({ isFolderContextMenuClosing: true });
     setTimeout(() => set({ folderContextMenu: null, isFolderContextMenuClosing: false }), 200);
   },
@@ -443,6 +505,11 @@ const useUIStore = create((set, get) => ({
   isPinnedContextMenuClosing: false,
   setPinnedContextMenu: (menu) => set({ pinnedContextMenu: menu, isPinnedContextMenuClosing: false }),
   closePinnedContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ pinnedContextMenu: null, isPinnedContextMenuClosing: false });
+      return;
+    }
     set({ isPinnedContextMenuClosing: true });
     setTimeout(() => set({ pinnedContextMenu: null, isPinnedContextMenuClosing: false }), 200);
   },
@@ -451,6 +518,11 @@ const useUIStore = create((set, get) => ({
   isTopBarContextMenuClosing: false,
   setTopBarContextMenu: (menu) => set({ topBarContextMenu: menu, isTopBarContextMenuClosing: false }),
   closeTopBarContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ topBarContextMenu: null, isTopBarContextMenuClosing: false });
+      return;
+    }
     set({ isTopBarContextMenuClosing: true });
     setTimeout(() => set({ topBarContextMenu: null, isTopBarContextMenuClosing: false }), 200);
   },
@@ -459,12 +531,36 @@ const useUIStore = create((set, get) => ({
   isToolHubContextMenuClosing: false,
   setToolHubContextMenu: (menu) => set({ toolHubContextMenu: menu, isToolHubContextMenuClosing: false }),
   closeToolHubContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ toolHubContextMenu: null, isToolHubContextMenuClosing: false });
+      return;
+    }
     set({ isToolHubContextMenuClosing: true });
     setTimeout(() => set({ toolHubContextMenu: null, isToolHubContextMenuClosing: false }), 200);
   },
 
   closeContextMenus: () => {
     const state = useUIStore.getState();
+    const isReduced = Boolean(state.settings?.a11yReducedMotion || state.isSystemReducedMotion);
+    if (isReduced) {
+      set({
+        contextMenu: null,
+        isContextMenuClosing: false,
+        tabContextMenu: null,
+        isTabContextMenuClosing: false,
+        folderContextMenu: null,
+        isFolderContextMenuClosing: false,
+        pinnedContextMenu: null,
+        isPinnedContextMenuClosing: false,
+        topBarContextMenu: null,
+        isTopBarContextMenuClosing: false,
+        toolHubContextMenu: null,
+        isToolHubContextMenuClosing: false,
+        activePinnedStack: null
+      });
+      return;
+    }
     if (state.contextMenu) {
       set({ isContextMenuClosing: true });
       setTimeout(() => set({ contextMenu: null, isContextMenuClosing: false }), 200);
@@ -1073,8 +1169,13 @@ const useUIStore = create((set, get) => ({
   // Tab Map
   isTabMapOpen: false,
   isTabMapClosing: false,
-  openTabMap: () => set({ isTabMapOpen: true, isTabMapClosing: false }),
+  openTabMap: () => set({ isTabMapOpen: true, isTabMapClosing: false, isTopBarOmniboxActive: false }),
   closeTabMap: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ isTabMapOpen: false, isTabMapClosing: false });
+      return;
+    }
     set({ isTabMapClosing: true });
     setTimeout(() => set({ isTabMapOpen: false, isTabMapClosing: false }), 300);
   },
@@ -1082,8 +1183,13 @@ const useUIStore = create((set, get) => ({
   // Popovers & Context Menus
   activePopover: null,
   isPopoverClosing: false,
-  openPopover: (popover) => set({ activePopover: popover, isPopoverClosing: false }),
+  openPopover: (popover) => set({ activePopover: popover, isPopoverClosing: false, isTopBarOmniboxActive: false }),
   closePopover: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ activePopover: null, isPopoverClosing: false });
+      return;
+    }
     set({ isPopoverClosing: true });
     const tier = get().activePerformanceTier;
     const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 260 : 230);
@@ -1093,13 +1199,18 @@ const useUIStore = create((set, get) => ({
     if (useUIStore.getState().activePopover === popover) {
       useUIStore.getState().closePopover();
     } else {
-      set({ activePopover: popover, isPopoverClosing: false });
+      set({ activePopover: popover, isPopoverClosing: false, isTopBarOmniboxActive: false });
     }
   },
   activePinnedStack: null, // { pin, anchorRect }
   isPinnedStackClosing: false,
   setActivePinnedStack: (stack) => set({ activePinnedStack: stack, isPinnedStackClosing: false }),
   closePinnedStack: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ activePinnedStack: null, isPinnedStackClosing: false });
+      return;
+    }
     set({ isPinnedStackClosing: true });
     const tier = get().activePerformanceTier;
     const timeout = tier === 'eco' ? 100 : (tier === 'ultra' ? 220 : 180);
@@ -1216,8 +1327,13 @@ const useUIStore = create((set, get) => ({
   activeModal: null,
   isModalClosing: false,
   closingModal: null,
-  openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null, isRightPanelOpen: false }),
+  openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null, isRightPanelOpen: false, isTopBarOmniboxActive: false }),
   closeModal: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 });
+      return;
+    }
     set(state => ({ isModalClosing: true, closingModal: state.activeModal }));
     const tier = get().activePerformanceTier;
     const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 280 : 240);
@@ -1228,7 +1344,7 @@ const useUIStore = create((set, get) => ({
   setSettingsTab: (tab) => set({ settingsTab: tab }),
   openSettings: (tab = 'appearance') => {
     const targetTab = (tab === 'performance' || tab === 'perf') ? 'engine' : tab;
-    set({ activeModal: 'settings', settingsTab: targetTab, isModalClosing: false, closingModal: null, isRightPanelOpen: false });
+    set({ activeModal: 'settings', settingsTab: targetTab, isModalClosing: false, closingModal: null, isRightPanelOpen: false, isTopBarOmniboxActive: false });
   },
 
   // Read Aloud Floating Player
@@ -1236,6 +1352,11 @@ const useUIStore = create((set, get) => ({
   isReadAloudClosing: false,
   openReadAloud: () => set({ isReadAloudOpen: true, isReadAloudClosing: false }),
   closeReadAloud: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ isReadAloudOpen: false, isReadAloudClosing: false });
+      return;
+    }
     set({ isReadAloudClosing: true });
     const tier = get().activePerformanceTier;
     const timeout = tier === 'eco' ? 100 : (tier === 'ultra' ? 240 : 200);
@@ -1763,6 +1884,9 @@ const useUIStore = create((set, get) => ({
       if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
           window.electronAPI.saveSetting('theme', validTheme);
       }
+      if (typeof window !== 'undefined' && window.electronAPI?.syncThemeSource) {
+          window.electronAPI.syncThemeSource(validTheme);
+      }
 
       // Trigger GPU compositor veil crossfade
       set({ 
@@ -1833,23 +1957,67 @@ const useUIStore = create((set, get) => ({
   switcherIndex: 0,
   switcherTabs: [],
   switcherStartTime: 0,
+  switcherOriginalTab: null,
   setShowSwitcher: (val) => set({ showSwitcher: val, showSwitcherUI: val }),
   setSwitcherIndex: (idx) => set({ switcherIndex: idx }),
   setSwitcherTabs: (tabs) => set({ switcherTabs: tabs }),
   openSwitcher: (direction = 1) => {
     const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
     if (!tabStore) return;
-    const list = tabStore.getActiveList ? tabStore.getActiveList() : [];
+    const rawList = tabStore.getActiveList ? tabStore.getActiveList() : [];
+    const list = (rawList || []).filter(t => !t.isClosing);
     if (!list || list.length <= 1) return;
 
-    // Arrange in MRU order: current active tab is index 0, last active tab is index 1
-    const activeTab = list.find(t => t.active);
-    const otherTabs = list.filter(t => !t.active).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
-    const mruTabs = activeTab ? [activeTab, ...otherTabs] : otherTabs;
+    const settings = get().settings || {};
+    const isVisual = settings.visualTabSwitcher !== false;
+    const order = settings.tabSwitcherOrder || 'mru';
 
-    const initialIndex = direction === -1 ? mruTabs.length - 1 : 1;
-    const startTime = Date.now();
-    if (window.__switcherTimer) clearTimeout(window.__switcherTimer);
+    const activeIndex = list.findIndex(t => t.active);
+    const activeTab = activeIndex !== -1 ? list[activeIndex] : list[0];
+
+    let orderedTabs = [];
+    let initialIndex = 0;
+
+    if (order === 'sidebar') {
+      orderedTabs = [...list];
+      const curIdx = activeIndex !== -1 ? activeIndex : 0;
+      initialIndex = (curIdx + direction + orderedTabs.length) % orderedTabs.length;
+    } else {
+      // 'mru'
+      const otherTabs = list.filter(t => t.id !== activeTab.id).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+      orderedTabs = [activeTab, ...otherTabs];
+      initialIndex = direction === -1 ? orderedTabs.length - 1 : 1;
+    }
+
+    const targetTab = orderedTabs[initialIndex];
+
+    if (window.__switcherTimer) {
+      clearTimeout(window.__switcherTimer);
+      window.__switcherTimer = null;
+    }
+
+    if (!isVisual) {
+      if (targetTab) {
+        tabStore.handleSwitchToTab(targetTab.id, tabStore.activeSpace);
+        get().setCurrentUrl(targetTab.url || '');
+        setTimeout(() => {
+          const wv = document.getElementById('webview-' + targetTab.id);
+          if (wv && typeof wv.focus === 'function') {
+            try { wv.focus(); } catch (_) {}
+          }
+        }, 20);
+      }
+      set({
+        showSwitcher: true,
+        showSwitcherUI: false,
+        switcherStartTime: Date.now(),
+        switcherTabs: orderedTabs,
+        switcherIndex: initialIndex,
+        switcherOriginalTab: activeTab
+      });
+      return;
+    }
+
     window.__switcherTimer = setTimeout(() => {
       set({ showSwitcherUI: true });
     }, 220);
@@ -1857,9 +2025,10 @@ const useUIStore = create((set, get) => ({
     set({
       showSwitcher: true,
       showSwitcherUI: false,
-      switcherStartTime: startTime,
-      switcherTabs: mruTabs,
-      switcherIndex: initialIndex
+      switcherStartTime: Date.now(),
+      switcherTabs: orderedTabs,
+      switcherIndex: initialIndex,
+      switcherOriginalTab: activeTab
     });
   },
   cycleSwitcher: (direction = 1) => {
@@ -1872,10 +2041,30 @@ const useUIStore = create((set, get) => ({
       clearTimeout(window.__switcherTimer);
       window.__switcherTimer = null;
     }
-    const len = state.switcherTabs.length;
+    const len = state.switcherTabs ? state.switcherTabs.length : 0;
     if (len === 0) return;
     const nextIdx = (state.switcherIndex + direction + len) % len;
-    set({ switcherIndex: nextIdx, showSwitcherUI: true });
+    const isVisual = state.settings?.visualTabSwitcher !== false;
+
+    if (!isVisual) {
+      const targetTab = state.switcherTabs[nextIdx];
+      if (targetTab) {
+        const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+        if (tabStore) {
+          tabStore.handleSwitchToTab(targetTab.id, tabStore.activeSpace);
+          useUIStore.getState().setCurrentUrl(targetTab.url || '');
+          setTimeout(() => {
+            const wv = document.getElementById('webview-' + targetTab.id);
+            if (wv && typeof wv.focus === 'function') {
+              try { wv.focus(); } catch (_) {}
+            }
+          }, 20);
+        }
+      }
+      set({ switcherIndex: nextIdx, showSwitcherUI: false });
+    } else {
+      set({ switcherIndex: nextIdx, showSwitcherUI: true });
+    }
   },
   confirmSwitcher: () => {
     if (window.__switcherTimer) {
@@ -1883,12 +2072,10 @@ const useUIStore = create((set, get) => ({
       window.__switcherTimer = null;
     }
     const { showSwitcher, switcherTabs, switcherIndex } = useUIStore.getState();
-    console.log('[DEBUG] confirmSwitcher called. showSwitcher:', showSwitcher, 'switcherIndex:', switcherIndex);
     if (!showSwitcher) return;
 
     const targetTab = switcherTabs[switcherIndex];
-    console.log('[DEBUG] confirmSwitcher switching to targetTab:', targetTab?.id);
-    set({ showSwitcher: false, showSwitcherUI: false, switcherStartTime: 0 });
+    set({ showSwitcher: false, showSwitcherUI: false, switcherStartTime: 0, switcherOriginalTab: null });
 
     if (targetTab) {
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
@@ -1909,7 +2096,25 @@ const useUIStore = create((set, get) => ({
       clearTimeout(window.__switcherTimer);
       window.__switcherTimer = null;
     }
-    set({ showSwitcher: false, showSwitcherUI: false, switcherStartTime: 0 });
+    const state = useUIStore.getState();
+    const isVisual = state.settings?.visualTabSwitcher !== false;
+    if (!isVisual && state.switcherTabs && state.switcherTabs.length > 0) {
+      const originalTab = state.switcherOriginalTab || state.switcherTabs[0];
+      if (originalTab) {
+        const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+        if (tabStore) {
+          tabStore.handleSwitchToTab(originalTab.id, tabStore.activeSpace);
+          useUIStore.getState().setCurrentUrl(originalTab.url || '');
+          setTimeout(() => {
+            const wv = document.getElementById(`webview-${originalTab.id}`);
+            if (wv && typeof wv.focus === 'function') {
+              try { wv.focus(); } catch (_) {}
+            }
+          }, 30);
+        }
+      }
+    }
+    set({ showSwitcher: false, showSwitcherUI: false, switcherStartTime: 0, switcherOriginalTab: null });
   },
 
   // Reader Mode
@@ -2180,12 +2385,32 @@ try {
     if (initialGlass !== null && JSON.parse(initialGlass) === false) {
       document.documentElement.classList.add('no-glass');
     }
+
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.syncThemeSource?.(initialTheme);
+      window.electronAPI.onSystemThemeUpdated?.((data) => {
+        const currentTheme = useUIStore.getState().theme;
+        if (currentTheme === 'system' && data && typeof data.shouldUseDarkColors === 'boolean') {
+          const isDark = data.shouldUseDarkColors;
+          if (isDark) {
+            document.documentElement.classList.add('theme-dark');
+            document.documentElement.classList.remove('theme-light', 'bright-mode');
+          } else {
+            document.documentElement.classList.add('theme-light', 'bright-mode');
+            document.documentElement.classList.remove('theme-dark');
+          }
+        }
+      });
+    }
   }
 } catch (_) {}
 
 export const syncInitialSettingsToElectron = () => {
   if (typeof window !== 'undefined' && window.electronAPI) {
     try {
+      if (window.electronAPI.syncThemeSource) {
+        window.electronAPI.syncThemeSource(useUIStore.getState().theme || 'dark');
+      }
       if (window.electronAPI.saveSetting) {
         const currentSettings = useUIStore.getState().settings || {};
         Object.entries(currentSettings).forEach(([key, val]) => {

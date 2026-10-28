@@ -38,6 +38,122 @@ export function extractDomainFromUrl(rawUrl) {
 
 const STORAGE_KEY = 'qbrowse_annotations';
 
+/**
+ * Checks whether two annotations represent the same highlighted passage.
+ */
+export function areAnnotationsDuplicates(a, b) {
+  if (!a || !b) return false;
+  if (a.id && b.id && a.id === b.id) return true;
+
+  const spaceA = a.space || 'personal';
+  const spaceB = b.space || 'personal';
+  if (spaceA !== spaceB) return false;
+
+  const textA = (a.text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const textB = (b.text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  // URLs
+  const urlA = normalizeAnnotationUrl(a.url);
+  const urlB = normalizeAnnotationUrl(b.url);
+
+  // Domains
+  const domainA = (a.domain || extractDomainFromUrl(urlA) || '').toLowerCase();
+  const domainB = (b.domain || extractDomainFromUrl(urlB) || '').toLowerCase();
+
+  // Handle sticky notes without highlight text
+  if (!textA && !textB) {
+    if (urlA && urlB && urlA === urlB) {
+      const noteA = (a.note || '').trim().toLowerCase();
+      const noteB = (b.note || '').trim().toLowerCase();
+      if (noteA && noteB && noteA === noteB) return true;
+    }
+    return false;
+  }
+
+  // If one has highlight text and one doesn't, they are distinct items
+  if (!textA || !textB) return false;
+
+  const isExactText = textA === textB;
+  const isPrefixOrSubstring = (textA.length >= 10 && textB.length >= 10) && (textA.startsWith(textB) || textB.startsWith(textA) || textA.includes(textB) || textB.includes(textA));
+
+  if (!isExactText && !isPrefixOrSubstring) return false;
+
+  // If exact text or prefix match on the same URL
+  if (urlA && urlB && urlA === urlB) return true;
+
+  // On matching domain
+  if (domainA && domainB && domainA === domainB) {
+    if (textA.length >= 10 || textB.length >= 10) return true;
+    try {
+      const pA = new URL(urlA).pathname.replace(/\/+$/, '').toLowerCase();
+      const pB = new URL(urlB).pathname.replace(/\/+$/, '').toLowerCase();
+      if (pA === pB) return true;
+      const isRootA = !pA || pA === '/' || pA === '/wiki/main_page' || pA === '/index.html' || pA === '/index.php';
+      const isRootB = !pB || pB === '/' || pB === '/wiki/main_page' || pB === '/index.html' || pB === '/index.php';
+      if (isRootA && isRootB) return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Deduplicate any array of annotations by matching ID, space, normalized text, and domain/URL.
+ * Keeps the one with a non-empty note (or merges notes) and most recent updatedAt / createdAt.
+ */
+export function deduplicateAnnotationList(list) {
+  if (!Array.isArray(list)) return [];
+  const result = [];
+
+  for (const item of list) {
+    if (!item) continue;
+    const existingIndex = result.findIndex(r => areAnnotationsDuplicates(r, item));
+    if (existingIndex === -1) {
+      result.push({
+        ...item,
+        space: item.space || 'personal',
+        url: normalizeAnnotationUrl(item.url),
+        domain: item.domain || extractDomainFromUrl(item.url)
+      });
+    } else {
+      const existing = result[existingIndex];
+      const existingTime = existing.updatedAt || existing.createdAt || 0;
+      const itemTime = item.updatedAt || item.createdAt || 0;
+
+      // Keep the one with a non-empty note (or merge the note)
+      const existingNote = (existing.note || '').trim();
+      const itemNote = (item.note || '').trim();
+      let mergedNote = existingNote;
+      if (!existingNote && itemNote) {
+        mergedNote = itemNote;
+      } else if (existingNote && itemNote && existingNote !== itemNote) {
+        mergedNote = `${existingNote}\n${itemNote}`;
+      }
+
+      // Keep the one with most recent updatedAt / createdAt
+      const isItemMoreRecent = itemTime > existingTime;
+      const base = isItemMoreRecent ? item : existing;
+
+      result[existingIndex] = {
+        ...base,
+        id: existing.id || item.id,
+        space: existing.space || item.space || 'personal',
+        url: existing.url || item.url,
+        domain: existing.domain || item.domain || extractDomainFromUrl(existing.url || item.url),
+        title: base.title || existing.title || item.title || existing.url,
+        color: (isItemMoreRecent ? item.color : existing.color) || existing.color || item.color || 'accent',
+        note: mergedNote,
+        createdAt: Math.min(existing.createdAt || existingTime || Date.now(), item.createdAt || itemTime || Date.now()),
+        updatedAt: Math.max(existingTime, itemTime, Date.now())
+      };
+    }
+  }
+
+  return result;
+}
+
 function loadStoredAnnotations() {
   try {
     if (typeof localStorage === 'undefined') return [];
@@ -47,10 +163,11 @@ function loadStoredAnnotations() {
     const sanitized = Array.isArray(parsed) 
       ? parsed.filter(a => a && a.space !== 'ghost' && a.space !== 'tor' && !a.url?.includes('.onion')) 
       : [];
-    if (Array.isArray(parsed) && sanitized.length !== parsed.length) {
-      saveStoredAnnotations(sanitized);
+    const deduplicated = deduplicateAnnotationList(sanitized);
+    if (Array.isArray(parsed) && deduplicated.length !== parsed.length) {
+      saveStoredAnnotations(deduplicated);
     }
-    return sanitized;
+    return deduplicated;
   } catch (e) {
     console.warn('[useAnnotationStore] Failed to load annotations from localStorage:', e);
     return [];
@@ -72,8 +189,9 @@ export const useAnnotationStore = create((set, get) => ({
 
   /**
    * Add a new highlight or sticky note.
+   * Deduplicates by matching URL + space + normalized text, or ID.
    * @param {Object} data - { space, url, domain, title, text, prefix, suffix, color, note }
-   * @returns {Object} created annotation
+   * @returns {Object} created or updated annotation
    */
   addAnnotation: (data) => {
     // STRICT PRIVACY: Never persist annotations in ghost or tor spaces
@@ -81,17 +199,82 @@ export const useAnnotationStore = create((set, get) => ({
     const cleanUrl = normalizeAnnotationUrl(data.url);
     if (cleanUrl.includes('.onion')) return null;
 
+    const targetSpace = data.space || 'personal';
+    const targetText = (data.text || '').trim();
+    if (!targetText) return null;
+
+    const candidate = {
+      id: data.id,
+      space: targetSpace,
+      url: cleanUrl,
+      domain: data.domain || extractDomainFromUrl(cleanUrl),
+      text: targetText
+    };
+
+    // Check if an annotation already exists with matching ID or areAnnotationsDuplicates
+    const currentList = get().annotations;
+    const existing = currentList.find(a => areAnnotationsDuplicates(a, candidate));
+
+    if (existing) {
+      let hasChanges = false;
+      const updates = {};
+
+      if (data.color && data.color !== existing.color) {
+        updates.color = data.color;
+        hasChanges = true;
+      }
+      if (data.note && (typeof data.note === 'string' ? data.note.trim() : data.note)) {
+        const trimmedNote = (typeof data.note === 'string' ? data.note.trim() : data.note);
+        if (trimmedNote !== existing.note) {
+          updates.note = trimmedNote;
+          hasChanges = true;
+        }
+      }
+      if (data.title && !existing.title) {
+        updates.title = data.title;
+        hasChanges = true;
+      }
+
+      if (hasChanges) {
+        const updatedAnnotation = {
+          ...existing,
+          ...updates,
+          updatedAt: Date.now()
+        };
+        set(state => {
+          const mapped = state.annotations.map(a => a.id === existing.id ? updatedAnnotation : a);
+          const next = deduplicateAnnotationList(mapped);
+          saveStoredAnnotations(next);
+          return { annotations: next };
+        });
+
+        // Broadcast update to all live webviews
+        if (typeof window !== 'undefined' && window.qbrowseWebviews) {
+          Object.values(window.qbrowseWebviews).forEach(wv => {
+            try {
+              if (wv && typeof wv.send === 'function') {
+                wv.send('qbrowse-annotation-update', { id: existing.id, ...updates });
+              }
+            } catch (_) {}
+          });
+        }
+        return updatedAnnotation;
+      }
+
+      return existing;
+    }
+
     const domain = data.domain || extractDomainFromUrl(cleanUrl);
     const id = data.id || `ann-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = Date.now();
 
     const newAnnotation = {
       id,
-      space: data.space || 'personal',
+      space: targetSpace,
       url: cleanUrl,
       domain,
       title: data.title || cleanUrl,
-      text: data.text || '',
+      text: targetText,
       prefix: data.prefix || '',
       suffix: data.suffix || '',
       color: data.color || 'accent',
@@ -101,14 +284,27 @@ export const useAnnotationStore = create((set, get) => ({
     };
 
     set(state => {
-      // Remove any existing duplicate by ID
-      const filtered = state.annotations.filter(a => a.id !== id);
-      const updated = [...filtered, newAnnotation];
-      saveStoredAnnotations(updated);
-      return { annotations: updated };
+      const combined = [newAnnotation, ...state.annotations.filter(a => !areAnnotationsDuplicates(a, newAnnotation))];
+      const deduplicated = deduplicateAnnotationList(combined);
+      saveStoredAnnotations(deduplicated);
+      return { annotations: deduplicated };
     });
 
     return newAnnotation;
+  },
+
+  /**
+   * Helper to deduplicate annotations array anytime to clean up duplicates.
+   * @returns {Array} sanitized deduplicated annotations
+   */
+  deduplicateAnnotations: () => {
+    const current = get().annotations;
+    const deduplicated = deduplicateAnnotationList(current);
+    if (deduplicated.length !== current.length) {
+      set({ annotations: deduplicated });
+      saveStoredAnnotations(deduplicated);
+    }
+    return deduplicated;
   },
 
   /**
@@ -126,20 +322,60 @@ export const useAnnotationStore = create((set, get) => ({
         }
         return a;
       });
-      saveStoredAnnotations(updated);
-      return { annotations: updated };
+      const deduplicated = deduplicateAnnotationList(updated);
+      saveStoredAnnotations(deduplicated);
+      return { annotations: deduplicated };
     });
+
+    // Broadcast update to all live webviews
+    if (typeof window !== 'undefined' && window.qbrowseWebviews) {
+      Object.values(window.qbrowseWebviews).forEach(wv => {
+        try {
+          if (wv && typeof wv.send === 'function') {
+            wv.send('qbrowse-annotation-update', { id, ...updates });
+          }
+        } catch (_) {}
+      });
+    }
   },
 
   /**
-   * Remove an annotation by ID.
+   * Remove an annotation by ID, along with any duplicate references.
    */
   removeAnnotation: (id) => {
-    set(state => {
-      const updated = state.annotations.filter(a => a.id !== id);
-      saveStoredAnnotations(updated);
-      return { annotations: updated };
+    const target = get().annotations.find(a => a.id === id);
+    const removedIds = new Set([id]);
+
+    const updated = get().annotations.filter(a => {
+      if (a.id === id) return false;
+      if (target && areAnnotationsDuplicates(a, target)) {
+        removedIds.add(a.id);
+        return false;
+      }
+      return true;
     });
+
+    const deduplicated = deduplicateAnnotationList(updated);
+    set({ annotations: deduplicated });
+    saveStoredAnnotations(deduplicated);
+
+    // Broadcast deletion to all live webviews
+    if (typeof window !== 'undefined') {
+      const liveWebviews = [
+        ...(window.qbrowseWebviews ? Object.values(window.qbrowseWebviews) : []),
+        ...Array.from(document.querySelectorAll('webview'))
+      ];
+      removedIds.forEach(delId => {
+        liveWebviews.forEach(wv => {
+          try {
+            if (wv && typeof wv.send === 'function') {
+              wv.send('qbrowse-annotation-delete', delId);
+            }
+          } catch (_) {}
+        });
+      });
+      window.dispatchEvent(new CustomEvent('qbrowse-annotation-deleted', { detail: { id, removedIds: Array.from(removedIds) } }));
+    }
   },
 
   /**
@@ -147,6 +383,10 @@ export const useAnnotationStore = create((set, get) => ({
    */
   clearAnnotationsForUrl: (url, space = null) => {
     const cleanUrl = normalizeAnnotationUrl(url);
+    const removedIds = get().annotations
+      .filter(a => normalizeAnnotationUrl(a.url) === cleanUrl && (!space || a.space === space))
+      .map(a => a.id);
+
     set(state => {
       const updated = state.annotations.filter(a => {
         if (normalizeAnnotationUrl(a.url) === cleanUrl) {
@@ -157,6 +397,17 @@ export const useAnnotationStore = create((set, get) => ({
       saveStoredAnnotations(updated);
       return { annotations: updated };
     });
+
+    // Broadcast deletions to all live webviews
+    if (typeof window !== 'undefined' && window.qbrowseWebviews) {
+      Object.values(window.qbrowseWebviews).forEach(wv => {
+        try {
+          if (wv && typeof wv.send === 'function') {
+            removedIds.forEach(id => wv.send('qbrowse-annotation-delete', id));
+          }
+        } catch (_) {}
+      });
+    }
   },
 
   /**

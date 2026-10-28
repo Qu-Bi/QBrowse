@@ -10,7 +10,7 @@ import useTabStore from '../../store/useTabStore';
 export default function SavePasswordBanner() {
     const { 
         pendingSavePrompt, dismissSavePrompt, addNeverSaveDomain, 
-        saveOrUpdateCredential, isUnlocked, pinCode, unlockWithPin, 
+        saveOrUpdateCredential, isUnlocked, pinEnabled, unlockWithPin, 
         unlockWithWindowsHello, unlock 
     } = useVaultStore();
 
@@ -23,7 +23,7 @@ export default function SavePasswordBanner() {
     const [passwordInput, setPasswordInput] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isUnlocking, setIsUnlocking] = useState(false);
-    const [unlockMode, setUnlockMode] = useState('pin'); // 'pin' | 'password'
+    const [unlockMode, setUnlockMode] = useState(pinEnabled ? 'pin' : 'password'); // 'pin' | 'password'
     const [pinInput, setPinInput] = useState('');
     const [masterPassInput, setMasterPassInput] = useState('');
     const [unlockError, setUnlockError] = useState('');
@@ -36,6 +36,7 @@ export default function SavePasswordBanner() {
 
     useEffect(() => {
         if (pendingSavePrompt) {
+            useVaultStore.getState().syncVaultStatus?.();
             if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
             setDisplayedPrompt(pendingSavePrompt);
             setIsClosing(false);
@@ -46,7 +47,7 @@ export default function SavePasswordBanner() {
             setPinInput('');
             setMasterPassInput('');
             setUnlockError('');
-            setUnlockMode(pinCode ? 'pin' : 'password');
+            setUnlockMode(pinEnabled ? 'pin' : 'password');
         } else if (displayedPrompt && !isClosing) {
             setIsClosing(true);
             closeTimerRef.current = setTimeout(() => {
@@ -57,7 +58,7 @@ export default function SavePasswordBanner() {
         return () => {
             if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
         };
-    }, [pendingSavePrompt, pinCode]);
+    }, [pendingSavePrompt, pinEnabled]);
 
     if (!displayedPrompt) return null;
 
@@ -174,12 +175,21 @@ export default function SavePasswordBanner() {
     return (
         <div 
             id="save-password-banner"
-            className={`fixed top-14 right-6 z-[70000] w-[350px] rounded-2xl backdrop-blur-3xl p-4 ${
+            style={{
+                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
+                backdropFilter: isBright
+                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
+                WebkitBackdropFilter: isBright
+                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
+                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+            }}
+            className={`absolute top-16 right-6 z-[70000] w-[350px] rounded-3xl p-4 ${
                 isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
-            } origin-top-right overflow-hidden select-none transition-all duration-300 ${
+            } origin-top-right overflow-hidden select-none transition-all duration-300 border ${
                 isBright 
-                    ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900' 
-                    : 'bg-[#0c0d14]/78 border border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-white'
+                    ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
+                    : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
             }`}
             onClick={e => e.stopPropagation()}
         >
@@ -187,7 +197,7 @@ export default function SavePasswordBanner() {
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-accent/80 via-amber-300/70 to-accent/80" />
 
             {/* Header */}
-            <div className={`flex items-center justify-between pb-3 border-b ${isBright ? 'border-black/10' : 'border-white/8'}`}>
+            <div className={`flex items-center justify-between pb-3 border-b ${isBright ? 'border-black/[0.08]' : 'border-white/[0.08]'}`}>
                 <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent border border-accent/30 flex items-center justify-center shrink-0 shadow-sm">
                         <KeyRound size={15} />
@@ -199,7 +209,7 @@ export default function SavePasswordBanner() {
                                 : (isUpdate ? 'Update Password?' : 'Save Password?')
                             }
                         </h4>
-                        <p className={`text-[11px] truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/45'}`} title={domain}>
+                        <p className={`text-[11px] truncate mt-0.5 ${isBright ? 'text-zinc-600' : 'text-white/70'}`} title={domain}>
                             {domain}
                         </p>
                     </div>
@@ -207,7 +217,7 @@ export default function SavePasswordBanner() {
                 <button 
                     onClick={dismissSavePrompt}
                     className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-                        isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'
+                        isBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-white/65 hover:text-white'
                     }`}
                     title="Dismiss"
                 >
@@ -220,39 +230,39 @@ export default function SavePasswordBanner() {
                 <div className="pt-3.5 space-y-2.5">
                     {/* Username Input */}
                     <div className={`relative flex items-center border rounded-xl px-2.5 py-1.5 transition-colors focus-within:border-accent ${
-                        isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900' : 'bg-black/40 border-white/8 text-white'
+                        isBright ? 'bg-black/[0.04] border-black/[0.10] text-zinc-900 focus-within:bg-white' : 'bg-black/30 border-white/[0.10] text-white focus-within:bg-black/40'
                     }`}>
-                        <User size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
+                        <User size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-500' : 'text-white/65'}`} />
                         <input 
                             type="text"
                             value={usernameInput}
                             onChange={e => setUsernameInput(e.target.value)}
                             placeholder="Username or Email"
                             className={`w-full bg-transparent text-xs outline-none font-medium ${
-                                isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/25'
+                                isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                             }`}
                         />
                     </div>
 
                     {/* Password Input */}
                     <div className={`relative flex items-center border rounded-xl px-2.5 py-1.5 transition-colors focus-within:border-accent ${
-                        isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900' : 'bg-black/40 border-white/8 text-white'
+                        isBright ? 'bg-black/[0.04] border-black/[0.10] text-zinc-900 focus-within:bg-white' : 'bg-black/30 border-white/[0.10] text-white focus-within:bg-black/40'
                     }`}>
-                        <Lock size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
+                        <Lock size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-500' : 'text-white/65'}`} />
                         <input 
                             type={showPassword ? 'text' : 'password'}
                             value={passwordInput}
                             onChange={e => setPasswordInput(e.target.value)}
                             placeholder="Password"
                             className={`w-full bg-transparent text-xs outline-none font-mono ${
-                                isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/25'
+                                isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                             }`}
                         />
                         <button 
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
                             className={`p-0.5 ml-1 transition-colors cursor-pointer ${
-                                isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white/80'
+                                isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-white/65 hover:text-white'
                             }`}
                             tabIndex={-1}
                         >
@@ -265,7 +275,7 @@ export default function SavePasswordBanner() {
                         <button 
                             onClick={handleNeverForSite}
                             className={`text-[11px] transition-colors cursor-pointer px-1 py-1 ${
-                                isBright ? 'text-zinc-400 hover:text-red-600' : 'text-white/40 hover:text-red-400'
+                                isBright ? 'text-zinc-500 hover:text-red-600' : 'text-white/65 hover:text-red-400'
                             }`}
                         >
                             Never for this site
@@ -274,7 +284,7 @@ export default function SavePasswordBanner() {
                             <button 
                                 onClick={dismissSavePrompt}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
-                                    isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5' : 'text-white/60 hover:text-white hover:bg-white/5'
+                                    isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5' : 'text-white/75 hover:text-white hover:bg-white/10'
                                 }`}
                             >
                                 Not now
@@ -293,33 +303,72 @@ export default function SavePasswordBanner() {
             ) : (
                 /* Inline Unlock Body */
                 <form onSubmit={handleInlineUnlockAndSave} className="pt-3.5 space-y-3">
-                    <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                    <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-white/75'}`}>
                         Your vault is locked. Enter authentication to encrypt and store this login:
                     </p>
 
+                    {/* Unlock Mode Selector (Quick PIN vs Master Password) */}
+                    <div className={`flex p-0.5 rounded-xl border text-[11px] font-semibold select-none ${
+                        isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-black/25 border-white/[0.08]'
+                    }`}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setUnlockMode('pin');
+                                setUnlockError('');
+                                setTimeout(() => pinInputRef.current?.focus(), 50);
+                            }}
+                            className={`flex-1 py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                unlockMode === 'pin'
+                                    ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                            }`}
+                        >
+                            <KeyRound size={11} className={unlockMode === 'pin' ? (isBright ? 'text-amber-700' : 'text-accent') : 'opacity-60'} />
+                            <span>Quick PIN</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setUnlockMode('password');
+                                setUnlockError('');
+                                setTimeout(() => pinInputRef.current?.focus(), 50);
+                            }}
+                            className={`flex-1 py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                unlockMode === 'password'
+                                    ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                            }`}
+                        >
+                            <Lock size={11} className={unlockMode === 'password' ? (isBright ? 'text-amber-700' : 'text-accent') : 'opacity-60'} />
+                            <span>Master Password</span>
+                        </button>
+                    </div>
+
                     {unlockMode === 'pin' ? (
-                        <div className={`relative flex items-center border rounded-xl px-2.5 py-2 focus-within:border-accent ${
-                            isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'
+                        <div className={`relative flex items-center border rounded-xl px-2.5 py-2 transition-colors focus-within:border-accent ${
+                            isBright ? 'bg-black/[0.04] border-black/[0.10] focus-within:bg-white' : 'bg-black/30 border-white/[0.10] focus-within:bg-black/40'
                         }`}>
-                            <Lock size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
+                            <KeyRound size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-500' : 'text-white/65'}`} />
                             <input 
                                 ref={pinInputRef}
                                 type="password"
                                 inputMode="numeric"
+                                maxLength={6}
                                 value={pinInput}
-                                onChange={e => { setPinInput(e.target.value); setUnlockError(''); }}
-                                placeholder="Enter Quick PIN..."
+                                onChange={e => { setPinInput(e.target.value.replace(/\D/g, '')); setUnlockError(''); }}
+                                placeholder="Enter Quick PIN (4-6 digits)..."
                                 className={`w-full bg-transparent text-xs outline-none font-mono tracking-widest ${
-                                    isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/25'
+                                    isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                                 }`}
                                 autoFocus
                             />
                         </div>
                     ) : (
-                        <div className={`relative flex items-center border rounded-xl px-2.5 py-2 focus-within:border-accent ${
-                            isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'
+                        <div className={`relative flex items-center border rounded-xl px-2.5 py-2 transition-colors focus-within:border-accent ${
+                            isBright ? 'bg-black/[0.04] border-black/[0.10] focus-within:bg-white' : 'bg-black/30 border-white/[0.10] focus-within:bg-black/40'
                         }`}>
-                            <Lock size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
+                            <Lock size={13} className={`shrink-0 mr-2 ${isBright ? 'text-zinc-500' : 'text-white/65'}`} />
                             <input 
                                 ref={pinInputRef}
                                 type="password"
@@ -327,7 +376,7 @@ export default function SavePasswordBanner() {
                                 onChange={e => { setMasterPassInput(e.target.value); setUnlockError(''); }}
                                 placeholder="Master Password..."
                                 className={`w-full bg-transparent text-xs outline-none font-mono ${
-                                    isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/25'
+                                    isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                                 }`}
                                 autoFocus
                             />
@@ -346,7 +395,7 @@ export default function SavePasswordBanner() {
                             type="button"
                             onClick={() => { setIsUnlocking(false); setUnlockError(''); }}
                             className={`flex items-center gap-1 text-[11px] transition cursor-pointer ${
-                                isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/50 hover:text-white'
+                                isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white'
                             }`}
                         >
                             <ArrowLeft size={12} />
@@ -360,7 +409,7 @@ export default function SavePasswordBanner() {
                                     onClick={handleWindowsHelloUnlock}
                                     disabled={isSaving}
                                     className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                                        isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700 hover:text-zinc-900' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70 hover:text-white'
+                                        isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700 hover:text-zinc-900' : 'bg-white/[0.08] hover:bg-white/[0.12] border-white/10 text-white/80 hover:text-white'
                                     }`}
                                     title="Unlock with Windows Hello"
                                 >

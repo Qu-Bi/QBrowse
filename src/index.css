@@ -105,12 +105,10 @@ body {
   0% {
     opacity: 0;
     transform: scale(0.95) translateY(-8px);
-    filter: blur(4px);
   }
   100% {
     opacity: 1;
     transform: scale(1) translateY(0);
-    filter: blur(0);
   }
 }
 
@@ -118,12 +116,10 @@ body {
   0% {
     opacity: 1;
     transform: scale(1) translateY(0);
-    filter: blur(0);
   }
   100% {
     opacity: 0;
     transform: scale(0.94) translateY(-10px);
-    filter: blur(5px);
   }
 }
 
@@ -197,16 +193,13 @@ body {
   0% {
     opacity: 0;
     transform: scale(0.93) translateY(24px) translateZ(0);
-    filter: blur(8px);
   }
   65% {
     opacity: 1;
-    filter: blur(0px);
   }
   100% {
     opacity: 1;
     transform: scale(1) translateY(0) translateZ(0);
-    filter: blur(0px);
   }
 }
 
@@ -214,18 +207,16 @@ body {
   0% {
     opacity: 1;
     transform: scale(1) translateY(0) translateZ(0);
-    filter: blur(0px);
   }
   100% {
     opacity: 0;
     transform: scale(0.96) translateY(14px) translateZ(0);
-    filter: blur(4px);
   }
 }
 
 .animate-settings-sheet {
   animation: settingsSheetEnter 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity;
   transform: translateZ(0);
 }
 
@@ -373,6 +364,39 @@ body {
 .animate-slide-out-right {
   animation: slideOutRight 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
   will-change: transform, opacity;
+}
+
+/* QVault Staggered Tile & Accordion Animations */
+@keyframes tileIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-tile-in {
+  animation: tileIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.vault-accordion-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease-out;
+  opacity: 0;
+}
+
+.vault-accordion-wrapper.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.vault-accordion-inner {
+  overflow: hidden;
 }
 
 /* Bottom Bar Enter & Exit Animations (Reader Mode Audio HUD) */
@@ -1147,18 +1171,18 @@ html.theme-light.eco-mode .liquid-pill-bright:hover {
 }
 
 /* Snappy instant transitions & lightweight animations on eco mode to avoid GPU frame drops */
-html.eco-mode button,
-html.eco-mode .liquid-pill-dark,
-html.eco-mode .liquid-pill-bright {
+html.eco-mode:not(.a11y-reduced-motion) button,
+html.eco-mode:not(.a11y-reduced-motion) .liquid-pill-dark,
+html.eco-mode:not(.a11y-reduced-motion) .liquid-pill-bright {
   transition-duration: 0.12s !important;
 }
 
-html.eco-mode [class*="animate-"] {
+html.eco-mode:not(.a11y-reduced-motion) [class*="animate-"] {
   animation-duration: 0.12s !important;
   filter: none !important;
 }
 
-html.eco-mode .animate-dissolve-out {
+html.eco-mode:not(.a11y-reduced-motion) .animate-dissolve-out {
   animation-duration: 0.08s !important;
   filter: none !important;
 }
@@ -1168,17 +1192,17 @@ html.ultra-mode:not([style*="--glass-blur"]) {
   --glass-blur: 28px;
 }
 
-html.ultra-mode .animate-modal-dialog {
+html.ultra-mode:not(.a11y-reduced-motion) .animate-modal-dialog {
   animation-duration: 0.35s !important;
 }
 
-html.ultra-mode .animate-pop-in,
-html.ultra-mode .animate-slide-down-fade {
+html.ultra-mode:not(.a11y-reduced-motion) .animate-pop-in,
+html.ultra-mode:not(.a11y-reduced-motion) .animate-slide-down-fade {
   animation-duration: 0.26s !important;
 }
 
-html.ultra-mode .animate-slide-in-right,
-html.ultra-mode .animate-slide-in-left {
+html.ultra-mode:not(.a11y-reduced-motion) .animate-slide-in-right,
+html.ultra-mode:not(.a11y-reduced-motion) .animate-slide-in-left {
   animation-duration: 0.28s !important;
 }
 
@@ -1272,17 +1296,170 @@ html.a11y-reduced-motion *,
 html.a11y-reduced-motion *::before,
 html.a11y-reduced-motion *::after {
   animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
+  transition-delay: 0s !important;
   scroll-behavior: auto !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  html,
+  html *,
+  html *::before,
+  html *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Explicit high-specificity override for all modal dialogs, popovers, drawers, sheets, and menus */
+html.a11y-reduced-motion .animate-modal-dialog,
+html.a11y-reduced-motion .animate-modal-dialog-out,
+html.a11y-reduced-motion .animate-modal-spring,
+html.a11y-reduced-motion .animate-modal-spring-out,
+html.a11y-reduced-motion .animate-modal,
+html.a11y-reduced-motion .animate-modal-out,
+html.a11y-reduced-motion .animate-modal-backdrop,
+html.a11y-reduced-motion .animate-modal-backdrop-out,
+html.a11y-reduced-motion .animate-settings-sheet,
+html.a11y-reduced-motion .animate-settings-sheet-out,
+html.a11y-reduced-motion .animate-pop-in,
+html.a11y-reduced-motion .animate-pop-out,
+html.a11y-reduced-motion .animate-slide-down-fade,
+html.a11y-reduced-motion .animate-slide-up-fade-out,
+html.a11y-reduced-motion .animate-slide-in-right,
+html.a11y-reduced-motion .animate-slide-out-right,
+html.a11y-reduced-motion .animate-slide-in-left,
+html.a11y-reduced-motion .animate-slide-out-left,
+html.a11y-reduced-motion .animate-bottom-bar-enter,
+html.a11y-reduced-motion .animate-bottom-bar-exit,
+html.a11y-reduced-motion .animate-tab-fade,
+html.a11y-reduced-motion .animate-reader-enter,
+html.a11y-reduced-motion .animate-reader-exit,
+html.a11y-reduced-motion .animate-dissolve-out,
+html.a11y-reduced-motion .animate-row-collapse,
+html.a11y-reduced-motion .animate-tile-in,
+html.a11y-reduced-motion .animate-wallpaper-fade,
+html.a11y-reduced-motion .animate-pin-in,
+html.a11y-reduced-motion .theme-transition-curtain,
+html.a11y-reduced-motion .animate-tabmap-backdrop,
+html.a11y-reduced-motion .animate-tabmap-backdrop-out,
+html.a11y-reduced-motion .animate-tabmap-wallpaper,
+html.a11y-reduced-motion .animate-tabmap-enter,
+html.a11y-reduced-motion .animate-tabmap-exit,
+html.a11y-reduced-motion .animate-tabmap-zone-enter,
+html.a11y-reduced-motion .animate-tabmap-card,
+html.a11y-reduced-motion .tabmap-backdrop-enter,
+html.a11y-reduced-motion .tabmap-backdrop-exit,
+html.a11y-reduced-motion .tabmap-canvas-enter,
+html.a11y-reduced-motion .tabmap-canvas-exit,
+html.a11y-reduced-motion .tabmap-card-pop,
+html.a11y-reduced-motion .liquid-tab,
+html.a11y-reduced-motion .sidebar-item,
+html.a11y-reduced-motion .sidebar-item-active {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0s !important;
+}
+
+/* Completely halt continuous looping animations (infinite pulses, spins, pings, bounces, floats) */
+html.a11y-reduced-motion .animate-spin,
+html.a11y-reduced-motion .animate-spin-slow,
+html.a11y-reduced-motion .animate-pulse,
+html.a11y-reduced-motion .animate-pulse-border,
+html.a11y-reduced-motion .animate-ping,
+html.a11y-reduced-motion .animate-bounce,
+html.a11y-reduced-motion .animate-bounce-subtle,
+html.a11y-reduced-motion .animate-float,
+html.a11y-reduced-motion .animate-faceid-laser,
+html.a11y-reduced-motion .animate-tabmap-orb,
+html.a11y-reduced-motion .tabmap-card-sheen,
+html.a11y-reduced-motion .tabmap-card-sheen:empty,
+html.a11y-reduced-motion .tabmap-card-sheen:not(:empty)::after {
+  animation: none !important;
+}
+
+/* Theme dissolve curtain should disappear immediately without veil linger */
+html.a11y-reduced-motion .theme-transition-curtain {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-modal-dialog,
+  .animate-modal-dialog-out,
+  .animate-modal-spring,
+  .animate-modal-spring-out,
+  .animate-modal,
+  .animate-modal-out,
+  .animate-modal-backdrop,
+  .animate-modal-backdrop-out,
+  .animate-settings-sheet,
+  .animate-settings-sheet-out,
+  .animate-pop-in,
+  .animate-pop-out,
+  .animate-slide-down-fade,
+  .animate-slide-up-fade-out,
+  .animate-slide-in-right,
+  .animate-slide-out-right,
+  .animate-slide-in-left,
+  .animate-slide-out-left,
+  .animate-bottom-bar-enter,
+  .animate-bottom-bar-exit,
+  .animate-tab-fade,
+  .animate-reader-enter,
+  .animate-reader-exit,
+  .animate-dissolve-out,
+  .animate-row-collapse,
+  .animate-wallpaper-fade,
+  .animate-pin-in,
+  .theme-transition-curtain,
+  .animate-tabmap-backdrop,
+  .animate-tabmap-backdrop-out,
+  .animate-tabmap-wallpaper,
+  .animate-tabmap-enter,
+  .animate-tabmap-exit,
+  .animate-tabmap-zone-enter,
+  .animate-tabmap-card,
+  .tabmap-backdrop-enter,
+  .tabmap-backdrop-exit,
+  .tabmap-canvas-enter,
+  .tabmap-canvas-exit,
+  .tabmap-card-pop,
+  .liquid-tab,
+  .sidebar-item,
+  .sidebar-item-active {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+  }
+
+  .animate-spin,
+  .animate-spin-slow,
+  .animate-pulse,
+  .animate-pulse-border,
+  .animate-ping,
+  .animate-bounce,
+  .animate-bounce-subtle,
+  .animate-float,
+  .animate-faceid-laser,
+  .animate-tabmap-orb,
+  .tabmap-card-sheen,
+  .tabmap-card-sheen:empty,
+  .tabmap-card-sheen:not(:empty)::after {
+    animation: none !important;
+  }
+
+  .theme-transition-curtain {
+    display: none !important;
   }
 }
 
@@ -1633,7 +1810,25 @@ html.eco-mode .tabmap-card-sheen:not(:empty)::after {
   animation: none !important;
 }
 
-html.eco-mode .tabmap-node-spring,
-html.eco-mode .tabmap-zone-spring {
+html.eco-mode:not(.a11y-reduced-motion) .tabmap-node-spring,
+html.eco-mode:not(.a11y-reduced-motion) .tabmap-zone-spring {
   transition-duration: 0.12s !important;
+}
+
+/* Final Reduced Motion Cascade Override */
+html.a11y-reduced-motion .tabmap-backdrop-enter,
+html.a11y-reduced-motion .tabmap-backdrop-exit,
+html.a11y-reduced-motion .tabmap-canvas-enter,
+html.a11y-reduced-motion .tabmap-canvas-exit,
+html.a11y-reduced-motion .tabmap-card-pop,
+html.a11y-reduced-motion .tabmap-card-sheen,
+html.a11y-reduced-motion .tabmap-node-spring,
+html.a11y-reduced-motion .tabmap-zone-spring,
+html.a11y-reduced-motion .animate-tabmap-orb {
+  animation: none !important;
+  animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
+  transition: none !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0s !important;
 }

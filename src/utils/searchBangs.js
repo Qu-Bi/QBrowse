@@ -9,7 +9,7 @@ export const DEFAULT_SEARCH_BANGS = [
         id: 'google',
         name: 'Google',
         prefix: 'g',
-        bangs: ['!g', '!google', '@google'],
+        bangs: ['!g', '!google', '@google', '@g'],
         url: 'https://www.google.com/search?q={q}',
         color: '#4285F4',
         bg: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -26,6 +26,61 @@ export const DEFAULT_SEARCH_BANGS = [
         bg: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
         category: 'General',
         icon: Globe
+    },
+    {
+        id: 'bing',
+        name: 'Bing',
+        prefix: 'b',
+        bangs: ['!b', '!bing', '@bing', '@b'],
+        url: 'https://www.bing.com/search?q={q}',
+        color: '#008373',
+        bg: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+        category: 'General',
+        icon: Globe
+    },
+    {
+        id: 'brave',
+        name: 'Brave Search',
+        prefix: 'br',
+        bangs: ['!br', '!brave', '@brave', '@br'],
+        url: 'https://search.brave.com/search?q={q}',
+        color: '#FB542B',
+        bg: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+        category: 'General',
+        icon: Globe
+    },
+    {
+        id: 'ecosia',
+        name: 'Ecosia',
+        prefix: 'eco',
+        bangs: ['!eco', '!ecosia', '@ecosia', '@eco'],
+        url: 'https://www.ecosia.org/search?q={q}',
+        color: '#009688',
+        bg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+        category: 'General',
+        icon: Globe
+    },
+    {
+        id: 'startpage',
+        name: 'Startpage',
+        prefix: 'sp',
+        bangs: ['!sp', '!startpage', '@startpage', '@sp'],
+        url: 'https://www.startpage.com/sp/search?query={q}',
+        color: '#3B82F6',
+        bg: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+        category: 'General',
+        icon: Globe
+    },
+    {
+        id: 'kagi',
+        name: 'Kagi',
+        prefix: 'k',
+        bangs: ['!k', '!kagi', '@kagi', '@k'],
+        url: 'https://kagi.com/search?q={q}',
+        color: '#F59E0B',
+        bg: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        category: 'General',
+        icon: Search
     },
     {
         id: 'youtube',
@@ -163,7 +218,7 @@ export const DEFAULT_SEARCH_BANGS = [
         id: 'perplexity',
         name: 'Perplexity AI',
         prefix: 'p',
-        bangs: ['!p', '!perplexity', '@perplexity', '@p'],
+        bangs: ['!p', '!px', '!perplexity', '@perplexity', '@p', '@px'],
         url: 'https://www.perplexity.ai/search?q={q}',
         color: '#06B6D4',
         bg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
@@ -202,6 +257,58 @@ export function findBangByTrigger(trigger, customBangs = []) {
     const cleanTrigger = trigger.trim().toLowerCase();
     const all = getAllBangs(customBangs);
     return all.find(b => b.bangs.some(candidate => candidate.toLowerCase() === cleanTrigger)) || null;
+}
+
+export function findBangByKeywordOrTrigger(token, customBangs = [], customEngines = []) {
+    if (!token || typeof token !== 'string') return null;
+    const clean = token.trim().toLowerCase();
+    if (!clean || /\s/.test(clean)) return null;
+
+    // 1. Check exact !bang / @bang trigger first
+    const byTrigger = findBangByTrigger(clean, customBangs);
+    if (byTrigger) return byTrigger;
+
+    // 2. Check bare shortcut/prefix/keyword against all bangs
+    const bare = clean.replace(/^[!@]/, '');
+    if (!bare) return null;
+
+    const allBangs = getAllBangs(customBangs);
+    const matchedBang = allBangs.find(b =>
+        b.prefix.toLowerCase() === bare ||
+        b.id.toLowerCase() === bare ||
+        b.bangs.some(c => {
+            const lower = c.toLowerCase();
+            return lower === `!${bare}` || lower === `@${bare}`;
+        })
+    );
+    if (matchedBang) return matchedBang;
+
+    // 3. Check custom search engines by shortcut or keyword
+    if (Array.isArray(customEngines) && customEngines.length > 0) {
+        const matchedEngine = customEngines.find(e => {
+            if (!e || !e.url) return false;
+            const kw = (e.keyword || '').trim().toLowerCase().replace(/^[!@]/, '');
+            const sc = (e.shortcut || '').trim().toLowerCase().replace(/^[!@]/, '');
+            return kw === bare || sc === bare;
+        });
+        if (matchedEngine) {
+            const prefix = (matchedEngine.shortcut || matchedEngine.keyword || bare).trim().toLowerCase().replace(/^[!@]/, '');
+            return {
+                id: matchedEngine.id || `custom_engine_${prefix}`,
+                name: matchedEngine.name || prefix,
+                prefix,
+                bangs: [`!${prefix}`, `@${prefix}`],
+                url: matchedEngine.url.replace(/%s/g, '{q}'),
+                color: matchedEngine.color || '#d4bc94',
+                bg: 'bg-accent/20 text-accent border-accent/30',
+                category: 'Custom',
+                icon: Search,
+                isCustom: true
+            };
+        }
+    }
+
+    return null;
 }
 
 export function parseBangFromQuery(rawQuery, customBangs = []) {

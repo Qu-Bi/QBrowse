@@ -7,54 +7,58 @@ import {
 import useTorStore from '../../store/useTorStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 
-const COUNTRY_FLAGS = {
-    'Germany': '🇩🇪',
-    'DE': '🇩🇪',
-    'Netherlands': '🇳🇱',
-    'NL': '🇳🇱',
-    'Switzerland': '🇨🇭',
-    'CH': '🇨🇭',
-    'United States': '🇺🇸',
-    'USA': '🇺🇸',
-    'US': '🇺🇸',
-    'United Kingdom': '🇬🇧',
-    'UK': '🇬🇧',
-    'GB': '🇬🇧',
-    'France': '🇫🇷',
-    'FR': '🇫🇷',
-    'Sweden': '🇸🇪',
-    'SE': '🇸🇪',
-    'Canada': '🇨🇦',
-    'CA': '🇨🇦',
-    'Austria': '🇦🇹',
-    'AT': '🇦🇹',
-    'Romania': '🇷🇴',
-    'RO': '🇷🇴',
-    'Finland': '🇫🇮',
-    'FI': '🇫🇮',
-    'Norway': '🇳🇴',
-    'NO': '🇳🇴',
-    'Iceland': '🇮🇸',
-    'IS': '🇮🇸',
-    'Czechia': '🇨🇿',
-    'Czech Republic': '🇨🇿',
-    'CZ': '🇨🇿',
-    'Poland': '🇵🇱',
-    'PL': '🇵🇱',
-    'Italy': '🇮🇹',
-    'IT': '🇮🇹',
-    'Spain': '🇪🇸',
-    'ES': '🇪🇸',
-    'Australia': '🇦🇺',
-    'AU': '🇦🇺',
-    'Japan': '🇯🇵',
-    'JP': '🇯🇵',
-    'Singapore': '🇸🇬',
-    'SG': '🇸🇬'
+const COUNTRY_CODES = {
+    'Germany': 'DE',
+    'DE': 'DE',
+    'Netherlands': 'NL',
+    'NL': 'NL',
+    'Switzerland': 'CH',
+    'CH': 'CH',
+    'United States': 'US',
+    'USA': 'US',
+    'US': 'US',
+    'United Kingdom': 'GB',
+    'UK': 'GB',
+    'GB': 'GB',
+    'France': 'FR',
+    'FR': 'FR',
+    'Sweden': 'SE',
+    'SE': 'SE',
+    'Canada': 'CA',
+    'CA': 'CA',
+    'Austria': 'AT',
+    'AT': 'AT',
+    'Romania': 'RO',
+    'RO': 'RO',
+    'Finland': 'FI',
+    'FI': 'FI',
+    'Norway': 'NO',
+    'NO': 'NO',
+    'Iceland': 'IS',
+    'IS': 'IS',
+    'Czechia': 'CZ',
+    'Czech Republic': 'CZ',
+    'CZ': 'CZ',
+    'Poland': 'PL',
+    'PL': 'PL',
+    'Italy': 'IT',
+    'IT': 'IT',
+    'Spain': 'ES',
+    'ES': 'ES',
+    'Australia': 'AU',
+    'AU': 'AU',
+    'Japan': 'JP',
+    'JP': 'JP',
+    'Singapore': 'SG',
+    'SG': 'SG'
 };
 
-const getFlag = (country) => COUNTRY_FLAGS[country] || '🌐';
+const getCountryCode = (country) => {
+    if (!country) return 'TOR';
+    return COUNTRY_CODES[country] || (country.length === 2 ? country.toUpperCase() : country.slice(0, 3).toUpperCase());
+};
 
 const securityLevels = [
     { id: 'standard', label: 'Standard', desc: 'All browser features and media enabled.' },
@@ -114,6 +118,11 @@ export default function TorCircuitPopover({ isClosing }) {
     const safeActiveIndex = activeIndex >= 0 ? activeIndex : 0;
     const hoveredIndex = securityLevels.findIndex(s => s.id === hoveredSecurityLevel);
 
+    const anchor = usePopoverAnchor('#tour-tor-trigger', 420, { 
+        fallbackSelector: '#tour-omnibox-tor-trigger, #qbrowse-extensions-hub',
+        defaultRight: 16 
+    });
+
     return (
         <div 
             id="popover-tor-container"
@@ -121,10 +130,11 @@ export default function TorCircuitPopover({ isClosing }) {
             onClick={e => e.stopPropagation()}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
             style={{
+                ...anchor.style,
                 backdropFilter: 'blur(32px) saturate(190%)',
                 WebkitBackdropFilter: 'blur(32px) saturate(190%)'
             }}
-            className={`absolute top-3 right-4 w-[420px] max-w-[calc(100vw-32px)] max-h-[calc(100vh-70px)] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden rounded-3xl p-4 transition-all duration-200 z-[70000] border bg-[#0c0d16]/85 border-purple-500/20 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_40px_rgba(168,85,247,0.12)] origin-top-right ${
+            className={`absolute w-[420px] max-w-[calc(100vw-32px)] max-h-[calc(100vh-70px)] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden rounded-3xl p-4 transition-all duration-200 z-[70000] border bg-[#0c0d16]/85 border-purple-500/20 text-white shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_40px_rgba(168,85,247,0.12)] origin-top-right ${
                 isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'
             }`}
         >
@@ -323,7 +333,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
                                             <span className="font-semibold text-white text-[11px]">Guard (Entry)</span>
-                                            <span className="text-[12px]">{getFlag(guardNode.country)}</span>
+                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-purple-200 border border-purple-500/20">{getCountryCode(guardNode.country)}</span>
                                             <span className="text-[10px] text-white/60">{guardNode.country || 'Guard'}</span>
                                         </div>
                                         {guardNode.latency && (
@@ -348,7 +358,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
                                             <span className="font-semibold text-white text-[11px]">Middle Relay</span>
-                                            <span className="text-[12px]">{getFlag(middleNode.country)}</span>
+                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-indigo-200 border border-indigo-500/20">{getCountryCode(middleNode.country)}</span>
                                             <span className="text-[10px] text-white/60">{middleNode.country || 'Relay'}</span>
                                         </div>
                                         {middleNode.latency && (
@@ -373,7 +383,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
                                             <span className="font-semibold text-emerald-300 text-[11px]">Exit Node</span>
-                                            <span className="text-[12px]">{getFlag(exitNode.country)}</span>
+                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-emerald-200 border border-emerald-500/20">{getCountryCode(exitNode.country)}</span>
                                             <span className="text-[10px] text-white/60">{exitNode.country || 'Exit'}</span>
                                         </div>
                                         {exitNode.latency && (
