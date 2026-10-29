@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { parseArticle } from '../utils/readerExtractor.js';
 import { playDownloadCompleteChime } from '../utils/bootAudio.js';
+import { 
+    EXPERIENCE_PRESETS, 
+    loadCustomPresets, 
+    saveCustomPresetsToStorage, 
+    getSavedPresetId, 
+    setSavedPresetId 
+} from '../utils/experiencePresets.js';
 
 let globalToastTimeout = null;
 let globalZoomTimeout = null;
@@ -28,6 +35,14 @@ const saveDownloadsToStorage = (downloads) => {
 };
 
 const defaultSettings = {
+    sidebarPosition: 'left', // 'left' | 'right'
+    topBarPosition: 'top',    // 'top' | 'bottom'
+    toolHubPosition: 'right', // 'right' | 'left'
+    glassBlur: 'balanced', // 'subtle' | 'balanced' | 'frosted' | 'off'
+    omniboxStyle: 'capsule', // 'capsule' | 'wide' | 'minimal'
+    frameCurvature: 'default', // 'default' | 'cohesive' | 'square'
+    tabPresentation: 'pills', // 'pills' | 'compact' | 'cards'
+    windowControlsStyle: 'mac', // 'mac' | 'windows' | 'minimal'
     httpsOnly: true,
     isolation: false,
     webrtc: true,
@@ -128,6 +143,30 @@ const loadSettings = () => {
             }
             if (parsed.blurWallpaper === undefined) {
                 parsed.blurWallpaper = false;
+            }
+            if (!parsed.sidebarPosition) {
+                parsed.sidebarPosition = 'left';
+            }
+            if (!parsed.topBarPosition) {
+                parsed.topBarPosition = 'top';
+            }
+            if (!parsed.toolHubPosition) {
+                parsed.toolHubPosition = 'right';
+            }
+            if (!parsed.glassBlur) {
+                parsed.glassBlur = 'balanced';
+            }
+            if (!parsed.omniboxStyle) {
+                parsed.omniboxStyle = 'capsule';
+            }
+            if (!parsed.frameCurvature) {
+                parsed.frameCurvature = 'default';
+            }
+            if (!parsed.tabPresentation) {
+                parsed.tabPresentation = 'pills';
+            }
+            if (!parsed.windowControlsStyle) {
+                parsed.windowControlsStyle = 'mac';
             }
             if (!Array.isArray(parsed.customSpaces) || parsed.customSpaces.length === 0) {
                 parsed.customSpaces = defaultSettings.customSpaces;
@@ -1704,6 +1743,20 @@ const useUIStore = create((set, get) => ({
           return { settings: newSettings };
       });
   },
+  setSidebarPosition: (pos) => {
+      const opposite = pos === 'right' ? 'left' : 'right';
+      get().setSettingValue('sidebarPosition', pos);
+      get().setSettingValue('toolHubPosition', opposite);
+  },
+  setTopBarPosition: (pos) => get().setSettingValue('topBarPosition', pos),
+  setToolHubPosition: (pos) => get().setSettingValue('toolHubPosition', pos),
+  setGlassBlur: (blur) => {
+      get().setSettingValue('glassBlur', blur);
+      if (typeof document !== 'undefined') {
+          const blurMap = { subtle: '14px', balanced: '24px', frosted: '40px', off: '0px' };
+          document.documentElement.style.setProperty('--glass-blur', blurMap[blur] || '24px');
+      }
+  },
   addCustomBang: (bang) => {
       const customBangs = get().settings?.customBangs || [];
       const cleanPrefix = (bang.prefix || '').replace(/^[!@]/, '').trim().toLowerCase();
@@ -1854,6 +1907,165 @@ const useUIStore = create((set, get) => ({
   reorderSpaces: (reorderedList) => {
       if (!Array.isArray(reorderedList)) return;
       get().saveSetting('customSpaces', reorderedList);
+  },
+
+  // Experience Presets & Custom Preset Studio Management
+  customPresets: loadCustomPresets(),
+  activePresetId: getSavedPresetId(),
+
+  setActivePresetId: (id) => {
+      set({ activePresetId: id });
+      setSavedPresetId(id);
+  },
+
+  getAllPresets: () => {
+      return [...EXPERIENCE_PRESETS, ...(get().customPresets || [])];
+  },
+
+  saveCustomPreset: (newPreset) => {
+      if (!newPreset) return null;
+      const id = newPreset.id || `custom_${Date.now()}`;
+      const preset = {
+          ...newPreset,
+          id,
+          isCustom: true,
+          isBuiltIn: false,
+          badge: 'Custom',
+          createdAt: newPreset.createdAt || Date.now()
+      };
+      const current = get().customPresets || [];
+      const existingIndex = current.findIndex(p => p.id === id);
+      let updated;
+      if (existingIndex >= 0) {
+          updated = [...current];
+          updated[existingIndex] = preset;
+      } else {
+          updated = [...current, preset];
+      }
+      set({ customPresets: updated, activePresetId: id });
+      saveCustomPresetsToStorage(updated);
+      setSavedPresetId(id);
+      get().showToast(`Preset "${preset.name}" saved!`);
+      return preset;
+  },
+
+  updateCustomPreset: (presetId, updates) => {
+      const current = get().customPresets || [];
+      const index = current.findIndex(p => p.id === presetId);
+      if (index === -1) {
+          get().showToast('Preset not found to update', 'warning');
+          return null;
+      }
+      const updatedPreset = {
+          ...current[index],
+          ...updates,
+          id: presetId,
+          isCustom: true,
+          badge: 'Custom'
+      };
+      const updated = [...current];
+      updated[index] = updatedPreset;
+      set({ customPresets: updated });
+      saveCustomPresetsToStorage(updated);
+      get().showToast(`Preset "${updatedPreset.name}" updated!`);
+      return updatedPreset;
+  },
+
+  deleteCustomPreset: (presetId) => {
+      const current = get().customPresets || [];
+      const target = current.find(p => p.id === presetId);
+      if (!target) return;
+      const updated = current.filter(p => p.id !== presetId);
+      const updates = { customPresets: updated };
+      if (get().activePresetId === presetId) {
+          updates.activePresetId = 'balanced';
+          setSavedPresetId('balanced');
+      }
+      set(updates);
+      saveCustomPresetsToStorage(updated);
+      get().showToast(`Preset "${target.name}" deleted`);
+  },
+
+  duplicatePreset: (presetId) => {
+      const all = get().getAllPresets();
+      const source = all.find(p => p.id === presetId);
+      if (!source) {
+          get().showToast('Preset not found to duplicate', 'warning');
+          return null;
+      }
+      const newId = `custom_${Date.now()}`;
+      const clone = {
+          ...source,
+          id: newId,
+          name: `${source.name} (Copy)`,
+          badge: 'Custom',
+          isCustom: true,
+          isBuiltIn: false,
+          createdAt: Date.now()
+      };
+      const currentCustom = get().customPresets || [];
+      const updated = [...currentCustom, clone];
+      set({ customPresets: updated });
+      saveCustomPresetsToStorage(updated);
+      get().showToast(`Duplicated "${source.name}"`);
+      return clone;
+  },
+
+  captureCurrentAsPreset: (name = 'Custom Preset', description = '', icon = 'Sparkles') => {
+      const s = get().settings || defaultSettings;
+      const theme = get().theme || 'dark';
+      const accentColor = get().accentColor || '#d4bc94';
+      const accentRgb = get().accentRgb || '212, 188, 148';
+      const isAdblockActive = get().isAdblockActive !== undefined ? get().isAdblockActive : true;
+      const id = `custom_${Date.now()}`;
+
+      const spaces = Array.isArray(s.customSpaces) && s.customSpaces.length > 0
+          ? s.customSpaces
+          : defaultSettings.customSpaces;
+
+      const sidebarPos = s.sidebarPosition || 'left';
+      const topBarPos = s.topBarPosition || 'top';
+      const toolHubPos = s.toolHubPosition || (sidebarPos === 'left' ? 'right' : 'left');
+
+      const layoutTag = `${topBarPos === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${sidebarPos === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`;
+      const layoutSummary = `${topBarPos === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${sidebarPos === 'right' ? 'Right Sidebar' : 'Left Sidebar'} · ${toolHubPos === 'left' ? 'Left ToolHub' : 'Right ToolHub'}`;
+      const spacesSummary = spaces.map(sp => sp.name).join(' · ');
+
+      const preset = {
+          id,
+          name: (name || 'Custom Preset').trim(),
+          tagline: (description || 'Custom configured layout and browser environment').trim(),
+          spacesSummary,
+          badge: 'Custom',
+          icon: icon || 'Sparkles',
+          theme,
+          accentColor,
+          accentRgb,
+          accentName: 'Custom Accent',
+          searchEngine: s.searchEngine || 'google',
+          searchEngineName: s.searchEngine === 'duckduckgo' ? 'DuckDuckGo' : s.searchEngine === 'brave' ? 'Brave' : 'Google',
+          uiScale: s.uiScale || 'comfortable',
+          sidebarPosition: sidebarPos,
+          topBarPosition: topBarPos,
+          toolHubPosition: toolHubPos,
+          omniboxStyle: s.omniboxStyle || 'capsule',
+          frameCurvature: s.frameCurvature || 'default',
+          tabPresentation: s.tabPresentation || 'pills',
+          windowControlsStyle: s.windowControlsStyle || 'mac',
+          layoutTag,
+          layoutSummary,
+          isAdblockActive,
+          adblockLevel: s.adblockLevel || 'standard',
+          customSpaces: spaces,
+          highlights: [
+              layoutTag,
+              `${spaces.length} Workspace${spaces.length > 1 ? 's' : ''}`,
+              s.uiScale === 'compact' ? 'Compact UI' : 'Comfortable UI'
+          ],
+          isCustom: true,
+          createdAt: Date.now()
+      };
+      return preset;
   },
 
   // Secure DNS & Host Resolver Configuration

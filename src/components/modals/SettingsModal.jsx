@@ -3,14 +3,15 @@ import {
     Palette, Shield, Cpu, ShieldAlert, Search, Download, X, 
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, History,
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
-    Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal,
+    Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal, Square,
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Server, Wifi, AlertCircle,
     Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch,
     ArrowLeftRight, ListOrdered, User, Briefcase, Code, Bookmark, Coffee, Folder,
-    Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical
+    Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical, Copy,
+    Layout, Sidebar
 } from 'lucide-react';
-import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId } from '../../utils/experiencePresets';
+import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
 
 const SPACE_ICONS = [
     { id: 'User', label: 'User', icon: User },
@@ -310,7 +311,15 @@ const SettingsModal = () => {
         addSpace,
         updateSpace,
         removeSpace,
-        reorderSpaces
+        reorderSpaces,
+        customPresets,
+        duplicatePreset,
+        deleteCustomPreset,
+        activePresetId: storeActivePresetId,
+        setActivePresetId: setStoreActivePresetId,
+        setSidebarPosition,
+        setTopBarPosition,
+        setToolHubPosition
     } = useUIStore();
 
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -318,6 +327,37 @@ const SettingsModal = () => {
     const workTabs = useTabStore(state => state.workTabs);
     const customSpaceTabs = useTabStore(state => state.customSpaceTabs) || {};
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    // Spatial Positioning Controls
+    const sidebarPosition = settings?.sidebarPosition || 'left';
+    const topBarPosition = settings?.topBarPosition || 'top';
+    const toolHubPosition = settings?.toolHubPosition || (sidebarPosition === 'left' ? 'right' : 'left');
+
+    const openStudio = () => {
+        if (switchModal) switchModal('presetStudio');
+        else openModal('presetStudio');
+    };
+
+    const handleSetSidebarPosition = (pos) => {
+        setSidebarPosition?.(pos);
+        showToast?.(`Sidebar positioned on ${pos}`);
+    };
+
+    const handleSetTopBarPosition = (pos) => {
+        setTopBarPosition?.(pos);
+        showToast?.(`Top Bar positioned on ${pos}`);
+    };
+
+    const handleSetToolHubPosition = (pos) => {
+        setToolHubPosition?.(pos);
+        if (sidebarPosition === pos) {
+            const opposite = pos === 'right' ? 'left' : 'right';
+            setSidebarPosition?.(opposite);
+            showToast?.(`Moved Sidebar to ${opposite} to avoid collision with Tool Hub`);
+        } else {
+            showToast?.(`Tool Hub positioned on ${pos}`);
+        }
+    };
 
     // Workspaces & Spaces state
     const [isCreatingSpace, setIsCreatingSpace] = useState(false);
@@ -907,7 +947,8 @@ const SettingsModal = () => {
     };
 
     const navTabs = [
-        { id: 'appearance', label: 'Appearance & UX', icon: Palette, color: 'text-purple-400', category: 'Preferences' },
+        { id: 'appearance', label: 'Appearance & Themes', icon: Palette, color: 'text-purple-400', category: 'Preferences' },
+        { id: 'layout', label: 'Layout & Chrome', icon: Layout, color: 'text-amber-400', category: 'Preferences' },
         { id: 'spaces', label: 'Workspaces', icon: Layers, color: 'text-indigo-400', category: 'Preferences' },
         { id: 'accessibility', label: 'Accessibility', icon: Eye, color: 'text-amber-400', category: 'Preferences' },
         { id: 'privacy', label: 'Privacy & Security', icon: Shield, color: 'text-emerald-400', category: 'Preferences' },
@@ -1043,583 +1084,1030 @@ const SettingsModal = () => {
                 {/* Scrollable Content Body */}
                 <div className="flex-1 p-6 md:p-10 lg:px-12 overflow-y-auto h-full">
                     <div className="w-full max-w-6xl xl:max-w-7xl mx-auto pb-16">
-                    {/* TAB 1: APPEARANCE & UX */}
+                    {/* TAB 1: APPEARANCE & THEMES */}
                     {settingsTab === 'appearance' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Appearance & UX</h3>
-                                <p className="text-xs text-white/40">Customize theme colors, UI scale, and physical glassmorphism effects.</p>
+                                <h3 className="text-2xl font-bold mb-1">Appearance &amp; Themes</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                    Customize visual themes, browsing presets, wallpapers, and glassmorphism physics.
+                                </p>
                             </div>
 
                             {/* Browsing Experience Presets */}
-                            <div className={`p-5 rounded-2xl border space-y-3.5 ${
-                                isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center justify-between flex-wrap gap-2">
-                                    <div>
-                                        <span className="text-xs font-bold uppercase text-accent tracking-wider block">
-                                            Browsing Presets
-                                        </span>
-                                        <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Quick configurations for workspaces, privacy shields, and aesthetics.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => (switchModal ? switchModal('setup') : openModal('setup'))}
-                                        className={`text-xs px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 active:scale-95 ${
-                                            isBright ? 'border-black/10 hover:bg-black/5 text-zinc-700 bg-white' : 'border-white/10 hover:bg-white/5 text-zinc-300 bg-black/30'
-                                        }`}
-                                    >
-                                        <Sparkles size={12} className="text-accent" />
-                                        <span>Setup Walkthrough</span>
-                                    </button>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                    {EXPERIENCE_PRESETS.map((p) => {
-                                        const PresetIcon = p.icon;
-                                        const isSelected = activePresetId === p.id;
-
-                                        return (
+                                    <div className={`p-5 rounded-2xl border space-y-3.5 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.025] border-white/[0.05]'
+                                    }`}>
+                                        <div className="flex items-center justify-between flex-wrap gap-2">
+                                            <div>
+                                                <span className="text-xs font-bold uppercase text-accent tracking-wider block">
+                                                    Browsing Presets & Layouts
+                                                </span>
+                                                <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Quick configurations for workspaces, privacy shields, and aesthetics.
+                                                </p>
+                                            </div>
                                             <button
-                                                key={p.id}
                                                 type="button"
-                                                onClick={() => {
-                                                    applyExperiencePreset(p, {
-                                                        uiStore: useUIStore.getState(),
-                                                        tabStore: useTabStore.getState(),
-                                                        showToast
-                                                    });
-                                                    setActivePresetId(p.id);
-                                                }}
-                                                className={`p-3 rounded-xl border text-left transition-all duration-200 cursor-pointer flex items-start gap-3 group active:scale-[0.98] ${
-                                                    isSelected
-                                                        ? (isBright ? 'bg-accent/15 border-accent text-zinc-950 shadow-sm' : 'bg-accent/15 border-accent text-white shadow-sm')
-                                                        : (isBright ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800' : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200')
-                                                }`}
+                                                onClick={openStudio}
+                                                className="text-xs px-3 py-1.5 rounded-xl border border-accent/40 bg-accent text-zinc-950 font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 hover:brightness-105 shadow-sm"
                                             >
-                                                <div 
-                                                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border mt-0.5"
-                                                    style={{
-                                                        backgroundColor: `${p.accentColor}18`,
-                                                        borderColor: `${p.accentColor}40`,
-                                                        color: p.accentColor
-                                                    }}
-                                                >
-                                                    <PresetIcon size={15} />
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center justify-between gap-1">
-                                                        <span className="text-xs font-bold truncate">{p.name}</span>
-                                                        <span className="text-[10px] font-mono opacity-60">
-                                                            {p.spacesSummary}
-                                                        </span>
-                                                    </div>
-                                                    <p className={`text-[10.5px] mt-0.5 line-clamp-1 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                        {p.tagline}
-                                                    </p>
-                                                </div>
+                                                <Sliders size={13} strokeWidth={2.4} />
+                                                <span>Open Studio</span>
                                             </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Magic Accent Color */}
-                            <div className="p-5 bg-white/[0.02] border border-white/[0.05] rounded-2xl space-y-4">
-                                <span className="text-xs font-bold uppercase text-accent tracking-wider block">Magic Accent Color</span>
-                                <div className="flex gap-3 items-center flex-wrap">
-                                    {[
-                                        { hex: '#d4bc94', name: 'Sand' },
-                                        { hex: '#3b82f6', name: 'Ocean' },
-                                        { hex: '#10b981', name: 'Emerald' },
-                                        { hex: '#8b5cf6', name: 'Amethyst' },
-                                        { hex: '#f43f5e', name: 'Rose' },
-                                        { hex: '#f97316', name: 'Sunset' },
-                                        { hex: '#06b6d4', name: 'Cyber' }
-                                    ].map((c) => (
-                                        <button
-                                            key={c.hex}
-                                            onClick={() => setAccentColor(c.hex)}
-                                            className={`w-8 h-8 rounded-full shadow-lg transition-transform hover:scale-110 flex items-center justify-center cursor-pointer ${accentColor === c.hex ? 'ring-2 ring-white ring-offset-2 ring-offset-black/50 scale-110' : ''}`}
-                                            style={{ backgroundColor: c.hex }}
-                                            title={c.name}
-                                        >
-                                            {accentColor === c.hex && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                                        </button>
-                                    ))}
-                                    <div className="w-px h-6 bg-white/20 mx-1"></div>
-
-                                    <div className="relative flex items-center bg-black/40 border border-white/[0.06] rounded-xl overflow-hidden focus-within:border-accent">
-                                        <div className="pl-3 pr-2 py-2 border-r border-white/[0.06]">
-                                            <Palette size={14} className="text-white/40" />
                                         </div>
-                                        <span className="pl-2 text-xs text-white/40 font-mono">#</span>
-                                        <input
-                                            type="text"
-                                            value={accentColor.replace('#', '')}
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
-                                                if (val.length <= 6) setAccentColor('#' + val);
-                                            }}
-                                            className="w-16 bg-transparent border-none text-xs text-white font-mono outline-none py-2 uppercase"
-                                            maxLength={6}
-                                        />
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            {[...EXPERIENCE_PRESETS, ...(customPresets || [])].map((p) => {
+                                                const PresetIcon = getPresetIcon(p.icon);
+                                                const isSelected = (storeActivePresetId || activePresetId) === p.id;
+
+                                                return (
+                                                    <div
+                                                        key={p.id}
+                                                        className={`p-3 rounded-xl border text-left transition-all duration-200 flex flex-col justify-between group ${
+                                                            isSelected
+                                                                ? (isBright ? 'bg-accent/15 border-accent text-zinc-950 shadow-sm' : 'bg-accent/15 border-accent text-white shadow-sm')
+                                                                : (isBright ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800' : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200')
+                                                        }`}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                applyExperiencePreset(p, {
+                                                                    uiStore: useUIStore.getState(),
+                                                                    tabStore: useTabStore.getState(),
+                                                                    showToast
+                                                                });
+                                                                setActivePresetId(p.id);
+                                                                setStoreActivePresetId?.(p.id);
+                                                            }}
+                                                            className="w-full text-left flex items-start gap-3 cursor-pointer outline-none active:scale-[0.99]"
+                                                        >
+                                                            <div 
+                                                                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border mt-0.5"
+                                                                style={{
+                                                                    backgroundColor: `${p.accentColor}18`,
+                                                                    borderColor: `${p.accentColor}40`,
+                                                                    color: p.accentColor
+                                                                }}
+                                                            >
+                                                                <PresetIcon size={15} />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                                        <span className="text-xs font-bold truncate">{p.name}</span>
+                                                                        {p.isCustom ? (
+                                                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                                                                Custom
+                                                                            </span>
+                                                                        ) : p.badge ? (
+                                                                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/10 text-zinc-400 border border-white/10">
+                                                                                {p.badge}
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </div>
+                                                                    <span className="text-[10px] font-mono opacity-60 shrink-0">
+                                                                        {p.spacesSummary}
+                                                                    </span>
+                                                                </div>
+                                                                <p className={`text-[10.5px] mt-0.5 line-clamp-1 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                                    {p.tagline}
+                                                                </p>
+                                                            </div>
+                                                        </button>
+
+                                                        {/* Action Bar on hover/footer */}
+                                                        <div className="mt-2 pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-1 text-[10px]">
+                                                            <span className={`font-mono truncate ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                                                {p.layoutTag || `${p.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${p.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
+                                                            </span>
+
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        duplicatePreset(p.id);
+                                                                    }}
+                                                                    title="Duplicate Preset"
+                                                                    className={`p-1 rounded border transition cursor-pointer ${
+                                                                        isBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                                                    }`}
+                                                                >
+                                                                    <Copy size={10} />
+                                                                </button>
+
+                                                                {p.isCustom && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            deleteCustomPreset(p.id);
+                                                                        }}
+                                                                        title="Delete Custom Preset"
+                                                                        className="p-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                                                                    >
+                                                                        <Trash2 size={10} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                                <p className="text-xs text-white/40">Selecting a color rewrites all glass highlights, shadows, and active states instantly.</p>
-                            </div>
+
+                                    {/* Magic Accent Color */}
+                                    <div className={`p-5 rounded-2xl border space-y-4 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'
+                                    }`}>
+                                        <span className="text-xs font-bold uppercase text-accent tracking-wider block">Magic Accent Color</span>
+                                        <div className="flex gap-3 items-center flex-wrap">
+                                            {[
+                                                { hex: '#d4bc94', name: 'Sand' },
+                                                { hex: '#3b82f6', name: 'Ocean' },
+                                                { hex: '#10b981', name: 'Emerald' },
+                                                { hex: '#8b5cf6', name: 'Amethyst' },
+                                                { hex: '#f43f5e', name: 'Rose' },
+                                                { hex: '#f97316', name: 'Sunset' },
+                                                { hex: '#06b6d4', name: 'Cyber' }
+                                            ].map((c) => (
+                                                <button
+                                                    key={c.hex}
+                                                    onClick={() => setAccentColor(c.hex)}
+                                                    className={`w-8 h-8 rounded-full shadow-lg transition-transform hover:scale-110 flex items-center justify-center cursor-pointer ${accentColor === c.hex ? 'ring-2 ring-white ring-offset-2 ring-offset-black/50 scale-110' : ''}`}
+                                                    style={{ backgroundColor: c.hex }}
+                                                    title={c.name}
+                                                >
+                                                    {accentColor === c.hex && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                </button>
+                                            ))}
+                                            <div className="w-px h-6 bg-white/20 mx-1"></div>
+
+                                            <div className="relative flex items-center bg-black/40 border border-white/[0.06] rounded-xl overflow-hidden focus-within:border-accent">
+                                                <div className="pl-3 pr-2 py-2 border-r border-white/[0.06]">
+                                                    <Palette size={14} className="text-white/40" />
+                                                </div>
+                                                <span className="pl-2 text-xs text-white/40 font-mono">#</span>
+                                                <input
+                                                    type="text"
+                                                    value={accentColor.replace('#', '')}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
+                                                        if (val.length <= 6) setAccentColor('#' + val);
+                                                    }}
+                                                    className="w-16 bg-transparent border-none text-xs text-white font-mono outline-none py-2 uppercase"
+                                                    maxLength={6}
+                                                />
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-white/40">Selecting a color rewrites all glass highlights, shadows, and active states instantly.</p>
+                                    </div>
+
+                                    {/* Browser Interface Theme Card */}
+                                    <div className="p-5 bg-white/[0.025] hover:bg-white/[0.035] border border-white/[0.05] rounded-2xl space-y-3 transition-colors">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
+                                                    {theme === 'light' ? <Sun size={17} /> : <Moon size={17} />}
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-sm">Browser Interface Theme</p>
+                                                    <p className="text-xs text-white/40 mt-0.5">Switch between dark obsidian and bright frosted chrome interface.</p>
+                                                </div>
+                                            </div>
+                                            <div className={`relative flex p-1 rounded-full border shadow-xs min-w-[200px] ${isBright ? 'bg-black/[0.03] border-black/[0.05]' : 'bg-[#0c0d14]/78 border-white/[0.06]'}`}>
+                                                <div 
+                                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                                        theme === 'dark'
+                                                            ? (isBright ? 'bg-zinc-900 text-white shadow-xs' : 'bg-accent text-zinc-950 font-bold shadow-xs')
+                                                            : (isBright ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'bg-accent text-zinc-950 font-bold shadow-xs')
+                                                    }`}
+                                                    style={{ 
+                                                        transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)'
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTheme('dark')}
+                                                    className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                                        theme === 'dark'
+                                                            ? (isBright ? 'text-white font-bold' : 'text-zinc-950 font-bold')
+                                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
+                                                    }`}
+                                                >
+                                                    <Moon size={13} className={theme === 'dark' ? 'fill-current' : ''} />
+                                                    <span>Dark</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTheme('light')}
+                                                    className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
+                                                        theme === 'light'
+                                                            ? (isBright ? 'text-zinc-900 font-bold' : 'text-zinc-950 font-bold')
+                                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
+                                                    }`}
+                                                >
+                                                    <Sun size={13} className={theme === 'light' ? 'text-amber-600 fill-amber-500/20' : ''} />
+                                                    <span>Bright</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Smart Dark Mode (Websites) Card */}
+                                    <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
+                                                    <Eye size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-sm">Smart Dark Mode (Websites)</p>
+                                                    <p className="text-xs text-white/40 mt-0.5">Smart luminosity engine inverts light websites while preserving native dark sites.</p>
+                                                </div>
+                                            </div>
+                                            <SettingToggle isChecked={isForceDark} onToggle={() => setIsForceDark(!isForceDark)} />
+                                        </div>
+                                        <div className="mt-2">
+                                            <p className="text-xs text-white/50 mb-1.5 font-semibold">Excluded Domains (One per line):</p>
+                                            <textarea
+                                                value={localDarkExclusions}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setLocalDarkExclusions(val);
+                                                    const parsed = val.split('\n').map(s => s.trim()).filter(Boolean);
+                                                    setDarkExclusions(parsed);
+                                                }}
+                                                onBlur={() => {
+                                                    const cleaned = (localDarkExclusions || '').split('\n').map(s => s.trim()).filter(Boolean);
+                                                    setDarkExclusions(cleaned);
+                                                    setLocalDarkExclusions(cleaned.join('\n'));
+                                                }}
+                                                placeholder={"example.com\ngithub.com"}
+                                                className="w-full h-24 bg-black/40 border border-white/[0.06] rounded-xl p-2.5 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
+                                            />
+                                        </div>
+                                    </div>
 
                             {/* Window Background & Wallpaper */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
-                                            <ImageIcon size={16} />
+                                    <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
+                                                    <ImageIcon size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-sm">Window Background & Wallpaper</p>
+                                                    <p className="text-xs text-white/40 mt-0.5">Customize the root window backdrop with a local image, web image URL, or animated GIF.</p>
+                                                </div>
+                                            </div>
+                                            {customWallpaper && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleResetWallpaper}
+                                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer hover:border-white/20"
+                                                    title="Reset to default wallpaper"
+                                                >
+                                                    <RotateCcw size={12} />
+                                                    <span>Reset to Default</span>
+                                                </button>
+                                            )}
                                         </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Window Background & Wallpaper</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Customize the root window backdrop with a local image, web image URL, or animated GIF.</p>
-                                        </div>
-                                    </div>
-                                    {customWallpaper && (
-                                        <button
-                                            type="button"
-                                            onClick={handleResetWallpaper}
-                                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer hover:border-white/20"
-                                            title="Reset to default wallpaper"
-                                        >
-                                            <RotateCcw size={12} />
-                                            <span>Reset to Default</span>
-                                        </button>
-                                    )}
-                                </div>
 
                                 {/* Preview and Source Info */}
-                                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 rounded-xl bg-black/30 border border-white/[0.04]">
-                                    <div className="w-36 h-20 rounded-lg overflow-hidden relative border border-white/10 shadow-md flex-shrink-0 bg-black/60">
-                                        <img 
-                                            src={customWallpaper || DEFAULT_STOCK_WALLPAPER} 
-                                            alt="Wallpaper preview" 
-                                            className="w-full h-full object-cover transition-all duration-300"
-                                            style={{
-                                                filter: `saturate(1.1) ${(blurWallpaper && wallpaperBlur > 0) ? `blur(${Math.min(12, wallpaperBlur * 0.3)}px)` : ''}`,
-                                                transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.08)' : 'scale(1)'
-                                            }}
-                                            onError={(e) => {
-                                                e.target.src = DEFAULT_STOCK_WALLPAPER;
-                                            }}
-                                        />
-                                        <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} />
-                                        
-                                        <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center pointer-events-none">
-                                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white/80 border border-white/10">
-                                                Preview
-                                            </span>
+                                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 rounded-xl bg-black/30 border border-white/[0.04]">
+                                            <div className="w-36 h-20 rounded-lg overflow-hidden relative border border-white/10 shadow-md flex-shrink-0 bg-black/60">
+                                                <img 
+                                                    src={customWallpaper || DEFAULT_STOCK_WALLPAPER} 
+                                                    alt="Wallpaper preview" 
+                                                    className="w-full h-full object-cover transition-all duration-300"
+                                                    style={{
+                                                        filter: `saturate(1.1) ${(blurWallpaper && wallpaperBlur > 0) ? `blur(${Math.min(12, wallpaperBlur * 0.3)}px)` : ''}`,
+                                                        transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.08)' : 'scale(1)'
+                                                    }}
+                                                    onError={(e) => {
+                                                        e.target.src = DEFAULT_STOCK_WALLPAPER;
+                                                    }}
+                                                />
+                                                <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} />
+                                                
+                                                <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center pointer-events-none">
+                                                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white/80 border border-white/10">
+                                                        Preview
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex-1 min-w-0 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-medium text-zinc-300">Active Source:</span>
+                                                    <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
+                                                        !customWallpaper 
+                                                            ? 'bg-white/5 border-white/10 text-white/60' 
+                                                            : customWallpaperSource === 'file' 
+                                                                ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' 
+                                                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                                    }`}>
+                                                        {!customWallpaper ? 'Default Stock' : customWallpaperSource === 'file' ? 'Local File' : 'Web URL'}
+                                                    </span>
+                                                    {customWallpaperSource === 'file' && (
+                                                        <span className="text-[10px] text-zinc-500 italic">(Local only, skipped during cloud sync)</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] text-zinc-400 leading-relaxed truncate">
+                                                    {!customWallpaper 
+                                                        ? 'Default dynamic landscape wallpaper is active. Import your own photo or art to personalize your workspace.'
+                                                        : customWallpaperSource === 'file'
+                                                            ? 'Using an imported local image file stored safely in your application data directory.'
+                                                            : `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Import Controls */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                            {/* Local File Import */}
+                                            <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
+                                                <div>
+                                                    <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                                                        <Upload size={13} className="text-accent" />
+                                                        <span>Choose from Hard Drive</span>
+                                                    </p>
+                                                    <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                                                        Pick a JPG, PNG, WebP, or GIF from your PC. Automatically saved into app storage.
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleImportWallpaperFile}
+                                                    disabled={isImportingFile}
+                                                    className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/15 text-white border border-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                                >
+                                                    {isImportingFile ? (
+                                                        <RefreshCw size={13} className="animate-spin text-accent" />
+                                                    ) : (
+                                                        <Upload size={13} />
+                                                    )}
+                                                    <span>{isImportingFile ? 'Importing...' : 'Browse Image File...'}</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Web URL Import */}
+                                            <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
+                                                <div>
+                                                    <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                                                        <LinkIcon size={13} className="text-accent" />
+                                                        <span>Import from Web URL</span>
+                                                    </p>
+                                                    <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                                                        Paste any public image or GIF URL. Cached locally and synced across your devices.
+                                                    </p>
+                                                </div>
+                                                <form onSubmit={handleImportWallpaperUrl} className="flex gap-2">
+                                                    <input
+                                                        type="url"
+                                                        value={wallpaperUrlInput}
+                                                        onChange={(e) => setWallpaperUrlInput(e.target.value)}
+                                                        placeholder="https://images.unsplash.com/..."
+                                                        className="flex-1 min-w-0 bg-black/40 border border-white/[0.08] focus:border-accent rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/25 outline-none transition-colors"
+                                                    />
+                                                    <button
+                                                        type="submit"
+                                                        disabled={isImportingUrl || !wallpaperUrlInput.trim()}
+                                                        className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-accent text-black hover:bg-accent/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                                                    >
+                                                        {isImportingUrl ? (
+                                                            <RefreshCw size={12} className="animate-spin" />
+                                                        ) : (
+                                                            <span>Apply</span>
+                                                        )}
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+
+                                        {/* Dimming & Contrast Slider */}
+                                        <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                            <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                                    <Sliders size={15} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Backdrop Contrast Dimming</p>
+                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust dark overlay to ensure text and tab readability over bright wallpapers.</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 flex-shrink-0">
+                                                <input
+                                                    type="range"
+                                                    min={0}
+                                                    max={80}
+                                                    step={5}
+                                                    value={wallpaperDimming}
+                                                    onChange={(e) => setWallpaperDimming(Number(e.target.value))}
+                                                    className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
+                                                />
+                                                <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperDimming}%</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Blur Background Wallpaper Toggle */}
+                                        <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                            <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                                    <ImageIcon size={15} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Blur Wallpaper Background</p>
+                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>When disabled, the wallpaper stays crisp and sharp while UI panels retain frosted glass blur.</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 flex-shrink-0">
+                                                <SettingToggle 
+                                                    isChecked={!!blurWallpaper} 
+                                                    onToggle={() => toggleSetting('blurWallpaper')} 
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Liquid Glass Frosted Blur Slider */}
+                                        <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                            <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                                    <Sparkles size={15} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Liquid Glass UI Frosted Blur</p>
+                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust frosted glass diffusion on UI surfaces (Sidebar, TopBar, and tab windows).</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 flex-shrink-0">
+                                                <input
+                                                    type="range"
+                                                    min={0}
+                                                    max={48}
+                                                    step={2}
+                                                    value={wallpaperBlur}
+                                                    onChange={(e) => setWallpaperBlur(Number(e.target.value))}
+                                                    className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
+                                                />
+                                                <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperBlur}px</span>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="flex-1 min-w-0 space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-medium text-zinc-300">Active Source:</span>
-                                            <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
-                                                !customWallpaper 
-                                                    ? 'bg-white/5 border-white/10 text-white/60' 
-                                                    : customWallpaperSource === 'file' 
-                                                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' 
-                                                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                    {/* Glass & Motion Physics */}
+                                    <div className="space-y-3">
+                                        <SectionHeader 
+                                            icon={Sparkles} 
+                                            title="Glass & Motion Physics" 
+                                            description="Hardware-accelerated translucency, animations, and visual feedbacks." 
+                                        />
+
+                                        <SettingCard icon={Sliders} title="UI Transparency (Glassmorphism)" description="Disable backdrop-blur translucency for weaker GPUs.">
+                                            <SettingToggle isChecked={isGlassEnabled} onToggle={() => setIsGlassEnabled(!isGlassEnabled)} />
+                                        </SettingCard>
+
+                                        <SettingCard icon={Maximize2} title="Space Swipe Animations" description="Physical screen swipe transitions when switching workspace tabs.">
+                                            <SettingToggle isChecked={isSwipeEnabled} onToggle={() => setIsSwipeEnabled(!isSwipeEnabled)} />
+                                        </SettingCard>
+
+                                        <SettingCard icon={Sparkles} title="Active Tab Favicon Glow" description="Render a subtle glowing aura around active tab favicons.">
+                                            <SettingToggle isChecked={!!settings.faviconGlow} onToggle={() => toggleSetting('faviconGlow')} />
+                                        </SettingCard>
+
+                                        <SettingCard icon={Layers} title="Visual Tab Switcher (Ctrl+Tab)" description="Show Windows-style card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.">
+                                            <SettingToggle isChecked={settings.visualTabSwitcher !== false} onToggle={() => toggleSetting('visualTabSwitcher')} />
+                                        </SettingCard>
+                                    </div>
+                        </div>
+                    )}
+
+                    {/* TAB 2: LAYOUT & CHROME */}
+                    {settingsTab === 'layout' && (
+                        <div className="animate-tab-fade space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold mb-1">Layout &amp; Chrome</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                    Configure spatial dockings, window geometry, omnibox architecture, and toolbar controls.
+                                </p>
+                            </div>
+
+                            {/* Spatial Positioning */}
+                                    <div className="space-y-3">
+                                        <SectionHeader 
+                                            icon={Compass} 
+                                            title="Spatial Positioning" 
+                                            description="Dock primary bars, drawers, and vertical tabs across screen coordinates." 
+                                        />
+
+                                        {/* Sidebar Position */}
+                                        <SettingCard 
+                                            icon={Sidebar} 
+                                            title="Sidebar Position" 
+                                            description="Dock workspace navigation and vertical tabs on the left or right edge."
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
                                             }`}>
-                                                {!customWallpaper ? 'Default Stock' : customWallpaperSource === 'file' ? 'Local File' : 'Web URL'}
-                                            </span>
-                                            {customWallpaperSource === 'file' && (
-                                                <span className="text-[10px] text-zinc-500 italic">(Local only, skipped during cloud sync)</span>
-                                            )}
-                                        </div>
-                                        <p className="text-[11px] text-zinc-400 leading-relaxed truncate">
-                                            {!customWallpaper 
-                                                ? 'Default dynamic landscape wallpaper is active. Import your own photo or art to personalize your workspace.'
-                                                : customWallpaperSource === 'file'
-                                                    ? 'Using an imported local image file stored safely in your application data directory.'
-                                                    : `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`}
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: sidebarPosition === 'right' ? 'translateX(100%)' : 'translateX(0)'
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: 'left', label: 'Left' },
+                                                    { id: 'right', label: 'Right' }
+                                                ].map(s => {
+                                                    const isSelected = sidebarPosition === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => handleSetSidebarPosition(s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        {/* Top Bar Position */}
+                                        <SettingCard 
+                                            icon={Layout} 
+                                            title="Top Bar Position" 
+                                            description="Position the omnibox address bar, navigation buttons, and tab controls."
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: topBarPosition === 'bottom' ? 'translateX(100%)' : 'translateX(0)'
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: 'top', label: 'Top' },
+                                                    { id: 'bottom', label: 'Bottom' }
+                                                ].map(s => {
+                                                    const isSelected = topBarPosition === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => handleSetTopBarPosition(s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        {/* Tool Hub Drawer */}
+                                        <SettingCard 
+                                            icon={SlidersHorizontal} 
+                                            title="Tool Hub Drawer Position" 
+                                            description="Side panel dock for extensions, downloads, QVault, and AI assistant."
+                                            badge="Auto-Resolved Collision"
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: toolHubPosition === 'right' ? 'translateX(100%)' : 'translateX(0)'
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: 'left', label: 'Left' },
+                                                    { id: 'right', label: 'Right' }
+                                                ].map(s => {
+                                                    const isSelected = toolHubPosition === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => handleSetToolHubPosition(s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+                                        <p className={`text-[11px] px-1 -mt-1 font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Note: If docked on the same side as the Sidebar, the Sidebar will automatically adjust to the opposite side to prevent interface collision.
                                         </p>
                                     </div>
-                                </div>
 
-                                {/* Import Controls */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                                    {/* Local File Import */}
-                                    <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
-                                        <div>
-                                            <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
-                                                <Upload size={13} className="text-accent" />
-                                                <span>Choose from Hard Drive</span>
-                                            </p>
-                                            <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                                                Pick a JPG, PNG, WebP, or GIF from your PC. Automatically saved into app storage.
-                                            </p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleImportWallpaperFile}
-                                            disabled={isImportingFile}
-                                            className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/15 text-white border border-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                                        >
-                                            {isImportingFile ? (
-                                                <RefreshCw size={13} className="animate-spin text-accent" />
-                                            ) : (
-                                                <Upload size={13} />
-                                            )}
-                                            <span>{isImportingFile ? 'Importing...' : 'Browse Image File...'}</span>
-                                        </button>
-                                    </div>
-
-                                    {/* Web URL Import */}
-                                    <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
-                                        <div>
-                                            <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
-                                                <LinkIcon size={13} className="text-accent" />
-                                                <span>Import from Web URL</span>
-                                            </p>
-                                            <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                                                Paste any public image or GIF URL. Cached locally and synced across your devices.
-                                            </p>
-                                        </div>
-                                        <form onSubmit={handleImportWallpaperUrl} className="flex gap-2">
-                                            <input
-                                                type="url"
-                                                value={wallpaperUrlInput}
-                                                onChange={(e) => setWallpaperUrlInput(e.target.value)}
-                                                placeholder="https://images.unsplash.com/..."
-                                                className="flex-1 min-w-0 bg-black/40 border border-white/[0.08] focus:border-accent rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/25 outline-none transition-colors"
-                                            />
+                                    {/* Preset Studio & Visual Architect Launch Banner */}
+                                    <div className={`p-5 rounded-2xl border transition-all duration-300 relative overflow-hidden ${
+                                        isBright 
+                                            ? 'bg-gradient-to-r from-accent/15 via-white/80 to-accent/10 border-accent/30 shadow-[0_2px_12px_rgba(0,0,0,0.03)]' 
+                                            : 'bg-gradient-to-r from-accent/15 via-white/[0.03] to-purple-500/10 border-accent/25 shadow-lg'
+                                    }`}>
+                                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                                            <div className="flex items-center gap-3.5">
+                                                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${
+                                                    isBright 
+                                                        ? 'bg-white text-zinc-950 border-black/10' 
+                                                        : 'bg-accent/20 text-accent border-accent/40 shadow-[0_0_15px_var(--accent-20)]'
+                                                }`}>
+                                                    <Sliders size={20} strokeWidth={2.2} />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="text-sm font-bold tracking-tight">Visual Architect &amp; Preset Studio</h4>
+                                                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
+                                                            Interactive Canvas
+                                                        </span>
+                                                    </div>
+                                                    <p className={`text-xs mt-0.5 max-w-xl ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                                                        Craft, preview, and arrange custom spatial architectures with drag-and-drop live preview, custom docking slots, and preset duplication.
+                                                    </p>
+                                                </div>
+                                            </div>
                                             <button
-                                                type="submit"
-                                                disabled={isImportingUrl || !wallpaperUrlInput.trim()}
-                                                className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-accent text-black hover:bg-accent/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                                            >
-                                                {isImportingUrl ? (
-                                                    <RefreshCw size={12} className="animate-spin" />
-                                                ) : (
-                                                    <span>Apply</span>
-                                                )}
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-
-                                {/* Dimming & Contrast Slider */}
-                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                    <div className="flex items-center gap-3 min-w-0 pr-4">
-                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                            <Sliders size={15} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Backdrop Contrast Dimming</p>
-                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust dark overlay to ensure text and tab readability over bright wallpapers.</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                        <input
-                                            type="range"
-                                            min={0}
-                                            max={80}
-                                            step={5}
-                                            value={wallpaperDimming}
-                                            onChange={(e) => setWallpaperDimming(Number(e.target.value))}
-                                            className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
-                                        />
-                                        <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperDimming}%</span>
-                                    </div>
-                                </div>
-
-                                {/* Blur Background Wallpaper Toggle */}
-                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                    <div className="flex items-center gap-3 min-w-0 pr-4">
-                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                            <ImageIcon size={15} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Blur Wallpaper Background</p>
-                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>When disabled, the wallpaper stays crisp and sharp while UI panels retain frosted glass blur.</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                        <SettingToggle 
-                                            isChecked={!!blurWallpaper} 
-                                            onToggle={() => toggleSetting('blurWallpaper')} 
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Liquid Glass Frosted Blur Slider */}
-                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                    <div className="flex items-center gap-3 min-w-0 pr-4">
-                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                            <Sparkles size={15} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Liquid Glass UI Frosted Blur</p>
-                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust frosted glass diffusion on UI surfaces (Sidebar, TopBar, and tab windows).</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                        <input
-                                            type="range"
-                                            min={0}
-                                            max={48}
-                                            step={2}
-                                            value={wallpaperBlur}
-                                            onChange={(e) => setWallpaperBlur(Number(e.target.value))}
-                                            className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
-                                        />
-                                        <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperBlur}px</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Browser Appearance Card */}
-                            <div className="p-5 bg-white/[0.025] hover:bg-white/[0.035] border border-white/[0.05] rounded-2xl space-y-3 transition-colors">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
-                                            {theme === 'light' ? <Sun size={17} /> : <Moon size={17} />}
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Browser Interface Theme</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Switch between dark obsidian and bright frosted chrome interface.</p>
-                                        </div>
-                                    </div>
-                                    <div className={`relative flex p-1 rounded-full border shadow-xs min-w-[200px] ${isBright ? 'bg-black/[0.03] border-black/[0.05]' : 'bg-[#0c0d14]/78 border-white/[0.06]'}`}>
-                                        <div 
-                                            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                                theme === 'dark'
-                                                    ? (isBright ? 'bg-zinc-900 text-white shadow-xs' : 'bg-accent text-zinc-950 font-bold shadow-xs')
-                                                    : (isBright ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'bg-accent text-zinc-950 font-bold shadow-xs')
-                                            }`}
-                                            style={{ 
-                                                transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)'
-                                            }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setTheme('dark')}
-                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
-                                                theme === 'dark'
-                                                    ? (isBright ? 'text-white font-bold' : 'text-zinc-950 font-bold')
-                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
-                                            }`}
-                                        >
-                                            <Moon size={13} className={theme === 'dark' ? 'fill-current' : ''} />
-                                            <span>Dark</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setTheme('light')}
-                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
-                                                theme === 'light'
-                                                    ? (isBright ? 'text-zinc-900 font-bold' : 'text-zinc-950 font-bold')
-                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
-                                            }`}
-                                        >
-                                            <Sun size={13} className={theme === 'light' ? 'text-amber-600 fill-amber-500/20' : ''} />
-                                            <span>Bright</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Smart Dark Mode (Websites) Card */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
-                                            <Eye size={16} />
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Smart Dark Mode (Websites)</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Smart luminosity engine inverts light websites while preserving native dark sites.</p>
-                                        </div>
-                                    </div>
-                                    <SettingToggle isChecked={isForceDark} onToggle={() => setIsForceDark(!isForceDark)} />
-                                </div>
-                                <div className="mt-2">
-                                    <p className="text-xs text-white/50 mb-1.5 font-semibold">Excluded Domains (One per line):</p>
-                                    <textarea
-                                        value={localDarkExclusions}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            setLocalDarkExclusions(val);
-                                            const parsed = val.split('\n').map(s => s.trim()).filter(Boolean);
-                                            setDarkExclusions(parsed);
-                                        }}
-                                        onBlur={() => {
-                                            const cleaned = (localDarkExclusions || '').split('\n').map(s => s.trim()).filter(Boolean);
-                                            setDarkExclusions(cleaned);
-                                            setLocalDarkExclusions(cleaned.join('\n'));
-                                        }}
-                                        placeholder={"example.com\ngithub.com"}
-                                        className="w-full h-24 bg-black/40 border border-white/[0.06] rounded-xl p-2.5 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
-                                    />
-                                </div>
-                            </div>
-
-                            <SettingCard icon={Sliders} title="UI Transparency (Glassmorphism)" description="Disable backdrop-blur translucency for weaker GPUs.">
-                                <SettingToggle isChecked={isGlassEnabled} onToggle={() => setIsGlassEnabled(!isGlassEnabled)} />
-                            </SettingCard>
-
-                            <SettingCard icon={Maximize2} title="Space Swipe Animations" description="Physical screen swipe transitions when switching workspace tabs.">
-                                <SettingToggle isChecked={isSwipeEnabled} onToggle={() => setIsSwipeEnabled(!isSwipeEnabled)} />
-                            </SettingCard>
-
-                            <SettingCard icon={Sparkles} title="Active Tab Favicon Glow" description="Render a subtle glowing aura around active tab favicons.">
-                                <SettingToggle isChecked={!!settings.faviconGlow} onToggle={() => toggleSetting('faviconGlow')} />
-                            </SettingCard>
-
-                            <SettingCard icon={XSquare} title="Close Window on Last Tab (Ctrl+W)" description="Close the browser window when pressing Ctrl+W with no open tabs or pinned tabs.">
-                                <SettingToggle isChecked={settings.closeWindowOnLastTab !== false} onToggle={() => toggleSetting('closeWindowOnLastTab')} />
-                            </SettingCard>
-
-                            <SettingCard icon={Layers} title="Visual Tab Switcher (Ctrl+Tab)" description="Show Windows-style card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.">
-                                <SettingToggle isChecked={settings.visualTabSwitcher !== false} onToggle={() => toggleSetting('visualTabSwitcher')} />
-                            </SettingCard>
-
-                            <SettingCard icon={ArrowLeftRight} title="Tab Switching Order (Ctrl+Tab)" description="Choose whether Ctrl+Tab navigates by most recently used tabs or in sequential sidebar order.">
-                                <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
-                                    isBright 
-                                        ? 'bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]' 
-                                        : 'bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]'
-                                }`}>
-                                    {/* Smooth Morphing Pill Indicator */}
-                                    <div 
-                                        className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
-                                        style={{
-                                            transform: (settings.tabSwitcherOrder || 'mru') === 'sidebar' ? 'translateX(100%)' : 'translateX(0)'
-                                        }}
-                                    />
-                                    {[
-                                        { id: 'mru', label: 'Recently Used', icon: History },
-                                        { id: 'sidebar', label: 'Sidebar Order', icon: ListOrdered }
-                                    ].map(s => {
-                                        const IconComp = s.icon;
-                                        const isSelected = (settings.tabSwitcherOrder || 'mru') === s.id;
-                                        return (
-                                            <button
-                                                key={s.id}
                                                 type="button"
-                                                onClick={() => setSettingValue('tabSwitcherOrder', s.id)}
-                                                className={`relative z-10 flex-1 min-w-[115px] py-1.5 px-3.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
-                                                    isSelected
-                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-black font-bold')
-                                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
-                                                }`}
+                                                onClick={openStudio}
+                                                className="px-4 py-2 rounded-xl bg-accent text-zinc-950 font-bold text-xs flex items-center gap-2 transition cursor-pointer hover:brightness-105 active:scale-95 shadow-md shrink-0"
                                             >
-                                                <IconComp size={12} strokeWidth={2.4} className={`transition-transform duration-200 ${isSelected ? 'scale-110' : 'opacity-65'}`} />
-                                                <span>{s.label}</span>
+                                                <Sliders size={14} strokeWidth={2.4} />
+                                                <span>Launch Preset Studio</span>
                                             </button>
-                                        );
-                                    })}
-                                </div>
-                            </SettingCard>
+                                        </div>
+                                    </div>
 
-                            <SettingCard icon={Monitor} title="UI Density & Scale" description="Adjust spacing, padding, and tab density across navigation controls and sidebars.">
-                                <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
-                                    isBright 
-                                        ? 'bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]' 
-                                        : 'bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]'
-                                }`}>
-                                    {/* Smooth Morphing Pill Indicator */}
-                                    <div 
-                                        className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
-                                        style={{
-                                            transform: (settings.uiScale || 'comfortable') === 'compact' ? 'translateX(0)' : 'translateX(100%)'
-                                        }}
-                                    />
-                                    {[
-                                        { id: 'compact', label: 'Compact', icon: Minimize2 },
-                                        { id: 'comfortable', label: 'Comfortable', icon: Maximize2 }
-                                    ].map(s => {
-                                        const IconComp = s.icon;
-                                        const isSelected = (settings.uiScale || 'comfortable') === s.id;
-                                        return (
-                                            <button
-                                                key={s.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setSettingValue('uiScale', s.id);
-                                                    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
-                                                }}
-                                                className={`relative z-10 flex-1 min-w-[108px] py-1.5 px-3.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
-                                                    isSelected
-                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-black font-bold')
-                                                        : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
-                                                }`}
-                                            >
-                                                <IconComp size={12} strokeWidth={2.4} className={`transition-transform duration-200 ${isSelected ? 'scale-110' : 'opacity-65'}`} />
-                                                <span>{s.label}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </SettingCard>
+                                    {/* Chrome Styling */}
+                                    <div className="space-y-3">
+                                        <SectionHeader 
+                                            icon={Laptop} 
+                                            title="Browser Chrome Geometry" 
+                                            description="Window frame geometry, omnibox presentation, and system window controls." 
+                                        />
 
-                            {/* Toolbar & Extensions Hub Quick Icons Card */}
-                            <div className={`p-5 rounded-2xl border space-y-3 transition-all duration-200 ${
-                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm ${
-                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-accent/10 text-accent border border-accent/30'
+                                        {/* 1. Window Frame Curvature */}
+                                        <SettingCard 
+                                            icon={Square} 
+                                            title="Window Frame Curvature" 
+                                            description="Adjust curvature across the main webview frame, sidebar container, topbar, and elements."
+                                            badge="(Default: Organic 20px, Cohesive: Refined 12px, Sharp: Square 0px)"
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: (settings.frameCurvature || "default") === "cohesive" 
+                                                            ? "translateX(100%)" 
+                                                            : (settings.frameCurvature || "default") === "square" 
+                                                            ? "translateX(200%)" 
+                                                            : "translateX(0%)"
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: "default", label: "Default" },
+                                                    { id: "cohesive", label: "Cohesive" },
+                                                    { id: "square", label: "Sharp" }
+                                                ].map(s => {
+                                                    const isSelected = (settings.frameCurvature || "default") === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSettingValue("frameCurvature", s.id);
+                                                                setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+                                                            }}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        {/* 2. Omnibox Display Profiles */}
+                                        <SettingCard 
+                                            icon={Search} 
+                                            title="Omnibox Architecture" 
+                                            description="Select the centered horizontal span and fluid focus expansion of the address bar."
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: (settings.omniboxStyle || "capsule") === "wide" 
+                                                            ? "translateX(100%)" 
+                                                            : (settings.omniboxStyle || "capsule") === "minimal" 
+                                                            ? "translateX(200%)" 
+                                                            : "translateX(0%)"
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: "capsule", label: "Capsule" },
+                                                    { id: "wide", label: "Wide" },
+                                                    { id: "minimal", label: "Minimal" }
+                                                ].map(s => {
+                                                    const isSelected = (settings.omniboxStyle || "capsule") === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => setSettingValue("omniboxStyle", s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        {/* 3. Sidebar Tab Presentation Modes */}
+                                        <SettingCard 
+                                            icon={Layers} 
+                                            title="Tab Presentation" 
+                                            description="Switch between liquid glass pills, high-density minimal rows, or rich card tiles."
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: (settings.tabPresentation || "pills") === "compact" 
+                                                            ? "translateX(100%)" 
+                                                            : (settings.tabPresentation || "pills") === "cards" 
+                                                            ? "translateX(200%)" 
+                                                            : "translateX(0%)"
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: "pills", label: "Pills" },
+                                                    { id: "compact", label: "Compact" },
+                                                    { id: "cards", label: "Cards" }
+                                                ].map(s => {
+                                                    const isSelected = (settings.tabPresentation || "pills") === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => setSettingValue("tabPresentation", s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        {/* 4. Traffic Light & Window Button Styles */}
+                                        <SettingCard 
+                                            icon={Laptop} 
+                                            title="Window Controls Style" 
+                                            description="Choose macOS traffic dots, clean native Windows icons, or stealth minimal glyphs."
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: (settings.windowControlsStyle || "mac") === "windows" 
+                                                            ? "translateX(100%)" 
+                                                            : (settings.windowControlsStyle || "mac") === "minimal" 
+                                                            ? "translateX(200%)" 
+                                                            : "translateX(0%)"
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: "mac", label: "macOS" },
+                                                    { id: "windows", label: "Windows" },
+                                                    { id: "minimal", label: "Minimal" }
+                                                ].map(s => {
+                                                    const isSelected = (settings.windowControlsStyle || "mac") === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => setSettingValue("windowControlsStyle", s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+                                    </div>
+
+                                    {/* Toolbar & Controls */}
+                                    <div className="space-y-3">
+                                        <SectionHeader 
+                                            icon={Sliders} 
+                                            title="Toolbar & Controls" 
+                                            description="Toolbar quick access icons and interaction behaviors." 
+                                        />
+
+                                        {/* Toolbar & Extensions Hub Quick Icons Card */}
+                                        <div className={`p-5 rounded-2xl border space-y-3 transition-all duration-200 ${
+                                            isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
                                         }`}>
-                                            <SlidersHorizontal size={17} />
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm ${
+                                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-accent/10 text-accent border border-accent/30'
+                                                    }`}>
+                                                        <SlidersHorizontal size={17} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-sm">Toolbar &amp; Extension Hub Icons</p>
+                                                        <p className="text-xs text-white/40 mt-0.5">Toggle quick-access buttons in the top bar. You can also right-click any icon in the toolbar to hide it.</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => useUIStore.getState().resetTopBarIcons()}
+                                                    className="text-xs text-accent hover:underline cursor-pointer"
+                                                >
+                                                    Restore All
+                                                </button>
+                                            </div>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 pt-2">
+                                                {[
+                                                    { id: 'splitview', label: 'Split View' },
+                                                    { id: 'theme', label: 'Theme Toggle' },
+                                                    { id: 'shield', label: 'QShield Tracker' },
+                                                    { id: 'media', label: 'Media Player' },
+                                                    { id: 'downloads', label: 'Downloads' },
+                                                    { id: 'tor', label: 'Tor Network' },
+                                                    { id: 'vault', label: 'QVault Passwords' }
+                                                ].map(item => {
+                                                    const isItemVisible = !(settings.hiddenTopBarIcons || []).includes(item.id);
+                                                    return (
+                                                        <button
+                                                            key={item.id}
+                                                            type="button"
+                                                            onClick={() => useUIStore.getState().toggleTopBarIcon(item.id)}
+                                                            className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                                                                isItemVisible
+                                                                    ? (isBright 
+                                                                        ? 'bg-accent/15 border-accent/40 text-zinc-900 font-semibold shadow-xs' 
+                                                                        : 'bg-accent/15 border-accent/35 text-white font-semibold shadow-xs')
+                                                                    : (isBright 
+                                                                        ? 'bg-black/[0.02] border-black/[0.06] text-zinc-400 hover:text-zinc-700' 
+                                                                        : 'bg-white/[0.02] border-white/[0.04] text-white/40 hover:text-white/70')
+                                                            }`}
+                                                        >
+                                                            <span>{item.label}</span>
+                                                            <span className={`w-2 h-2 rounded-full transition-colors ${isItemVisible ? 'bg-accent shadow-[0_0_6px_var(--accent)]' : 'bg-white/20'}`} />
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Toolbar &amp; Extension Hub Icons</p>
-                                            <p className="text-xs text-white/40 mt-0.5">Toggle quick-access buttons in the top bar. You can also right-click any icon in the toolbar to hide it.</p>
-                                        </div>
+
+                                        <SettingCard icon={Monitor} title="UI Density & Scale" description="Adjust spacing, padding, and tab density across navigation controls and sidebars.">
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? 'bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]' 
+                                                    : 'bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]'
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: (settings.uiScale || 'comfortable') === 'compact' ? 'translateX(0)' : 'translateX(100%)'
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: 'compact', label: 'Compact', icon: Minimize2 },
+                                                    { id: 'comfortable', label: 'Comfortable', icon: Maximize2 }
+                                                ].map(s => {
+                                                    const IconComp = s.icon;
+                                                    const isSelected = (settings.uiScale || 'comfortable') === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSettingValue('uiScale', s.id);
+                                                                setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+                                                            }}
+                                                            className={`relative z-10 flex-1 min-w-[108px] py-1.5 px-3.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-black font-bold')
+                                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
+                                                            }`}
+                                                        >
+                                                            <IconComp size={12} strokeWidth={2.4} className={`transition-transform duration-200 ${isSelected ? 'scale-110' : 'opacity-65'}`} />
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        <SettingCard icon={ArrowLeftRight} title="Tab Switching Order (Ctrl+Tab)" description="Choose whether Ctrl+Tab navigates by most recently used tabs or in sequential sidebar order.">
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? 'bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]' 
+                                                    : 'bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]'
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: (settings.tabSwitcherOrder || 'mru') === 'sidebar' ? 'translateX(100%)' : 'translateX(0)'
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: 'mru', label: 'Recently Used', icon: History },
+                                                    { id: 'sidebar', label: 'Sidebar Order', icon: ListOrdered }
+                                                ].map(s => {
+                                                    const IconComp = s.icon;
+                                                    const isSelected = (settings.tabSwitcherOrder || 'mru') === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => setSettingValue('tabSwitcherOrder', s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[115px] py-1.5 px-3.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-black font-bold')
+                                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
+                                                            }`}
+                                                        >
+                                                            <IconComp size={12} strokeWidth={2.4} className={`transition-transform duration-200 ${isSelected ? 'scale-110' : 'opacity-65'}`} />
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        <SettingCard icon={XSquare} title="Close Window on Last Tab (Ctrl+W)" description="Close the browser window when pressing Ctrl+W with no open tabs or pinned tabs.">
+                                            <SettingToggle isChecked={settings.closeWindowOnLastTab !== false} onToggle={() => toggleSetting('closeWindowOnLastTab')} />
+                                        </SettingCard>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => useUIStore.getState().resetTopBarIcons()}
-                                        className="text-xs text-accent hover:underline cursor-pointer"
-                                    >
-                                        Restore All
-                                    </button>
-                                </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 pt-2">
-                                    {[
-                                        { id: 'splitview', label: 'Split View' },
-                                        { id: 'theme', label: 'Theme Toggle' },
-                                        { id: 'shield', label: 'QShield Tracker' },
-                                        { id: 'media', label: 'Media Player' },
-                                        { id: 'downloads', label: 'Downloads' },
-                                        { id: 'tor', label: 'Tor Network' },
-                                        { id: 'vault', label: 'QVault Passwords' }
-                                    ].map(item => {
-                                        const isItemVisible = !(settings.hiddenTopBarIcons || []).includes(item.id);
-                                        return (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                onClick={() => useUIStore.getState().toggleTopBarIcon(item.id)}
-                                                className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
-                                                    isItemVisible
-                                                        ? (isBright 
-                                                            ? 'bg-accent/15 border-accent/40 text-zinc-900 font-semibold shadow-xs' 
-                                                            : 'bg-accent/15 border-accent/35 text-white font-semibold shadow-xs')
-                                                        : (isBright 
-                                                            ? 'bg-black/[0.02] border-black/[0.06] text-zinc-400 hover:text-zinc-700' 
-                                                            : 'bg-white/[0.02] border-white/[0.04] text-white/40 hover:text-white/70')
-                                                }`}
-                                            >
-                                                <span>{item.label}</span>
-                                                <span className={`w-2 h-2 rounded-full transition-colors ${isItemVisible ? 'bg-accent shadow-[0_0_6px_var(--accent)]' : 'bg-white/20'}`} />
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
                         </div>
                     )}
 

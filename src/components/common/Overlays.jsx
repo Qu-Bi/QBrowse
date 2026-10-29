@@ -3,8 +3,10 @@ import { Globe } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import AuthModal from '../modals/AuthModal';
+import PresetStudioModal from '../modals/PresetStudioModal';
 
 export default function Overlays() {
+    const activeModal = useUIStore(state => state.activeModal);
     const hoverPreview = useUIStore(state => state.hoverPreview);
     const tabContextMenu = useUIStore(state => state.tabContextMenu);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
@@ -85,6 +87,7 @@ export default function Overlays() {
                 </div>
             )}
             <AuthModal />
+            {activeModal === 'presetStudio' && <PresetStudioModal />}
         </>
     );
 }

@@ -53,6 +53,7 @@ const PROFILE_COLORS = [
 
 export default function UserProfilePopover({ isClosing }) {
     const { closePopover, openModal, showToast, theme } = useUIStore();
+    const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
@@ -276,11 +277,13 @@ export default function UserProfilePopover({ isClosing }) {
     return (
         <div 
             id="user-profile-popover"
-            className={`fixed top-[4.75rem] left-10 md:left-16 z-[70000] w-[420px] max-w-[calc(100vw-24px)] max-h-[85vh] flex flex-col overflow-hidden ${
+            className={`fixed top-[4.75rem] ${
+                sidebarPosition === 'right' ? 'right-10 md:right-16 origin-top-right' : 'left-10 md:left-16 origin-top-left'
+            } z-[70000] w-[420px] max-w-[calc(100vw-24px)] max-h-[85vh] flex flex-col overflow-hidden ${
                 isBright 
                     ? 'liquid-glass-bright bg-white/80 border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.9)]' 
                     : 'liquid-glass-dark bg-[#141624]/65 border border-white/12 text-white shadow-[0_25px_80px_rgba(0,0,0,0.75),inset_0_1px_1px_rgba(255,255,255,0.22)]'
-            } rounded-3xl p-4 select-none origin-top-left ${
+            } rounded-3xl p-4 select-none ${
                 isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'
             }`}
             style={{

@@ -11,7 +11,7 @@ import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useVaultStore from '../../store/useVaultStore';
 import { parseVaultContent } from '../../utils/vaultImporter';
-import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId } from '../../utils/experiencePresets';
+import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
 import qbrowseLogo from '../../assets/icon.png';
 
 // Apple/Tesla-style synthesized unlock chime using Web Audio API
@@ -544,22 +544,32 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-accent">
                                     Welcome to QBrowse
                                 </span>
-                                <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight mt-1 ${
-                                    isBright ? 'text-zinc-900' : 'text-white'
-                                }`}>
-                                    Choose your setup
-                                </h2>
+                                <div className="flex items-center justify-between flex-wrap gap-2 mt-1">
+                                    <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight ${
+                                        isBright ? 'text-zinc-900' : 'text-white'
+                                    }`}>
+                                        Choose your setup
+                                    </h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => useUIStore.getState().openModal('presetStudio')}
+                                        className="px-3.5 py-1.5 rounded-xl bg-accent text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer hover:brightness-105 active:scale-95 shadow-md"
+                                    >
+                                        <Sliders size={13} strokeWidth={2.5} />
+                                        <span>Open Preset Studio</span>
+                                    </button>
+                                </div>
                                 <p className={`text-xs md:text-sm mt-1 leading-relaxed ${
                                     isBright ? 'text-zinc-500' : 'text-white/60'
                                 }`}>
-                                    Pick a starting mode. You can fine-tune every workspace, theme, and shield anytime.
+                                    Pick a starting mode or craft your custom interface with drag-and-drop docking in the Preset Studio.
                                 </p>
                             </div>
 
-                            {/* 4 Clean Preset Cards */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {EXPERIENCE_PRESETS.map((p) => {
-                                    const PresetIcon = p.icon;
+                            {/* Presets Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {[...EXPERIENCE_PRESETS, ...(useUIStore.getState().customPresets || [])].map((p) => {
+                                    const PresetIcon = getPresetIcon(p.icon);
                                     const isSelected = selectedPresetId === p.id;
 
                                     return (
@@ -612,25 +622,35 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             }`}>
                                                 {p.name}
                                             </h3>
-                                            <p className={`text-xs mt-1 leading-relaxed ${
+                                            <p className={`text-xs mt-1 leading-relaxed line-clamp-1 ${
                                                 isBright ? 'text-zinc-600' : 'text-white/60'
                                             }`}>
                                                 {p.tagline}
                                             </p>
 
-                                            {/* Workspaces & Feature preview */}
+                                            {/* Clean Subtle Footer */}
                                             <div className={`mt-3 pt-2.5 border-t flex items-center justify-between gap-2 text-[11px] ${
-                                                isBright ? 'border-black/[0.06] text-zinc-500' : 'border-white/[0.06] text-white/45'
+                                                isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
                                             }`}>
-                                                <span className="font-mono text-[10.5px]">
-                                                    {p.spacesSummary || `${p.customSpaces?.length || 2} workspaces`}
+                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md border font-medium ${
+                                                    isSelected
+                                                        ? (isBright ? 'bg-accent/20 border-accent/40 text-zinc-900 font-semibold' : 'bg-accent/20 border-accent/40 text-accent font-semibold')
+                                                        : (isBright ? 'bg-black/[0.04] text-zinc-600 border-black/[0.08]' : 'bg-white/[0.05] text-zinc-300 border-white/[0.08]')
+                                                }`}>
+                                                    {p.layoutTag || `${p.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${p.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
                                                 </span>
-                                                <span 
-                                                    className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded"
-                                                    style={{ color: p.accentColor, backgroundColor: `${p.accentColor}15` }}
-                                                >
-                                                    {p.accentName}
-                                                </span>
+
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span 
+                                                        className="w-2 h-2 rounded-full shadow-xs"
+                                                        style={{ backgroundColor: p.accentColor }}
+                                                    />
+                                                    <span className={`text-[11px] font-medium ${
+                                                        isBright ? 'text-zinc-600' : 'text-zinc-400'
+                                                    }`}>
+                                                        {p.accentName}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </button>
                                     );

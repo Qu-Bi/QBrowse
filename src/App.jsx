@@ -64,6 +64,8 @@ export default function App() {
     const a11yFocusRings = useUIStore(state => state.settings?.a11yFocusRings);
     const isSystemReducedMotion = useUIStore(state => state.isSystemReducedMotion);
     const initSystemReducedMotion = useUIStore(state => state.initSystemReducedMotion);
+    const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
+    const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
@@ -550,7 +552,10 @@ export default function App() {
         root.classList.toggle('a11y-dyslexia-font', !!a11yDyslexiaFont);
         root.classList.toggle('a11y-reduced-motion', !!(a11yReducedMotion || isSystemReducedMotion));
         root.classList.toggle('a11y-focus-rings', !!a11yFocusRings);
-    }, [a11yHighContrast, a11yDyslexiaFont, a11yReducedMotion, a11yFocusRings, isSystemReducedMotion]);
+        root.setAttribute('data-frame-curvature', frameCurvature);
+        root.classList.toggle('frame-square', frameCurvature === 'square');
+        root.classList.toggle('frame-cohesive', frameCurvature === 'cohesive');
+    }, [a11yHighContrast, a11yDyslexiaFont, a11yReducedMotion, a11yFocusRings, isSystemReducedMotion, frameCurvature]);
 
     const handleBootFinish = () => {
         finishBoot();
@@ -572,9 +577,13 @@ export default function App() {
         <ContextMenuProvider>
             <div
                 className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 ${
+                    sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'
+                } ${
                     isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'
                 } transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                     isFullscreen ? '!p-0 !m-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'
+                } ${
+                    frameCurvature === 'square' ? 'rounded-none !rounded-none' : ''
                 }`}
                 onClick={() => closeContextMenus()}
                 onContextMenu={handleContextMenu}
@@ -619,11 +628,19 @@ export default function App() {
                 {/* Arc-Style Zen Fullscreen Edge Peek Hit Triggers */}
                 {isFullscreen && (
                     <>
-                        <div 
-                            id="zen-left-peek-trigger"
-                            className="fixed left-0 top-0 bottom-0 w-2.5 z-[99975] pointer-events-auto bg-transparent"
-                            onMouseEnter={() => useUIStore.getState().setIsSidebarPeeking(true)}
-                        />
+                        {sidebarPosition === 'right' ? (
+                            <div 
+                                id="zen-right-peek-trigger"
+                                className="fixed right-0 top-0 bottom-0 w-2.5 z-[99975] pointer-events-auto bg-transparent"
+                                onMouseEnter={() => useUIStore.getState().setIsSidebarPeeking(true)}
+                            />
+                        ) : (
+                            <div 
+                                id="zen-left-peek-trigger"
+                                className="fixed left-0 top-0 bottom-0 w-2.5 z-[99975] pointer-events-auto bg-transparent"
+                                onMouseEnter={() => useUIStore.getState().setIsSidebarPeeking(true)}
+                            />
+                        )}
                         <div 
                             id="zen-top-peek-trigger"
                             className="fixed top-0 left-0 right-0 h-2.5 z-[99975] pointer-events-auto bg-transparent"

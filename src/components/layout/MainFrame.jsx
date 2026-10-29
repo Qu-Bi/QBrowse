@@ -275,6 +275,7 @@ export default function MainFrame() {
     const setIsForceDark = useUIStore(state => state.setIsForceDark);
     const toast = useUIStore(state => state.toast);
     const isToastClosing = useUIStore(state => state.isToastClosing);
+    const showToast = useUIStore(state => state.showToast);
     const activePopover = useUIStore(state => state.activePopover);
     const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
     const closePopover = useUIStore(state => state.closePopover);
@@ -294,6 +295,9 @@ export default function MainFrame() {
     const refresh = useUIStore(state => state.refresh);
     const openOmnibox = useUIStore(state => state.openOmnibox);
     const isReducedMotion = useUIStore(state => Boolean(state.settings?.a11yReducedMotion || state.isSystemReducedMotion));
+    const topBarPosition = useUIStore(state => state.settings?.topBarPosition || 'top');
+    const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
+    const isSplitLeft = sidebarPosition === 'right';
 
     const darkmodeAnchor = usePopoverAnchor('#tour-darkmode-trigger', 320, { defaultRight: 128 });
     const adblockAnchor = usePopoverAnchor('#tour-shield-trigger', 288, { defaultRight: 48 });
@@ -354,6 +358,7 @@ export default function MainFrame() {
     const adblockStats = useUIStore(state => state.adblockStats);
     const accentColor = useUIStore(state => state.accentColor);
     const uiScale = useUIStore(state => state.settings?.uiScale);
+    const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
 
     const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -567,9 +572,12 @@ export default function MainFrame() {
                 const offsetX = e.clientX - rect.left;
                 const newRatio = Math.min(80, Math.max(20, (offsetX / rect.width) * 100));
                 
-                currentRatioRef.current = newRatio;
-                if (leftPaneRef.current) leftPaneRef.current.style.width = `${newRatio}%`;
-                if (rightPaneRef.current) rightPaneRef.current.style.width = `${100 - newRatio}%`;
+                const primaryRatio = isSplitLeft ? (100 - newRatio) : newRatio;
+                const secondaryRatio = isSplitLeft ? newRatio : (100 - newRatio);
+
+                currentRatioRef.current = primaryRatio;
+                if (leftPaneRef.current) leftPaneRef.current.style.width = `${primaryRatio}%`;
+                if (rightPaneRef.current) rightPaneRef.current.style.width = `${secondaryRatio}%`;
             });
         };
 
@@ -588,7 +596,7 @@ export default function MainFrame() {
             window.removeEventListener('mouseup', handleMouseUp);
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
         };
-    }, [isDraggingSplit, setSplitRatio]);
+    }, [isDraggingSplit, setSplitRatio, isSplitLeft]);
 
     const handleSwapPanes = (e) => {
         if (e) e.stopPropagation();
@@ -634,7 +642,7 @@ export default function MainFrame() {
             className="flex-1 min-w-0 relative z-20 flex flex-col"
         >
             
-            <TopBar />
+            {topBarPosition === 'top' && <TopBar />}
 
 
             {(activePopover === 'siteinfo' || (isPopoverClosing && activePopover === 'siteinfo')) && (
@@ -895,8 +903,14 @@ export default function MainFrame() {
                     >
                         <div 
                             className={`relative w-full h-full overflow-hidden transition-[border-radius,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex ${
+                                isSplitLeft ? 'flex-row-reverse' : 'flex-row'
+                            } ${
                                 isFullscreen 
                                     ? 'is-fullscreen-frame rounded-none border-transparent shadow-none !border-0 !shadow-none' 
+                                    : frameCurvature === 'square'
+                                    ? `rounded-none !rounded-none ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
+                                    : frameCurvature === 'cohesive'
+                                    ? `rounded-2xl ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
                                     : uiScale === 'compact'
                                     ? `rounded-[1.25rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
                                     : `rounded-[2rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
@@ -1072,7 +1086,7 @@ export default function MainFrame() {
                                                 className={`w-7 h-7 rounded-full border border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white transition active:scale-95 cursor-pointer flex items-center justify-center ${
                                                     isBright ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]' : ''
                                                 }`} 
-                                                title="Change Right Tab"
+                                                title="Change Split Tab"
                                             >
                                                 <Search size={12} />
                                             </button>
@@ -1130,7 +1144,7 @@ export default function MainFrame() {
                                             <div className="relative w-full">
                                                 <input 
                                                     type="text"
-                                                    placeholder="Search or enter URL for Right Pane..."
+                                                    placeholder={`Search or enter URL for ${isSplitLeft ? 'Left' : 'Right'} Pane...`}
                                                     value={splitSearchUrl}
                                                     onChange={e => setSplitSearchUrl(e.target.value)}
                                                     onKeyDown={handleSplitKeyDown}
@@ -1143,7 +1157,7 @@ export default function MainFrame() {
                                                 <button 
                                                     type="submit" 
                                                     className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-accent text-zinc-950 font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center justify-center"
-                                                    title="Open in Right Pane (Enter)"
+                                                    title={`Open in ${isSplitLeft ? 'Left' : 'Right'} Pane (Enter)`}
                                                 >
                                                     <Search size={13} />
                                                 </button>
@@ -1277,6 +1291,8 @@ export default function MainFrame() {
             </div>
             );
             })()}
+
+            {topBarPosition === 'bottom' && <TopBar />}
 
             {/* PEEK WINDOW */}
             {(peekWindow || isPeekClosing) && (

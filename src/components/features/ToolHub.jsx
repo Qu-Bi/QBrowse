@@ -30,6 +30,7 @@ function formatBytes(bytes) {
 export default function ToolHub() {
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
     const setIsRightPanelOpen = useUIStore(state => state.setIsRightPanelOpen);
+    const toolHubPosition = useUIStore(state => state.settings?.toolHubPosition || 'right');
     const rightPanelTab = useUIStore(state => state.rightPanelTab);
     const setRightPanelTab = useUIStore(state => state.setRightPanelTab);
     const openModal = useUIStore(state => state.openModal);
@@ -442,9 +443,13 @@ export default function ToolHub() {
             
             <div
                 id="tour-toolhub-trigger"
-                className={`fixed right-0 top-1/2 -translate-y-1/2 w-4 h-40 z-[40000] cursor-pointer group flex items-center justify-end pr-1 transition-all duration-300 ease-out ${
+                className={`fixed ${
+                    toolHubPosition === 'left'
+                        ? 'left-0 justify-start pl-1 rounded-r-xl'
+                        : 'right-0 justify-end pr-1 rounded-l-xl'
+                } top-1/2 -translate-y-1/2 w-4 h-40 z-[40000] cursor-pointer group flex items-center transition-all duration-300 ease-out ${
                     isHandleHidden 
-                        ? 'opacity-0 pointer-events-none translate-x-4 select-none' 
+                        ? `opacity-0 pointer-events-none ${toolHubPosition === 'left' ? '-translate-x-4' : 'translate-x-4'} select-none` 
                         : 'opacity-100 pointer-events-auto translate-x-0'
                 }`}
                 onClick={() => {
@@ -462,17 +467,23 @@ export default function ToolHub() {
 
             <div 
                 id="toolhub-container"
-                className={`fixed top-2 bottom-2 md:top-2 md:bottom-2 right-2 md:right-3 w-96 md:w-[460px] ${
+                className={`fixed top-2 bottom-2 md:top-2 md:bottom-2 ${
+                    toolHubPosition === 'left' ? 'left-2 md:left-3' : 'right-2 md:right-3'
+                } w-96 md:w-[460px] ${
                 isBright 
                     ? 'bg-white/90 backdrop-blur-3xl border border-black/[0.08] text-zinc-900 shadow-[0_30px_90px_-10px_rgba(0,0,0,0.18),0_12px_35px_-5px_rgba(0,0,0,0.08),inset_0_1px_2px_0_rgba(255,255,255,0.9)] ring-1 ring-black/[0.05]' 
                     : 'bg-[#0c0d14]/94 backdrop-blur-3xl border border-white/[0.08] text-white shadow-[0_35px_100px_-15px_rgba(0,0,0,0.95),0_15px_45px_-5px_rgba(0,0,0,0.75),0_2px_10px_rgba(0,0,0,0.6),inset_0_1px_1px_0_rgba(255,255,255,0.15)] ring-1 ring-white/[0.06]'
-            } rounded-3xl flex flex-col overflow-hidden z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRightPanelOpen ? 'translate-x-0 opacity-100 scale-100' : 'translate-x-[110%] opacity-0 scale-[0.98]'}`} 
+            } rounded-3xl flex flex-col overflow-hidden z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                isRightPanelOpen 
+                    ? `translate-x-0 opacity-100 scale-100 ${toolHubPosition === 'left' ? 'animate-slide-in-left' : 'animate-slide-in-right'}` 
+                    : `${toolHubPosition === 'left' ? '-translate-x-[110%]' : 'translate-x-[110%]'} opacity-0 scale-[0.98]`
+            }`} 
                 onClick={e => e.stopPropagation()}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
             >
 
                 {hubToast && (
-                    <div className="absolute -left-32 top-1/2 -translate-y-1/2 bg-accent text-black px-3 py-1.5 rounded-lg text-xs font-bold animate-pop-in shadow-lg">
+                    <div className={`absolute ${toolHubPosition === 'left' ? '-right-32' : '-left-32'} top-1/2 -translate-y-1/2 bg-accent text-black px-3 py-1.5 rounded-lg text-xs font-bold animate-pop-in shadow-lg`}>
                         {hubToast}
                     </div>
                 )}

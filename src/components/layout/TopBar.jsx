@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PanelLeft, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } from 'lucide-react';
+import { PanelLeft, PanelRight, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
@@ -138,6 +138,12 @@ export default function TopBar() {
     const rawUrl = focusedTab && focusedTab.url !== 'about:blank' ? focusedTab.url : '';
     const showFullUrls = useUIStore(state => state.settings?.showFullUrls);
     const uiScale = useUIStore(state => state.settings?.uiScale);
+    const topBarPosition = useUIStore(state => state.settings?.topBarPosition || 'top');
+    const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
+    const toolHubPosition = useUIStore(state => state.settings?.toolHubPosition || 'right');
+    const omniboxStyle = useUIStore(state => state.settings?.omniboxStyle || 'capsule');
+    const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
+    const isSidebarRight = sidebarPosition === 'right';
     const hiddenTopBarIcons = useUIStore(state => state.settings?.hiddenTopBarIcons) || [];
     const displayUrl = showFullUrls ? rawUrl : formatDisplayUrl(rawUrl);
 
@@ -260,127 +266,144 @@ export default function TopBar() {
                             window.electronAPI?.maximize();
                         }
                     }}
-                    className={`drag-region flex mt-0 mx-0 ${uiScale === 'compact' ? 'mb-1.5 h-[44px]' : 'mb-3 h-[50px]'} z-50 items-center justify-between px-3 rounded-full transition-all duration-300 ${
+                    className={`drag-region flex mx-0 ${
+                        topBarPosition === 'bottom'
+                            ? (uiScale === 'compact' ? 'mt-1.5 mb-0 h-[44px]' : 'mt-3 mb-0 h-[50px]')
+                            : (uiScale === 'compact' ? 'mb-1.5 mt-0 h-[44px]' : 'mb-3 mt-0 h-[50px]')
+                    } z-50 items-center justify-between px-3 ${
+                        frameCurvature === 'square'
+                            ? 'rounded-none !rounded-none'
+                            : frameCurvature === 'cohesive'
+                            ? 'rounded-2xl'
+                            : 'rounded-full'
+                    } transition-all duration-300 ${
                     isBright ? 'liquid-glass-bright text-zinc-900' : 'liquid-glass-dark text-white'
                 }`}>
 
-                    {/* LEFT BLOCK: Zen Mode, Navigation */}
-                    <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-1 flex items-center justify-start gap-1.5 min-w-max z-20">
-                        <button
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                const nextState = !isSidebarHidden;
-                                setIsSidebarHidden(nextState);
-                                showToast(nextState ? 'Zen Mode active' : 'Sidebar visible'); 
-                            }}
-                            className={`h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-full transition-all duration-300 active:scale-95 group cursor-pointer ${
-                                isBright 
-                                    ? (isSidebarHidden ? 'bg-accent/25 border border-accent text-zinc-950 font-bold shadow-xs' : 'liquid-pill-bright') 
-                                    : (isSidebarHidden ? 'bg-accent/20 border border-accent/40 text-accent shadow-xs' : 'liquid-pill-dark')
-                            }`}
-                            title="Zen Mode (CMD+B)"
-                        >
-                            <PanelLeft size={15} strokeWidth={1.85} className={`transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.4,1)] ${isSidebarHidden ? 'rotate-180 opacity-70 scale-95' : 'rotate-0 opacity-100 scale-100'}`} />
-                        </button>
+                    {/* LEFT BLOCK: Zen Mode, Navigation or Extensions based on sidebarPosition */}
+                    {(() => {
+                        const navBlock = (
+                            <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center ${isSidebarRight ? 'justify-end' : 'justify-start'} gap-1.5 min-w-max z-20`}>
+                                {!isSidebarRight && (
+                                    <button
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            const nextState = !isSidebarHidden;
+                                            setIsSidebarHidden(nextState);
+                                            showToast(nextState ? 'Zen Mode active' : 'Sidebar visible'); 
+                                        }}
+                                        className={`h-9 w-9 flex-shrink-0 flex items-center justify-center ${
+                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
+                                        } transition-all duration-300 active:scale-95 group cursor-pointer ${
+                                            isBright 
+                                                ? (isSidebarHidden ? 'bg-accent/25 border border-accent text-zinc-950 font-bold shadow-xs' : 'liquid-pill-bright') 
+                                                : (isSidebarHidden ? 'bg-accent/20 border border-accent/40 text-accent shadow-xs' : 'liquid-pill-dark')
+                                        }`}
+                                        title="Zen Mode (CMD+B)"
+                                    >
+                                        <PanelLeft size={15} strokeWidth={1.85} className={`transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.4,1)] ${isSidebarHidden ? 'rotate-180 opacity-70 scale-95' : 'rotate-0 opacity-100 scale-100'}`} />
+                                    </button>
+                                )}
 
-                        {/* Compact Segmented Navigation Pill */}
-                        <div className={`flex items-center p-0.5 px-1 h-9 rounded-full transition-all flex-shrink-0 ${
-                            isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
-                        }`}>
-                            <button 
-                                onClick={(e) => {
-                                    if (e.ctrlKey || e.metaKey) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleHistoryNewTab(-1);
-                                    } else {
-                                        handleBack(e);
-                                    }
-                                }} 
-                                onMouseDown={(e) => {
-                                    if (e.button === 1) e.preventDefault();
-                                }}
-                                onAuxClick={(e) => {
-                                    if (e.button === 1 && canGoBack) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleHistoryNewTab(-1);
-                                    }
-                                }}
-                                disabled={!canGoBack}
-                                className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${
-                                    canGoBack 
-                                        ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
-                                        : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
-                                }`}
-                                title={`Back (Alt+Left • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
-                            >
-                                <ChevronLeft size={15} strokeWidth={1.9} />
-                            </button>
+                                {/* Compact Segmented Navigation Pill */}
+                                <div className={`flex items-center p-0.5 px-1 h-9 ${
+                                    frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
+                                } transition-all flex-shrink-0 ${
+                                    isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
+                                }`}>
+                                    <button 
+                                        onClick={(e) => {
+                                            if (e.ctrlKey || e.metaKey) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleHistoryNewTab(-1);
+                                            } else {
+                                                handleBack(e);
+                                            }
+                                        }} 
+                                        onMouseDown={(e) => {
+                                            if (e.button === 1) e.preventDefault();
+                                        }}
+                                        onAuxClick={(e) => {
+                                            if (e.button === 1 && canGoBack) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleHistoryNewTab(-1);
+                                            }
+                                        }}
+                                        disabled={!canGoBack}
+                                        className={`w-7 h-7 flex items-center justify-center ${
+                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : 'rounded-full'
+                                        } transition-all ${
+                                            canGoBack 
+                                                ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
+                                                : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
+                                        }`}
+                                        title={`Back (Alt+Left • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
+                                    >
+                                        <ChevronLeft size={15} strokeWidth={1.9} />
+                                    </button>
 
-                            <div className={`w-px h-3.5 mx-0.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
+                                    <div className={`w-px h-3.5 mx-0.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
 
-                            <button 
-                                onClick={(e) => {
-                                    if (e.ctrlKey || e.metaKey) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleHistoryNewTab(1);
-                                    } else {
-                                        handleForward(e);
-                                    }
-                                }} 
-                                onMouseDown={(e) => {
-                                    if (e.button === 1) e.preventDefault();
-                                }}
-                                onAuxClick={(e) => {
-                                    if (e.button === 1 && canGoForward) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleHistoryNewTab(1);
-                                    }
-                                }}
-                                disabled={!canGoForward}
-                                className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${
-                                    canGoForward 
-                                        ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
-                                        : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
-                                }`}
-                                title={`Forward (Alt+Right • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
-                            >
-                                <ChevronRight size={15} strokeWidth={1.9} />
-                            </button>
-                        </div>
-                    </div>
+                                    <button 
+                                        onClick={(e) => {
+                                            if (e.ctrlKey || e.metaKey) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleHistoryNewTab(1);
+                                            } else {
+                                                handleForward(e);
+                                            }
+                                        }} 
+                                        onMouseDown={(e) => {
+                                            if (e.button === 1) e.preventDefault();
+                                        }}
+                                        onAuxClick={(e) => {
+                                            if (e.button === 1 && canGoForward) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleHistoryNewTab(1);
+                                            }
+                                        }}
+                                        disabled={!canGoForward}
+                                        className={`w-7 h-7 flex items-center justify-center ${
+                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : 'rounded-full'
+                                        } transition-all ${
+                                            canGoForward 
+                                                ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
+                                                : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
+                                        }`}
+                                        title={`Forward (Alt+Right • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
+                                    >
+                                        <ChevronRight size={15} strokeWidth={1.9} />
+                                    </button>
+                                </div>
 
-                    {/* CENTER BLOCK: Multi-stage Centered to Fluid URL Bar */}
-                    <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-shrink flex-grow-0 w-full min-w-[140px] z-30 mx-2 flex items-center justify-center relative transition-[max-width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isTopBarOmniboxActive ? 'max-w-2xl' : 'max-w-xl'}`}>
-                        <TopBarMiniOmnibox
-                            rawUrl={rawUrl}
-                            displayUrl={displayUrl}
-                            isTor={isTor}
-                            torStatus={torStatus}
-                            torVerifiedExitIp={torVerifiedExitIp}
-                            torBootstrapProgress={torBootstrapProgress}
-                            torLastError={torLastError}
-                            togglePopover={togglePopover}
-                            isRefreshing={isRefreshing}
-                            focusedTab={focusedTab}
-                            isReaderAvailable={isReaderAvailable}
-                            isReaderOpen={isReaderOpen}
-                            isReaderLoading={isReaderLoading}
-                            toggleReaderMode={toggleReaderMode}
-                            zoomLevel={zoomLevel}
-                            setZoomLevel={setZoomLevel}
-                            refresh={refresh}
-                            showToast={showToast}
-                            isBright={isBright}
-                        />
-                    </div>
+                                {isSidebarRight && (
+                                    <button
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            const nextState = !isSidebarHidden;
+                                            setIsSidebarHidden(nextState);
+                                            showToast(nextState ? 'Zen Mode active' : 'Sidebar visible'); 
+                                        }}
+                                        className={`h-9 w-9 flex-shrink-0 flex items-center justify-center ${
+                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
+                                        } transition-all duration-300 active:scale-95 group cursor-pointer ${
+                                            isBright 
+                                                ? (isSidebarHidden ? 'bg-accent/25 border border-accent text-zinc-950 font-bold shadow-xs' : 'liquid-pill-bright') 
+                                                : (isSidebarHidden ? 'bg-accent/20 border border-accent/40 text-accent shadow-xs' : 'liquid-pill-dark')
+                                        }`}
+                                        title="Zen Mode (CMD+B)"
+                                    >
+                                        <PanelRight size={15} strokeWidth={1.85} className={`transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.4,1)] ${isSidebarHidden ? 'rotate-180 opacity-70 scale-95' : 'rotate-0 opacity-100 scale-100'}`} />
+                                    </button>
+                                )}
+                            </div>
+                        );
 
-                    {/* RIGHT BLOCK: Extensions & Toggles */}
-                    <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center justify-end min-w-max z-20 transition-opacity duration-300 ${isRightPanelOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                        {(() => {
+                        const extensionsBlock = (() => {
                             const isVisible = (id) => !hiddenTopBarIcons.includes(id);
 
                             const hasSplitView = isVisible('splitview');
@@ -403,194 +426,239 @@ export default function TopBar() {
                                 useUIStore.getState().setTopBarContextMenu({ x, y, iconId, iconLabel });
                             };
 
+                            const isCollidingWithToolHub = isRightPanelOpen && ((isSidebarRight ? 'left' : 'right') === (toolHubPosition || 'right'));
+
                             return (
-                                <div 
-                                    id="qbrowse-extensions-hub"
-                                    onContextMenu={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        const x = Math.min(e.clientX, window.innerWidth - 250);
-                                        const y = Math.min(e.clientY, window.innerHeight - 280);
-                                        useUIStore.getState().setTopBarContextMenu({ x, y, isHubGeneral: true });
-                                    }}
-                                    className={`flex items-center gap-1 flex-shrink-0 min-w-max h-9 rounded-full px-2 transition-all ${
-                                        isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
-                                    }`}
-                                    title="Toolbar & Extensions (Right-click to customize)"
-                                >
-                                    {/* 1. Split View */}
-                                    {hasSplitView && (
-                                        <button 
-                                            id="tour-splitview-trigger"
-                                            onClick={() => toggleSplitView()} 
-                                            onContextMenu={(e) => handleIconContextMenu(e, 'splitview', 'Split View')}
-                                            className={`p-1.5 rounded-full transition group ${
-                                                isBright 
-                                                    ? (isSplitView ? 'text-accent bg-accent/10' : 'text-zinc-600 hover:bg-black/5 hover:text-zinc-900') 
-                                                    : (isSplitView ? 'text-accent bg-accent/10' : 'text-white/60 hover:text-white')
-                                            }`} 
-                                            title="Split View (Ctrl+\ or Ctrl+Shift+D • Right-click to hide)"
-                                        >
-                                            <SplitSquareHorizontal size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
-                                        </button>
-                                    )}
+                                <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center ${isSidebarRight ? 'justify-start' : 'justify-end'} min-w-max z-20 transition-opacity duration-300 ${isCollidingWithToolHub ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                    <div 
+                                        id="qbrowse-extensions-hub"
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const x = Math.min(e.clientX, window.innerWidth - 250);
+                                            const y = Math.min(e.clientY, window.innerHeight - 280);
+                                            useUIStore.getState().setTopBarContextMenu({ x, y, isHubGeneral: true });
+                                        }}
+                                        className={`flex items-center gap-1 flex-shrink-0 min-w-max h-9 ${
+                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
+                                        } px-2 transition-all ${
+                                            isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
+                                        }`}
+                                        title="Toolbar & Extensions (Right-click to customize)"
+                                    >
+                                        {/* 1. Split View */}
+                                        {hasSplitView && (
+                                            <button 
+                                                id="tour-splitview-trigger"
+                                                onClick={() => toggleSplitView()} 
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'splitview', 'Split View')}
+                                                className={`p-1.5 rounded-full transition group ${
+                                                    isBright 
+                                                        ? (isSplitView ? 'text-accent bg-accent/10' : 'text-zinc-600 hover:bg-black/5 hover:text-zinc-900') 
+                                                        : (isSplitView ? 'text-accent bg-accent/10' : 'text-white/60 hover:text-white')
+                                                }`} 
+                                                title="Split View (Ctrl+\ or Ctrl+Shift+D • Right-click to hide)"
+                                            >
+                                                <SplitSquareHorizontal size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                            </button>
+                                        )}
 
-                                    {/* Divider after SplitView if subsequent icons visible */}
-                                    {hasSplitView && (hasTools || hasSecurity) && (
-                                        <div className={`w-px h-3.5 mx-0.5 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`} />
-                                    )}
+                                        {/* Divider after SplitView if subsequent icons visible */}
+                                        {hasSplitView && (hasTools || hasSecurity) && (
+                                            <div className={`w-px h-3.5 mx-0.5 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`} />
+                                        )}
 
-                                    {/* 2. Theme & Dark Mode */}
-                                    {hasTheme && (
-                                        <button 
-                                            id="tour-darkmode-trigger"
-                                            onClick={() => togglePopover('darkmode')} 
-                                            onContextMenu={(e) => handleIconContextMenu(e, 'theme', 'Theme & Smart Dark')}
-                                            className={`p-1.5 rounded-full transition group ${
-                                                activePopover === 'darkmode' || !isBright 
-                                                    ? 'bg-indigo-500/20 text-indigo-400' 
-                                                    : 'text-zinc-700 hover:bg-black/10'
-                                            }`}
-                                            title="Theme & Smart Dark (Right-click to hide)"
-                                        >
-                                            {!isBright ? (
-                                                <Moon size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform fill-current" />
-                                            ) : (
-                                                <Sun size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform text-amber-600" />
-                                            )}
-                                        </button>
-                                    )}
+                                        {/* 2. Theme & Dark Mode */}
+                                        {hasTheme && (
+                                            <button 
+                                                id="tour-darkmode-trigger"
+                                                onClick={() => togglePopover('darkmode')} 
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'theme', 'Theme & Smart Dark')}
+                                                className={`p-1.5 rounded-full transition group ${
+                                                    activePopover === 'darkmode' || !isBright 
+                                                        ? 'bg-indigo-500/20 text-indigo-400' 
+                                                        : 'text-zinc-700 hover:bg-black/10'
+                                                }`}
+                                                title="Theme & Smart Dark (Right-click to hide)"
+                                            >
+                                                {!isBright ? (
+                                                    <Moon size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform fill-current" />
+                                                ) : (
+                                                    <Sun size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform text-amber-600" />
+                                                )}
+                                            </button>
+                                        )}
 
-                                    {/* 3. QShield */}
-                                    {hasShield && (
-                                        <button 
-                                            id="tour-shield-trigger"
-                                            onClick={() => togglePopover('adblock')} 
-                                            onContextMenu={(e) => handleIconContextMenu(e, 'shield', 'QShield Tracker Blocker')}
-                                            className={`flex items-center gap-1.5 p-1.5 rounded-full transition group px-2.5 ${
-                                                activePopover === 'adblock' 
-                                                    ? 'bg-emerald-500/20 text-emerald-400' 
-                                                    : (isAdblockActive 
-                                                        ? (isBright ? 'text-emerald-600 hover:bg-emerald-500/10' : 'text-emerald-400 hover:bg-emerald-500/10') 
-                                                        : (isBright ? 'text-gray-400 hover:bg-black/5' : 'text-white/30 hover:bg-white/10'))
-                                            }`}
-                                            title={`QShield: ${adblockStats?.count ? Number(adblockStats.count).toLocaleString() : 1} trackers blocked • Right-click to hide`}
-                                        >
-                                            <ShieldCheck size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
-                                            {isAdblockActive && (
-                                                <span className="text-[10px] font-bold opacity-80">
-                                                    {formatCompactNumber(adblockStats?.count > 0 ? adblockStats.count : 1)}
-                                                </span>
-                                            )}
-                                        </button>
-                                    )}
+                                        {/* 3. QShield */}
+                                        {hasShield && (
+                                            <button 
+                                                id="tour-shield-trigger"
+                                                onClick={() => togglePopover('adblock')} 
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'shield', 'QShield Tracker Blocker')}
+                                                className={`flex items-center gap-1.5 p-1.5 rounded-full transition group px-2.5 ${
+                                                    activePopover === 'adblock' 
+                                                        ? 'bg-emerald-500/20 text-emerald-400' 
+                                                        : (isAdblockActive 
+                                                            ? (isBright ? 'text-emerald-600 hover:bg-emerald-500/10' : 'text-emerald-400 hover:bg-emerald-500/10') 
+                                                            : (isBright ? 'text-gray-400 hover:bg-black/5' : 'text-white/30 hover:bg-white/10'))
+                                                }`}
+                                                title={`QShield: ${adblockStats?.count ? Number(adblockStats.count).toLocaleString() : 1} trackers blocked • Right-click to hide`}
+                                            >
+                                                <ShieldCheck size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                                {isAdblockActive && (
+                                                    <span className="text-[10px] font-bold opacity-80">
+                                                        {formatCompactNumber(adblockStats?.count > 0 ? adblockStats.count : 1)}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        )}
 
-                                    {/* 4. Media Player */}
-                                    {hasMedia && (
-                                        <button 
-                                            id="tour-media-trigger"
-                                            onClick={() => togglePopover('media')} 
-                                            onContextMenu={(e) => handleIconContextMenu(e, 'media', 'Media Player')}
-                                            className={`p-1.5 rounded-full transition group ${
-                                                activePopover === 'media' 
-                                                    ? 'bg-purple-500/20 text-purple-400' 
-                                                    : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
-                                            }`}
-                                            title="Media Player (Right-click to hide)"
-                                        >
-                                            <Music size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
-                                        </button>
-                                    )}
+                                        {/* 4. Media Player */}
+                                        {hasMedia && (
+                                            <button 
+                                                id="tour-media-trigger"
+                                                onClick={() => togglePopover('media')} 
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'media', 'Media Player')}
+                                                className={`p-1.5 rounded-full transition group ${
+                                                    activePopover === 'media' 
+                                                        ? 'bg-purple-500/20 text-purple-400' 
+                                                        : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
+                                                }`}
+                                                title="Media Player (Right-click to hide)"
+                                            >
+                                                <Music size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                            </button>
+                                        )}
 
-                                    {/* 5. Downloads */}
-                                    {hasDownloads && (
-                                        <button 
-                                            id="tour-downloads-trigger"
-                                            onClick={() => { setIsRightPanelOpen(true); setRightPanelTab('downloads'); }} 
-                                            onContextMenu={(e) => handleIconContextMenu(e, 'downloads', 'Downloads')}
-                                            className={`p-1.5 rounded-full transition group ${
-                                                isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10'
-                                            }`} 
-                                            title="Downloads (Right-click to hide)"
-                                        >
-                                            <Download size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
-                                        </button>
-                                    )}
+                                        {/* 5. Downloads */}
+                                        {hasDownloads && (
+                                            <button 
+                                                id="tour-downloads-trigger"
+                                                onClick={() => { setIsRightPanelOpen(true); setRightPanelTab('downloads'); }} 
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'downloads', 'Downloads')}
+                                                className={`p-1.5 rounded-full transition group ${
+                                                    isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10'
+                                                }`} 
+                                                title="Downloads (Right-click to hide)"
+                                            >
+                                                <Download size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                            </button>
+                                        )}
 
-                                    {/* Divider before Tor/Vault if preceding tools visible */}
-                                    {hasSecurity && (hasSplitView || hasTools) && (
-                                        <div className={`w-px h-4 mx-1 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`}></div>
-                                    )}
+                                        {/* Divider before Tor/Vault if preceding tools visible */}
+                                        {hasSecurity && (hasSplitView || hasTools) && (
+                                            <div className={`w-px h-4 mx-1 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`}></div>
+                                        )}
 
-                                    {/* 6. Tor Network */}
-                                    {hasTor && (
-                                        <button 
-                                            id="tour-tor-trigger"
-                                            onClick={() => togglePopover('tor')} 
-                                            onContextMenu={(e) => handleIconContextMenu(e, 'tor', 'Tor Onion Network')}
-                                            className={`p-1.5 rounded-full transition group relative ${
-                                                activePopover === 'tor' || isTor 
-                                                    ? 'bg-purple-500/25 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.3)]' 
-                                                    : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
-                                            }`} 
-                                            title="Tor Circuit & Onion Network (Right-click to hide)"
-                                        >
-                                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
-                                                <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
-                                                <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
-                                                <circle cx="12" cy="12" r="1.5"/>
-                                            </svg>
-                                            {torStatus === 'connected' && (
-                                                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_5px_#a855f7]"></span>
-                                            )}
-                                        </button>
-                                    )}
+                                        {/* 6. Tor Network */}
+                                        {hasTor && (
+                                            <button 
+                                                id="tour-tor-trigger"
+                                                onClick={() => togglePopover('tor')} 
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'tor', 'Tor Onion Network')}
+                                                className={`p-1.5 rounded-full transition group relative ${
+                                                    activePopover === 'tor' || isTor 
+                                                        ? 'bg-purple-500/25 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.3)]' 
+                                                        : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
+                                                }`} 
+                                                title="Tor Circuit & Onion Network (Right-click to hide)"
+                                            >
+                                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
+                                                    <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
+                                                    <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
+                                                    <circle cx="12" cy="12" r="1.5"/>
+                                                </svg>
+                                                {torStatus === 'connected' && (
+                                                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_5px_#a855f7]"></span>
+                                                )}
+                                            </button>
+                                        )}
 
-                                    {/* 7. QVault Passwords */}
-                                    {hasVault && (
-                                        <button 
-                                            id="tour-vault-trigger"
-                                            onClick={() => togglePopover('vault')} 
-                                            onContextMenu={(e) => handleIconContextMenu(e, 'vault', 'QVault Passwords')}
-                                            className={`p-1.5 rounded-full transition group ${
-                                                activePopover === 'vault' 
-                                                    ? 'bg-blue-500/20 text-blue-400' 
-                                                    : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
-                                            }`} 
-                                            title="QVault Passwords (Right-click to hide)"
-                                        >
-                                            <svg className="w-[15px] h-[15px] group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.85} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                            </svg>
-                                        </button>
-                                    )}
+                                        {/* 7. QVault Passwords */}
+                                        {hasVault && (
+                                            <button 
+                                                id="tour-vault-trigger"
+                                                onClick={() => togglePopover('vault')} 
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'vault', 'QVault Passwords')}
+                                                className={`p-1.5 rounded-full transition group ${
+                                                    activePopover === 'vault' 
+                                                        ? 'bg-blue-500/20 text-blue-400' 
+                                                        : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
+                                                }`} 
+                                                title="QVault Passwords (Right-click to hide)"
+                                            >
+                                                <svg className="w-[15px] h-[15px] group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.85} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                </svg>
+                                            </button>
+                                        )}
 
-                                    {/* Fallback button when all icons are hidden so user can easily unhide */}
-                                    {visibleCount === 0 && (
-                                        <button
-                                            onClick={(e) => {
-                                                const rect = e.currentTarget.getBoundingClientRect();
-                                                useUIStore.getState().setTopBarContextMenu({ x: rect.left, y: rect.bottom + 6, isHubGeneral: true });
-                                            }}
-                                            onContextMenu={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                const x = Math.min(e.clientX, window.innerWidth - 250);
-                                                const y = Math.min(e.clientY, window.innerHeight - 280);
-                                                useUIStore.getState().setTopBarContextMenu({ x, y, isHubGeneral: true });
-                                            }}
-                                            className={`p-1.5 rounded-full transition group cursor-pointer ${
-                                                isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/10' : 'text-white/40 hover:text-white hover:bg-white/10'
-                                            }`}
-                                            title="Customize Toolbar (All icons hidden • Click to manage)"
-                                        >
-                                            <SlidersHorizontal size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
-                                        </button>
-                                    )}
+                                        {/* Fallback button when all icons are hidden so user can easily unhide */}
+                                        {visibleCount === 0 && (
+                                            <button
+                                                onClick={(e) => {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    useUIStore.getState().setTopBarContextMenu({ x: rect.left, y: rect.bottom + 6, isHubGeneral: true });
+                                                }}
+                                                onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    const x = Math.min(e.clientX, window.innerWidth - 250);
+                                                    const y = Math.min(e.clientY, window.innerHeight - 280);
+                                                    useUIStore.getState().setTopBarContextMenu({ x, y, isHubGeneral: true });
+                                                }}
+                                                className={`p-1.5 rounded-full transition group cursor-pointer ${
+                                                    isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/10' : 'text-white/40 hover:text-white hover:bg-white/10'
+                                                }`}
+                                                title="Customize Toolbar (All icons hidden • Click to manage)"
+                                            >
+                                                <SlidersHorizontal size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             );
-                        })()}
-                    </div>
+                        })();
+
+                        return (
+                            <>
+                                {isSidebarRight ? extensionsBlock : navBlock}
+
+                                {/* CENTER BLOCK: Multi-stage Centered to Fluid URL Bar */}
+                                <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-shrink flex-grow-0 w-full min-w-[140px] z-30 mx-2 flex items-center justify-center relative transition-[max-width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                    omniboxStyle === 'wide'
+                                        ? (isTopBarOmniboxActive ? 'max-w-5xl' : 'max-w-4xl')
+                                        : omniboxStyle === 'minimal'
+                                        ? (isTopBarOmniboxActive ? 'max-w-md' : 'max-w-sm')
+                                        : (isTopBarOmniboxActive ? 'max-w-2xl' : 'max-w-xl')
+                                }`}>
+                                    <TopBarMiniOmnibox
+                                        rawUrl={rawUrl}
+                                        displayUrl={displayUrl}
+                                        isTor={isTor}
+                                        torStatus={torStatus}
+                                        torVerifiedExitIp={torVerifiedExitIp}
+                                        torBootstrapProgress={torBootstrapProgress}
+                                        torLastError={torLastError}
+                                        togglePopover={togglePopover}
+                                        isRefreshing={isRefreshing}
+                                        focusedTab={focusedTab}
+                                        isReaderAvailable={isReaderAvailable}
+                                        isReaderOpen={isReaderOpen}
+                                        isReaderLoading={isReaderLoading}
+                                        toggleReaderMode={toggleReaderMode}
+                                        zoomLevel={zoomLevel}
+                                        setZoomLevel={setZoomLevel}
+                                        refresh={refresh}
+                                        showToast={showToast}
+                                        isBright={isBright}
+                                    />
+                                </div>
+
+                                {isSidebarRight ? navBlock : extensionsBlock}
+                            </>
+                        );
+                    })()}
                 </div>
             </div>
         </>

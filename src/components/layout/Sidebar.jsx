@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { 
-    X, Minus, Maximize2, UserPlus, Clock, Settings, Home, Plus, ChevronRight, 
+    X, Minus, Maximize2, Square, UserPlus, Clock, Settings, Home, Plus, ChevronRight, 
     User, Layers, Ghost, PictureInPicture2, VolumeX, Volume2, Pin, Globe, 
     FolderPlus, Check, Edit2, FolderOpen, Briefcase, Code, Rocket, Compass, 
     Bookmark, Sparkles, Coffee, Folder, Terminal, Shield, Heart
@@ -39,6 +39,16 @@ const getSpaceIcon = (iconName, props = {}) => {
     return <IconComp {...props} />;
 };
 
+const getTabDomain = (url) => {
+    if (!url || url === 'about:blank') return '';
+    try {
+        const u = new URL(url.includes('://') ? url : `https://${url}`);
+        return u.hostname.replace(/^www\./, '');
+    } catch (_) {
+        return url.replace(/^https?:\/\//, '').split('/')[0] || '';
+    }
+};
+
 export default function Sidebar() {
     // UI Store State
     const isFullscreen = useUIStore(state => state.isFullscreen);
@@ -46,6 +56,10 @@ export default function Sidebar() {
     const isSidebarPeeking = useUIStore(state => state.isSidebarPeeking);
     const setIsSidebarPeeking = useUIStore(state => state.setIsSidebarPeeking);
     const uiScale = useUIStore(state => state.settings?.uiScale);
+    const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
+    const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
+    const tabPresentation = useUIStore(state => state.settings?.tabPresentation || 'pills');
+    const windowControlsStyle = useUIStore(state => state.settings?.windowControlsStyle || 'mac');
     const isHomeActive = useUIStore(state => !state.currentUrl || state.currentUrl === 'about:blank');
     const setHoverPreview = useUIStore(state => state.setHoverPreview);
     const showToast = useUIStore(state => state.showToast);
@@ -342,10 +356,18 @@ export default function Sidebar() {
         }
     };
 
-    const renderTab = (tab, spaceType) => (
-        <div key={tab.id}
-            draggable
-            onDragStart={(e) => { 
+    const renderTab = (tab, spaceType) => {
+        const isSquare = frameCurvature === 'square';
+        const isCohesive = frameCurvature === 'cohesive';
+        const domain = getTabDomain(tab.url);
+        const tabTitle = (!tab.title || tab.title === 'about:blank' || tab.title === '')
+            ? (spaceType === 'ghost' ? 'New Incognito Tab' : spaceType === 'tor' ? 'New Tor Tab' : 'New Tab')
+            : tab.title;
+
+        const commonProps = {
+            key: tab.id,
+            draggable: true,
+            onDragStart: (e) => { 
                 clearTimeout(hoverTimeout.current); 
                 setHoverPreview(null); 
                 if (e.dataTransfer) {
@@ -356,17 +378,17 @@ export default function Sidebar() {
                     } catch (_) {}
                 }
                 handleDragStart(e, tab, spaceType); 
-            }}
-            onDragEnd={() => {
+            },
+            onDragEnd: () => {
                 setDragPos(null);
                 useTabStore.getState().setDraggedItem(null);
                 useTabStore.getState().setDragOverItem(null);
-            }}
-            onDragOver={(e) => { e.preventDefault(); handleDragOver(tab.id); }}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, tab, spaceType)}
-            onContextMenu={(e) => handleTabContextMenuClick(e, tab, spaceType)}
-            onClick={() => {
+            },
+            onDragOver: (e) => { e.preventDefault(); handleDragOver(tab.id); },
+            onDragLeave: handleDragLeave,
+            onDrop: (e) => handleDrop(e, tab, spaceType),
+            onContextMenu: (e) => handleTabContextMenuClick(e, tab, spaceType),
+            onClick: () => {
                 const ui = useUIStore.getState();
                 if (ui.isReaderOpen) {
                     ui.closeReaderMode();
@@ -402,8 +424,8 @@ export default function Sidebar() {
                 } else {
                     useUIStore.getState().setIsReaderAvailable(false);
                 }
-            }}
-            onMouseEnter={(e) => {
+            },
+            onMouseEnter: (e) => {
                 if (draggedItem) return;
                 const rect = e.currentTarget.getBoundingClientRect();
                 hoverTimeout.current = setTimeout(() => {
@@ -416,7 +438,11 @@ export default function Sidebar() {
                         : storeState.torTabs
                     );
                     const latestTab = (allTabs || []).find(t => t.id === tab.id) || tab;
-                    setHoverPreview({ tab: latestTab, top: rect.top, left: rect.right + 12 });
+                    setHoverPreview({ 
+                        tab: latestTab, 
+                        top: rect.top, 
+                        left: sidebarPosition === 'right' ? Math.max(12, rect.left - 268) : rect.right + 12 
+                    });
 
                     // On-demand live thumbnail capture if missing and webview is active
                     if (!latestTab.thumbnail && window.qbrowseWebviews?.[tab.id]) {
@@ -432,15 +458,15 @@ export default function Sidebar() {
                         }
                     }
                 }, 400);
-            }}
-            onMouseLeave={() => {
+            },
+            onMouseLeave: () => {
                 clearTimeout(hoverTimeout.current);
                 setHoverPreview(null);
-            }}
-            onMouseDown={(e) => {
+            },
+            onMouseDown: (e) => {
                 if (e.button === 1) e.preventDefault();
-            }}
-            onAuxClick={(e) => {
+            },
+            onAuxClick: (e) => {
                 if (e.button === 1) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -448,83 +474,213 @@ export default function Sidebar() {
                     setHoverPreview(null);
                     handleCloseTab(tab.id);
                 }
-            }}
-            className={`sidebar-tab-item group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
-                tab.active 
-                    ? (isBright 
-                        ? 'bg-white/80 border-black/[0.08] text-zinc-950 font-bold shadow-[0_2px_8px_rgba(0,0,0,0.06)]' 
-                        : 'text-accent font-semibold') 
-                    : (isBright 
-                        ? 'bg-transparent hover:bg-black/[0.04] text-zinc-700 hover:text-zinc-950 border-transparent' 
-                        : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent')
-            }`}
-            style={tab.active && !isBright ? { 
-                borderColor: 'var(--accent-40)', 
-                backgroundColor: 'var(--accent-15)',
-                boxShadow: draggedItem?.tab?.id === tab.id ? 'none' : '0 0 18px var(--accent-30)'
-            } : undefined}>
-            <div className="flex items-center gap-2.5 w-full justify-center md:justify-start pointer-events-none pr-8">
-                {spaceType === 'ghost' ? (
-                    <Ghost size={14} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
-                ) : spaceType === 'tor' ? (
-                    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 transition-colors duration-200 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
+            }
+        };
+
+        const renderTabIcon = (size = 14) => {
+            if (spaceType === 'ghost') {
+                return <Ghost size={size} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />;
+            }
+            if (spaceType === 'tor') {
+                return (
+                    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`flex-shrink-0 text-purple-400 opacity-70 transition-colors duration-200 ${tab.suspended ? 'grayscale opacity-30' : ''}`}>
                         <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
                         <path d="M12 6c-2.5 0-5 2.5-5 5.5s2.5 6.5 5 6.5 5-3.5 5-6.5S14.5 6 12 6z"/>
                         <circle cx="12" cy="12" r="1.5"/>
                     </svg>
-                ) : (
-                    tab.url && tab.url !== 'about:blank' ? <img src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} alt="icon" className={`w-4 h-4 rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} onError={(e) => e.target.style.display = 'none'} /> : <Globe size={14} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />
-                )}<span className={`${uiScale === 'compact' ? 'text-xs' : 'text-sm'} truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
-                    {(!tab.title || tab.title === 'about:blank' || tab.title === '') ? (spaceType === 'ghost' ? 'New Incognito Tab' : 'New Tab') : tab.title}
-                </span>
-            </div>
+                );
+            }
+            if (tab.url && tab.url !== 'about:blank') {
+                return (
+                    <img 
+                        src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} 
+                        alt="icon" 
+                        style={{ width: size, height: size }}
+                        className={`rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} 
+                        onError={(e) => { e.target.style.display = 'none'; }} 
+                    />
+                );
+            }
+            return <Globe size={size} className={`flex-shrink-0 transition-colors duration-200 ${tab.active ? (isBright ? 'text-zinc-800' : 'text-accent') : 'opacity-50'} ${tab.suspended ? 'grayscale opacity-30' : ''}`} />;
+        };
 
-            {(tab.isAudioPlaying || tab.isMuted) && (
-                <div className="absolute right-3 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
-                    {tab.isMuted ? <VolumeX size={14} className="text-red-400" /> : <Volume2 size={14} className="text-accent opacity-80 animate-pulse" />}
-                </div>
-            )}
+        const renderActionButtons = (size = 'normal') => {
+            const isCompactSize = size === 'compact';
+            return (
+                <div className={`hidden md:flex opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] absolute ${
+                    isCompactSize ? 'right-1.5 p-0.5' : 'right-2 p-1'
+                } gap-0.5 ${
+                    isBright 
+                        ? 'bg-white/90 border border-black/[0.08] text-zinc-700 shadow-sm' 
+                        : 'bg-[#1a1a1c]/95 border border-white/10 text-white shadow-sm'
+                } ${isSquare ? 'rounded-none !rounded-none' : isCompactSize ? 'rounded-md' : 'rounded-xl'} z-20`}>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); handleToggleMute(tab.id, spaceType); }} 
+                        className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${tab.isMuted ? 'text-red-500 hover:bg-red-500/20' : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10')}`} 
+                        title={tab.isMuted ? "Unmute Tab" : "Mute Tab"}
+                    >
+                        {tab.isMuted ? <VolumeX size={isCompactSize ? 10 : 12} /> : <Volume2 size={isCompactSize ? 10 : 12} />}
+                    </button>
 
-            <div className={`hidden md:flex opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] absolute right-2 gap-0.5 ${isBright ? 'bg-white/90 border border-black/[0.08] text-zinc-700 shadow-sm' : 'bg-[#1a1a1c]/95 border border-white/10 text-white shadow-sm'} p-1 rounded-xl z-20`}>
-                <button 
-                    onClick={(e) => { e.stopPropagation(); handleToggleMute(tab.id, spaceType); }} 
-                    className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${tab.isMuted ? 'text-red-500 hover:bg-red-500/20' : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10')}`} 
-                    title={tab.isMuted ? "Unmute Tab" : "Mute Tab"}
-                >
-                    {tab.isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                </button>
-
-                {tab.isAudioPlaying && (
+                    {tab.isAudioPlaying && (
+                        <button 
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                useUIStore.getState().sendMediaCommand('toggle-pip'); 
+                                showToast('Picture-in-Picture'); 
+                            }} 
+                            className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
+                            title="Picture in Picture"
+                        >
+                            <PictureInPicture2 size={isCompactSize ? 10 : 12} />
+                        </button>
+                    )}
+                    {spaceType !== 'ghost' && spaceType !== 'tor' && tab.url && tab.url !== 'about:blank' && (
+                        <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} title="Pin Tab"><Pin size={isCompactSize ? 10 : 12} /></button>
+                    )}
                     <button 
                         onClick={(e) => { 
                             e.stopPropagation(); 
-                            useUIStore.getState().sendMediaCommand('toggle-pip'); 
-                            showToast('Picture-in-Picture'); 
+                            clearTimeout(hoverTimeout.current);
+                            setHoverPreview(null);
+                            handleCloseTab(tab.id); 
                         }} 
-                        className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
-                        title="Picture in Picture"
+                        className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
+                        title="Close Tab"
                     >
-                        <PictureInPicture2 size={12} />
+                        <X size={isCompactSize ? 10 : 12} />
                     </button>
-                )}
-                {spaceType !== 'ghost' && spaceType !== 'tor' && tab.url && tab.url !== 'about:blank' && (
-                    <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} title="Pin Tab"><Pin size={12} /></button>
-                )}
-                <button 
-                    onClick={(e) => { 
-                        e.stopPropagation(); 
-                        clearTimeout(hoverTimeout.current);
-                        setHoverPreview(null);
-                        handleCloseTab(tab.id); 
-                    }} 
-                    className={`p-1 rounded transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
-                    title="Close Tab"
+                </div>
+            );
+        };
+
+        // 1. Compact High-Density Row Mode
+        if (tabPresentation === 'compact') {
+            return (
+                <div 
+                    {...commonProps}
+                    className={`sidebar-tab-item group relative flex items-center justify-between py-1 px-2.5 ${
+                        isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-lg' : 'rounded-md'
+                    } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-150 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
+                        tab.active 
+                            ? (isBright 
+                                ? 'bg-white/90 border-black/15 text-zinc-950 font-semibold shadow-xs' 
+                                : 'bg-white/10 border-white/20 text-white font-medium shadow-xs') 
+                            : (isBright 
+                                ? 'bg-transparent hover:bg-black/[0.04] text-zinc-700 hover:text-zinc-950 border-transparent' 
+                                : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent')
+                    }`}
                 >
-                    <X size={12} />
-                </button>
+                    <div className="flex items-center gap-2 w-full justify-center md:justify-start pointer-events-none pr-7">
+                        {renderTabIcon(12)}
+                        <span className={`text-xs truncate hidden md:block transition-colors duration-150 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-normal'}`}>
+                            {tabTitle}
+                        </span>
+                    </div>
+
+                    {(tab.isAudioPlaying || tab.isMuted) && (
+                        <div className="absolute right-2 opacity-100 group-hover:opacity-0 transition-opacity duration-150 md:flex hidden pointer-events-none">
+                            {tab.isMuted ? <VolumeX size={11} className="text-red-400" /> : <Volume2 size={11} className="text-accent opacity-80 animate-pulse" />}
+                        </div>
+                    )}
+
+                    {renderActionButtons('compact')}
+                </div>
+            );
+        }
+
+        // 2. Rich Card Tile Mode
+        if (tabPresentation === 'cards') {
+            return (
+                <div 
+                    {...commonProps}
+                    className={`sidebar-tab-item group relative flex flex-col justify-between p-2.5 ${
+                        isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-2xl' : 'rounded-xl'
+                    } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
+                        tab.active 
+                            ? (isBright 
+                                ? 'bg-white/95 border-accent/40 shadow-sm text-zinc-950' 
+                                : 'bg-white/[0.08] border-accent/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.3),0_0_15px_var(--accent-20)]') 
+                            : (isBright 
+                                ? 'bg-white/50 hover:bg-white/80 border-black/[0.06] hover:border-black/[0.12] text-zinc-700 hover:text-zinc-950 shadow-xs' 
+                                : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.05] hover:border-white/[0.10] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)]')
+                    }`}
+                >
+                    {/* Top row: Favicon in clear container + Title */}
+                    <div className="flex items-center gap-2.5 w-full pointer-events-none pr-6">
+                        <div className={`w-6 h-6 ${isSquare ? 'rounded-none' : 'rounded-lg'} flex items-center justify-center flex-shrink-0 border ${
+                            isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.06] border-white/10 shadow-xs'
+                        }`}>
+                            {renderTabIcon(13)}
+                        </div>
+                        <span className={`text-xs truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
+                            {tabTitle}
+                        </span>
+                    </div>
+
+                    {/* Bottom row: Subtle domain badge */}
+                    <div className="hidden md:flex items-center justify-between w-full mt-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.05] pointer-events-none">
+                        <span className={`text-[10px] font-mono px-1.5 py-0.5 ${isSquare ? 'rounded-none' : 'rounded'} border truncate max-w-[130px] ${
+                            isBright ? 'bg-black/[0.03] text-zinc-600 border-black/[0.06]' : 'bg-white/[0.04] text-white/60 border-white/[0.06]'
+                        }`}>
+                            {domain || (spaceType === 'ghost' ? 'incognito' : spaceType === 'tor' ? 'tor circuit' : 'local')}
+                        </span>
+                        {tab.suspended && (
+                            <span className={`text-[9px] font-mono uppercase tracking-wider ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+                                sleep
+                            </span>
+                        )}
+                    </div>
+
+                    {(tab.isAudioPlaying || tab.isMuted) && (
+                        <div className="absolute top-2.5 right-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
+                            {tab.isMuted ? <VolumeX size={13} className="text-red-400" /> : <Volume2 size={13} className="text-accent opacity-80 animate-pulse" />}
+                        </div>
+                    )}
+
+                    {renderActionButtons('normal')}
+                </div>
+            );
+        }
+
+        // 3. Signature Liquid Glass Pills Mode (Default)
+        return (
+            <div 
+                {...commonProps}
+                className={`sidebar-tab-item group relative flex items-center justify-between ${
+                    isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-xl' : (uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl')
+                } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
+                    tab.active 
+                        ? (isBright 
+                            ? 'bg-white/80 border-black/[0.08] text-zinc-950 font-bold shadow-[0_2px_8px_rgba(0,0,0,0.06)]' 
+                            : 'text-accent font-semibold') 
+                        : (isBright 
+                            ? 'bg-transparent hover:bg-black/[0.04] text-zinc-700 hover:text-zinc-950 border-transparent' 
+                            : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent')
+                }`}
+                style={tab.active && !isBright ? { 
+                    borderColor: 'var(--accent-40)', 
+                    backgroundColor: 'var(--accent-15)',
+                    boxShadow: draggedItem?.tab?.id === tab.id ? 'none' : '0 0 18px var(--accent-30)'
+                } : undefined}
+            >
+                <div className="flex items-center gap-2.5 w-full justify-center md:justify-start pointer-events-none pr-8">
+                    {renderTabIcon(14)}
+                    <span className={`${uiScale === 'compact' ? 'text-xs' : 'text-sm'} truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
+                        {tabTitle}
+                    </span>
+                </div>
+
+                {(tab.isAudioPlaying || tab.isMuted) && (
+                    <div className="absolute right-3 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
+                        {tab.isMuted ? <VolumeX size={14} className="text-red-400" /> : <Volume2 size={14} className="text-accent opacity-80 animate-pulse" />}
+                    </div>
+                )}
+
+                {renderActionButtons('normal')}
             </div>
-        </div>
-    );
+        );
+    };
 
     const syncUser = useSyncStore(state => state.user);
     const syncStatus = useSyncStore(state => state.syncStatus);
@@ -540,24 +696,33 @@ export default function Sidebar() {
                     e.stopPropagation();
                 }
             }}
-            className={`sidebar-container min-w-0 flex-shrink-0 flex flex-col rounded-[2rem] overflow-hidden relative z-10 ${
+            className={`sidebar-container min-w-0 flex-shrink-0 flex flex-col ${
+                frameCurvature === 'square'
+                    ? 'rounded-none !rounded-none'
+                    : frameCurvature === 'cohesive'
+                    ? 'rounded-2xl'
+                    : 'rounded-[2rem]'
+            } overflow-hidden relative z-10 ${
             isBright 
                 ? 'liquid-glass-bright text-zinc-900 sidebar-light' 
                 : 'liquid-glass-dark text-white/90 sidebar-dark'
         } ${
             isFullscreen
-                ? '!fixed !left-3 !top-3 !bottom-3 !z-[99980] shadow-[0_25px_70px_rgba(0,0,0,0.75)] backdrop-blur-3xl'
+                ? `!fixed ${sidebarPosition === 'right' ? '!right-3' : '!left-3'} !top-3 !bottom-3 !z-[99980] shadow-[0_25px_70px_rgba(0,0,0,0.75)] backdrop-blur-3xl`
                 : (isSidebarHidden ? 'is-hidden pointer-events-none' : '')
         }`}
         style={isFullscreen ? {
             position: 'fixed',
-            left: '12px',
+            left: sidebarPosition === 'right' ? 'auto' : '12px',
+            right: sidebarPosition === 'right' ? '12px' : 'auto',
             top: '12px',
             bottom: '12px',
             width: uiScale === 'compact' ? 240 : 256,
             maxWidth: uiScale === 'compact' ? 240 : 256,
             zIndex: 99980,
-            transform: isSidebarPeeking ? 'translateX(0)' : 'translateX(calc(-100% - 24px))',
+            transform: isSidebarPeeking 
+                ? 'translateX(0)' 
+                : (sidebarPosition === 'right' ? 'translateX(calc(100% + 24px))' : 'translateX(calc(-100% - 24px))'),
             opacity: isSidebarPeeking ? 1 : 0,
             pointerEvents: isSidebarPeeking ? 'auto' : 'none',
             transition: isReducedMotion ? 'none' : 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease',
@@ -566,13 +731,18 @@ export default function Sidebar() {
             width: isSidebarHidden ? 0 : (uiScale === 'compact' ? 240 : 256),
             minWidth: 0,
             maxWidth: isSidebarHidden ? 0 : (uiScale === 'compact' ? 240 : 256),
-            marginRight: isSidebarHidden ? 0 : (uiScale === 'compact' ? 6 : 16),
+            marginRight: sidebarPosition === 'right' ? 0 : (isSidebarHidden ? 0 : (uiScale === 'compact' ? 6 : 16)),
+            marginLeft: sidebarPosition === 'right' ? (isSidebarHidden ? 0 : (uiScale === 'compact' ? 6 : 16)) : 0,
             opacity: isSidebarHidden ? 0 : 1,
             pointerEvents: isSidebarHidden ? 'none' : 'auto',
             transition: isReducedMotion ? 'none' : (isSidebarHidden
-                ? 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease'
-                : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease'),
-            willChange: 'width, max-width, margin-right, opacity'
+                ? (sidebarPosition === 'right'
+                    ? 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease'
+                    : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease')
+                : (sidebarPosition === 'right'
+                    ? 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease'
+                    : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease')),
+            willChange: sidebarPosition === 'right' ? 'width, max-width, margin-left, opacity' : 'width, max-width, margin-right, opacity'
         }}
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={handleSidebarMouseLeave}
@@ -583,7 +753,9 @@ export default function Sidebar() {
                 style={{
                     width: uiScale === 'compact' ? 240 : 256,
                     minWidth: uiScale === 'compact' ? 240 : 256,
-                    transform: (!isFullscreen && isSidebarHidden) ? 'translateX(-100%)' : 'translateX(0)',
+                    transform: (!isFullscreen && isSidebarHidden) 
+                        ? (sidebarPosition === 'right' ? 'translateX(100%)' : 'translateX(-100%)') 
+                        : 'translateX(0)',
                     opacity: (!isFullscreen && isSidebarHidden) ? 0 : 1,
                     transition: isReducedMotion ? 'none' : 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
                     pointerEvents: (!isFullscreen && isSidebarHidden) ? 'none' : 'auto',
@@ -592,19 +764,110 @@ export default function Sidebar() {
             >
 
             <div 
-                className="drag-region flex px-4 py-3.5 border-b border-[color:var(--sidebar-border)] items-center justify-between"
+                className={`drag-region flex px-4 py-3.5 border-b border-[color:var(--sidebar-border)] items-center justify-between ${
+                    sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'
+                }`}
                 onDoubleClick={(e) => {
                     if (!e.target.closest('button, input, select, textarea, [data-no-drag]')) {
                         window.electronAPI?.maximize();
                     }
                 }}
             >
-                <div className="flex gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
-                    <button onClick={() => window.electronAPI.close()} className="w-3.5 h-3.5 rounded-full bg-red-500/80 hover:bg-red-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(239,68,68,0.5)] flex items-center justify-center group/btn"><X size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" /></button>
-                    <button onClick={() => window.electronAPI.minimize()} className="w-3.5 h-3.5 rounded-full bg-yellow-500/80 hover:bg-yellow-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(234,179,8,0.5)] flex items-center justify-center group/btn"><Minus size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" /></button>
-                    <button onClick={() => window.electronAPI.maximize()} className="w-3.5 h-3.5 rounded-full bg-green-500/80 hover:bg-green-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(34,197,94,0.5)] flex items-center justify-center group/btn"><Maximize2 size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" /></button>
-                </div>
-                <div className="hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center" style={{ WebkitAppRegion: 'no-drag' }}>
+                {windowControlsStyle === 'windows' ? (
+                    <div className={`flex items-center gap-0.5 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'}`} style={{ WebkitAppRegion: 'no-drag' }}>
+                        <button 
+                            onClick={() => window.electronAPI?.minimize?.()} 
+                            className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
+                                isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
+                            }`} 
+                            title="Minimize"
+                        >
+                            <Minus size={11} strokeWidth={2} />
+                        </button>
+                        <button 
+                            onClick={() => window.electronAPI?.maximize?.()} 
+                            className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
+                                isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
+                            }`} 
+                            title="Maximize"
+                        >
+                            <Square size={10} strokeWidth={1.8} />
+                        </button>
+                        <button 
+                            onClick={() => window.electronAPI?.close?.()} 
+                            className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer hover:bg-red-500 hover:text-white ${
+                                isBright ? 'text-zinc-600' : 'text-white/70'
+                            }`} 
+                            title="Close"
+                        >
+                            <X size={12} strokeWidth={2} />
+                        </button>
+                    </div>
+                ) : windowControlsStyle === 'minimal' ? (
+                    <div className={`flex items-center gap-2 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'}`} style={{ WebkitAppRegion: 'no-drag' }}>
+                        <button 
+                            onClick={() => window.electronAPI?.close?.()} 
+                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
+                                isBright 
+                                    ? 'bg-black/10 border-black/15 hover:bg-red-500/20 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.4)]' 
+                                    : 'bg-white/15 border-white/20 hover:bg-red-500/30 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+                            }`} 
+                            title="Close"
+                        >
+                            <X size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-red-400 transition-opacity duration-150" />
+                        </button>
+                        <button 
+                            onClick={() => window.electronAPI?.minimize?.()} 
+                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
+                                isBright 
+                                    ? 'bg-black/10 border-black/15 hover:bg-amber-500/20 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.4)]' 
+                                    : 'bg-white/15 border-white/20 hover:bg-amber-500/30 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.5)]'
+                            }`} 
+                            title="Minimize"
+                        >
+                            <Minus size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-amber-300 transition-opacity duration-150" />
+                        </button>
+                        <button 
+                            onClick={() => window.electronAPI?.maximize?.()} 
+                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
+                                isBright 
+                                    ? 'bg-black/10 border-black/15 hover:bg-emerald-500/20 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.4)]' 
+                                    : 'bg-white/15 border-white/20 hover:bg-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.5)]'
+                            }`} 
+                            title="Maximize"
+                        >
+                            <Maximize2 size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-emerald-300 transition-opacity duration-150" />
+                        </button>
+                    </div>
+                ) : (
+                    /* macOS Window Controls (Default) */
+                    <div className={`flex gap-2 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'}`} style={{ WebkitAppRegion: 'no-drag' }}>
+                        <button 
+                            onClick={() => window.electronAPI?.close?.()} 
+                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-red-500/80 hover:bg-red-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(239,68,68,0.5)] flex items-center justify-center group/btn cursor-pointer`}
+                            title="Close"
+                        >
+                            <X size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
+                        </button>
+                        <button 
+                            onClick={() => window.electronAPI?.minimize?.()} 
+                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-yellow-500/80 hover:bg-yellow-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(234,179,8,0.5)] flex items-center justify-center group/btn cursor-pointer`}
+                            title="Minimize"
+                        >
+                            <Minus size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
+                        </button>
+                        <button 
+                            onClick={() => window.electronAPI?.maximize?.()} 
+                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-green-500/80 hover:bg-green-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(34,197,94,0.5)] flex items-center justify-center group/btn cursor-pointer`}
+                            title="Maximize"
+                        >
+                            <Maximize2 size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
+                        </button>
+                    </div>
+                )}
+                <div className={`hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center ${
+                    sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'
+                }`} style={{ WebkitAppRegion: 'no-drag' }}>
                     <button 
                         onClick={() => togglePopover('user')} 
                         className={`w-[25px] h-[25px] rounded-full flex items-center justify-center border transition-all duration-200 hover:scale-110 active:scale-90 cursor-pointer relative ${
@@ -774,7 +1037,13 @@ export default function Sidebar() {
                                 return (
                                     <div 
                                         key={sp.id}
-                                        className={`h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
+                                        className={`h-full flex flex-col ${
+                                            tabPresentation === 'compact' 
+                                                ? 'gap-0.5 p-2 pt-1' 
+                                                : tabPresentation === 'cards' 
+                                                ? 'gap-2 p-3 pt-1.5' 
+                                                : (uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2')
+                                        } overflow-y-auto hide-scroll`}
                                         style={{ width: `${100 / allSpaces.length}%` }}
                                         onDragOver={(e) => { e.preventDefault(); handleDragOver(`root-${sp.id}`); }}
                                         onDragLeave={handleDragLeave}
@@ -808,7 +1077,9 @@ export default function Sidebar() {
                                                         onClick={() => handleNewTab()} 
                                                         onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} 
                                                         onAuxClick={handleNewTabAuxClick} 
-                                                        className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} 
+                                                        className={`group relative flex items-center justify-between ${
+                                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : (uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl')
+                                                        } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} 
                                                         title="New Tab (Middle-click for background)"
                                                     >
                                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
@@ -826,7 +1097,13 @@ export default function Sidebar() {
 
                             {/* GHOST TABS */}
                             <div 
-                                className={`h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
+                                className={`h-full flex flex-col ${
+                                    tabPresentation === 'compact' 
+                                        ? 'gap-0.5 p-2 pt-1' 
+                                        : tabPresentation === 'cards' 
+                                        ? 'gap-2 p-3 pt-1.5' 
+                                        : (uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2')
+                                } overflow-y-auto hide-scroll`}
                                 style={{ width: `${100 / allSpaces.length}%` }}
                                 onDragOver={(e) => { e.preventDefault(); handleDragOver('root-ghost'); }}
                                 onDragLeave={handleDragLeave}
@@ -853,7 +1130,9 @@ export default function Sidebar() {
                                     const filtered = ghostTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                                     if (filtered.length === 0) {
                                         return (
-                                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl'} bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (Middle-click for background)">
+                                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${
+                                                frameCurvature === 'square' ? 'rounded-none !rounded-none' : (uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl')
+                                            } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (Middle-click for background)">
                                                 <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                                     <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
@@ -867,7 +1146,13 @@ export default function Sidebar() {
 
                             {/* TOR TABS */}
                             <div 
-                                className={`h-full flex flex-col ${uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2'} overflow-y-auto hide-scroll`}
+                                className={`h-full flex flex-col ${
+                                    tabPresentation === 'compact' 
+                                        ? 'gap-0.5 p-2 pt-1' 
+                                        : tabPresentation === 'cards' 
+                                        ? 'gap-2 p-3 pt-1.5' 
+                                        : (uiScale === 'compact' ? 'gap-0.5 p-3 pt-1.5' : 'gap-1 p-4 pt-2')
+                                } overflow-y-auto hide-scroll`}
                                 style={{ width: `${100 / allSpaces.length}%` }}
                                 onDragOver={(e) => { e.preventDefault(); handleDragOver('root-tor'); }}
                                 onDragLeave={handleDragLeave}
@@ -895,7 +1180,9 @@ export default function Sidebar() {
                                     const filtered = (torTabs || []).filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
                                     if (filtered.length === 0) {
                                         return (
-                                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="group relative flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in" title="New Tor Tab (Middle-click for background)">
+                                            <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between p-3 ${
+                                                frameCurvature === 'square' ? 'rounded-none !rounded-none' : 'rounded-xl'
+                                            } bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tor Tab (Middle-click for background)">
                                                 <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                                     <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>

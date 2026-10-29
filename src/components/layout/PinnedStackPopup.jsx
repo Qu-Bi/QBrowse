@@ -23,6 +23,7 @@ export default function PinnedStackPopup() {
     const setCurrentUrl = useUIStore(state => state.setCurrentUrl);
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
+    const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
 
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
@@ -118,7 +119,11 @@ export default function PinnedStackPopup() {
     if (rect) {
         const estH = Math.min(pinTabs.length * 48 + 140, 420);
         top = Math.max(16, Math.min(rect.top - 8, window.innerHeight - estH - 16));
-        left = Math.max(16, Math.min(rect.right + 12, window.innerWidth - 340));
+        if (sidebarPosition === 'right') {
+            left = Math.max(16, rect.left - 320 - 12);
+        } else {
+            left = Math.max(16, Math.min(rect.right + 12, window.innerWidth - 340));
+        }
     }
 
     const handleSelectTab = (tab) => {

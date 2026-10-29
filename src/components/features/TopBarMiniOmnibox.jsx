@@ -49,6 +49,9 @@ export default function TopBarMiniOmnibox({
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
     const isSplitView = useUIStore(state => state.isSplitView);
     const uiScale = useUIStore(state => state.settings?.uiScale);
+    const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
+    const topBarPosition = useUIStore(state => state.settings?.topBarPosition || 'top');
+    const isBottomBar = topBarPosition === 'bottom';
     const containerRef = useRef(null);
     const dropdownPortalRef = useRef(null);
     const [portalRect, setPortalRect] = useState(null);
@@ -132,17 +135,41 @@ export default function TopBarMiniOmnibox({
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
         if (rect.width > 0) {
-            setPortalRect(prev => {
+            const left = Math.round(rect.left);
+            const width = Math.round(rect.width);
+            if (topBarPosition === 'bottom') {
+                const bottom = Math.round(window.innerHeight - rect.top + 8);
+                const maxHeight = Math.max(120, Math.round(rect.top - 16));
+                setPortalRect(prev => {
+                    if (
+                        prev &&
+                        prev.isBottom === true &&
+                        prev.bottom === bottom &&
+                        prev.left === left &&
+                        prev.width === width &&
+                        prev.maxHeight === maxHeight
+                    ) {
+                        return prev;
+                    }
+                    return { bottom, left, width, isBottom: true, maxHeight };
+                });
+            } else {
                 const top = Math.round(rect.bottom + 8);
-                const left = Math.round(rect.left);
-                const width = Math.round(rect.width);
-                if (prev && prev.top === top && prev.left === left && prev.width === width) {
-                    return prev;
-                }
-                return { top, left, width };
-            });
+                setPortalRect(prev => {
+                    if (
+                        prev &&
+                        prev.isBottom === false &&
+                        prev.top === top &&
+                        prev.left === left &&
+                        prev.width === width
+                    ) {
+                        return prev;
+                    }
+                    return { top, left, width, isBottom: false };
+                });
+            }
         }
-    }, []);
+    }, [topBarPosition]);
 
     useLayoutEffect(() => {
         if (!isTopBarOmniboxActive && !isDropdownVisible) return;
@@ -181,6 +208,7 @@ export default function TopBarMiniOmnibox({
         isRightPanelOpen,
         isSplitView,
         uiScale,
+        topBarPosition,
         updateDropdownPosition
     ]);
 
@@ -201,7 +229,9 @@ export default function TopBarMiniOmnibox({
                     const y = e.clientY + 200 > window.innerHeight ? window.innerHeight - 220 : e.clientY;
                     useUIStore.getState().setTopBarContextMenu({ x, y, url: rawUrl, tabId: focusedTab?.id });
                 }}
-                className={`relative w-full flex items-center justify-between px-3 h-9 rounded-full transition-[border-color,box-shadow,background-color] duration-200 group min-w-0 gap-2 border select-none antialiased ${
+                className={`relative w-full flex items-center justify-between px-3 h-9 ${
+                    frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
+                } transition-[border-color,box-shadow,background-color] duration-200 group min-w-0 gap-2 border select-none antialiased ${
                     isBright 
                         ? 'liquid-pill-bright hover:border-accent/60' 
                         : 'liquid-pill-dark hover:border-accent/50'
@@ -217,7 +247,9 @@ export default function TopBarMiniOmnibox({
                 title={!isTopBarOmniboxActive ? (rawUrl || 'Search or enter address') : undefined}
             >
                 {/* Refresh Progress Indicator */}
-                <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
+                <div className={`absolute inset-0 ${
+                    frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
+                } overflow-hidden pointer-events-none`}>
                     <div className={`absolute bottom-0 left-0 h-[2px] bg-accent transition-all ease-out ${isRefreshing ? 'w-full duration-1000 opacity-100' : 'w-0 duration-0 opacity-0'}`} />
                 </div>
 
@@ -470,7 +502,16 @@ export default function TopBarMiniOmnibox({
                     isClosing={isDropdownClosing}
                     style={{
                         position: 'fixed',
-                        top: `${portalRect.top}px`,
+                        ...(portalRect.isBottom ? {
+                            bottom: `${portalRect.bottom}px`,
+                            top: 'auto',
+                            transformOrigin: 'bottom center',
+                            maxHeight: `${Math.min(380, portalRect.maxHeight)}px`
+                        } : {
+                            top: `${portalRect.top}px`,
+                            bottom: 'auto',
+                            transformOrigin: 'top center'
+                        }),
                         left: `${portalRect.left}px`,
                         width: `${portalRect.width}px`,
                         zIndex: 10000,
@@ -503,7 +544,7 @@ export default function TopBarMiniOmnibox({
                     }}
                     isBright={isBright}
                     isTor={isTor}
-                    maxHeightClass="max-h-[360px]"
+                    maxHeightClass={portalRect.isBottom ? '' : "max-h-[360px]"}
                 />,
                 document.body
             )}
