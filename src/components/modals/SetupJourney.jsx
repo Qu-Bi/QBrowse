@@ -4,13 +4,14 @@ import {
     Download, Compass, Lock, User, Sparkles, Layers,
     CheckCircle2, FolderInput, FileCode, Sliders, ChevronRight,
     KeyRound, UploadCloud, Shield, RefreshCw, Mail, Eye, EyeOff,
-    AlertCircle, UserCheck
+    AlertCircle, UserCheck, Code, Feather
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useVaultStore from '../../store/useVaultStore';
 import { parseVaultContent } from '../../utils/vaultImporter';
+import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId } from '../../utils/experiencePresets';
 import qbrowseLogo from '../../assets/icon.png';
 
 // Apple/Tesla-style synthesized unlock chime using Web Audio API
@@ -59,6 +60,16 @@ const ACCENT_PRESETS = [
     { name: 'Rose Gold', hex: '#f43f5e', rgb: '244, 63, 94' }
 ];
 
+const getLiquidGlassStyle = (isBright, opacityDark = 0.40, opacityLight = 0.70) => ({
+    backgroundColor: isBright ? `rgba(255, 255, 255, ${opacityLight})` : `rgba(18, 22, 34, ${opacityDark})`,
+    backdropFilter: isBright
+        ? 'blur(var(--glass-blur, 24px)) saturate(180%) brightness(1.02)'
+        : 'blur(var(--glass-blur, 24px)) saturate(190%) brightness(1.0)',
+    WebkitBackdropFilter: isBright
+        ? 'blur(var(--glass-blur, 24px)) saturate(180%) brightness(1.02)'
+        : 'blur(var(--glass-blur, 24px)) saturate(190%) brightness(1.0)'
+});
+
 export default function SetupJourney({ onFinish, onStartTour }) {
     const { 
         theme, setTheme, setAccentColor, accentColor, 
@@ -85,6 +96,22 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     const defaultPollRef = useRef(null);
     const isDefaultBrowser = isDefault;
     const setIsDefaultBrowser = setIsDefault;
+
+    // Experience Presets State
+    const [selectedPresetId, setSelectedPresetId] = useState(getSavedPresetId);
+    const [hoveredTheme, setHoveredTheme] = useState(null);
+    const [isCustomized, setIsCustomized] = useState(false);
+
+    const handleSelectPreset = (preset) => {
+        setSelectedPresetId(preset.id);
+        setIsCustomized(false);
+        applyExperiencePreset(preset, {
+            uiStore: useUIStore.getState(),
+            tabStore: useTabStore.getState(),
+            showToast
+        });
+        playUnlockChime();
+    };
 
     // Cloud Sync & Profile Setup State
     const { 
@@ -166,6 +193,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     const [pendingVaultData, setPendingVaultData] = useState(null);
 
     const isBright = theme === 'light';
+    const isCompact = useUIStore(state => state.settings?.uiScale) === 'compact';
 
     // Scan for installed browsers on step 1 (Data Migration)
     useEffect(() => {
@@ -193,6 +221,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         setAccentColor(preset.hex);
         document.documentElement.style.setProperty('--accent', preset.hex);
         document.documentElement.style.setProperty('--accent-rgb', preset.rgb);
+        setIsCustomized(true);
     };
 
     const handleImportBrowser = async (browserId) => {
@@ -426,7 +455,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     };
 
     const steps = [
-        { label: 'Appearance', desc: 'Theme & Accent' },
+        { label: 'Presets & Style', desc: 'Experience & Style' },
         { label: 'Import', desc: 'Bookmarks & Passwords' },
         { label: 'Privacy', desc: 'Shields & Tor' },
         { label: 'Default', desc: 'System Integration' },
@@ -434,7 +463,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     ];
 
     return (
-        <div className="fixed inset-0 z-[500000] flex flex-col bg-[#08090c]/96 backdrop-blur-3xl text-white select-none animate-fade-in font-sans">
+        <div className={`fixed inset-0 z-[500000] flex flex-col ${
+            isBright ? 'bg-[#f7f8fa]/92 text-zinc-900' : 'bg-[#090a10]/88 text-white'
+        } backdrop-blur-3xl select-none animate-fade-in font-sans transition-colors duration-300`}>
             {/* Ambient Radial Gradient Core */}
             <div 
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full blur-[140px] pointer-events-none opacity-30"
@@ -444,30 +475,48 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             />
 
             {/* Top Navigation Bar */}
-            <header className="relative z-10 flex items-center justify-between px-8 py-5 border-b border-white/[0.08]">
+            <header 
+                className={`relative z-10 flex items-center justify-between transition-all duration-300 border-b select-none ${
+                    isCompact ? 'px-6 py-2.5 min-h-[50px]' : 'px-8 md:px-10 py-3.5 min-h-[58px]'
+                } ${
+                    isBright 
+                        ? 'border-black/[0.07] shadow-[0_2px_12px_rgba(0,0,0,0.03)]' 
+                        : 'border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.25)]'
+                }`}
+                style={getLiquidGlassStyle(isBright, 0.28, 0.50)}
+            >
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm">
+                    <div className={`${isCompact ? 'w-7 h-7 p-1 rounded-lg' : 'w-8 h-8 p-1.5 rounded-xl'} border flex items-center justify-center shadow-md ${
+                        isBright ? 'bg-white border-black/10' : 'bg-white/10 border-white/15'
+                    }`}>
                         <img src={qbrowseLogo} alt="QBrowse" className="w-full h-full object-contain drop-shadow" />
                     </div>
-                    <span className="font-bold tracking-tight text-sm text-white">QBrowse Setup</span>
+                    <div>
+                        <span className={`font-bold tracking-tight ${isCompact ? 'text-xs' : 'text-sm'} block leading-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                            QBrowse Setup
+                        </span>
+                        <span className={`text-[10px] mt-0.5 block ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
+                            Personalization Assistant
+                        </span>
+                    </div>
                 </div>
 
                 {/* Step Indicators */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 md:gap-2">
                     {steps.map((step, idx) => (
                         <div 
                             key={idx}
                             onClick={() => goToStep(idx)}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all duration-300 ${
+                            className={`flex items-center gap-1.5 md:gap-2 ${isCompact ? 'px-2.5 py-1 text-[11px] rounded-lg' : 'px-3 py-1.5 rounded-xl text-xs'} border font-semibold cursor-pointer transition-all duration-300 active:scale-95 ${
                                 currentStep === idx 
                                     ? 'bg-accent/20 border-accent/40 text-accent shadow-sm shadow-accent/20' 
                                     : currentStep > idx 
-                                        ? 'bg-white/5 border-white/10 text-emerald-400 hover:bg-white/10' 
-                                        : 'bg-transparent border-transparent text-white/40 hover:text-white/60'
+                                        ? (isBright ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 hover:bg-emerald-500/15' : 'bg-white/5 border-white/10 text-emerald-400 hover:bg-white/10') 
+                                        : (isBright ? 'bg-transparent border-transparent text-zinc-400 hover:text-zinc-700' : 'bg-transparent border-transparent text-white/40 hover:text-white/60')
                             }`}
                         >
-                            <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] bg-white/10">
-                                {currentStep > idx ? <Check size={10} strokeWidth={3} /> : idx + 1}
+                            <span className={`${isCompact ? 'w-3.5 h-3.5 text-[9px]' : 'w-4 h-4 text-[10px]'} rounded-full flex items-center justify-center bg-white/10`}>
+                                {currentStep > idx ? <Check size={isCompact ? 9 : 10} strokeWidth={3} /> : idx + 1}
                             </span>
                             <span className="hidden md:inline">{step.label}</span>
                         </div>
@@ -477,7 +526,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 {/* Quick Skip Button */}
                 <button 
                     onClick={() => handleFinishSetup(false)}
-                    className="text-xs text-white/40 hover:text-white/80 transition px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
+                    className={`text-xs transition ${isCompact ? 'px-3 py-1.5 rounded-lg' : 'px-3.5 py-1.5 rounded-xl'} border cursor-pointer active:scale-95 ${
+                        isBright ? 'text-zinc-500 hover:text-zinc-900 border-black/5 hover:bg-black/5' : 'text-white/40 hover:text-white/80 border-white/5 hover:bg-white/5'
+                    }`}
                 >
                     Skip Setup
                 </button>
@@ -486,82 +537,218 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             {/* Main Stage Content */}
             <main className="relative z-10 flex-1 flex items-center justify-center p-6 md:p-12 overflow-y-auto">
                 <div className="max-w-2xl w-full">
-                    {/* SLIDE 0: APPEARANCE & ACCENT */}
+                    {/* SLIDE 0: EXPERIENCE PRESETS & APPEARANCE */}
                     {currentStep === 0 && (
-                        <div className={`${stepAnimClass} space-y-8 text-center md:text-left`}>
+                        <div className={`${stepAnimClass} space-y-6 text-left`}>
                             <div>
-                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 1 of 5</span>
-                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Make QBrowse Yours</h2>
-                                <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                    Choose your preferred appearance mode and signature accent color. Changes apply in real-time.
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-accent">
+                                    Welcome to QBrowse
+                                </span>
+                                <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight mt-1 ${
+                                    isBright ? 'text-zinc-900' : 'text-white'
+                                }`}>
+                                    Choose your setup
+                                </h2>
+                                <p className={`text-xs md:text-sm mt-1 leading-relaxed ${
+                                    isBright ? 'text-zinc-500' : 'text-white/60'
+                                }`}>
+                                    Pick a starting mode. You can fine-tune every workspace, theme, and shield anytime.
                                 </p>
                             </div>
 
-                            {/* Theme Selection */}
-                            <div className="space-y-3">
-                                <label className="text-xs font-semibold text-white/80 uppercase tracking-wider block text-left">
-                                    Theme Mode
-                                </label>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div 
-                                        onClick={() => setTheme('dark')}
-                                        className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 flex items-center gap-3.5 ${
-                                            theme === 'dark' 
-                                                ? 'bg-white/10 border-accent text-white shadow-lg shadow-accent/10' 
-                                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/8'
-                                        }`}
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center text-accent">
-                                            <Moon size={18} />
-                                        </div>
-                                        <div className="text-left">
-                                            <h4 className="font-bold text-sm">Obsidian Dark</h4>
-                                            <p className="text-[11px] text-white/40">Sleek, eye-resting dark aesthetic</p>
-                                        </div>
-                                    </div>
+                            {/* 4 Clean Preset Cards */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {EXPERIENCE_PRESETS.map((p) => {
+                                    const PresetIcon = p.icon;
+                                    const isSelected = selectedPresetId === p.id;
 
-                                    <div 
-                                        onClick={() => setTheme('light')}
-                                        className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 flex items-center gap-3.5 ${
-                                            theme === 'light' 
-                                                ? 'bg-white/10 border-accent text-white shadow-lg shadow-accent/10' 
-                                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/8'
-                                        }`}
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-zinc-200 border border-black/10 flex items-center justify-center text-zinc-900">
-                                            <Sun size={18} />
-                                        </div>
-                                        <div className="text-left">
-                                            <h4 className="font-bold text-sm">Porcelain Light</h4>
-                                            <p className="text-[11px] text-white/40">Clean, crisp daylight clarity</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Accent Palette */}
-                            <div className="space-y-3">
-                                <label className="text-xs font-semibold text-white/80 uppercase tracking-wider block text-left">
-                                    Signature Accent Color
-                                </label>
-                                <div className="flex flex-wrap gap-3">
-                                    {ACCENT_PRESETS.map((preset) => (
+                                    return (
                                         <button
-                                            key={preset.name}
-                                            onClick={() => handleApplyAccent(preset)}
-                                            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border transition-all cursor-pointer ${
-                                                accentColor?.toLowerCase() === preset.hex.toLowerCase()
-                                                    ? 'bg-white/15 border-white shadow-md'
-                                                    : 'bg-white/5 border-white/10 hover:bg-white/10 text-white/70'
+                                            key={p.id}
+                                            type="button"
+                                            onClick={() => handleSelectPreset(p)}
+                                            style={getLiquidGlassStyle(isBright, 0.45, 0.68)}
+                                            className={`relative p-4 rounded-2xl border text-left cursor-pointer transition-all duration-200 group outline-none active:scale-[0.99] ${
+                                                isSelected
+                                                    ? (isBright 
+                                                        ? 'border-accent ring-2 ring-accent/30 shadow-lg' 
+                                                        : 'border-accent/80 shadow-[0_0_25px_rgba(212,188,148,0.15)] ring-1 ring-accent/40')
+                                                    : (isBright 
+                                                        ? 'hover:border-black/20 shadow-sm' 
+                                                        : 'hover:border-white/20 shadow-sm')
                                             }`}
                                         >
-                                            <span 
-                                                className="w-4 h-4 rounded-full shadow-inner"
-                                                style={{ backgroundColor: preset.hex }}
-                                            />
-                                            <span className="text-xs font-medium">{preset.name}</span>
+                                            {/* Accent Glow on Selected Card */}
+                                            {isSelected && (
+                                                <div 
+                                                    className="absolute -inset-[1px] rounded-2xl pointer-events-none opacity-40 blur-xs transition-opacity"
+                                                    style={{ border: `1.5px solid ${p.accentColor}` }}
+                                                />
+                                            )}
+
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div 
+                                                    className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-xs transition-transform duration-200 group-hover:scale-105"
+                                                    style={{ 
+                                                        backgroundColor: `${p.accentColor}18`,
+                                                        borderColor: `${p.accentColor}40`,
+                                                        color: p.accentColor
+                                                    }}
+                                                >
+                                                    <PresetIcon size={17} />
+                                                </div>
+
+                                                <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all duration-200 ${
+                                                    isSelected
+                                                        ? 'bg-accent border-accent text-zinc-950 font-bold scale-100 shadow-sm'
+                                                        : (isBright ? 'border-black/20 bg-transparent text-transparent opacity-0 group-hover:opacity-40' : 'border-white/20 bg-transparent text-transparent opacity-0 group-hover:opacity-40')
+                                                }`}>
+                                                    <Check size={11} strokeWidth={3} />
+                                                </div>
+                                            </div>
+
+                                            <h3 className={`font-bold text-sm tracking-tight transition-colors ${
+                                                isBright ? 'text-zinc-900 group-hover:text-zinc-950' : 'text-white group-hover:text-accent'
+                                            }`}>
+                                                {p.name}
+                                            </h3>
+                                            <p className={`text-xs mt-1 leading-relaxed ${
+                                                isBright ? 'text-zinc-600' : 'text-white/60'
+                                            }`}>
+                                                {p.tagline}
+                                            </p>
+
+                                            {/* Workspaces & Feature preview */}
+                                            <div className={`mt-3 pt-2.5 border-t flex items-center justify-between gap-2 text-[11px] ${
+                                                isBright ? 'border-black/[0.06] text-zinc-500' : 'border-white/[0.06] text-white/45'
+                                            }`}>
+                                                <span className="font-mono text-[10.5px]">
+                                                    {p.spacesSummary || `${p.customSpaces?.length || 2} workspaces`}
+                                                </span>
+                                                <span 
+                                                    className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded"
+                                                    style={{ color: p.accentColor, backgroundColor: `${p.accentColor}15` }}
+                                                >
+                                                    {p.accentName}
+                                                </span>
+                                            </div>
                                         </button>
-                                    ))}
+                                    );
+                                })}
+                            </div>
+
+                            {/* Integrated Appearance Bar (Theme + Accent) with Liquid Glass */}
+                            <div 
+                                className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 select-none ${
+                                    isBright 
+                                        ? 'border-black/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
+                                        : 'border-white/[0.10] shadow-[0_25px_70px_rgba(0,0,0,0.55),inset_0_1px_1px_rgba(255,255,255,0.16)]'
+                                }`}
+                                style={getLiquidGlassStyle(isBright, 0.58, 0.72)}
+                            >
+                                {/* Theme Segmented Sliding Pill */}
+                                <div className="flex items-center gap-3 w-full sm:w-auto">
+                                    <span className={`text-xs font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                        Theme
+                                    </span>
+                                    <div 
+                                        onMouseLeave={() => setHoveredTheme(null)}
+                                        className={`relative flex p-1 rounded-full border shadow-xs select-none w-48 ${
+                                            isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'
+                                        }`}
+                                    >
+                                        {/* Inner sliding container */}
+                                        <div className="absolute inset-1 pointer-events-none overflow-hidden">
+                                            {/* Hover preview */}
+                                            {hoveredTheme && hoveredTheme !== theme && (
+                                                <div 
+                                                    className={`absolute top-0 bottom-0 rounded-full transition-all duration-200 pointer-events-none ${
+                                                        isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                                    }`}
+                                                    style={{ 
+                                                        left: hoveredTheme === 'light' ? 'calc(50% + 1px)' : '1px',
+                                                        width: 'calc(50% - 2px)'
+                                                    }}
+                                                />
+                                            )}
+
+                                            {/* Signature Liquid Glass Sliding Pill */}
+                                            <div 
+                                                className="absolute top-0 bottom-0 rounded-full border pointer-events-none transition-[left,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                                                style={{ 
+                                                    left: theme === 'light' ? 'calc(50% + 1px)' : '1px',
+                                                    width: 'calc(50% - 2px)',
+                                                    borderColor: isBright ? 'rgba(0,0,0,0.12)' : 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                                    backgroundColor: isBright ? 'rgba(255, 255, 255, 0.95)' : 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                                    boxShadow: isBright 
+                                                        ? '0 2px 8px rgba(0,0,0,0.08)' 
+                                                        : '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                                }}
+                                            />
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTheme('dark');
+                                                setIsCustomized(true);
+                                            }}
+                                            onMouseEnter={() => setHoveredTheme('dark')}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-full transition-colors duration-200 cursor-pointer outline-none ${
+                                                theme === 'dark'
+                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                                            }`}
+                                        >
+                                            <Moon size={13} />
+                                            <span>Dark</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTheme('light');
+                                                setIsCustomized(true);
+                                            }}
+                                            onMouseEnter={() => setHoveredTheme('light')}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-full transition-colors duration-200 cursor-pointer outline-none ${
+                                                theme === 'light'
+                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                                            }`}
+                                        >
+                                            <Sun size={13} />
+                                            <span>Light</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Accent Color Dots */}
+                                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                                    <span className={`text-xs font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                        Accent
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {ACCENT_PRESETS.map((preset) => {
+                                            const isCur = accentColor?.toLowerCase() === preset.hex.toLowerCase();
+                                            return (
+                                                <button
+                                                    key={preset.name}
+                                                    type="button"
+                                                    onClick={() => handleApplyAccent(preset)}
+                                                    title={preset.name}
+                                                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer hover:scale-115 active:scale-95 ${
+                                                        isCur ? 'ring-2 ring-offset-2 ring-white scale-110' : 'opacity-80 hover:opacity-100'
+                                                    }`}
+                                                    style={{
+                                                        backgroundColor: preset.hex,
+                                                        boxShadow: isCur ? `0 0 10px ${preset.hex}80` : undefined
+                                                    }}
+                                                >
+                                                    {isCur && <Check size={11} strokeWidth={3} className="text-black" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -579,7 +766,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                             </div>
 
                             {/* Sliding Pill Selector Switcher */}
-                            <div onMouseLeave={() => setHoveredImportTab(null)} className="relative flex p-1 rounded-full border border-white/10 bg-[#0c0d14]/78 shadow-[0_2px_8px_rgba(0,0,0,0.3)] max-w-sm mx-auto select-none">
+                            <div onMouseLeave={() => setHoveredImportTab(null)} className={`relative flex p-1 rounded-full border ${isBright ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'} shadow-[0_2px_8px_rgba(0,0,0,0.15)] max-w-sm mx-auto select-none`}>
                                 {/* Hover preview pill */}
                                 {hoveredImportTab && hoveredImportTab !== importTab && (
                                     <div
@@ -788,12 +975,19 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     {/* SLIDE 2: PRIVACY & TOR SHIELD */}
                     {currentStep === 2 && (
                         <div className={`${stepAnimClass} space-y-8`}>
-                            <div>
-                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 3 of 5</span>
-                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Armor Your Privacy</h2>
-                                <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                    QBrowse blocks tracking scripts, eliminates intrusive ads, and routes traffic through the Tor network.
-                                </p>
+                            <div className="flex items-start justify-between gap-4 flex-wrap">
+                                <div>
+                                    <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 3 of 5</span>
+                                    <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Armor Your Privacy</h2>
+                                    <p className="text-white/60 text-sm mt-2 leading-relaxed">
+                                        QBrowse blocks tracking scripts, eliminates intrusive ads, and routes traffic through the Tor network.
+                                    </p>
+                                </div>
+                                {selectedPresetId === 'privacy' && (
+                                    <span className="shrink-0 text-[10.5px] font-bold text-emerald-400 bg-emerald-500/15 px-3 py-1.5 rounded-xl border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
+                                        <ShieldCheck size={13} /> Preset: Privacy Purist Optimized
+                                    </span>
+                                )}
                             </div>
 
                             <div className="space-y-4">
@@ -1101,7 +1295,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     <form onSubmit={handleSyncSubmit} className="p-6 rounded-3xl bg-white/[0.04] border border-white/10 space-y-5 animate-fade-in text-left">
                                         {/* Mode Switcher: Sign In vs Register */}
                                         <div className="space-y-1.5">
-                                            <div onMouseLeave={() => setHoveredSyncAuthTab(null)} className="relative flex p-1 rounded-full bg-[#0c0d14]/78 border border-white/10 shadow-[0_2px_8px_rgba(0,0,0,0.3)] select-none">
+                                            <div onMouseLeave={() => setHoveredSyncAuthTab(null)} className={`relative flex p-1 rounded-full border ${isBright ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'} shadow-[0_2px_8px_rgba(0,0,0,0.15)] select-none`}>
                                                 {/* Hover preview pill */}
                                                 {hoveredSyncAuthTab && hoveredSyncAuthTab !== syncAuthTab && (
                                                     <div
@@ -1420,11 +1614,24 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             </main>
 
             {/* Bottom Controls / Stepper */}
-            <footer className="relative z-10 flex items-center justify-between px-8 py-5 border-t border-white/[0.08] bg-[#08090c]/80">
+            <footer 
+                className={`relative z-10 flex items-center justify-between transition-all duration-300 border-t select-none ${
+                    isCompact ? 'px-6 py-2.5 min-h-[52px]' : 'px-8 md:px-10 py-3.5 min-h-[60px]'
+                } ${
+                    isBright 
+                        ? 'border-black/[0.07] shadow-[0_-2px_12px_rgba(0,0,0,0.03)]' 
+                        : 'border-white/[0.07] shadow-[0_-2px_16px_rgba(0,0,0,0.25)]'
+                }`}
+                style={getLiquidGlassStyle(isBright, 0.28, 0.50)}
+            >
                 <button
                     onClick={() => goToStep(Math.max(0, currentStep - 1))}
                     disabled={currentStep === 0}
-                    className="px-5 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white disabled:opacity-0 transition cursor-pointer"
+                    className={`${
+                        isCompact ? 'px-4 py-1.5' : 'px-5 py-2'
+                    } rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-0 active:scale-95 ${
+                        isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
                 >
                     Back
                 </button>
@@ -1433,18 +1640,22 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     {currentStep < steps.length - 1 ? (
                         <button
                             onClick={() => goToStep(Math.min(steps.length - 1, currentStep + 1))}
-                            className="px-6 py-2.5 bg-accent text-black font-bold text-xs rounded-xl hover:scale-105 active:scale-95 transition shadow-lg shadow-accent/20 flex items-center gap-1.5 cursor-pointer"
+                            className={`${
+                                isCompact ? 'px-5 py-2' : 'px-6 py-2.5'
+                            } bg-accent hover:brightness-105 active:scale-95 text-zinc-950 font-bold text-xs rounded-xl transition shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer`}
                         >
                             <span>Continue</span>
-                            <ArrowRight size={13} />
+                            <ArrowRight size={14} />
                         </button>
                     ) : (
                         <button
                             onClick={() => handleFinishSetup(false)}
-                            className="px-6 py-2.5 bg-accent text-black font-bold text-xs rounded-xl hover:scale-105 active:scale-95 transition shadow-lg shadow-accent/20 flex items-center gap-1.5 cursor-pointer"
+                            className={`${
+                                isCompact ? 'px-5 py-2' : 'px-6 py-2.5'
+                            } bg-accent hover:brightness-105 active:scale-95 text-zinc-950 font-bold text-xs rounded-xl transition shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer`}
                         >
                             <span>{profileMode === 'sync' && !syncUser ? 'Skip Sync & Complete' : 'Complete Setup & Launch'}</span>
-                            <ArrowRight size={13} />
+                            <ArrowRight size={14} />
                         </button>
                     )}
                 </div>

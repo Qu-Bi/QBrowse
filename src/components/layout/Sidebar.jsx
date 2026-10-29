@@ -1043,7 +1043,7 @@ export default function Sidebar() {
                     className={`relative flex-1 flex p-1 rounded-full border shadow-xs transition-colors duration-200 select-none overflow-hidden ${
                     isBright 
                         ? 'bg-black/[0.03] border-black/[0.05]' 
-                        : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                        : 'bg-white/[0.04] border-white/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.15)]'
                 }`}>
                     {/* Inner wrapper for sliding pills that matches content-box dimensions */}
                     <div className="absolute inset-1 pointer-events-none overflow-hidden">

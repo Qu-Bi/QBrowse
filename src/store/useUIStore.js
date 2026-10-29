@@ -4,6 +4,7 @@ import { playDownloadCompleteChime } from '../utils/bootAudio.js';
 
 let globalToastTimeout = null;
 let globalZoomTimeout = null;
+let globalModalCloseTimeout = null;
 
 const loadInitialDownloads = () => {
     try {
@@ -1357,22 +1358,78 @@ const useUIStore = create((set, get) => ({
   activeModal: null,
   isModalClosing: false,
   closingModal: null,
-  openModal: (modal) => set({ activeModal: modal, isModalClosing: false, closingModal: null, isRightPanelOpen: false, isTopBarOmniboxActive: false }),
+  openModal: (modal) => {
+    if (globalModalCloseTimeout) {
+      clearTimeout(globalModalCloseTimeout);
+      globalModalCloseTimeout = null;
+    }
+    set({
+      activeModal: modal,
+      isModalClosing: false,
+      closingModal: null,
+      isRightPanelOpen: false,
+      isTopBarOmniboxActive: false
+    });
+  },
   closeModal: () => {
+    if (globalModalCloseTimeout) {
+      clearTimeout(globalModalCloseTimeout);
+      globalModalCloseTimeout = null;
+    }
     const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
     if (isReduced) {
       set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 });
       return;
     }
-    set(state => ({ isModalClosing: true, closingModal: state.activeModal }));
+    const targetModal = get().activeModal;
+    set({ isModalClosing: true, closingModal: targetModal });
     const tier = get().activePerformanceTier;
     const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 280 : 240);
-    setTimeout(() => set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 }), timeout);
+    globalModalCloseTimeout = setTimeout(() => {
+      globalModalCloseTimeout = null;
+      const state = get();
+      if (state.isModalClosing && state.closingModal === targetModal) {
+        set({ activeModal: null, closingModal: null, isModalClosing: false, onboardingStep: 0, tutorialStep: 0 });
+      }
+    }, timeout);
+  },
+  switchModal: (newModal) => {
+    if (globalModalCloseTimeout) {
+      clearTimeout(globalModalCloseTimeout);
+      globalModalCloseTimeout = null;
+    }
+    const current = get().activeModal;
+    if (!current) {
+      get().openModal(newModal);
+      return;
+    }
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      get().openModal(newModal);
+      return;
+    }
+    set({ isModalClosing: true, closingModal: current });
+    const tier = get().activePerformanceTier;
+    const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 280 : 240);
+    globalModalCloseTimeout = setTimeout(() => {
+      globalModalCloseTimeout = null;
+      set({
+        activeModal: newModal,
+        closingModal: null,
+        isModalClosing: false,
+        isRightPanelOpen: false,
+        isTopBarOmniboxActive: false
+      });
+    }, timeout);
   },
 
   settingsTab: 'appearance',
   setSettingsTab: (tab) => set({ settingsTab: tab }),
   openSettings: (tab = 'appearance') => {
+    if (globalModalCloseTimeout) {
+      clearTimeout(globalModalCloseTimeout);
+      globalModalCloseTimeout = null;
+    }
     const targetTab = (tab === 'performance' || tab === 'perf') ? 'engine' : tab;
     set({ activeModal: 'settings', settingsTab: targetTab, isModalClosing: false, closingModal: null, isRightPanelOpen: false, isTopBarOmniboxActive: false });
   },

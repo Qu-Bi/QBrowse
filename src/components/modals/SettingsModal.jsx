@@ -10,6 +10,7 @@ import {
     ArrowLeftRight, ListOrdered, User, Briefcase, Code, Bookmark, Coffee, Folder,
     Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical
 } from 'lucide-react';
+import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId } from '../../utils/experiencePresets';
 
 const SPACE_ICONS = [
     { id: 'User', label: 'User', icon: User },
@@ -263,6 +264,7 @@ const SettingsModal = () => {
         isModalClosing, 
         closeModal,
         openModal,
+        switchModal,
         showToast,
         settingsTab, 
         setSettingsTab,
@@ -328,6 +330,7 @@ const SettingsModal = () => {
     const [deletingSpace, setDeletingSpace] = useState(null);
     const [draggedSpaceIdx, setDraggedSpaceIdx] = useState(null);
     const [dragOverSpaceIdx, setDragOverSpaceIdx] = useState(null);
+    const [activePresetId, setActivePresetId] = useState(getSavedPresetId);
 
     // FLIP animation refs for smooth workspace reordering (up/down arrows & drag-and-drop)
     const spaceItemRefs = useRef({});
@@ -1046,6 +1049,81 @@ const SettingsModal = () => {
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Appearance & UX</h3>
                                 <p className="text-xs text-white/40">Customize theme colors, UI scale, and physical glassmorphism effects.</p>
+                            </div>
+
+                            {/* Browsing Experience Presets */}
+                            <div className={`p-5 rounded-2xl border space-y-3.5 ${
+                                isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.025] border-white/[0.05]'
+                            }`}>
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <div>
+                                        <span className="text-xs font-bold uppercase text-accent tracking-wider block">
+                                            Browsing Presets
+                                        </span>
+                                        <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Quick configurations for workspaces, privacy shields, and aesthetics.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => (switchModal ? switchModal('setup') : openModal('setup'))}
+                                        className={`text-xs px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 active:scale-95 ${
+                                            isBright ? 'border-black/10 hover:bg-black/5 text-zinc-700 bg-white' : 'border-white/10 hover:bg-white/5 text-zinc-300 bg-black/30'
+                                        }`}
+                                    >
+                                        <Sparkles size={12} className="text-accent" />
+                                        <span>Setup Walkthrough</span>
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                    {EXPERIENCE_PRESETS.map((p) => {
+                                        const PresetIcon = p.icon;
+                                        const isSelected = activePresetId === p.id;
+
+                                        return (
+                                            <button
+                                                key={p.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    applyExperiencePreset(p, {
+                                                        uiStore: useUIStore.getState(),
+                                                        tabStore: useTabStore.getState(),
+                                                        showToast
+                                                    });
+                                                    setActivePresetId(p.id);
+                                                }}
+                                                className={`p-3 rounded-xl border text-left transition-all duration-200 cursor-pointer flex items-start gap-3 group active:scale-[0.98] ${
+                                                    isSelected
+                                                        ? (isBright ? 'bg-accent/15 border-accent text-zinc-950 shadow-sm' : 'bg-accent/15 border-accent text-white shadow-sm')
+                                                        : (isBright ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800' : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200')
+                                                }`}
+                                            >
+                                                <div 
+                                                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border mt-0.5"
+                                                    style={{
+                                                        backgroundColor: `${p.accentColor}18`,
+                                                        borderColor: `${p.accentColor}40`,
+                                                        color: p.accentColor
+                                                    }}
+                                                >
+                                                    <PresetIcon size={15} />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center justify-between gap-1">
+                                                        <span className="text-xs font-bold truncate">{p.name}</span>
+                                                        <span className="text-[10px] font-mono opacity-60">
+                                                            {p.spacesSummary}
+                                                        </span>
+                                                    </div>
+                                                    <p className={`text-[10.5px] mt-0.5 line-clamp-1 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        {p.tagline}
+                                                    </p>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
                             {/* Magic Accent Color */}
@@ -4804,20 +4882,28 @@ const SettingsModal = () => {
                                     <div className="grid grid-cols-2 gap-3 mt-1">
                                         <button
                                             onClick={() => {
-                                                closeModal();
-                                                setTimeout(() => openModal('setup'), 220);
+                                                if (switchModal) {
+                                                    switchModal('setup');
+                                                } else {
+                                                    closeModal();
+                                                    setTimeout(() => openModal('setup'), 300);
+                                                }
                                             }}
-                                            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-accent/40 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2"
+                                            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-accent/40 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
                                         >
                                             <RotateCcw size={13} className="text-accent" />
                                             <span>Relaunch Setup Journey</span>
                                         </button>
                                         <button
                                             onClick={() => {
-                                                closeModal();
-                                                setTimeout(() => openModal('tour'), 220);
+                                                if (switchModal) {
+                                                    switchModal('tour');
+                                                } else {
+                                                    closeModal();
+                                                    setTimeout(() => openModal('tour'), 300);
+                                                }
                                             }}
-                                            className="px-4 py-2.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2"
+                                            className="px-4 py-2.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
                                         >
                                             <Compass size={13} />
                                             <span>Interactive Living Tour</span>
