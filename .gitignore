@@ -25,3 +25,5 @@ firebase-debug.log
 *.pem
 certs/
 scratch/
+TODO.md
+*.todo.md
