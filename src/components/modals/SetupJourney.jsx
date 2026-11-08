@@ -12,6 +12,7 @@ import useSyncStore from '../../store/useSyncStore';
 import useVaultStore from '../../store/useVaultStore';
 import { parseVaultContent } from '../../utils/vaultImporter';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
+import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
 import qbrowseLogo from '../../assets/icon.png';
 
 // Apple/Tesla-style synthesized unlock chime using Web Audio API
@@ -536,122 +537,102 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
             {/* Main Stage Content */}
             <main className="relative z-10 flex-1 flex items-center justify-center p-6 md:p-12 overflow-y-auto">
-                <div className="max-w-2xl w-full">
+                <div className={`${currentStep === 0 ? 'max-w-4xl' : 'max-w-2xl'} w-full transition-[max-width] duration-300`}>
                     {/* SLIDE 0: EXPERIENCE PRESETS & APPEARANCE */}
                     {currentStep === 0 && (
                         <div className={`${stepAnimClass} space-y-6 text-left`}>
-                            <div>
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-accent">
-                                    Welcome to QBrowse
-                                </span>
-                                <div className="flex items-center justify-between flex-wrap gap-2 mt-1">
-                                    <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight ${
+                            <div className="flex items-end justify-between flex-wrap gap-4">
+                                <div>
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-accent">
+                                        Welcome to QBrowse
+                                    </span>
+                                    <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight mt-1 ${
                                         isBright ? 'text-zinc-900' : 'text-white'
                                     }`}>
                                         Choose your setup
                                     </h2>
-                                    <button
-                                        type="button"
-                                        onClick={() => useUIStore.getState().openModal('presetStudio')}
-                                        className="px-3.5 py-1.5 rounded-xl bg-accent text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer hover:brightness-105 active:scale-95 shadow-md"
-                                    >
-                                        <Sliders size={13} strokeWidth={2.5} />
-                                        <span>Open Preset Studio</span>
-                                    </button>
+                                    <p className={`text-xs md:text-sm mt-1.5 leading-relaxed ${
+                                        isBright ? 'text-zinc-500' : 'text-white/60'
+                                    }`}>
+                                        Select a tailored layout to get started. You can customize every panel at any time.
+                                    </p>
                                 </div>
-                                <p className={`text-xs md:text-sm mt-1 leading-relaxed ${
-                                    isBright ? 'text-zinc-500' : 'text-white/60'
-                                }`}>
-                                    Pick a starting mode or craft your custom interface with drag-and-drop docking in the Preset Studio.
-                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => useUIStore.getState().openModal('presetStudio')}
+                                    className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all cursor-pointer active:scale-95 ${
+                                        isBright 
+                                            ? 'text-zinc-600 hover:text-zinc-950 border-black/10 hover:border-black/20 hover:bg-black/5' 
+                                            : 'text-zinc-400 hover:text-white border-white/10 hover:border-white/20 hover:bg-white/5'
+                                    }`}
+                                >
+                                    <Sliders size={13} />
+                                    <span>Custom layout? Preset Studio &rarr;</span>
+                                </button>
                             </div>
 
                             {/* Presets Grid */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                                 {[...EXPERIENCE_PRESETS, ...(useUIStore.getState().customPresets || [])].map((p) => {
                                     const PresetIcon = getPresetIcon(p.icon);
                                     const isSelected = selectedPresetId === p.id;
+                                    const tagline = PRESET_TAGLINES[p.id] || p.tagline || 'Custom workspace and layout configuration.';
 
                                     return (
                                         <button
                                             key={p.id}
                                             type="button"
                                             onClick={() => handleSelectPreset(p)}
-                                            style={getLiquidGlassStyle(isBright, 0.45, 0.68)}
-                                            className={`relative p-4 rounded-2xl border text-left cursor-pointer transition-all duration-200 group outline-none active:scale-[0.99] ${
+                                            style={getLiquidGlassStyle(isBright, 0.42, 0.68)}
+                                            className={`relative p-3.5 rounded-2xl border text-left cursor-pointer transition-all duration-200 group outline-none active:scale-[0.99] flex flex-col justify-between ${
                                                 isSelected
                                                     ? (isBright 
                                                         ? 'border-accent ring-2 ring-accent/30 shadow-lg' 
-                                                        : 'border-accent/80 shadow-[0_0_25px_rgba(212,188,148,0.15)] ring-1 ring-accent/40')
+                                                        : 'border-accent/80 shadow-[0_0_25px_rgba(var(--accent-rgb,212,188,148),0.18)] ring-1 ring-accent/40')
                                                     : (isBright 
-                                                        ? 'hover:border-black/20 shadow-sm' 
-                                                        : 'hover:border-white/20 shadow-sm')
+                                                        ? 'border-black/[0.07] hover:border-black/20 shadow-xs hover:shadow-md' 
+                                                        : 'border-white/[0.07] hover:border-white/20 shadow-xs hover:shadow-md')
                                             }`}
                                         >
-                                            {/* Accent Glow on Selected Card */}
-                                            {isSelected && (
-                                                <div 
-                                                    className="absolute -inset-[1px] rounded-2xl pointer-events-none opacity-40 blur-xs transition-opacity"
-                                                    style={{ border: `1.5px solid ${p.accentColor}` }}
-                                                />
-                                            )}
-
-                                            <div className="flex items-center justify-between mb-3">
-                                                <div 
-                                                    className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-xs transition-transform duration-200 group-hover:scale-105"
-                                                    style={{ 
-                                                        backgroundColor: `${p.accentColor}18`,
-                                                        borderColor: `${p.accentColor}40`,
-                                                        color: p.accentColor
-                                                    }}
-                                                >
-                                                    <PresetIcon size={17} />
+                                            {/* Header: Icon + Title + Selection Checkmark */}
+                                            <div className="flex items-center justify-between mb-2.5">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <div 
+                                                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105"
+                                                        style={{ 
+                                                            backgroundColor: `${p.accentColor}18`,
+                                                            color: p.accentColor
+                                                        }}
+                                                    >
+                                                        <PresetIcon size={15} strokeWidth={2.2} />
+                                                    </div>
+                                                    <h3 className={`font-bold text-sm tracking-tight truncate transition-colors ${
+                                                        isBright ? 'text-zinc-900 group-hover:text-zinc-950' : 'text-white group-hover:text-accent'
+                                                    }`}>
+                                                        {p.name}
+                                                    </h3>
                                                 </div>
 
-                                                <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all duration-200 ${
+                                                <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all duration-200 shrink-0 ${
                                                     isSelected
-                                                        ? 'bg-accent border-accent text-zinc-950 font-bold scale-100 shadow-sm'
-                                                        : (isBright ? 'border-black/20 bg-transparent text-transparent opacity-0 group-hover:opacity-40' : 'border-white/20 bg-transparent text-transparent opacity-0 group-hover:opacity-40')
+                                                        ? 'bg-accent border-accent text-zinc-950 font-bold scale-100 shadow-xs'
+                                                        : (isBright ? 'border-black/15 bg-transparent text-transparent opacity-0 group-hover:opacity-40' : 'border-white/15 bg-transparent text-transparent opacity-0 group-hover:opacity-40')
                                                 }`}>
                                                     <Check size={11} strokeWidth={3} />
                                                 </div>
                                             </div>
 
-                                            <h3 className={`font-bold text-sm tracking-tight transition-colors ${
-                                                isBright ? 'text-zinc-900 group-hover:text-zinc-950' : 'text-white group-hover:text-accent'
-                                            }`}>
-                                                {p.name}
-                                            </h3>
-                                            <p className={`text-xs mt-1 leading-relaxed line-clamp-1 ${
+                                            {/* Visual Layout Wireframe */}
+                                            <div className="mb-2.5">
+                                                <PresetLayoutWireframe preset={p} isSelected={isSelected} isBright={isBright} />
+                                            </div>
+
+                                            {/* Intentional 1-line Tagline (No truncation) */}
+                                            <p className={`text-[11.5px] leading-snug ${
                                                 isBright ? 'text-zinc-600' : 'text-white/60'
                                             }`}>
-                                                {p.tagline}
+                                                {tagline}
                                             </p>
-
-                                            {/* Clean Subtle Footer */}
-                                            <div className={`mt-3 pt-2.5 border-t flex items-center justify-between gap-2 text-[11px] ${
-                                                isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
-                                            }`}>
-                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md border font-medium ${
-                                                    isSelected
-                                                        ? (isBright ? 'bg-accent/20 border-accent/40 text-zinc-900 font-semibold' : 'bg-accent/20 border-accent/40 text-accent font-semibold')
-                                                        : (isBright ? 'bg-black/[0.04] text-zinc-600 border-black/[0.08]' : 'bg-white/[0.05] text-zinc-300 border-white/[0.08]')
-                                                }`}>
-                                                    {p.layoutTag || `${p.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${p.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
-                                                </span>
-
-                                                <div className="flex items-center gap-1.5 shrink-0">
-                                                    <span 
-                                                        className="w-2 h-2 rounded-full shadow-xs"
-                                                        style={{ backgroundColor: p.accentColor }}
-                                                    />
-                                                    <span className={`text-[11px] font-medium ${
-                                                        isBright ? 'text-zinc-600' : 'text-zinc-400'
-                                                    }`}>
-                                                        {p.accentName}
-                                                    </span>
-                                                </div>
-                                            </div>
                                         </button>
                                     );
                                 })}
@@ -659,7 +640,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                             {/* Integrated Appearance Bar (Theme + Accent) with Liquid Glass */}
                             <div 
-                                className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 select-none ${
+                                className={`p-3 px-4.5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 select-none ${
                                     isBright 
                                         ? 'border-black/[0.08] shadow-[0_20px_60px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
                                         : 'border-white/[0.10] shadow-[0_25px_70px_rgba(0,0,0,0.55),inset_0_1px_1px_rgba(255,255,255,0.16)]'
@@ -668,7 +649,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                             >
                                 {/* Theme Segmented Sliding Pill */}
                                 <div className="flex items-center gap-3 w-full sm:w-auto">
-                                    <span className={`text-xs font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
                                         Theme
                                     </span>
                                     <div 
@@ -744,7 +725,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                                 {/* Accent Color Dots */}
                                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                                    <span className={`text-xs font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
+                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
                                         Accent
                                     </span>
                                     <div className="flex items-center gap-2">

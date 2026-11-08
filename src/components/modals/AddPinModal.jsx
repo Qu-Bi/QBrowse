@@ -49,20 +49,24 @@ export default function AddPinModal() {
     return (
         <div 
             className={`fixed inset-0 z-[50000] flex items-center justify-center p-4 font-sans ${
-                isBright ? 'bg-black/10 backdrop-blur-xs text-zinc-900' : 'bg-black/15 backdrop-blur-xs text-white'
+                isBright ? 'bg-black/25 backdrop-blur-md text-zinc-900' : 'bg-black/45 backdrop-blur-md text-white'
             } ${isModalClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+            style={{
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)'
+            }}
             onClick={closeModal}
         >
             <div 
                 id="add-pin-modal"
                 className={`w-full max-w-md rounded-3xl p-6 flex flex-col gap-6 relative ${
                     isBright 
-                        ? 'liquid-glass-bright bg-white/80 border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] ring-1 ring-black/[0.04] text-zinc-900' 
-                        : 'liquid-glass-dark bg-[#141624]/65 border border-white/12 shadow-[0_30px_90px_rgba(0,0,0,0.75),inset_0_1px_1px_rgba(255,255,255,0.22)] ring-1 ring-white/[0.08] text-white'
+                        ? 'liquid-glass-bright bg-white/80 backdrop-blur-3xl border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] ring-1 ring-black/[0.04] text-zinc-900' 
+                        : 'liquid-glass-dark bg-[#0c0d14]/78 backdrop-blur-3xl border border-white/12 shadow-[0_35px_90px_rgba(0,0,0,0.85),inset_0_1px_1px_rgba(255,255,255,0.18)] ring-1 ring-white/[0.08] text-white'
                 } ${isModalClosing ? 'animate-modal-spring-out' : 'animate-modal-spring'}`}
                 style={{
-                    backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
-                    WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
+                    backdropFilter: 'blur(var(--glass-blur, 32px)) saturate(190%)',
+                    WebkitBackdropFilter: 'blur(var(--glass-blur, 32px)) saturate(190%)'
                 }}
                 onClick={e => e.stopPropagation()}
             >
@@ -90,7 +94,7 @@ export default function AddPinModal() {
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                     {/* Live Preview Card */}
-                    <div className={`p-4 border rounded-2xl flex items-center gap-3 backdrop-blur-xl ${
+                    <div className={`p-4 border rounded-2xl flex items-center gap-3 ${
                         isBright ? 'bg-black/[0.03] border-black/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]' : 'bg-white/[0.03] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
                     }`}>
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border ${
@@ -124,7 +128,7 @@ export default function AddPinModal() {
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
                                 placeholder="e.g. GitHub, Gemini..."
-                                className={`w-full border rounded-xl px-3.5 py-2.5 text-xs transition backdrop-blur-md focus:outline-none focus:border-accent ${
+                                className={`w-full border rounded-xl px-3.5 py-2.5 text-xs transition focus:outline-none focus:border-accent ${
                                     isBright ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:bg-black/[0.05]' : 'bg-white/[0.04] border-white/[0.08] text-white placeholder-white/30 focus:bg-white/[0.07]'
                                 }`}
                             />
@@ -158,7 +162,7 @@ export default function AddPinModal() {
                                     key={preset.domain}
                                     type="button"
                                     onClick={() => handleSelectPreset(preset)}
-                                    className={`p-2 border rounded-xl flex flex-col items-center gap-1 transition group cursor-pointer backdrop-blur-md ${
+                                    className={`p-2 border rounded-xl flex flex-col items-center gap-1 transition group cursor-pointer ${
                                         isBright 
                                             ? 'bg-black/[0.025] hover:bg-black/[0.06] border-black/[0.06] hover:border-black/15 shadow-xs' 
                                             : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.06] hover:border-white/[0.15] shadow-xs'

@@ -54,6 +54,7 @@ export default function OmniboxSuggestionsDropdown({
 
     return (
         <div
+            id="omnibox-dropdown"
             ref={(node) => {
                 if (typeof dropdownRef === 'function') dropdownRef(node);
                 else if (dropdownRef) dropdownRef.current = node;

@@ -100,8 +100,16 @@ export default function TopBarMiniOmnibox({
     }, [isBlockedByOtherOverlay, isTopBarOmniboxActive, setIsTopBarOmniboxActive, inputRef]);
 
     // When activating, update input to rawUrl and select all text
+    const skipInitialResetRef = useRef(false);
     useEffect(() => {
         if (isTopBarOmniboxActive) {
+            if (useUIStore.getState().isFullscreen) {
+                useUIStore.getState().setIsTopBarPeeking(true);
+            }
+            if (skipInitialResetRef.current) {
+                skipInitialResetRef.current = false;
+                return;
+            }
             const initial = rawUrl && rawUrl !== 'about:blank' ? rawUrl : '';
             setInputValue(initial);
             originalQueryRef.current = initial;
@@ -114,9 +122,111 @@ export default function TopBarMiniOmnibox({
         }
     }, [isTopBarOmniboxActive, rawUrl, setInputValue, setSelectedOptionText, clearActiveBang, originalQueryRef, inputRef]);
 
-    // Handle outside clicks to exit active mode (checking both pill and portaled dropdown)
+    // Listen for Address Bar context menu Cut/Copy/Paste/SelectAll actions
+    useEffect(() => {
+        const handleOmniboxEdit = async (e) => {
+            const { action, text } = e.detail || {};
+            const writeClipboard = async (val) => {
+                if (!val) return;
+                if (window.electronAPI?.writeClipboardText) {
+                    await window.electronAPI.writeClipboardText(val);
+                } else {
+                    await navigator.clipboard.writeText(val).catch(() => {});
+                }
+            };
+            const readClipboard = async () => {
+                if (text !== undefined) return text;
+                if (window.electronAPI?.readClipboardText) {
+                    return await window.electronAPI.readClipboardText();
+                }
+                return await navigator.clipboard.readText().catch(() => '');
+            };
+
+            if (action === 'copy') {
+                const inp = inputRef.current;
+                if (isTopBarOmniboxActive && inp && inp.selectionStart !== inp.selectionEnd) {
+                    await writeClipboard(inp.value.slice(inp.selectionStart, inp.selectionEnd));
+                } else if (isTopBarOmniboxActive && inp && inp.value) {
+                    await writeClipboard(inp.value);
+                } else if (rawUrl && rawUrl !== 'about:blank') {
+                    await writeClipboard(rawUrl);
+                }
+                showToast?.('Copied to clipboard');
+            } else if (action === 'cut') {
+                const inp = inputRef.current;
+                if (isTopBarOmniboxActive && inp) {
+                    const start = inp.selectionStart ?? 0;
+                    const end = inp.selectionEnd ?? inp.value.length;
+                    const selected = start !== end ? inp.value.slice(start, end) : inp.value;
+                    await writeClipboard(selected);
+                    const nextVal = start !== end ? (inp.value.slice(0, start) + inp.value.slice(end)) : '';
+                    setInputValue(nextVal);
+                    originalQueryRef.current = nextVal;
+                    setTimeout(() => {
+                        inp.focus();
+                        if (start !== end) inp.setSelectionRange(start, start);
+                    }, 10);
+                } else {
+                    if (rawUrl && rawUrl !== 'about:blank') {
+                        await writeClipboard(rawUrl);
+                    }
+                    skipInitialResetRef.current = true;
+                    setInputValue('');
+                    originalQueryRef.current = '';
+                    setSelectedOptionText(null);
+                    setIsTopBarOmniboxActive(true);
+                    setTimeout(() => inputRef.current?.focus(), 30);
+                }
+            } else if (action === 'paste') {
+                const clip = (await readClipboard()) || '';
+                const cleanClip = clip.replace(/[\r\n]+/g, ' ');
+                const inp = inputRef.current;
+                if (isTopBarOmniboxActive && inp) {
+                    const start = inp.selectionStart ?? inp.value.length;
+                    const end = inp.selectionEnd ?? inp.value.length;
+                    const nextVal = inp.value.slice(0, start) + cleanClip + inp.value.slice(end);
+                    setInputValue(nextVal);
+                    originalQueryRef.current = nextVal;
+                    setSelectedOptionText(null);
+                    const cursor = start + cleanClip.length;
+                    setTimeout(() => {
+                        inp.focus();
+                        inp.setSelectionRange(cursor, cursor);
+                    }, 10);
+                } else {
+                    skipInitialResetRef.current = true;
+                    setInputValue(cleanClip);
+                    originalQueryRef.current = cleanClip;
+                    setSelectedOptionText(null);
+                    clearActiveBang();
+                    setIsTopBarOmniboxActive(true);
+                    setTimeout(() => {
+                        if (inputRef.current) {
+                            inputRef.current.focus();
+                            const len = cleanClip.length;
+                            inputRef.current.setSelectionRange(len, len);
+                        }
+                    }, 30);
+                }
+            } else if (action === 'selectAll') {
+                if (!isTopBarOmniboxActive) {
+                    setIsTopBarOmniboxActive(true);
+                } else {
+                    setTimeout(() => {
+                        inputRef.current?.focus();
+                        inputRef.current?.select();
+                    }, 10);
+                }
+            }
+        };
+        window.addEventListener('qbrowse-omnibox-edit', handleOmniboxEdit);
+        return () => window.removeEventListener('qbrowse-omnibox-edit', handleOmniboxEdit);
+    }, [isTopBarOmniboxActive, rawUrl, setInputValue, setSelectedOptionText, clearActiveBang, setIsTopBarOmniboxActive, originalQueryRef, inputRef, showToast]);
+
+    // Handle outside clicks to exit active mode (checking both pill and portaled dropdown, plus capture phase so stopPropagation never blocks it)
     useEffect(() => {
         const handleClickOutside = (e) => {
+            if (e.target?.closest?.('[data-context-menu]')) return;
             if (
                 isTopBarOmniboxActive &&
                 !containerRef.current?.contains(e.target) &&
@@ -125,8 +235,8 @@ export default function TopBarMiniOmnibox({
                 setIsTopBarOmniboxActive(false);
             }
         };
-        window.addEventListener('mousedown', handleClickOutside);
-        return () => window.removeEventListener('mousedown', handleClickOutside);
+        window.addEventListener('mousedown', handleClickOutside, true);
+        return () => window.removeEventListener('mousedown', handleClickOutside, true);
     }, [isTopBarOmniboxActive, setIsTopBarOmniboxActive]);
 
     const isDropdownVisible = !isBlockedByOtherOverlay && (shouldShowDropdown || displayedDropdown);
@@ -359,6 +469,14 @@ export default function TopBarMiniOmnibox({
                             value={selectedOptionText !== null ? selectedOptionText : inputValue}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
+                            onBlur={() => {
+                                setTimeout(() => {
+                                    const activeEl = document.activeElement;
+                                    if (activeEl && activeEl.tagName === 'WEBVIEW' && !useUIStore.getState().topBarContextMenu && !useUIStore.getState().inputContextMenu) {
+                                        setIsTopBarOmniboxActive(false);
+                                    }
+                                }, 15);
+                            }}
                             placeholder={
                                 isCommandMode 
                                     ? 'Type a browser command...' 

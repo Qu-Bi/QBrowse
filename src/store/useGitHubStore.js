@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
 
+let closeGlanceTimeout = null;
+let unmountGlanceTimeout = null;
+
 export const useGitHubStore = create((set, get) => ({
     authenticated: false,
     username: null,
@@ -21,7 +24,9 @@ export const useGitHubStore = create((set, get) => ({
 
     // Hover Peek / Glance state
     hoverGlanceData: null,
+    hoverGlanceRect: null,
     isHoverGlanceOpen: false,
+    isHoverGlanceClosing: false,
 
     setSubFilter: (filter) => set({ activeSubFilter: filter }),
     
@@ -38,11 +43,51 @@ export const useGitHubStore = create((set, get) => ({
     openHoverGlance: (rect) => {
         const settings = useUIStore.getState().settings;
         if (!settings?.githubIntegrationEnabled || !settings?.githubHoverGlanceEnabled) return;
-        set({ isHoverGlanceOpen: true, hoverGlanceRect: rect });
+        if (closeGlanceTimeout) {
+            clearTimeout(closeGlanceTimeout);
+            closeGlanceTimeout = null;
+        }
+        if (unmountGlanceTimeout) {
+            clearTimeout(unmountGlanceTimeout);
+            unmountGlanceTimeout = null;
+        }
+        set({ isHoverGlanceOpen: true, isHoverGlanceClosing: false, hoverGlanceRect: rect });
+    },
+
+    cancelCloseHoverGlance: () => {
+        if (closeGlanceTimeout) {
+            clearTimeout(closeGlanceTimeout);
+            closeGlanceTimeout = null;
+        }
+        if (unmountGlanceTimeout) {
+            clearTimeout(unmountGlanceTimeout);
+            unmountGlanceTimeout = null;
+        }
+        if (get().isHoverGlanceOpen && get().isHoverGlanceClosing) {
+            set({ isHoverGlanceClosing: false });
+        }
+    },
+
+    scheduleCloseHoverGlance: (delayMs = 180) => {
+        if (closeGlanceTimeout) clearTimeout(closeGlanceTimeout);
+        closeGlanceTimeout = setTimeout(() => {
+            closeGlanceTimeout = null;
+            get().closeHoverGlance();
+        }, delayMs);
     },
 
     closeHoverGlance: () => {
-        set({ isHoverGlanceOpen: false, hoverGlanceRect: null });
+        if (closeGlanceTimeout) {
+            clearTimeout(closeGlanceTimeout);
+            closeGlanceTimeout = null;
+        }
+        if (!get().isHoverGlanceOpen) return;
+        set({ isHoverGlanceClosing: true });
+        if (unmountGlanceTimeout) clearTimeout(unmountGlanceTimeout);
+        unmountGlanceTimeout = setTimeout(() => {
+            unmountGlanceTimeout = null;
+            set({ isHoverGlanceOpen: false, isHoverGlanceClosing: false, hoverGlanceRect: null });
+        }, 200);
     },
 
     syncWithConfig: async () => {

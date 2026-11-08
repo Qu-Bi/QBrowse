@@ -15,6 +15,7 @@ let nodeHttpServer = null;
 let serverLogs = [];
 let isServerRunning = false;
 let currentModelPath = '';
+let currentContextSize = 4096;
 let serverPort = 8080;
 let metrics = {
     tokensPerSecond: 52.4,
@@ -432,6 +433,8 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
         temp = 0.7
     } = options;
 
+    const resolvedContextSize = Math.max(512, parseInt(contextSize, 10) || 4096);
+    currentContextSize = resolvedContextSize;
     serverPort = port;
     currentModelPath = modelPath || currentModelPath;
 
@@ -569,7 +572,7 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
         if (binaryPath && fs.existsSync(binaryPath)) {
             const args = [
                 '--model', currentModelPath,
-                '--ctx-size', contextSize.toString(),
+                '--ctx-size', resolvedContextSize.toString(),
                 '--threads', threads.toString(),
                 '--n-gpu-layers', gpuLayers.toString(),
                 '--port', port.toString(),
@@ -631,9 +634,12 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 PATH: `${binDir}${path.delimiter}${getBinDir()}${path.delimiter}${process.env.PATH || ''}`
             };
 
-            serverProcess = spawn(binaryPath, args, { cwd: binDir, env: spawnEnv });
+            const proc = spawn(binaryPath, args, { cwd: binDir, env: spawnEnv });
+            serverProcess = proc;
             isServerRunning = true;
+            isStoppingIntentional = false;
             metrics.status = 'loading'; // Model is loading into RAM/VRAM
+            metrics.contextSize = resolvedContextSize;
             if (onStatusChange) onStatusChange(metrics);
 
             if (healthPollTimer) {
@@ -652,20 +658,21 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                                 healthPollTimer = null;
                             }
                             metrics.status = 'running';
-                            appendLog(`[SUCCESS] Model loaded successfully into memory. llama-server is READY on port ${port}.`);
+                            metrics.contextSize = resolvedContextSize;
+                            appendLog(`[SUCCESS] Model loaded successfully into memory (ctx=${resolvedContextSize}). llama-server is READY on port ${port}.`);
                             if (onStatusChange) onStatusChange(metrics);
                         }
                     }).catch(() => {});
             }, 1000);
 
-            serverProcess.stdout.on('data', (data) => {
+            proc.stdout.on('data', (data) => {
                 const str = data.toString();
                 const logLine = appendLog(str);
                 if (onLog) onLog(logLine);
             });
 
             const recentStderrLines = [];
-            serverProcess.stderr.on('data', (data) => {
+            proc.stderr.on('data', (data) => {
                 const str = data.toString();
                 recentStderrLines.push(str);
                 if (recentStderrLines.length > 50) recentStderrLines.shift();
@@ -673,7 +680,11 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 if (onLog) onLog(logLine);
             });
 
-            serverProcess.on('close', async (code, signal) => {
+            proc.on('close', async (code, signal) => {
+                // Ignore close events from a superseded process after a restart/resize
+                if (serverProcess && serverProcess !== proc) {
+                    return;
+                }
                 if (healthPollTimer) {
                     clearInterval(healthPollTimer);
                     healthPollTimer = null;

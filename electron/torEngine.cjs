@@ -721,17 +721,17 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
 
 function stopTor() {
     if (torProcess) {
-        try {
-            if (process.platform === 'win32' && torProcess.pid) {
-                try {
-                    execSync(`taskkill /pid ${torProcess.pid} /t /f`, { stdio: 'ignore' });
-                } catch (_) {}
-            }
-            torProcess.kill('SIGTERM');
-        } catch (_) {
-            try { torProcess.kill('SIGKILL'); } catch (__) {}
-        }
+        const proc = torProcess;
         torProcess = null;
+        try {
+            if (process.platform === 'win32' && proc.pid) {
+                exec(`taskkill /pid ${proc.pid} /t /f`, () => {});
+            } else {
+                proc.kill('SIGTERM');
+            }
+        } catch (_) {
+            try { proc.kill('SIGKILL'); } catch (__) {}
+        }
     }
     torStatus = 'stopped';
     bootstrapProgress = 0;

@@ -5,7 +5,7 @@ const fs = require('fs');
 let settingsPath = null;
 let currentSettings = {
     mode: 'auto', // 'auto' | 'eco' | 'balanced' | 'ultra'
-    tabSleepTimeoutMinutes: 15,
+    tabSleepTimeoutMinutes: null,
     reduceVisualsOnEco: true,
     autoBatterySaver: true,
     bfcacheEnabled: true

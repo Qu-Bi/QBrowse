@@ -32,7 +32,7 @@ export default function TabSwitcherOverlay() {
             setIsClosing(false);
         } else if (displayed && !isClosing) {
             setIsClosing(true);
-            const timeout = getAnimationTimeout(140);
+            const timeout = getAnimationTimeout(70);
             closeTimerRef.current = setTimeout(() => {
                 setDisplayed(false);
                 setIsClosing(false);
@@ -91,10 +91,14 @@ export default function TabSwitcherOverlay() {
     return (
         <div 
             className={`fixed inset-0 z-[60000] flex flex-col items-center justify-center ${
-                isBright ? 'bg-black/35 backdrop-blur-xl' : 'bg-black/75 backdrop-blur-2xl'
+                isBright ? 'bg-black/20 backdrop-blur-md' : 'bg-black/50 backdrop-blur-md'
             } select-none overflow-hidden ${
-                isClosing ? 'animate-dissolve-out pointer-events-none' : 'animate-fade-in'
+                isClosing ? 'pointer-events-none opacity-0' : 'animate-fade-in'
             }`}
+            style={{
+                transition: isClosing ? 'opacity 70ms ease-out' : undefined,
+                willChange: 'opacity'
+            }}
             onClick={confirmSwitcher}
         >
             {/* Top Indicator Header */}
@@ -127,7 +131,7 @@ export default function TabSwitcherOverlay() {
                     className="absolute flex items-center top-0 bottom-0"
                     style={{
                         transform: `translateX(calc(50vw - ${switcherIndex * TOTAL_STEP + CARD_WIDTH / 2}px))`,
-                        transition: 'transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1)',
+                        transition: 'transform 0.14s cubic-bezier(0.16, 1, 0.3, 1)',
                         willChange: 'transform'
                     }}
                 >
@@ -135,8 +139,8 @@ export default function TabSwitcherOverlay() {
                         const isSelected = idx === switcherIndex;
                         const offset = idx - switcherIndex;
                         const distance = Math.abs(offset);
-                        const scale = isSelected ? 1.04 : Math.max(0.86, 1 - distance * 0.07);
-                        const opacity = isSelected ? 1 : Math.max(0.35, 0.85 - distance * 0.2);
+                        const scale = isSelected ? 1.02 : (distance === 1 ? 0.94 : Math.max(0.88, 0.94 - (distance - 1) * 0.04));
+                        const opacity = isSelected ? 1 : Math.max(0.70, 0.90 - distance * 0.10);
 
                         return (
                             <div
@@ -149,7 +153,7 @@ export default function TabSwitcherOverlay() {
                                     isBright 
                                         ? 'bg-white/85 backdrop-blur-3xl border text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.14)]' 
                                         : 'bg-[#141418] border text-white shadow-2xl'
-                                } rounded-2xl overflow-hidden cursor-pointer flex flex-col relative group transition-all duration-300 ${
+                                } rounded-2xl overflow-hidden cursor-pointer flex flex-col relative group ${
                                     isSelected 
                                         ? 'border-accent shadow-[0_0_40px_rgba(99,102,241,0.35)] ring-2 ring-accent/40' 
                                         : (isBright ? 'border-white/70 hover:border-black/20' : 'border-white/10 hover:border-white/20')
@@ -160,6 +164,7 @@ export default function TabSwitcherOverlay() {
                                     transform: `scale(${scale})`,
                                     opacity,
                                     zIndex: isSelected ? 50 : 40 - distance,
+                                    transition: 'transform 0.14s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.14s ease-out, border-color 0.12s ease-out, box-shadow 0.12s ease-out',
                                     willChange: 'transform, opacity'
                                 }}
                             >

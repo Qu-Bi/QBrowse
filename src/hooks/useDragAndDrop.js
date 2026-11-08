@@ -7,15 +7,19 @@ export default function useDragAndDrop() {
     const dropToFolder = useTabStore(state => state.handleDropFolder);
     const dropToRoot = useTabStore(state => state.handleDropRoot);
 
-    const onDragOver = (e, id) => {
+    const onDragOver = (e, id, position = 'before') => {
         e.preventDefault();
+        e.stopPropagation();
         if (e.dataTransfer) {
             e.dataTransfer.dropEffect = "move";
         }
-        setDragOverItem(id);
+        setDragOverItem(id, position);
     };
 
-    const onDragLeave = () => {
+    const onDragLeave = (e) => {
+        if (e && e.currentTarget && e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) {
+            return;
+        }
         setDragOverItem(null);
     };
 

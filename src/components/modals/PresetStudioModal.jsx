@@ -8,7 +8,7 @@ import {
     GripVertical, GripHorizontal, ChevronRight, RotateCcw,
     Minus, Square
 } from 'lucide-react';
-import useUIStore from '../../store/useUIStore';
+import useUIStore, { hexToRgbString } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { 
     EXPERIENCE_PRESETS, 
@@ -19,12 +19,14 @@ import {
 
 const ACCENT_SWATCHES = [
     { name: 'Amber Gold', hex: '#d4bc94', rgb: '212, 188, 148' },
-    { name: 'Ocean Blue', hex: '#0284c7', rgb: '2, 132, 199' },
-    { name: 'Rose Gold', hex: '#f43f5e', rgb: '244, 63, 94' },
-    { name: 'Royal Violet', hex: '#8b5cf6', rgb: '139, 92, 246' },
+    { name: 'Ocean', hex: '#3b82f6', rgb: '59, 130, 246' },
+    { name: 'Sky Blue', hex: '#0284c7', rgb: '2, 132, 199' },
     { name: 'Cyber Emerald', hex: '#10b981', rgb: '16, 185, 129' },
-    { name: 'Slate Gray', hex: '#94a3b8', rgb: '148, 163, 184' },
-    { name: 'Sunset Orange', hex: '#f97316', rgb: '249, 115, 22' }
+    { name: 'Royal Violet', hex: '#8b5cf6', rgb: '139, 92, 246' },
+    { name: 'Rose Gold', hex: '#f43f5e', rgb: '244, 63, 94' },
+    { name: 'Sunset Orange', hex: '#f97316', rgb: '249, 115, 22' },
+    { name: 'Cyber Cyan', hex: '#06b6d4', rgb: '6, 182, 212' },
+    { name: 'Slate Gray', hex: '#94a3b8', rgb: '148, 163, 184' }
 ];
 
 const SELECTABLE_ICONS = [
@@ -32,6 +34,76 @@ const SELECTABLE_ICONS = [
     'Code', 'Terminal', 'Zap', 'Cpu', 'ShieldCheck', 
     'Feather', 'Compass', 'Bookmark', 'Monitor', 'Globe', 'Heart'
 ];
+
+// Sliding Glass Pill Switcher for Preset Studio controls
+function StudioSlidingPillSwitcher({ options = [], value, onChange, isBright, size = 'sm' }) {
+    const [hoveredId, setHoveredId] = useState(null);
+    const activeIndex = Math.max(0, options.findIndex(o => o.id === value));
+    const hoveredIndex = hoveredId !== null ? options.findIndex(o => o.id === hoveredId) : -1;
+    const count = options.length || 1;
+
+    const padding = 'p-1';
+    const itemPy = size === 'sm' ? 'py-1.5' : 'py-2';
+    const itemPx = size === 'sm' ? 'px-2' : 'px-3';
+    const textSize = 'text-xs';
+
+    return (
+        <div 
+            className={`relative grid items-center ${padding} rounded-full border backdrop-blur-xl transition-colors duration-200 select-none ${
+                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-black/40 border-white/5'
+            }`}
+            style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}
+            onMouseLeave={() => setHoveredId(null)}
+        >
+            {/* Subtle Hover Preview Pill */}
+            {hoveredIndex >= 0 && hoveredIndex !== activeIndex && (
+                <div 
+                    className="absolute top-1 bottom-1 left-1 rounded-full transition-all duration-200 pointer-events-none"
+                    style={{
+                        width: `calc((100% - 8px) / ${count})`,
+                        transform: `translateX(${hoveredIndex * 100}%)`,
+                        backgroundColor: isBright ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.04)'
+                    }}
+                />
+            )}
+
+            {/* Smoothly positioned active pill background */}
+            <div 
+                className="absolute top-1 bottom-1 left-1 rounded-full transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none shadow-sm"
+                style={{
+                    width: `calc((100% - 8px) / ${count})`,
+                    transform: `translateX(${activeIndex * 100}%)`,
+                    backgroundColor: isBright ? '#ffffff' : 'rgba(255, 255, 255, 0.1)',
+                    border: isBright ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
+                    boxShadow: isBright 
+                        ? '0 2px 8px rgba(0,0,0,0.08)' 
+                        : '0 2px 10px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.15)'
+                }}
+            />
+
+            {options.map((opt) => {
+                const isActive = opt.id === value;
+                const Icon = opt.icon;
+                return (
+                    <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onChange(opt.id)}
+                        onMouseEnter={() => setHoveredId(opt.id)}
+                        className={`relative z-10 flex items-center justify-center gap-1.5 ${itemPy} ${itemPx} ${textSize} font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer select-none truncate outline-none ${
+                            isActive
+                                ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 font-medium' : 'text-white/60 hover:text-white font-medium')
+                        }`}
+                    >
+                        {Icon && <Icon size={12} className={isActive ? 'text-accent' : 'opacity-70'} />}
+                        <span className="truncate">{opt.label}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
 
 export default function PresetStudioModal({ initialPresetId = null }) {
     const activeModal = useUIStore(state => state.activeModal);
@@ -48,6 +120,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     const deleteCustomPreset = useUIStore(state => state.deleteCustomPreset);
     const duplicatePreset = useUIStore(state => state.duplicatePreset);
     const captureCurrentAsPreset = useUIStore(state => state.captureCurrentAsPreset);
+    const storeInitialPresetId = useUIStore(state => state.presetStudioInitialId);
+    const setPresetStudioInitialId = useUIStore(state => state.setPresetStudioInitialId);
 
     const isSystemBright = currentTheme === 'light';
 
@@ -55,19 +129,22 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     const [activeTab, setActiveTab] = useState('studio');
 
     // Live Draft State for the Studio Canvas
-    const [draft, setDraft] = useState(() => ({
-        sidebarPosition: settings?.sidebarPosition || 'left',
-        topBarPosition: settings?.topBarPosition || 'top',
-        toolHubPosition: settings?.toolHubPosition || 'right',
-        omniboxStyle: settings?.omniboxStyle || 'capsule',
-        frameCurvature: settings?.frameCurvature || 'default',
-        tabPresentation: settings?.tabPresentation || 'pills',
-        windowControlsStyle: settings?.windowControlsStyle || 'mac',
-        theme: currentTheme || 'dark',
-        accentColor: currentAccentColor || '#d4bc94',
-        accentRgb: currentAccentRgb || '212, 188, 148',
-        uiScale: settings?.uiScale || 'comfortable'
-    }));
+    const [draft, setDraft] = useState(() => {
+        const initHex = currentAccentColor || '#d4bc94';
+        return {
+            sidebarPosition: settings?.sidebarPosition || 'left',
+            topBarPosition: settings?.topBarPosition || 'top',
+            toolHubPosition: settings?.toolHubPosition || 'right',
+            omniboxStyle: settings?.omniboxStyle || 'capsule',
+            frameCurvature: settings?.frameCurvature || 'default',
+            tabPresentation: settings?.tabPresentation || 'pills',
+            windowControlsStyle: settings?.windowControlsStyle || 'mac',
+            theme: currentTheme || 'dark',
+            accentColor: initHex,
+            accentRgb: hexToRgbString(initHex),
+            uiScale: settings?.uiScale || 'comfortable'
+        };
+    });
 
     // Interactive Drag-and-Drop state
     const [draggedComponent, setDraggedComponent] = useState(null); // 'sidebar' | 'topbar' | 'toolhub'
@@ -84,9 +161,11 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     useEffect(() => {
         const timer = setInterval(() => {
             const now = new Date();
-            setPreviewTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }));
-            setPreviewDate(now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase());
-        }, 1000);
+            const nextTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const nextDate = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
+            setPreviewTime(prev => (prev === nextTime ? prev : nextTime));
+            setPreviewDate(prev => (prev === nextDate ? prev : nextDate));
+        }, 15000);
         return () => clearInterval(timer);
     }, []);
 
@@ -96,6 +175,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     const [presetDescInput, setPresetDescInput] = useState('');
     const [presetIconInput, setPresetIconInput] = useState('Sparkles');
     const [editingPresetId, setEditingPresetId] = useState(null);
+
+    // Currently edited custom preset reference
+    const editingPreset = useMemo(() => {
+        if (!editingPresetId) return null;
+        return customPresets.find(p => p.id === editingPresetId) || null;
+    }, [editingPresetId, customPresets]);
 
     // Delete Confirmation
     const [presetToDelete, setPresetToDelete] = useState(null);
@@ -107,16 +192,25 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     const modalRef = useRef(null);
     const colorInputRef = useRef(null);
 
+    const effectiveInitialId = initialPresetId || storeInitialPresetId;
+
     // Load initial preset if requested
     useEffect(() => {
-        if (initialPresetId) {
+        if (effectiveInitialId) {
             const all = [...EXPERIENCE_PRESETS, ...customPresets];
-            const found = all.find(p => p.id === initialPresetId);
+            const found = all.find(p => p.id === effectiveInitialId);
             if (found) {
-                loadPresetIntoStudio(found);
+                loadPresetIntoStudio(found, !!found.isCustom);
             }
         }
-    }, [initialPresetId]);
+    }, [effectiveInitialId]);
+
+    const handleCloseModal = () => {
+        if (setPresetStudioInitialId) {
+            setPresetStudioInitialId(null);
+        }
+        closeModal();
+    };
 
     // Keyboard dismissal
     useEffect(() => {
@@ -127,13 +221,13 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                 } else if (presetToDelete) {
                     setPresetToDelete(null);
                 } else {
-                    closeModal();
+                    handleCloseModal();
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [closeModal, isSaveModalOpen, presetToDelete]);
+    }, [handleCloseModal, isSaveModalOpen, presetToDelete]);
 
     // Audio chime helper
     const playSnapAudio = () => {
@@ -183,6 +277,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     };
 
     const handleDragLeave = (e, zone) => {
+        if (e.currentTarget && e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) {
+            return;
+        }
         if (activeDropZone === zone) {
             setActiveDropZone(null);
         }
@@ -243,29 +340,29 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     // Apply Draft to Browser
     const handleApplyToBrowser = () => {
         const uiStore = useUIStore.getState();
-        const tabStore = useTabStore.getState();
 
-        // Apply draft settings to active store
-        uiStore.setSettingValue('sidebarPosition', draft.sidebarPosition);
-        uiStore.setSettingValue('topBarPosition', draft.topBarPosition);
-        uiStore.setSettingValue('toolHubPosition', draft.toolHubPosition);
-        uiStore.setSettingValue('omniboxStyle', draft.omniboxStyle);
-        uiStore.setSettingValue('frameCurvature', draft.frameCurvature);
-        uiStore.setSettingValue('tabPresentation', draft.tabPresentation);
-        uiStore.setSettingValue('windowControlsStyle', draft.windowControlsStyle);
-        uiStore.setSettingValue('uiScale', draft.uiScale);
+        const batchUpdates = {
+            sidebarPosition: draft.sidebarPosition,
+            topBarPosition: draft.topBarPosition,
+            toolHubPosition: draft.toolHubPosition,
+            omniboxStyle: draft.omniboxStyle,
+            frameCurvature: draft.frameCurvature,
+            tabPresentation: draft.tabPresentation,
+            windowControlsStyle: draft.windowControlsStyle,
+            uiScale: draft.uiScale
+        };
+
+        if (uiStore.setSettingsBatch) {
+            uiStore.setSettingsBatch(batchUpdates);
+        } else {
+            Object.entries(batchUpdates).forEach(([k, v]) => uiStore.setSettingValue(k, v));
+        }
 
         if (draft.theme) {
             uiStore.setTheme(draft.theme);
         }
-        if (draft.accentColor) {
+        if (draft.accentColor && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(draft.accentColor)) {
             uiStore.setAccentColor(draft.accentColor);
-            if (typeof document !== 'undefined') {
-                document.documentElement.style.setProperty('--accent', draft.accentColor);
-                if (draft.accentRgb) {
-                    document.documentElement.style.setProperty('--accent-rgb', draft.accentRgb);
-                }
-            }
         }
 
         showToast('Layout applied to browser!');
@@ -275,6 +372,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     // Reset draft to current active browser settings
     const handleResetDraft = () => {
         const s = settings || {};
+        const hex = currentAccentColor || '#d4bc94';
         setDraft({
             sidebarPosition: s.sidebarPosition || 'left',
             topBarPosition: s.topBarPosition || 'top',
@@ -284,15 +382,16 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             tabPresentation: s.tabPresentation || 'pills',
             windowControlsStyle: s.windowControlsStyle || 'mac',
             theme: currentTheme || 'dark',
-            accentColor: currentAccentColor || '#d4bc94',
-            accentRgb: currentAccentRgb || '212, 188, 148',
+            accentColor: hex,
+            accentRgb: hexToRgbString(hex),
             uiScale: s.uiScale || 'comfortable'
         });
         showToast('Studio draft reset to browser setup');
     };
 
     // Load preset into Studio
-    const loadPresetIntoStudio = (preset) => {
+    const loadPresetIntoStudio = (preset, isCustomEdit = false) => {
+        const hex = preset.accentColor || '#d4bc94';
         setDraft({
             sidebarPosition: preset.sidebarPosition || 'left',
             topBarPosition: preset.topBarPosition || 'top',
@@ -302,12 +401,20 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             tabPresentation: preset.tabPresentation || 'pills',
             windowControlsStyle: preset.windowControlsStyle || 'mac',
             theme: preset.theme || 'dark',
-            accentColor: preset.accentColor || '#d4bc94',
-            accentRgb: preset.accentRgb || '212, 188, 148',
+            accentColor: hex,
+            accentRgb: preset.accentRgb || hexToRgbString(hex),
             uiScale: preset.uiScale || 'comfortable'
         });
+        if (isCustomEdit || preset.isCustom) {
+            setEditingPresetId(preset.id);
+        } else {
+            setEditingPresetId(null);
+        }
         setActiveTab('studio');
-        showToast(`Loaded "${preset.name}" into Studio Canvas`);
+        showToast(isCustomEdit || preset.isCustom 
+            ? `Editing "${preset.name}" in Studio` 
+            : `Loaded "${preset.name}" into Studio Canvas`
+        );
     };
 
     // Open Save Dialog
@@ -318,12 +425,59 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             setPresetDescInput(existingPreset.tagline || '');
             setPresetIconInput(typeof existingPreset.icon === 'string' ? existingPreset.icon : 'Sparkles');
         } else {
-            setEditingPresetId(null);
             setPresetNameInput(`${draft.topBarPosition === 'bottom' ? 'Bottom' : 'Top'} ${draft.sidebarPosition === 'right' ? 'Arc' : 'Flow'}`);
             setPresetDescInput(`Custom layout: ${draft.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'}, ${draft.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}, ${draft.tabPresentation} tabs`);
             setPresetIconInput('Sparkles');
         }
         setIsSaveModalOpen(true);
+    };
+
+    // In-place save changes to currently edited custom preset
+    const handleSaveChanges = () => {
+        if (!editingPresetId) {
+            openSaveDialog(null);
+            return;
+        }
+        const existing = customPresets.find(p => p.id === editingPresetId);
+        const name = existing?.name || presetNameInput.trim() || 'Custom Preset';
+        const tagline = existing?.tagline || presetDescInput.trim() || 'Custom user configuration';
+        const icon = existing?.icon || 'Sparkles';
+
+        const layoutTag = `${draft.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${draft.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`;
+        const layoutSummary = `${layoutTag} · ${draft.toolHubPosition === 'left' ? 'Left ToolHub' : 'Right ToolHub'}`;
+
+        const updates = {
+            name,
+            tagline,
+            icon,
+            theme: draft.theme,
+            accentColor: draft.accentColor,
+            accentRgb: draft.accentRgb,
+            sidebarPosition: draft.sidebarPosition,
+            topBarPosition: draft.topBarPosition,
+            toolHubPosition: draft.toolHubPosition,
+            omniboxStyle: draft.omniboxStyle,
+            frameCurvature: draft.frameCurvature,
+            tabPresentation: draft.tabPresentation,
+            windowControlsStyle: draft.windowControlsStyle,
+            uiScale: draft.uiScale,
+            layoutTag,
+            layoutSummary,
+            highlights: [
+                layoutTag,
+                draft.tabPresentation.charAt(0).toUpperCase() + draft.tabPresentation.slice(1) + ' Tabs',
+                draft.uiScale === 'compact' ? 'Compact Scale' : 'Comfortable Scale'
+            ]
+        };
+
+        updateCustomPreset(editingPresetId, updates);
+        playSnapAudio();
+    };
+
+    // Save as new preset (clears editingPresetId)
+    const handleSaveAsNew = () => {
+        setEditingPresetId(null);
+        openSaveDialog(null);
     };
 
     // Handle Save Custom Preset
@@ -374,7 +528,11 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     // Delete custom preset
     const confirmDeletePreset = () => {
         if (!presetToDelete) return;
-        deleteCustomPreset(presetToDelete.id);
+        const id = presetToDelete.id;
+        deleteCustomPreset(id);
+        if (editingPresetId === id) {
+            setEditingPresetId(null);
+        }
         setPresetToDelete(null);
     };
 
@@ -428,7 +586,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             style={{ overscrollBehavior: 'contain' }}
             onClick={(e) => {
                 if (modalRef.current && !modalRef.current.contains(e.target)) {
-                    closeModal();
+                    handleCloseModal();
                 }
             }}
         >
@@ -438,10 +596,10 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             {/* Studio Window Card */}
             <div 
                 ref={modalRef}
-                className={`relative w-full max-w-6xl h-[92vh] max-h-[860px] min-h-[620px] rounded-3xl border flex flex-col overflow-hidden backdrop-blur-3xl animate-pop-in ${
+                className={`relative w-full max-w-6xl h-[92vh] max-h-[860px] min-h-[620px] rounded-[32px] border flex flex-col overflow-hidden backdrop-blur-3xl animate-pop-in ${
                     isSystemBright
                         ? 'bg-zinc-100/95 border-black/10 text-zinc-900 shadow-[0_25px_80px_rgba(0,0,0,0.18)]'
-                        : 'bg-[#090a0f]/95 border-white/10 text-white shadow-[0_40px_100px_rgba(0,0,0,0.85)]'
+                        : 'bg-[#090a0f]/95 border-white/[0.08] text-white shadow-[0_40px_100px_rgba(0,0,0,0.85)]'
                 }`}
                 style={{
                     backdropFilter: 'blur(36px) saturate(180%)',
@@ -454,25 +612,13 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                 }`}>
                     <div className="flex items-center gap-3">
                         <div 
-                            className="w-10 h-10 rounded-2xl flex items-center justify-center border shadow-sm shrink-0"
-                            style={{
-                                backgroundColor: `${draft.accentColor}20`,
-                                borderColor: `${draft.accentColor}40`,
-                                color: draft.accentColor
-                            }}
+                            className="w-10 h-10 rounded-2xl flex items-center justify-center border shadow-sm shrink-0 bg-accent/20 border-accent/40 text-accent"
                         >
                             <Sliders size={20} />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
                                 <h2 className="text-base font-bold tracking-tight">Preset Studio & Layout Architect</h2>
-                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border font-semibold ${
-                                    isSystemBright 
-                                        ? 'bg-amber-500/10 text-amber-800 border-amber-500/30' 
-                                        : 'bg-accent/15 text-accent border-accent/30'
-                                }`}>
-                                    Interactive Drag & Drop
-                                </span>
                             </div>
                             <p className={`text-xs ${isSystemBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                 Visually re-dock components, sculpt curvatures, customize themes, and manage custom presets.
@@ -482,12 +628,16 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                     {/* Mode Navigation Tabs */}
                     <div className="flex items-center gap-2">
-                        <div className={`relative p-1 rounded-full border grid grid-cols-2 items-center select-none w-72 ${
-                            isSystemBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'
+                        <div className={`relative p-1 rounded-full border grid grid-cols-2 items-center select-none w-72 backdrop-blur-xl ${
+                            isSystemBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/5'
                         }`}>
                             {/* Animated Morphing Pill Indicator */}
                             <div 
-                                className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none" 
+                                className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none shadow-sm ${
+                                    isSystemBright 
+                                        ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-black/[0.08]' 
+                                        : 'bg-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)] border border-white/10'
+                                }`}
                                 style={{ transform: activeTab === 'library' ? 'translateX(100%)' : 'translateX(0)' }} 
                             />
 
@@ -496,8 +646,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 onClick={() => setActiveTab('studio')}
                                 className={`relative z-10 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
                                     activeTab === 'studio'
-                                        ? 'text-zinc-950 font-bold'
-                                        : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-zinc-400 hover:text-white')
+                                        ? (isSystemBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                        : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
                                 }`}
                             >
                                 <Layout size={13} />
@@ -508,16 +658,16 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 onClick={() => setActiveTab('library')}
                                 className={`relative z-10 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
                                     activeTab === 'library'
-                                        ? 'text-zinc-950 font-bold'
-                                        : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-zinc-400 hover:text-white')
+                                        ? (isSystemBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                        : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
                                 }`}
                             >
                                 <Bookmark size={13} />
                                 <span>Preset Library</span>
                                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono transition-colors ${
                                     activeTab === 'library' 
-                                        ? 'bg-black/20 text-black font-bold' 
-                                        : (isSystemBright ? 'bg-black/10 text-zinc-600' : 'bg-white/10 text-zinc-400')
+                                        ? (isSystemBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') 
+                                        : (isSystemBright ? 'bg-black/5 text-zinc-500' : 'bg-white/5 text-zinc-400')
                                 }`}>
                                     {allPresets.length}
                                 </span>
@@ -527,7 +677,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         {/* Close button */}
                         <button
                             type="button"
-                            onClick={closeModal}
+                            onClick={handleCloseModal}
                             aria-label="Close Preset Studio"
                             className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
                                 isSystemBright 
@@ -550,11 +700,22 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         }`}>
                             {/* MINIATURE DESKTOP MONITOR & WORKSPACE CANVAS */}
                             <div className="flex-1 flex items-center justify-center p-2 min-h-[380px]">
-                                <div className={`relative w-full max-w-3xl aspect-[16/10] max-h-[460px] rounded-3xl p-3 shadow-2xl border transition-all duration-300 flex flex-col justify-between overflow-hidden ${
-                                    isSystemBright 
-                                        ? 'bg-gradient-to-br from-zinc-200 via-stone-100 to-zinc-300 border-black/10' 
-                                        : 'bg-gradient-to-br from-[#121524] via-[#0b0d18] to-[#15192b] border-white/15'
-                                }`}>
+                                <div 
+                                    className={`relative w-full max-w-3xl aspect-[16/10] max-h-[460px] rounded-3xl p-3 shadow-2xl border transition-all duration-300 flex flex-col justify-between overflow-hidden ${
+                                        isSystemBright 
+                                            ? 'bg-gradient-to-br from-zinc-200 via-stone-100 to-zinc-300 border-black/10' 
+                                            : 'bg-gradient-to-br from-[#121524] via-[#0b0d18] to-[#15192b] border-white/15'
+                                    }`}
+                                    style={{
+                                        '--accent': draft.accentColor || '#d4bc94',
+                                        '--accent-rgb': hexToRgbString(draft.accentColor || '#d4bc94'),
+                                        '--accent-10': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.1)`,
+                                        '--accent-15': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.15)`,
+                                        '--accent-20': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.2)`,
+                                        '--accent-30': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.3)`,
+                                        '--accent-40': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.4)`
+                                    }}
+                                >
                                     {/* Ambient Wallpaper Glow */}
                                     <div 
                                         className="absolute -top-20 -left-20 w-80 h-80 rounded-full blur-3xl pointer-events-none opacity-30"
@@ -664,7 +825,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 </h1>
 
                                                 {/* Sleek Translucent Search Pill */}
-                                                <div className={`w-full max-w-xs h-7 px-3 rounded-full border flex items-center justify-between gap-2 mb-3.5 text-[10px] backdrop-blur-md transition-all shadow-sm ${
+                                                <div className={`w-full max-w-xs h-7 px-3 rounded-full border flex items-center justify-between gap-2 text-[10px] backdrop-blur-md transition-all shadow-sm ${
                                                     draft.theme === 'light'
                                                         ? 'bg-black/[0.035] border-black/10 text-zinc-500 hover:border-black/20'
                                                         : 'bg-white/[0.05] border-white/10 text-white/50 hover:border-white/20'
@@ -680,37 +841,6 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     }`}>
                                                         ⌘K
                                                     </kbd>
-                                                </div>
-
-                                                {/* Clean Quick-Access Dials (GitHub, YouTube, Reddit, Docs) */}
-                                                <div className="grid grid-cols-4 gap-2 w-full max-w-xs">
-                                                    {[
-                                                        { name: 'GitHub', letter: 'G' },
-                                                        { name: 'YouTube', letter: 'Y' },
-                                                        { name: 'Reddit', letter: 'R' },
-                                                        { name: 'Docs', letter: 'D' }
-                                                    ].map((site) => (
-                                                        <div 
-                                                            key={site.name} 
-                                                            className={`h-11 rounded-xl border flex flex-col items-center justify-center p-1.5 transition-all duration-200 cursor-default backdrop-blur-md ${
-                                                                draft.theme === 'light'
-                                                                    ? 'bg-black/[0.025] hover:bg-black/[0.04] border-black/8 text-zinc-700 shadow-[0_1px_3px_rgba(0,0,0,0.03)]'
-                                                                    : 'bg-white/[0.035] hover:bg-white/[0.06] border-white/10 text-white/80 shadow-[0_2px_8px_rgba(0,0,0,0.2)]'
-                                                            }`}
-                                                        >
-                                                            <div 
-                                                                className="w-4 h-4 rounded-lg flex items-center justify-center text-[8px] font-bold mb-1 shadow-xs" 
-                                                                style={{ 
-                                                                    backgroundColor: `${draft.accentColor}25`, 
-                                                                    color: draft.accentColor,
-                                                                    border: `1px solid ${draft.accentColor}40`
-                                                                }} 
-                                                            >
-                                                                {site.letter}
-                                                            </div>
-                                                            <span className="text-[9px] font-medium truncate w-full text-center px-0.5 leading-tight">{site.name}</span>
-                                                        </div>
-                                                    ))}
                                                 </div>
 
                                                 {/* Authentic Sleek ToolHub Glass Pill Indicator on Active Side */}
@@ -834,7 +964,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         type="button"
                                         onClick={handleResetDraft}
                                         title="Reset draft to current browser setup"
-                                        className={`text-[10px] font-mono px-2 py-0.5 rounded border transition flex items-center gap-1 cursor-pointer ${
+                                        className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition flex items-center gap-1 cursor-pointer ${
                                             isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/5 text-zinc-400'
                                         }`}
                                     >
@@ -843,165 +973,116 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     </button>
                                 </div>
 
+                                {editingPreset && (
+                                    <div className={`flex items-center justify-between px-3 py-2 rounded-2xl border text-xs animate-fade-in ${
+                                        isSystemBright ? 'bg-amber-500/10 border-amber-500/25 text-amber-900' : 'bg-accent/10 border-accent/25 text-white'
+                                    }`}>
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <Edit3 size={13} className="text-accent shrink-0" />
+                                            <span className="truncate">Editing: <strong className="text-accent">{editingPreset.name}</strong></span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingPresetId(null);
+                                                showToast('Switched to new draft');
+                                            }}
+                                            className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition cursor-pointer ${
+                                                isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                            }`}
+                                            title="Cancel editing and create a new preset"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* 1. CURVATURE */}
                                 <div>
                                     <label className="text-xs font-semibold block mb-1.5">Window Curvature</label>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        {[
-                                            { id: 'default', label: 'Default', desc: 'Organic 20px' },
-                                            { id: 'cohesive', label: 'Cohesive', desc: 'Refined 12px' },
-                                            { id: 'square', label: 'Sharp', desc: 'Square 0px' }
-                                        ].map(item => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                onClick={() => updateDraft('frameCurvature', item.id)}
-                                                className={`p-2 rounded-xl border text-center transition cursor-pointer ${
-                                                    draft.frameCurvature === item.id
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold shadow-sm'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700 hover:bg-black/5' : 'bg-white/[0.03] border-white/10 text-zinc-300 hover:bg-white/5')
-                                                }`}
-                                            >
-                                                <div className="text-xs">{item.label}</div>
-                                                <div className="text-[9px] opacity-60 font-mono">{item.desc}</div>
-                                            </button>
-                                        ))}
-                                    </div>
+                                    <StudioSlidingPillSwitcher
+                                        options={[
+                                            { id: 'default', label: 'Default' },
+                                            { id: 'cohesive', label: 'Cohesive' },
+                                            { id: 'square', label: 'Sharp' }
+                                        ]}
+                                        value={draft.frameCurvature}
+                                        onChange={(val) => updateDraft('frameCurvature', val)}
+                                        isBright={isSystemBright}
+                                    />
                                 </div>
 
                                 {/* 2. OMNIBOX STYLE */}
                                 <div>
                                     <label className="text-xs font-semibold block mb-1.5">Omnibox Architecture</label>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        {[
+                                    <StudioSlidingPillSwitcher
+                                        options={[
                                             { id: 'capsule', label: 'Capsule' },
                                             { id: 'wide', label: 'Wide' },
                                             { id: 'minimal', label: 'Minimal' }
-                                        ].map(item => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                onClick={() => updateDraft('omniboxStyle', item.id)}
-                                                className={`py-1.5 px-2 rounded-xl border text-center text-xs font-medium transition cursor-pointer ${
-                                                    draft.omniboxStyle === item.id
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700 hover:bg-black/5' : 'bg-white/[0.03] border-white/10 text-zinc-300 hover:bg-white/5')
-                                                }`}
-                                            >
-                                                {item.label}
-                                            </button>
-                                        ))}
-                                    </div>
+                                        ]}
+                                        value={draft.omniboxStyle}
+                                        onChange={(val) => updateDraft('omniboxStyle', val)}
+                                        isBright={isSystemBright}
+                                    />
                                 </div>
 
                                 {/* 3. TAB PRESENTATION */}
                                 <div>
                                     <label className="text-xs font-semibold block mb-1.5">Tab Presentation</label>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        {[
+                                    <StudioSlidingPillSwitcher
+                                        options={[
                                             { id: 'pills', label: 'Pills' },
                                             { id: 'compact', label: 'Compact' },
                                             { id: 'cards', label: 'Cards' }
-                                        ].map(item => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                onClick={() => updateDraft('tabPresentation', item.id)}
-                                                className={`py-1.5 px-2 rounded-xl border text-center text-xs font-medium transition cursor-pointer ${
-                                                    draft.tabPresentation === item.id
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700 hover:bg-black/5' : 'bg-white/[0.03] border-white/10 text-zinc-300 hover:bg-white/5')
-                                                }`}
-                                            >
-                                                {item.label}
-                                            </button>
-                                        ))}
-                                    </div>
+                                        ]}
+                                        value={draft.tabPresentation}
+                                        onChange={(val) => updateDraft('tabPresentation', val)}
+                                        isBright={isSystemBright}
+                                    />
                                 </div>
 
                                 {/* 4. WINDOW CONTROLS STYLE */}
                                 <div>
                                     <label className="text-xs font-semibold block mb-1.5">Window Controls Style</label>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        {[
+                                    <StudioSlidingPillSwitcher
+                                        options={[
                                             { id: 'mac', label: 'macOS' },
                                             { id: 'windows', label: 'Windows' },
                                             { id: 'minimal', label: 'Minimal' }
-                                        ].map(item => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                onClick={() => updateDraft('windowControlsStyle', item.id)}
-                                                className={`py-1.5 px-2 rounded-xl border text-center text-xs font-medium transition cursor-pointer ${
-                                                    draft.windowControlsStyle === item.id
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700 hover:bg-black/5' : 'bg-white/[0.03] border-white/10 text-zinc-300 hover:bg-white/5')
-                                                }`}
-                                            >
-                                                {item.label}
-                                            </button>
-                                        ))}
-                                    </div>
+                                        ]}
+                                        value={draft.windowControlsStyle}
+                                        onChange={(val) => updateDraft('windowControlsStyle', val)}
+                                        isBright={isSystemBright}
+                                    />
                                 </div>
 
                                 {/* 5. THEME & UI SCALE */}
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
                                         <label className="text-xs font-semibold block mb-1.5">Theme</label>
-                                        <div className="grid grid-cols-2 gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDraft('theme', 'dark')}
-                                                className={`py-1.5 rounded-lg border text-xs font-medium flex items-center justify-center gap-1 cursor-pointer ${
-                                                    draft.theme === 'dark'
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700' : 'bg-white/[0.03] border-white/10 text-zinc-300')
-                                                }`}
-                                            >
-                                                <Moon size={11} />
-                                                <span>Dark</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDraft('theme', 'light')}
-                                                className={`py-1.5 rounded-lg border text-xs font-medium flex items-center justify-center gap-1 cursor-pointer ${
-                                                    draft.theme === 'light'
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700' : 'bg-white/[0.03] border-white/10 text-zinc-300')
-                                                }`}
-                                            >
-                                                <Sun size={11} />
-                                                <span>Light</span>
-                                            </button>
-                                        </div>
+                                        <StudioSlidingPillSwitcher
+                                            options={[
+                                                { id: 'dark', label: 'Dark', icon: Moon },
+                                                { id: 'light', label: 'Light', icon: Sun }
+                                            ]}
+                                            value={draft.theme}
+                                            onChange={(val) => updateDraft('theme', val)}
+                                            isBright={isSystemBright}
+                                        />
                                     </div>
 
                                     <div>
                                         <label className="text-xs font-semibold block mb-1.5">UI Scale</label>
-                                        <div className="grid grid-cols-2 gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDraft('uiScale', 'comfortable')}
-                                                className={`py-1.5 rounded-lg border text-xs font-medium flex items-center justify-center cursor-pointer ${
-                                                    draft.uiScale === 'comfortable'
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700' : 'bg-white/[0.03] border-white/10 text-zinc-300')
-                                                }`}
-                                            >
-                                                Normal
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDraft('uiScale', 'compact')}
-                                                className={`py-1.5 rounded-lg border text-xs font-medium flex items-center justify-center cursor-pointer ${
-                                                    draft.uiScale === 'compact'
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold'
-                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/10 text-zinc-700' : 'bg-white/[0.03] border-white/10 text-zinc-300')
-                                                }`}
-                                            >
-                                                Compact
-                                            </button>
-                                        </div>
+                                        <StudioSlidingPillSwitcher
+                                            options={[
+                                                { id: 'comfortable', label: 'Normal' },
+                                                { id: 'compact', label: 'Compact' }
+                                            ]}
+                                            value={draft.uiScale}
+                                            onChange={(val) => updateDraft('uiScale', val)}
+                                            isBright={isSystemBright}
+                                        />
                                     </div>
                                 </div>
 
@@ -1063,11 +1144,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     if (val.length <= 6) {
                                                         const hex = '#' + val;
                                                         updateDraft('accentColor', hex);
-                                                        if (val.length === 6) {
-                                                            const r = parseInt(val.slice(0, 2), 16) || 212;
-                                                            const g = parseInt(val.slice(2, 4), 16) || 188;
-                                                            const b = parseInt(val.slice(4, 6), 16) || 148;
-                                                            updateDraft('accentRgb', `${r}, ${g}, ${b}`);
+                                                        if (val.length === 6 || val.length === 3) {
+                                                            updateDraft('accentRgb', hexToRgbString(hex));
                                                         }
                                                     }
                                                 }}
@@ -1084,10 +1162,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 onChange={(e) => {
                                                     const hex = e.target.value;
                                                     updateDraft('accentColor', hex);
-                                                    const r = parseInt(hex.slice(1, 3), 16) || 212;
-                                                    const g = parseInt(hex.slice(3, 5), 16) || 188;
-                                                    const b = parseInt(hex.slice(5, 7), 16) || 148;
-                                                    updateDraft('accentRgb', `${r}, ${g}, ${b}`);
+                                                    updateDraft('accentRgb', hexToRgbString(hex));
                                                 }}
                                                 className="sr-only absolute opacity-0 pointer-events-none"
                                                 aria-hidden="true"
@@ -1100,27 +1175,70 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                             {/* STUDIO ACTION BAR */}
                             <div className="mt-6 pt-4 border-t border-black/10 dark:border-white/10 space-y-2 shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={handleApplyToBrowser}
-                                    className="w-full py-2.5 rounded-xl bg-accent text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.99] hover:brightness-105"
-                                >
-                                    <Check size={14} strokeWidth={2.5} />
-                                    <span>Apply to Browser</span>
-                                </button>
+                                {editingPresetId ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveChanges}
+                                            className="w-full py-2.5 rounded-2xl bg-accent text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.99] hover:brightness-105"
+                                        >
+                                            <Check size={14} strokeWidth={2.5} />
+                                            <span>Save Changes</span>
+                                        </button>
 
-                                <button
-                                    type="button"
-                                    onClick={() => openSaveDialog()}
-                                    className={`w-full py-2.5 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.99] ${
-                                        isSystemBright
-                                            ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800'
-                                            : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
-                                    }`}
-                                >
-                                    <Plus size={14} />
-                                    <span>Save as Custom Preset</span>
-                                </button>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleApplyToBrowser}
+                                                className={`py-2 rounded-2xl border font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-[0.99] ${
+                                                    isSystemBright
+                                                        ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800'
+                                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                                                }`}
+                                            >
+                                                <Sparkles size={13} />
+                                                <span>Apply Live</span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveAsNew}
+                                                className={`py-2 rounded-2xl border font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-[0.99] ${
+                                                    isSystemBright
+                                                        ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800'
+                                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                                                }`}
+                                            >
+                                                <Plus size={13} />
+                                                <span>Save as New</span>
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleApplyToBrowser}
+                                            className="w-full py-2.5 rounded-2xl bg-accent text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.99] hover:brightness-105"
+                                        >
+                                            <Check size={14} strokeWidth={2.5} />
+                                            <span>Apply to Browser</span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => openSaveDialog(null)}
+                                            className={`w-full py-2.5 rounded-2xl border font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.99] ${
+                                                isSystemBright
+                                                    ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800'
+                                                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                                            }`}
+                                        >
+                                            <Plus size={14} />
+                                            <span>Save as Custom Preset</span>
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -1132,8 +1250,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         {/* Top Toolbar: Search, Filters, Capture Current */}
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
                             <div className="flex items-center gap-2 w-full sm:w-auto">
-                                <div className={`relative flex-1 sm:w-64 flex items-center px-3 py-1.5 rounded-xl border text-xs ${
-                                    isSystemBright ? 'bg-black/[0.03] border-black/10' : 'bg-white/[0.025] border-white/[0.08]'
+                                <div className={`relative flex-1 sm:w-64 flex items-center px-3 py-1.5 rounded-full border text-xs ${
+                                    isSystemBright ? 'bg-black/[0.03] border-black/10' : 'bg-black/40 border-white/5'
                                 }`}>
                                     <Search size={13} className="text-zinc-400 mr-2 shrink-0" />
                                     <input 
@@ -1144,40 +1262,31 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         className="bg-transparent border-none outline-none w-full text-xs"
                                     />
                                     {librarySearch && (
-                                        <button onClick={() => setLibrarySearch('')} className="text-zinc-400 hover:text-white">
+                                        <button onClick={() => setLibrarySearch('')} className="text-zinc-400 hover:text-white cursor-pointer">
                                             <X size={12} />
                                         </button>
                                     )}
                                 </div>
 
-                                <div className={`p-1 rounded-xl border flex items-center gap-1 ${
-                                    isSystemBright ? 'bg-black/5 border-black/10' : 'bg-black/40 border-white/10'
-                                }`}>
-                                    {[
-                                        { id: 'all', label: 'All' },
-                                        { id: 'builtin', label: 'Built-in' },
-                                        { id: 'custom', label: `Custom (${customPresets.length})` }
-                                    ].map(f => (
-                                        <button
-                                            key={f.id}
-                                            type="button"
-                                            onClick={() => setLibraryFilter(f.id)}
-                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-                                                libraryFilter === f.id
-                                                    ? 'bg-accent text-zinc-950 font-bold shadow-xs'
-                                                    : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-zinc-400 hover:text-white')
-                                            }`}
-                                        >
-                                            {f.label}
-                                        </button>
-                                    ))}
+                                <div className="shrink-0 w-64 sm:w-72">
+                                    <StudioSlidingPillSwitcher
+                                        options={[
+                                            { id: 'all', label: 'All' },
+                                            { id: 'builtin', label: 'Built-in' },
+                                            { id: 'custom', label: `Custom (${customPresets.length})` }
+                                        ]}
+                                        value={libraryFilter}
+                                        onChange={setLibraryFilter}
+                                        isBright={isSystemBright}
+                                        size="sm"
+                                    />
                                 </div>
                             </div>
 
                             <button
                                 type="button"
                                 onClick={handleCaptureCurrent}
-                                className="px-3 py-1.5 rounded-xl bg-accent/20 border border-accent/40 text-accent font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer hover:bg-accent/30 active:scale-95 shrink-0"
+                                className="px-3.5 py-1.5 rounded-full bg-accent/20 border border-accent/40 text-accent font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer hover:bg-accent/30 active:scale-95 shrink-0"
                             >
                                 <Sparkles size={13} />
                                 <span>Save Active Browser Setup</span>
@@ -1189,21 +1298,22 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             {filteredPresets.map((preset) => {
                                 const PresetIcon = getPresetIcon(preset.icon);
                                 const isCurrentlyActive = activePresetId === preset.id;
+                                const isEditingThis = editingPresetId === preset.id;
 
                                 return (
                                     <div
                                         key={preset.id}
-                                        className={`p-4 rounded-2xl border flex flex-col justify-between transition-all duration-200 group relative ${
+                                        className={`p-5 rounded-2xl border flex flex-col justify-between transition-all duration-200 group relative ${
                                             isCurrentlyActive
                                                 ? (isSystemBright ? 'bg-accent/15 border-accent shadow-md' : 'bg-accent/10 border-accent/80 shadow-[0_0_25px_rgba(212,188,148,0.15)]')
                                                 : (isSystemBright ? 'bg-black/[0.03] border-black/10 hover:border-black/20 shadow-xs' : 'bg-white/[0.025] border-white/[0.08] hover:border-white/20 shadow-sm')
                                         }`}
                                     >
                                         <div>
-                                            {/* Card Top: Icon, Badges, Duplicate/Delete Actions */}
-                                            <div className="flex items-start justify-between gap-2 mb-2.5">
+                                            {/* Card Top: Icon, Active Dot Indicator */}
+                                            <div className="flex items-start justify-between gap-2 mb-3">
                                                 <div 
-                                                    className="w-10 h-10 rounded-xl flex items-center justify-center border shadow-xs shrink-0"
+                                                    className="w-10 h-10 rounded-2xl flex items-center justify-center border shadow-xs shrink-0"
                                                     style={{
                                                         backgroundColor: `${preset.accentColor || '#d4bc94'}18`,
                                                         borderColor: `${preset.accentColor || '#d4bc94'}40`,
@@ -1212,51 +1322,28 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 >
                                                     <PresetIcon size={18} />
                                                 </div>
-
-                                                <div className="flex items-center gap-1.5">
-                                                    {preset.isCustom ? (
-                                                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                                            Custom
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/10 text-zinc-300 border border-white/10">
-                                                            {preset.badge || 'Default'}
-                                                        </span>
-                                                    )}
-
-                                                    {isCurrentlyActive && (
-                                                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-accent text-zinc-950 flex items-center gap-1 shadow-xs">
-                                                            <Check size={10} strokeWidth={3} />
-                                                            Active
-                                                        </span>
-                                                    )}
-                                                </div>
                                             </div>
 
                                             {/* Title & Tagline */}
-                                            <h4 className="text-sm font-bold tracking-tight mb-1">{preset.name}</h4>
-                                            <p className={`text-xs line-clamp-2 mb-3 ${isSystemBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                                            <h4 className="text-sm font-bold tracking-tight mb-1 flex items-center gap-1.5">
+                                                <span>{preset.name}</span>
+                                                {isEditingThis && (
+                                                    <span className="text-[10px] font-mono font-normal text-accent">(Editing)</span>
+                                                )}
+                                            </h4>
+                                            <p className={`text-xs line-clamp-2 mb-2 ${isSystemBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                                 {preset.tagline}
                                             </p>
 
-                                            {/* Spec Tags */}
-                                            <div className="flex items-center gap-1.5 flex-wrap mb-4">
-                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-medium ${
-                                                    isSystemBright ? 'bg-black/[0.03] border-black/10 text-zinc-700' : 'bg-white/5 border-white/10 text-zinc-300'
-                                                }`}>
-                                                    {preset.layoutTag || `${preset.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${preset.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
-                                                </span>
-                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-medium ${
-                                                    isSystemBright ? 'bg-black/[0.03] border-black/10 text-zinc-700' : 'bg-white/5 border-white/10 text-zinc-300'
-                                                }`}>
-                                                    {preset.tabPresentation || 'pills'} tabs
-                                                </span>
+                                            {/* Subtle layout description line */}
+                                            <div className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate mb-3">
+                                                {preset.layoutSummary || preset.layoutTag || `${preset.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${preset.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
                                             </div>
                                         </div>
 
                                         {/* Card Actions Footer */}
-                                        <div className="pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-1.5">
-                                            <div className="flex items-center gap-1">
+                                        <div className="mt-4 pt-3.5 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
                                                 {/* Apply */}
                                                 <button
                                                     type="button"
@@ -1264,61 +1351,54 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                         applyExperiencePreset(preset, {
                                                             uiStore: useUIStore.getState(),
                                                             tabStore: useTabStore.getState(),
-                                                            showToast
+                                                            showToast: showToast || useUIStore.getState().showToast
                                                         });
                                                     }}
-                                                    className="px-2.5 py-1 rounded-lg bg-accent text-zinc-950 font-bold text-xs transition cursor-pointer hover:brightness-105 active:scale-95"
-                                                >
-                                                    Apply
-                                                </button>
-
-                                                {/* Edit in Studio */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => loadPresetIntoStudio(preset)}
-                                                    className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
-                                                        isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-700' : 'border-white/10 hover:bg-white/5 text-zinc-300'
+                                                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer active:scale-95 ${
+                                                        isCurrentlyActive
+                                                            ? 'bg-accent/20 border border-accent/40 text-accent hover:bg-accent/30'
+                                                            : 'bg-accent text-zinc-950 hover:brightness-105 shadow-sm'
                                                     }`}
                                                 >
-                                                    <Layout size={11} />
-                                                    <span>Edit in Studio</span>
+                                                    {isCurrentlyActive ? 'Reapply' : 'Apply'}
+                                                </button>
+
+                                                {/* Edit in Studio (for custom) or Customize (for built-in) */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => loadPresetIntoStudio(preset, !!preset.isCustom)}
+                                                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                                                        isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-700' : 'border-white/10 hover:bg-white/5 text-zinc-300'
+                                                    }`}
+                                                    title={preset.isCustom ? 'Edit preset in studio' : 'Customize layout in studio'}
+                                                >
+                                                    <Edit3 size={12} className="text-accent" />
+                                                    <span>{preset.isCustom ? 'Edit in Studio' : 'Customize'}</span>
                                                 </button>
                                             </div>
 
-                                            {/* Secondary Actions: Duplicate, Rename, Delete */}
+                                            {/* Secondary Actions: Duplicate, Delete */}
                                             <div className="flex items-center gap-1">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDuplicate(preset)}
                                                     title="Duplicate preset"
-                                                    className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                                                        isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/5 text-zinc-400 hover:text-white'
+                                                    className={`p-1.5 rounded-xl border transition cursor-pointer ${
+                                                        isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
                                                     }`}
                                                 >
-                                                    <Copy size={12} />
+                                                    <Copy size={13} />
                                                 </button>
 
                                                 {preset.isCustom && (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openSaveDialog(preset)}
-                                                            title="Edit preset details"
-                                                            className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                                                                isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/5 text-zinc-400 hover:text-white'
-                                                            }`}
-                                                        >
-                                                            <Edit3 size={12} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setPresetToDelete(preset)}
-                                                            title="Delete custom preset"
-                                                            className="p-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPresetToDelete(preset)}
+                                                        title="Delete custom preset"
+                                                        className="p-1.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                    </button>
                                                 )}
                                             </div>
                                         </div>
@@ -1338,8 +1418,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         if (e.target === e.currentTarget) setIsSaveModalOpen(false);
                     }}
                 >
-                    <div className={`w-full max-w-md p-6 rounded-3xl border shadow-2xl flex flex-col space-y-4 animate-pop-in ${
-                        isSystemBright ? 'bg-zinc-100 text-zinc-900 border-black/10' : 'bg-[#090a0f] text-white border-white/10'
+                    <div className={`w-full max-w-md p-6 rounded-[32px] border shadow-2xl flex flex-col space-y-4 animate-pop-in ${
+                        isSystemBright ? 'bg-zinc-100 text-zinc-900 border-black/10' : 'bg-[#090a0f] text-white border-white/[0.08]'
                     }`}>
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-bold flex items-center gap-2">
@@ -1348,7 +1428,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             </h3>
                             <button 
                                 onClick={() => setIsSaveModalOpen(false)}
-                                className="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
+                                className="p-1.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
                             >
                                 <X size={16} />
                             </button>
@@ -1363,7 +1443,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     value={presetNameInput}
                                     onChange={(e) => setPresetNameInput(e.target.value)}
                                     placeholder="e.g. Ergonomic Workflow, Minimalist Arc"
-                                    className={`w-full px-3.5 py-2 rounded-xl border text-xs outline-none focus:border-accent ${
+                                    className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none focus:border-accent ${
                                         isSystemBright ? 'bg-black/[0.03] border-black/10 text-zinc-900' : 'bg-white/5 border-white/10 text-white'
                                     }`}
                                 />
@@ -1376,7 +1456,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     value={presetDescInput}
                                     onChange={(e) => setPresetDescInput(e.target.value)}
                                     placeholder="Short description of this configuration..."
-                                    className={`w-full px-3.5 py-2 rounded-xl border text-xs outline-none resize-none focus:border-accent ${
+                                    className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none resize-none focus:border-accent ${
                                         isSystemBright ? 'bg-black/[0.03] border-black/10 text-zinc-900' : 'bg-white/5 border-white/10 text-white'
                                     }`}
                                 />
@@ -1410,7 +1490,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 <button
                                     type="button"
                                     onClick={() => setIsSaveModalOpen(false)}
-                                    className={`px-4 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                                    className={`px-4 py-2 rounded-2xl border text-xs font-semibold transition cursor-pointer ${
                                         isSystemBright ? 'border-black/10 text-zinc-700' : 'border-white/10 text-zinc-300'
                                     }`}
                                 >
@@ -1418,7 +1498,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-5 py-2 rounded-xl bg-accent text-zinc-950 font-bold text-xs transition cursor-pointer hover:brightness-105 shadow-md"
+                                    className="px-5 py-2 rounded-2xl bg-accent text-zinc-950 font-bold text-xs transition cursor-pointer hover:brightness-105 shadow-md"
                                 >
                                     {editingPresetId ? 'Save Changes' : 'Create Preset'}
                                 </button>
@@ -1436,8 +1516,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         if (e.target === e.currentTarget) setPresetToDelete(null);
                     }}
                 >
-                    <div className={`w-full max-w-sm p-6 rounded-3xl border shadow-2xl flex flex-col space-y-4 animate-pop-in ${
-                        isSystemBright ? 'bg-zinc-100 text-zinc-900 border-black/10' : 'bg-[#090a0f] text-white border-white/10'
+                    <div className={`w-full max-w-sm p-6 rounded-[32px] border shadow-2xl flex flex-col space-y-4 animate-pop-in ${
+                        isSystemBright ? 'bg-zinc-100 text-zinc-900 border-black/10' : 'bg-[#090a0f] text-white border-white/[0.08]'
                     }`}>
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center shrink-0">
@@ -1455,7 +1535,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             <button
                                 type="button"
                                 onClick={() => setPresetToDelete(null)}
-                                className={`px-4 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                                className={`px-4 py-1.5 rounded-2xl border text-xs font-semibold transition cursor-pointer ${
                                     isSystemBright ? 'border-black/10 text-zinc-700' : 'border-white/10 text-zinc-300'
                                 }`}
                             >
@@ -1464,7 +1544,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             <button
                                 type="button"
                                 onClick={confirmDeletePreset}
-                                className="px-4 py-1.5 rounded-xl bg-red-500 text-white font-bold text-xs transition cursor-pointer hover:bg-red-600 shadow-md"
+                                className="px-4 py-1.5 rounded-2xl bg-red-500 text-white font-bold text-xs transition cursor-pointer hover:bg-red-600 shadow-md"
                             >
                                 Delete Preset
                             </button>

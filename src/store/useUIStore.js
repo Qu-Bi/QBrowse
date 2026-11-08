@@ -8,9 +8,54 @@ import {
     getSavedPresetId, 
     setSavedPresetId 
 } from '../utils/experiencePresets.js';
+import { getNextZoomStep, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM } from '../utils/zoomSteps.js';
+
+export const hexToRgbString = (hex) => {
+    if (!hex || typeof hex !== 'string') return '212, 188, 148';
+    const clean = hex.trim().replace(/^#/, '');
+    if (/^[0-9a-fA-F]{3}$/.test(clean)) {
+        const r = parseInt(clean[0] + clean[0], 16);
+        const g = parseInt(clean[1] + clean[1], 16);
+        const b = parseInt(clean[2] + clean[2], 16);
+        return `${r}, ${g}, ${b}`;
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(clean)) {
+        const r = parseInt(clean.slice(0, 2), 16);
+        const g = parseInt(clean.slice(2, 4), 16);
+        const b = parseInt(clean.slice(4, 6), 16);
+        return `${r}, ${g}, ${b}`;
+    }
+    return '212, 188, 148';
+};
+
+export const syncRootAccentCssVariables = (accentHex, theme = 'dark') => {
+    if (typeof document === 'undefined') return;
+    try {
+        const root = document.documentElement;
+        const activeSpace = (typeof window !== 'undefined' && window.__tabStore?.getState?.()?.activeSpace) || 'personal';
+        const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+        let finalAccent = accentHex || '#d4bc94';
+        if (activeSpace === 'ghost') {
+            finalAccent = '#a855f7';
+        } else if (activeSpace === 'tor') {
+            finalAccent = '#c084fc';
+        } else if (isBright && finalAccent.toLowerCase() === '#d4bc94') {
+            finalAccent = '#c08434';
+        }
+        const rgb = hexToRgbString(finalAccent);
+        root.style.setProperty('--accent', `rgb(${rgb})`);
+        root.style.setProperty('--accent-rgb', rgb);
+        root.style.setProperty('--accent-10', `rgba(${rgb}, 0.1)`);
+        root.style.setProperty('--accent-15', `rgba(${rgb}, 0.15)`);
+        root.style.setProperty('--accent-20', `rgba(${rgb}, 0.2)`);
+        root.style.setProperty('--accent-30', `rgba(${rgb}, 0.3)`);
+        root.style.setProperty('--accent-40', `rgba(${rgb}, 0.4)`);
+    } catch (_) {}
+};
 
 let globalToastTimeout = null;
 let globalZoomTimeout = null;
+let globalCanvasZoomTimeout = null;
 let globalModalCloseTimeout = null;
 
 const loadInitialDownloads = () => {
@@ -92,6 +137,7 @@ const defaultSettings = {
     wallpaperBlur: 24,
     blurWallpaper: false,
     closeWindowOnLastTab: true,
+    restoreTabsOnStartup: true,
     visualTabSwitcher: true, // Show Windows-style visual card switcher overlay on Ctrl+Tab
     tabSwitcherOrder: 'mru', // 'mru' (Recently Used) | 'sidebar' (Sidebar Order)
     playStartupSound: false,
@@ -601,6 +647,19 @@ const useUIStore = create((set, get) => ({
     setTimeout(() => set({ spaceContextMenu: null, isSpaceContextMenuClosing: false }), 200);
   },
 
+  inputContextMenu: null,
+  isInputContextMenuClosing: false,
+  setInputContextMenu: (menu) => set({ inputContextMenu: menu, isInputContextMenuClosing: false }),
+  closeInputContextMenu: () => {
+    const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+    if (isReduced) {
+      set({ inputContextMenu: null, isInputContextMenuClosing: false });
+      return;
+    }
+    set({ isInputContextMenuClosing: true });
+    setTimeout(() => set({ inputContextMenu: null, isInputContextMenuClosing: false }), 200);
+  },
+
   renamingSpaceId: null,
   setRenamingSpaceId: (id) => set({ renamingSpaceId: id }),
 
@@ -623,6 +682,8 @@ const useUIStore = create((set, get) => ({
         isToolHubContextMenuClosing: false,
         spaceContextMenu: null,
         isSpaceContextMenuClosing: false,
+        inputContextMenu: null,
+        isInputContextMenuClosing: false,
         activePinnedStack: null
       });
       return;
@@ -654,6 +715,10 @@ const useUIStore = create((set, get) => ({
     if (state.spaceContextMenu) {
       set({ isSpaceContextMenuClosing: true });
       setTimeout(() => set({ spaceContextMenu: null, isSpaceContextMenuClosing: false }), 200);
+    }
+    if (state.inputContextMenu) {
+      set({ isInputContextMenuClosing: true });
+      setTimeout(() => set({ inputContextMenu: null, isInputContextMenuClosing: false }), 200);
     }
     if (state.activePinnedStack) {
       set({ activePinnedStack: null });
@@ -1655,25 +1720,26 @@ const useUIStore = create((set, get) => ({
             localStorage.setItem('qbrowse_settings', JSON.stringify(merged));
           } catch (_) {}
 
-          // Mirror top-level appearance settings if present in disk store
-          if (diskSettings.theme && (diskSettings.theme === 'light' || diskSettings.theme === 'dark')) {
+          // Mirror top-level appearance settings if present in disk store (without clobbering newer localStorage values)
+          const localTheme = localStorage.getItem('qbrowse_theme');
+          if (!localTheme && diskSettings.theme && (diskSettings.theme === 'light' || diskSettings.theme === 'dark')) {
             get().setTheme(diskSettings.theme);
           }
-          if (diskSettings.accentColor && typeof diskSettings.accentColor === 'string') {
+          const localAccent = localStorage.getItem('qbrowse_accent_color');
+          if (!localAccent && diskSettings.accentColor && typeof diskSettings.accentColor === 'string') {
             get().setAccentColor(diskSettings.accentColor);
+          } else if (localAccent && localAccent.startsWith('#')) {
+            merged.accentColor = localAccent;
+            syncRootAccentCssVariables(localAccent, get().theme);
           }
           if (typeof diskSettings.isGlassEnabled === 'boolean') {
             get().setIsGlassEnabled(diskSettings.isGlassEnabled);
           }
           if (typeof diskSettings.isForceDark === 'boolean') {
             get().setIsForceDark(diskSettings.isForceDark);
-          } else if (window.electronAPI && window.electronAPI.saveSetting) {
-            window.electronAPI.saveSetting('isForceDark', get().isForceDark);
           }
           if (Array.isArray(diskSettings.darkExclusions)) {
             get().setDarkExclusions(diskSettings.darkExclusions);
-          } else if (window.electronAPI && window.electronAPI.saveSetting) {
-            window.electronAPI.saveSetting('darkExclusions', get().darkExclusions);
           }
           if (typeof diskSettings.isSwipeEnabled === 'boolean') {
             get().setIsSwipeEnabled(diskSettings.isSwipeEnabled);
@@ -1689,10 +1755,26 @@ const useUIStore = create((set, get) => ({
             set({ zoomLevel: merged.a11yPageZoom });
           }
 
-          // Ensure disk store has all current merged fields
-          Object.entries(merged).forEach(([k, v]) => {
-            window.electronAPI.saveSetting(k, v);
-          });
+          // Ensure disk store has all current merged fields in a single batched IPC call
+          if (window.electronAPI.saveSettingsBatch) {
+            window.electronAPI.saveSettingsBatch({
+              ...merged,
+              isForceDark: get().isForceDark,
+              darkExclusions: get().darkExclusions,
+              accentColor: get().accentColor,
+              theme: get().theme
+            });
+          } else if (window.electronAPI.saveSetting) {
+            window.electronAPI.saveSetting({
+              batch: {
+                ...merged,
+                isForceDark: get().isForceDark,
+                darkExclusions: get().darkExclusions,
+                accentColor: get().accentColor,
+                theme: get().theme
+              }
+            });
+          }
         }
       } catch (e) {
         console.warn('[useUIStore] initSettingsFromDisk notice:', e);
@@ -1705,10 +1787,12 @@ const useUIStore = create((set, get) => ({
       localStorage.setItem('qbrowse_settings', JSON.stringify(defaultSettings));
       localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
     } catch (_) {}
-    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
-      Object.entries(defaultSettings).forEach(([k, v]) => {
-        window.electronAPI.saveSetting(k, v);
-      });
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      if (window.electronAPI.saveSettingsBatch) {
+        window.electronAPI.saveSettingsBatch(defaultSettings);
+      } else if (window.electronAPI.saveSetting) {
+        window.electronAPI.saveSetting({ batch: defaultSettings });
+      }
     }
   },
   toggleSetting: (key) => {
@@ -1722,6 +1806,14 @@ const useUIStore = create((set, get) => ({
           if (['hardware', 'isolation'].includes(key)) {
               useUIStore.getState().showToast('Restart required for engine changes.');
           }
+          if (key === 'restoreTabsOnStartup' && typeof window !== 'undefined' && window.__tabStore) {
+              const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+              if (newSettings.restoreTabsOnStartup) {
+                  window.__tabStore.getState().serializeCurrentProfileTabs?.(profileId);
+              } else {
+                  window.__tabStore.getState().clearPersistedProfileTabs?.(profileId);
+              }
+          }
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, newSettings[key]);
           }
@@ -1731,22 +1823,55 @@ const useUIStore = create((set, get) => ({
   setSetting: (key, value) => get().setSettingValue(key, value),
   saveSetting: (key, value) => get().setSettingValue(key, value),
   setSettingValue: (key, value) => {
+      if (key === 'accentColor' && typeof value === 'string') {
+          get().setAccentColor(value);
+          return;
+      }
+      if (key === 'theme' && (value === 'light' || value === 'dark')) {
+          get().setTheme(value);
+          return;
+      }
       set((state) => {
           const newSettings = { ...state.settings, [key]: value };
           try {
               localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
               localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
           } catch(e) {}
+          if (key === 'restoreTabsOnStartup' && typeof window !== 'undefined' && window.__tabStore) {
+              const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+              if (value) {
+                  window.__tabStore.getState().serializeCurrentProfileTabs?.(profileId);
+              } else {
+                  window.__tabStore.getState().clearPersistedProfileTabs?.(profileId);
+              }
+          }
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, value);
           }
           return { settings: newSettings };
       });
   },
+  setSettingsBatch: (partialSettings) => {
+      if (!partialSettings || typeof partialSettings !== 'object') return;
+      set((state) => {
+          const newSettings = { ...state.settings, ...partialSettings };
+          try {
+              localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+              localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+          } catch(e) {}
+          if (typeof window !== 'undefined' && window.electronAPI) {
+              if (window.electronAPI.saveSettingsBatch) {
+                  window.electronAPI.saveSettingsBatch(partialSettings);
+              } else if (window.electronAPI.saveSetting) {
+                  window.electronAPI.saveSetting({ batch: partialSettings });
+              }
+          }
+          return { settings: newSettings };
+      });
+  },
   setSidebarPosition: (pos) => {
       const opposite = pos === 'right' ? 'left' : 'right';
-      get().setSettingValue('sidebarPosition', pos);
-      get().setSettingValue('toolHubPosition', opposite);
+      get().setSettingsBatch({ sidebarPosition: pos, toolHubPosition: opposite });
   },
   setTopBarPosition: (pos) => get().setSettingValue('topBarPosition', pos),
   setToolHubPosition: (pos) => get().setSettingValue('toolHubPosition', pos),
@@ -1904,14 +2029,43 @@ const useUIStore = create((set, get) => ({
       get().showToast('Workspace removed. Open tabs moved to Personal.');
   },
 
-  reorderSpaces: (reorderedList) => {
-      if (!Array.isArray(reorderedList)) return;
-      get().saveSetting('customSpaces', reorderedList);
+  reorderSpaces: (arg1, arg2) => {
+      if (Array.isArray(arg1)) {
+          get().saveSetting('customSpaces', arg1);
+          return;
+      }
+      if (typeof arg1 === 'number' && typeof arg2 === 'number') {
+          const fromIdx = arg1;
+          const toIdx = arg2;
+          const currentSpaces = Array.isArray(get().settings?.customSpaces) && get().settings.customSpaces.length > 0
+              ? get().settings.customSpaces
+              : defaultSettings.customSpaces;
+          if (fromIdx < 0 || fromIdx >= currentSpaces.length || toIdx < 0 || toIdx >= currentSpaces.length) return;
+          if (fromIdx === toIdx) return;
+          const next = [...currentSpaces];
+          const [moved] = next.splice(fromIdx, 1);
+          next.splice(toIdx, 0, moved);
+          get().saveSetting('customSpaces', next);
+      }
   },
 
   // Experience Presets & Custom Preset Studio Management
   customPresets: loadCustomPresets(),
   activePresetId: getSavedPresetId(),
+  presetStudioInitialId: null,
+
+  setPresetStudioInitialId: (id) => set({ presetStudioInitialId: id }),
+
+  openPresetStudio: (presetId = null) => {
+      set({ 
+          presetStudioInitialId: presetId, 
+          activeModal: 'presetStudio', 
+          closingModal: null, 
+          isModalClosing: false, 
+          isRightPanelOpen: false, 
+          isTopBarOmniboxActive: false 
+      });
+  },
 
   setActivePresetId: (id) => {
       set({ activePresetId: id });
@@ -1981,6 +2135,9 @@ const useUIStore = create((set, get) => ({
           updates.activePresetId = 'balanced';
           setSavedPresetId('balanced');
       }
+      if (get().presetStudioInitialId === presetId) {
+          updates.presetStudioInitialId = null;
+      }
       set(updates);
       saveCustomPresetsToStorage(updated);
       get().showToast(`Preset "${target.name}" deleted`);
@@ -2015,7 +2172,7 @@ const useUIStore = create((set, get) => ({
       const s = get().settings || defaultSettings;
       const theme = get().theme || 'dark';
       const accentColor = get().accentColor || '#d4bc94';
-      const accentRgb = get().accentRgb || '212, 188, 148';
+      const accentRgb = hexToRgbString(accentColor);
       const isAdblockActive = get().isAdblockActive !== undefined ? get().isAdblockActive : true;
       const id = `custom_${Date.now()}`;
 
@@ -2191,16 +2348,52 @@ const useUIStore = create((set, get) => ({
   zoomLevel: 100,
   isZoomHUDVisible: false,
   setZoomLevel: (val) => {
-    const clamped = Math.min(200, Math.max(50, Math.round(val)));
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(val)));
+    const prev = get().zoomLevel;
+    if (prev === clamped && get().isZoomHUDVisible) {
+      if (globalZoomTimeout) clearTimeout(globalZoomTimeout);
+      globalZoomTimeout = setTimeout(() => {
+        set({ isZoomHUDVisible: false });
+      }, 1800);
+      return;
+    }
     set({ zoomLevel: clamped, isZoomHUDVisible: true });
     if (globalZoomTimeout) clearTimeout(globalZoomTimeout);
     globalZoomTimeout = setTimeout(() => {
       set({ isZoomHUDVisible: false });
     }, 1800);
   },
+  zoomIn: () => {
+    const current = get().zoomLevel;
+    const next = getNextZoomStep(current, 1);
+    get().setZoomLevel(next);
+  },
+  zoomOut: () => {
+    const current = get().zoomLevel;
+    const next = getNextZoomStep(current, -1);
+    get().setZoomLevel(next);
+  },
+  resetZoom: () => {
+    get().setZoomLevel(DEFAULT_ZOOM);
+  },
   hideZoomHUD: () => {
     if (globalZoomTimeout) clearTimeout(globalZoomTimeout);
     set({ isZoomHUDVisible: false });
+  },
+
+  canvasZoomLevel: 100,
+  isCanvasZoomHUDVisible: false,
+  showCanvasZoomHUD: (pct) => {
+    const validPct = typeof pct === 'number' ? pct : 100;
+    set({ canvasZoomLevel: validPct, isCanvasZoomHUDVisible: true });
+    if (globalCanvasZoomTimeout) clearTimeout(globalCanvasZoomTimeout);
+    globalCanvasZoomTimeout = setTimeout(() => {
+      set({ isCanvasZoomHUDVisible: false });
+    }, 1200);
+  },
+  hideCanvasZoomHUD: () => {
+    if (globalCanvasZoomTimeout) clearTimeout(globalCanvasZoomTimeout);
+    set({ isCanvasZoomHUDVisible: false });
   },
   isGlassEnabled: (() => {
     try {
@@ -2290,13 +2483,33 @@ const useUIStore = create((set, get) => ({
       } catch (_) {}
       return '#d4bc94';
   })(),
-  setAccentColor: (color) => {
-      if (!color) return;
-      const validColor = color.startsWith('#') ? color : `#${color}`;
-      set({ accentColor: validColor });
+  accentRgb: (() => {
       try {
-          localStorage.setItem('qbrowse_accent_color', validColor);
+          const stored = localStorage.getItem('qbrowse_accent_color');
+          if (stored && stored.startsWith('#')) return hexToRgbString(stored);
       } catch (_) {}
+      return '212, 188, 148';
+  })(),
+  setAccentColor: (color) => {
+      if (!color || typeof color !== 'string') return;
+      const validColor = color.startsWith('#') ? color : `#${color}`;
+      const rgb = hexToRgbString(validColor);
+      set((state) => {
+          const newSettings = { ...(state.settings || {}), accentColor: validColor };
+          try {
+              localStorage.setItem('qbrowse_accent_color', validColor);
+              localStorage.setItem('qbrowse_settings', JSON.stringify(newSettings));
+              localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+          } catch (_) {}
+          return {
+              accentColor: validColor,
+              accentRgb: rgb,
+              settings: newSettings
+          };
+      });
+      if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(validColor)) {
+          syncRootAccentCssVariables(validColor, get().theme);
+      }
       if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
           window.electronAPI.saveSetting('accentColor', validColor);
       }
@@ -2400,7 +2613,7 @@ const useUIStore = create((set, get) => ({
 
     window.__switcherTimer = setTimeout(() => {
       set({ showSwitcherUI: true });
-    }, 220);
+    }, 150);
 
     set({
       showSwitcher: true,
@@ -2612,7 +2825,7 @@ const useUIStore = create((set, get) => ({
           hardwareProfile: profile,
           performanceMode: profile.mode || 'auto',
           activePerformanceTier: profile.activeTier || 'balanced',
-          tabSleepTimeoutMinutes: profile.tabSleepTimeoutMinutes || 15,
+          tabSleepTimeoutMinutes: profile.tabSleepTimeoutMinutes ?? 15,
           reduceVisualsOnEco: profile.reduceVisuals !== false,
           bfcacheEnabled: profile.bfcacheEnabled !== false
         });
@@ -2626,7 +2839,7 @@ const useUIStore = create((set, get) => ({
               hardwareProfile: updatedProfile,
               performanceMode: updatedProfile.mode || 'auto',
               activePerformanceTier: updatedProfile.activeTier || 'balanced',
-              tabSleepTimeoutMinutes: updatedProfile.tabSleepTimeoutMinutes || 15,
+              tabSleepTimeoutMinutes: updatedProfile.tabSleepTimeoutMinutes ?? 15,
               reduceVisualsOnEco: updatedProfile.reduceVisuals !== false,
               bfcacheEnabled: updatedProfile.bfcacheEnabled !== false
             });
@@ -2648,7 +2861,7 @@ const useUIStore = create((set, get) => ({
         updatedProfile = await window.electronAPI.setPerformanceSettings({ mode });
       }
       const activeTier = updatedProfile?.activeTier || (mode === 'auto' ? (get().hardwareProfile?.detectedTier || 'balanced') : mode);
-      const sleepTimeout = updatedProfile?.tabSleepTimeoutMinutes || (activeTier === 'eco' ? 5 : (activeTier === 'ultra' ? 60 : 15));
+      const sleepTimeout = updatedProfile?.tabSleepTimeoutMinutes ?? (activeTier === 'eco' ? 5 : (activeTier === 'ultra' ? 60 : 15));
       const reduceVisuals = get().reduceVisualsOnEco;
 
       set({
@@ -2788,21 +3001,26 @@ try {
 export const syncInitialSettingsToElectron = () => {
   if (typeof window !== 'undefined' && window.electronAPI) {
     try {
+      const state = useUIStore.getState();
       if (window.electronAPI.syncThemeSource) {
-        window.electronAPI.syncThemeSource(useUIStore.getState().theme || 'dark');
+        window.electronAPI.syncThemeSource(state.theme || 'dark');
       }
-      if (window.electronAPI.saveSetting) {
-        const currentSettings = useUIStore.getState().settings || {};
-        Object.entries(currentSettings).forEach(([key, val]) => {
-          window.electronAPI.saveSetting(key, val);
-        });
-        window.electronAPI.saveSetting('isForceDark', useUIStore.getState().isForceDark);
-        window.electronAPI.saveSetting('darkExclusions', useUIStore.getState().darkExclusions);
+      const batchPayload = {
+        ...(state.settings || {}),
+        isForceDark: state.isForceDark,
+        darkExclusions: state.darkExclusions,
+        accentColor: state.accentColor,
+        theme: state.theme
+      };
+      if (window.electronAPI.saveSettingsBatch) {
+        window.electronAPI.saveSettingsBatch(batchPayload);
+      } else if (window.electronAPI.saveSetting) {
+        window.electronAPI.saveSetting({ batch: batchPayload });
       }
       if (window.electronAPI.syncSmartDarkState) {
         window.electronAPI.syncSmartDarkState({
-          isForceDark: useUIStore.getState().isForceDark,
-          darkExclusions: useUIStore.getState().darkExclusions
+          isForceDark: state.isForceDark,
+          darkExclusions: state.darkExclusions
         });
       }
     } catch (_) {}

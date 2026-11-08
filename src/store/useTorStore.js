@@ -24,7 +24,7 @@ const useTorStore = create((set, get) => ({
     circuitNodes: defaultCircuit,
     listenersInitialized: false,
 
-    toggleTorEnabled: async (forcedValue) => {
+    toggleTorEnabled: async (forcedValue, options = {}) => {
         const current = get().isTorEnabled;
         const next = typeof forcedValue === 'boolean' ? forcedValue : !current;
         set({ isTorEnabled: next });
@@ -35,18 +35,29 @@ const useTorStore = create((set, get) => ({
         try {
             const { default: useTabStore } = await import('./useTabStore');
             const currentSpace = useTabStore.getState().activeSpace;
+            const shouldSwitchSpace = options.switchSpace !== false;
+
             if (next) {
-                if (currentSpace !== 'tor') {
-                    useTabStore.getState().setActiveSpace('tor');
+                const targetSpace = options.targetSpace || (shouldSwitchSpace ? 'tor' : (currentSpace === 'ghost' ? 'tor' : null));
+                if (targetSpace && currentSpace !== targetSpace) {
+                    useTabStore.getState().setActiveSpace(targetSpace);
                 }
-                if (get().status !== 'connected' && get().status !== 'starting') {
+                if (get().status !== 'connected' && get().status !== 'starting' && get().status !== 'downloading') {
                     get().startTor();
+                } else if (!targetSpace || currentSpace === targetSpace) {
+                    useUIStore.getState().showToast('Tor Mode: Enabled');
                 }
             } else {
+                const fallbackSpace = options.fallbackSpace || 'ghost';
                 if (currentSpace === 'tor') {
-                    useTabStore.getState().setActiveSpace('personal');
+                    useTabStore.getState().setActiveSpace(fallbackSpace);
+                    useUIStore.getState().showToast(fallbackSpace === 'ghost' ? 'Switched to Ghost Mode' : 'Tor Space: Deactivated');
+                } else {
+                    useUIStore.getState().showToast('Switched private mode to Ghost');
                 }
-                get().stopTor();
+                if (get().status === 'connected' || get().status === 'starting') {
+                    await get().stopTor({ keepSpace: true, silentToast: currentSpace === 'tor' });
+                }
             }
         } catch (err) {
             console.error('[TorStore] toggleTorEnabled error:', err);
@@ -71,8 +82,11 @@ const useTorStore = create((set, get) => ({
                 set({ isTorEnabled: true });
                 get().fetchCircuit();
                 get().checkExitIp();
-            } else if (get().isTorEnabled && data.status !== 'starting') {
-                get().startTor();
+            } else {
+                const { default: useTabStore } = await import('./useTabStore');
+                if (useTabStore.getState().activeSpace === 'tor' && data.status !== 'starting' && data.status !== 'downloading') {
+                    get().startTor();
+                }
             }
         } catch (err) {
             console.warn('[TorStore] Failed to fetch status:', err);
@@ -84,8 +98,12 @@ const useTorStore = create((set, get) => ({
             useUIStore.getState().showToast('Tor not supported in browser preview');
             return;
         }
+        if (get().status === 'starting' || get().status === 'downloading') return;
 
         set({ isTorEnabled: true, status: 'starting', bootstrapProgress: 10, lastError: null });
+        try {
+            localStorage.setItem('qbrowse_tor_enabled', 'true');
+        } catch (_) {}
         useUIStore.getState().showToast('Connecting to Tor Onion Network...');
 
         try {
@@ -95,10 +113,6 @@ const useTorStore = create((set, get) => ({
                 useUIStore.getState().showToast('Connected to Tor Network!');
                 get().checkExitIp();
                 get().fetchCircuit();
-                const { default: useTabStore } = await import('./useTabStore');
-                if (useTabStore.getState().activeSpace !== 'tor') {
-                    useTabStore.getState().setActiveSpace('tor');
-                }
             } else {
                 set({ status: 'error', lastError: res.error || 'Failed to start Tor' });
                 useUIStore.getState().showToast(`Tor error: ${res.error || 'Connection failed'}`);
@@ -109,18 +123,30 @@ const useTorStore = create((set, get) => ({
         }
     },
 
-    stopTor: async () => {
+    stopTor: async (options = {}) => {
         if (!window.electronAPI?.torStop) return;
         try {
             await window.electronAPI.torStop();
             if (window.electronAPI?.clearTorSession) {
                 window.electronAPI.clearTorSession().catch(() => {});
             }
-            set({ isTorEnabled: false, status: 'stopped', bootstrapProgress: 0, verifiedExitIp: null, isTorVerified: false });
-            useUIStore.getState().showToast('Tor Network disconnected');
-            const { default: useTabStore } = await import('./useTabStore');
-            if (useTabStore.getState().activeSpace === 'tor') {
-                useTabStore.getState().setActiveSpace('personal');
+            const nextState = { status: 'stopped', bootstrapProgress: 0, verifiedExitIp: null, isTorVerified: false };
+            if (options.disableTorMode) {
+                nextState.isTorEnabled = false;
+                try {
+                    localStorage.setItem('qbrowse_tor_enabled', 'false');
+                } catch (_) {}
+            }
+            set(nextState);
+            if (!options.silentToast) {
+                useUIStore.getState().showToast('Tor Network disconnected');
+            }
+            if (!options.keepSpace) {
+                const { default: useTabStore } = await import('./useTabStore');
+                if (useTabStore.getState().activeSpace === 'tor') {
+                    const fallback = options.fallbackSpace || useTabStore.getState().lastNormalSpace || 'personal';
+                    useTabStore.getState().setActiveSpace(fallback);
+                }
             }
         } catch (err) {
             console.error('[TorStore] Stop error:', err);
@@ -236,15 +262,8 @@ const useTorStore = create((set, get) => ({
             if (status === 'connected') {
                 get().checkExitIp();
                 get().fetchCircuit();
-                const { default: useTabStore } = await import('./useTabStore');
-                if (useTabStore.getState().activeSpace !== 'tor') {
-                    useTabStore.getState().setActiveSpace('tor');
-                }
-            } else if (status === 'stopped' || status === 'error') {
-                const { default: useTabStore } = await import('./useTabStore');
-                if (useTabStore.getState().activeSpace === 'tor') {
-                    useTabStore.getState().setActiveSpace('personal');
-                }
+            } else if (status === 'stopped') {
+                set({ bootstrapProgress: 0, verifiedExitIp: null, isTorVerified: false });
             }
         });
 

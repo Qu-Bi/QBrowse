@@ -58,22 +58,9 @@ export default function TopBar() {
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isTopBarPeeking = useUIStore(state => state.isTopBarPeeking);
     const setIsTopBarPeeking = useUIStore(state => state.setIsTopBarPeeking);
+    const topBarContextMenu = useUIStore(state => state.topBarContextMenu);
+    const isMouseOverTopBarRef = useRef(false);
     const topBarLeaveTimeoutRef = useRef(null);
-
-    const handleTopBarMouseEnter = () => {
-        if (topBarLeaveTimeoutRef.current) {
-            clearTimeout(topBarLeaveTimeoutRef.current);
-            topBarLeaveTimeoutRef.current = null;
-        }
-    };
-
-    const handleTopBarMouseLeave = () => {
-        if (isFullscreen && isTopBarPeeking) {
-            topBarLeaveTimeoutRef.current = setTimeout(() => {
-                setIsTopBarPeeking(false);
-            }, 200);
-        }
-    };
 
     const theme = useUIStore(state => state.theme);
     const isTopBarOmniboxActive = useUIStore(state => state.isTopBarOmniboxActive);
@@ -82,6 +69,57 @@ export default function TopBar() {
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const zoomLevel = useUIStore(state => state.zoomLevel);
     const activePopover = useUIStore(state => state.activePopover);
+
+    const isTopBarPopoverOpen = Boolean(activePopover && activePopover !== 'user' && activePopover !== 'userProfile');
+    const isTopBarLockedOpen = isTopBarOmniboxActive || isTopBarPopoverOpen || Boolean(topBarContextMenu);
+
+    const handleTopBarMouseEnter = () => {
+        isMouseOverTopBarRef.current = true;
+        if (topBarLeaveTimeoutRef.current) {
+            clearTimeout(topBarLeaveTimeoutRef.current);
+            topBarLeaveTimeoutRef.current = null;
+        }
+    };
+
+    const handleTopBarMouseLeave = () => {
+        isMouseOverTopBarRef.current = false;
+        if (isFullscreen && isTopBarPeeking && !isTopBarLockedOpen) {
+            if (topBarLeaveTimeoutRef.current) {
+                clearTimeout(topBarLeaveTimeoutRef.current);
+            }
+            topBarLeaveTimeoutRef.current = setTimeout(() => {
+                const currentUi = useUIStore.getState();
+                const isCurrentPopoverOpen = Boolean(currentUi.activePopover && currentUi.activePopover !== 'user' && currentUi.activePopover !== 'userProfile');
+                const isStillLocked = currentUi.isTopBarOmniboxActive || isCurrentPopoverOpen || Boolean(currentUi.topBarContextMenu);
+                if (!isMouseOverTopBarRef.current && !isStillLocked) {
+                    setIsTopBarPeeking(false);
+                }
+            }, 200);
+        }
+    };
+
+    // Auto-dismiss in fullscreen when TopBar is no longer locked open and mouse is not hovering
+    useEffect(() => {
+        if (isFullscreen && !isTopBarLockedOpen && !isMouseOverTopBarRef.current) {
+            const timer = setTimeout(() => {
+                const currentUi = useUIStore.getState();
+                const isCurrentPopoverOpen = Boolean(currentUi.activePopover && currentUi.activePopover !== 'user' && currentUi.activePopover !== 'userProfile');
+                const isStillLocked = currentUi.isTopBarOmniboxActive || isCurrentPopoverOpen || Boolean(currentUi.topBarContextMenu);
+                if (!isMouseOverTopBarRef.current && !isStillLocked) {
+                    setIsTopBarPeeking(false);
+                }
+            }, 150);
+            return () => clearTimeout(timer);
+        }
+    }, [isFullscreen, isTopBarLockedOpen, setIsTopBarPeeking]);
+
+    useEffect(() => {
+        return () => {
+            if (topBarLeaveTimeoutRef.current) {
+                clearTimeout(topBarLeaveTimeoutRef.current);
+            }
+        };
+    }, []);
     const isSplitView = useUIStore(state => state.isSplitView);
     const splitRightTabId = useUIStore(state => state.splitRightTabId);
     const setSplitRightTabId = useUIStore(state => state.setSplitRightTabId);
@@ -241,7 +279,7 @@ export default function TopBar() {
         };
     }, [activeTabId]);
 
-    const isPeeking = isFullscreen && isTopBarPeeking;
+    const isPeeking = isFullscreen && (isTopBarPeeking || isTopBarLockedOpen);
 
     return (
         <>
@@ -249,12 +287,12 @@ export default function TopBar() {
                 onMouseEnter={handleTopBarMouseEnter}
                 onMouseLeave={handleTopBarMouseLeave}
                 className={isFullscreen 
-                    ? `fixed top-2.5 left-4 right-4 z-[99990] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    ? `fixed ${topBarPosition === 'bottom' ? 'bottom-3' : 'top-3'} left-4 right-4 z-[99990] bg-transparent transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
                         isPeeking 
-                            ? 'translate-y-0 opacity-100 pointer-events-auto shadow-[0_20px_60px_rgba(0,0,0,0.65)]' 
-                            : '-translate-y-[130%] opacity-0 pointer-events-none'
+                            ? 'translate-y-0 pointer-events-auto' 
+                            : (topBarPosition === 'bottom' ? 'translate-y-[calc(100%+24px)] pointer-events-none' : '-translate-y-[calc(100%+24px)] pointer-events-none')
                     }` 
-                    : 'relative z-[60] mt-0 opacity-100 translate-y-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-auto'
+                    : 'relative z-[60] mt-0 translate-y-0 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform pointer-events-auto'
                 }
             >
                 {/* SINGLE BUBBLE TOPBAR */}
@@ -267,7 +305,9 @@ export default function TopBar() {
                         }
                     }}
                     className={`drag-region flex mx-0 ${
-                        topBarPosition === 'bottom'
+                        isFullscreen
+                            ? (uiScale === 'compact' ? 'my-0 h-[44px]' : 'my-0 h-[50px]')
+                            : topBarPosition === 'bottom'
                             ? (uiScale === 'compact' ? 'mt-1.5 mb-0 h-[44px]' : 'mt-3 mb-0 h-[50px]')
                             : (uiScale === 'compact' ? 'mb-1.5 mt-0 h-[44px]' : 'mb-3 mt-0 h-[50px]')
                     } z-50 items-center justify-between px-3 ${
@@ -276,8 +316,12 @@ export default function TopBar() {
                             : frameCurvature === 'cohesive'
                             ? 'rounded-2xl'
                             : 'rounded-full'
-                    } transition-all duration-300 ${
-                    isBright ? 'liquid-glass-bright text-zinc-900' : 'liquid-glass-dark text-white'
+                    } transition-[background-color,border-color,box-shadow] duration-300 ${
+                    isFullscreen
+                        ? (isBright
+                            ? 'liquid-glass-bright !bg-white/82 backdrop-blur-2xl !border-black/10 !shadow-[0_20px_50px_rgba(0,0,0,0.22)] text-zinc-900'
+                            : 'liquid-glass-dark !bg-[#0c0d14]/80 backdrop-blur-2xl !border-white/15 !shadow-[0_24px_65px_rgba(0,0,0,0.75)] text-white')
+                        : (isBright ? 'liquid-glass-bright text-zinc-900' : 'liquid-glass-dark text-white')
                 }`}>
 
                     {/* LEFT BLOCK: Zen Mode, Navigation or Extensions based on sidebarPosition */}

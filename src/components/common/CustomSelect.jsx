@@ -89,8 +89,10 @@ export default function CustomSelect({
         triggerRef.current?.focus();
     };
 
+    const isFullWidth = typeof className === 'string' && className.includes('w-full');
+
     return (
-        <div className="relative inline-block text-left select-none">
+        <div className={`relative ${isFullWidth ? 'block w-full' : 'inline-block'} text-left select-none`}>
             <button
                 ref={triggerRef}
                 type="button"
@@ -114,7 +116,7 @@ export default function CustomSelect({
                     WebkitBackdropFilter: 'blur(16px)'
                 }}
             >
-                <div className="flex items-center gap-2 truncate">
+                <div className="flex items-center gap-2 truncate min-w-0">
                     {selectedOption?.icon && (
                         <selectedOption.icon size={size === 'sm' ? 12 : 14} className="shrink-0 text-accent" />
                     )}
@@ -122,7 +124,7 @@ export default function CustomSelect({
                         {selectedOption ? selectedOption.label : placeholder}
                     </span>
                     {selectedOption?.badge && (
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider shrink-0 ${
                             isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/10 text-white/70'
                         }`}>
                             {selectedOption.badge}
@@ -144,9 +146,9 @@ export default function CustomSelect({
                         backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
                         WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
                     }}
-                    className={`absolute z-[99999] min-w-[210px] max-h-[300px] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-1.5 rounded-2xl border backdrop-blur-2xl flex flex-col gap-0.5 animate-pop-in ${
+                    className={`absolute z-[99999] ${isFullWidth ? 'left-0 right-0 w-full min-w-[210px]' : 'right-0 min-w-[210px]'} max-h-[300px] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-1.5 rounded-2xl border backdrop-blur-2xl flex flex-col gap-0.5 animate-pop-in ${
                         openUpwards ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                    } right-0 ${
+                    } ${
                         isBright 
                             ? 'bg-white/95 border-black/[0.08] text-zinc-900 shadow-[0_20px_45px_rgba(0,0,0,0.14)]' 
                             : 'bg-[#12131a]/95 border-white/[0.08] text-white/90 shadow-[0_20px_50px_rgba(0,0,0,0.65)]'

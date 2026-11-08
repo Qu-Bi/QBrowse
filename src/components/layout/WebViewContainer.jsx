@@ -82,6 +82,25 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
     }, [tab.id]);
 
+    // Active Tab Heartbeat & Activity Countdown Tracking
+    useEffect(() => {
+        if (!isActive || !isSpaceActive) return;
+
+        // Immediately update tab activity when active
+        useTabStore.getState().updateTabActivity(tab.id);
+
+        // Keep 30s heartbeat interval while active
+        const heartbeat = setInterval(() => {
+            useTabStore.getState().updateTabActivity(tab.id);
+        }, 30000);
+
+        return () => {
+            clearInterval(heartbeat);
+            // In effect cleanup (when becoming inactive/switching away), touch activity so countdown starts at 0s
+            useTabStore.getState().updateTabActivity(tab.id);
+        };
+    }, [isActive, isSpaceActive, tab.id]);
+
     const isBright = theme === 'light' && space !== 'ghost' && space !== 'tor';
 
     const cleanHost = React.useMemo(() => {
@@ -586,6 +605,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
         const handleDomReady = () => {
             isDomReadyRef.current = true;
+            if (appliedFactorRef.current && typeof wv.setZoomFactor === 'function') {
+                try { wv.setZoomFactor(appliedFactorRef.current); } catch (_) {}
+            }
             try {
                 useTabStore.getState().setTabNavigatedToDocument(tab.id);
             } catch (_) {}
@@ -735,6 +757,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             handleNavigate({ ...e, url: displayUrl });
             updateNavState();
             sendVaultMatchesToWebview();
+            useTabStore.getState().updateTabActivity(tab.id);
         };
         const handleNavigateInPage = (e) => {
             if (e && e.isMainFrame === false) return;
@@ -762,10 +785,16 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 const errorData = e.args && e.args[0];
                 setGenericDrmError(errorData || { keySystem: 'widevine' });
             } else if (e.channel === 'webview-zoom-wheel') {
-                const delta = e.args && e.args[0];
-                if (typeof delta === 'number') {
+                const dir = e.args && e.args[0];
+                if (typeof dir === 'number') {
                     const ui = useUIStore.getState();
-                    ui.setZoomLevel(ui.zoomLevel + delta);
+                    if (dir > 0) ui.zoomIn();
+                    else if (dir < 0) ui.zoomOut();
+                }
+            } else if (e.channel === 'webview-canvas-zoom-changed') {
+                const pct = e.args && e.args[0];
+                if (typeof pct === 'number') {
+                    useUIStore.getState().showCanvasZoomHUD(pct);
                 }
             } else if (e.channel === 'media-state-changed') {
                 const data = e.args && e.args[0];
@@ -857,9 +886,19 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     });
                 }
             } else if (e.channel === 'webview-page-clicked') {
-                useUIStore.getState().closeContextMenus();
-                if (useUIStore.getState().activePopover) {
-                    useUIStore.getState().closePopover();
+                const ui = useUIStore.getState();
+                ui.closeContextMenus();
+                if (ui.activePopover) {
+                    ui.closePopover();
+                }
+                if (ui.isTopBarOmniboxActive) {
+                    ui.setIsTopBarOmniboxActive(false);
+                }
+                if (ui.isOmniboxOpen) {
+                    ui.closeOmnibox();
+                }
+                if (ui.activePinnedStack) {
+                    ui.closePinnedStack();
                 }
                 setSelectionPill(null);
                 const currentCard = activeNoteCardRef.current;
@@ -993,6 +1032,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
         const handleMediaPlay = () => useTabStore.getState().updateTabAudible(tab.id, true);
         const handleMediaPause = () => useTabStore.getState().updateTabAudible(tab.id, false);
+        const handleAudioStateChanged = (e) => {
+            const isAudible = Boolean(e && (e.audible ?? (typeof wv.isCurrentlyAudible === 'function' ? wv.isCurrentlyAudible() : true)));
+            useTabStore.getState().updateTabAudible(tab.id, isAudible);
+        };
         
         const handleDidStartLoading = () => {
             // [WebView did-start-loading silenced]
@@ -1083,10 +1126,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 });
             } catch (_) {}
 
-            // Distinguish explicit popup requests (with window features or new-popup disposition) from regular link clicks
-            const hasPopupDims = Boolean(e.features && (e.features.includes('width=') || e.features.includes('height=')));
-            const isBlank = !e.url || e.url === 'about:blank';
-            const isPopupRequest = hasPopupDims || e.disposition === 'new-popup' || (isBlank && Boolean(e.features && e.features.trim().length > 0));
+            // Distinguish genuine OAuth/Auth popup requests from regular link clicks
+            const featLower = (e.features || '').toLowerCase();
+            const hasNoOpener = featLower.includes('noopener') || featLower.includes('noreferrer');
+            const hasPopupDims = Boolean(featLower && (featLower.includes('width=') || featLower.includes('height=')));
+            const isExplicitPopupFlag = Boolean(featLower && (featLower.includes('popup=true') || featLower.includes('popup=1')));
+            const isPopupRequest = !hasNoOpener && (isExplicitPopupFlag || (hasPopupDims && e.disposition === 'new-popup'));
 
             // Let Electron's setWindowOpenHandler open the sleek native child popup window
             if (isPopupRequest) {
@@ -1142,14 +1187,18 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const handleContextMenu = (e) => {
             const params = e.params || {};
             const rect = wv.getBoundingClientRect();
-            const hasImage = params.mediaType === 'image' || !!params.srcURL;
-            const hasSelection = !hasImage && !!(params.selectionText && params.selectionText.trim());
+            const hasImage = params.mediaType === 'image' || params.mediaType === 'canvas';
+            const hasSelection = !!(params.selectionText && params.selectionText.trim());
 
             useUIStore.getState().setContextMenu({
                 type: 'webview',
                 openedAt: Date.now(),
                 x: params.x != null ? params.x : rect.left,
                 y: params.y != null ? params.y : rect.top,
+                rawX: params.x,
+                rawY: params.y,
+                localX: params.x != null ? Math.max(0, params.x - rect.left) : 0,
+                localY: params.y != null ? Math.max(0, params.y - rect.top) : 0,
                 tabId: tab.id,
                 space,
                 linkURL: params.linkURL || '',
@@ -1184,6 +1233,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('leave-html-full-screen', handleLeaveHtmlFullScreen);
         wv.addEventListener('media-started-playing', handleMediaPlay);
         wv.addEventListener('media-paused', handleMediaPause);
+        wv.addEventListener('audio-state-changed', handleAudioStateChanged);
         wv.addEventListener('console-message', handleConsoleMessage);
         wv.addEventListener('ipc-message', handleIpcMessage);
         wv.addEventListener('new-window', handleNewWindow);
@@ -1206,6 +1256,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('leave-html-full-screen', handleLeaveHtmlFullScreen);
             wv.removeEventListener('media-started-playing', handleMediaPlay);
             wv.removeEventListener('media-paused', handleMediaPause);
+            wv.removeEventListener('audio-state-changed', handleAudioStateChanged);
             wv.removeEventListener('console-message', handleConsoleMessage);
             wv.removeEventListener('plugin-crashed', handleRenderProcessGone);
             wv.removeEventListener('ipc-message', handleIpcMessage);
@@ -1368,77 +1419,83 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         }
     }, [isRefreshing, isActive, isSpaceActive]);
 
-    // Smooth Website Zoom Animation
-    const currentZoomFactor = useRef(zoomLevel / 100);
+    // High-Res Spatial Zoom Animation (Instant Reflow + 120ms Spring Expansion)
+    const appliedFactorRef = useRef((zoomLevel || 100) / 100);
     const prevActiveRef = useRef(isActive);
-    const prevZoomLevelRef = useRef(zoomLevel);
-    const zoomAnimFrameRef = useRef(null);
+    const zoomAnimTimerRef = useRef(null);
 
     useEffect(() => {
         const wv = wvRef.current;
-        if (!wv || typeof wv.setZoomFactor !== 'function' || !isActive) {
+        if (!wv || !isActive || typeof wv.setZoomFactor !== 'function') {
             prevActiveRef.current = isActive;
-            prevZoomLevelRef.current = zoomLevel;
             return;
         }
 
-        const targetFactor = zoomLevel / 100;
-        const justBecameActive = !prevActiveRef.current && isActive;
+        const targetFactor = (zoomLevel || 100) / 100;
+        const justSwitched = !prevActiveRef.current && isActive;
         prevActiveRef.current = isActive;
 
-        // If tab just switched or factor already matches target, apply instantly without animation
-        if (justBecameActive || Math.abs(currentZoomFactor.current - targetFactor) < 0.001) {
-            currentZoomFactor.current = targetFactor;
-            prevZoomLevelRef.current = zoomLevel;
-            try {
-                wv.setZoomFactor(targetFactor);
-            } catch(e) {}
+        if (justSwitched || Math.abs(appliedFactorRef.current - targetFactor) < 0.001) {
+            appliedFactorRef.current = targetFactor;
+            try { wv.setZoomFactor(targetFactor); } catch (_) {}
             return;
         }
 
-        // Active tab zoom level changed: smoothly animate factor transition
-        if (zoomAnimFrameRef.current) {
-            cancelAnimationFrame(zoomAnimFrameRef.current);
-            zoomAnimFrameRef.current = null;
-        }
+        const prevFactor = appliedFactorRef.current;
+        appliedFactorRef.current = targetFactor;
 
-        const startFactor = currentZoomFactor.current;
-        const duration = 220; // Silky smooth 220ms duration
-        const startTime = performance.now();
+        // Apply new zoom factor immediately (zero delay, true Chromium reflow from frame 0)
+        try { wv.setZoomFactor(targetFactor); } catch (_) {}
 
-        const animate = (now) => {
-            const elapsed = now - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            // Cubic ease-out: 1 - (1 - progress)^3
-            const ease = 1 - Math.pow(1 - progress, 3);
-            const nextFactor = startFactor + (targetFactor - startFactor) * ease;
+        // Spatial scale spring animation: momentarily counter-scale to previous visual size,
+        // then smoothly spring to 1.0 over 180ms (cubic-bezier(0.22, 1, 0.36, 1))
+        if (Math.abs(prevFactor - targetFactor) > 0.005) {
+            if (zoomAnimTimerRef.current) clearTimeout(zoomAnimTimerRef.current);
 
-            currentZoomFactor.current = nextFactor;
+            // Compute actual visual scale if mid-transition to ensure seamless chained zooms
+            let currentVisualScale = prevFactor;
             try {
-                wv.setZoomFactor(nextFactor);
-            } catch(e) {}
+                const matrix = window.getComputedStyle(wv).transform;
+                if (matrix && matrix !== 'none') {
+                    const m = matrix.match(/^matrix\((.+)\)$/);
+                    if (m) {
+                        const vals = m[1].split(', ');
+                        const a = parseFloat(vals[0]) || 1;
+                        currentVisualScale = prevFactor * a;
+                    }
+                }
+            } catch (_) {}
 
-            if (progress < 1) {
-                zoomAnimFrameRef.current = requestAnimationFrame(animate);
-            } else {
-                currentZoomFactor.current = targetFactor;
-                try {
-                    wv.setZoomFactor(targetFactor);
-                } catch(e) {}
-                zoomAnimFrameRef.current = null;
-            }
-        };
+            const startScale = Math.min(1.4, Math.max(0.6, currentVisualScale / targetFactor));
 
-        prevZoomLevelRef.current = zoomLevel;
-        zoomAnimFrameRef.current = requestAnimationFrame(animate);
+            wv.style.willChange = 'transform';
+            wv.style.transition = 'none';
+            wv.style.transformOrigin = '50% 0%';
+            wv.style.transform = `scale(${startScale.toFixed(4)})`;
+            void wv.offsetHeight; // Force layout flush so startScale is guaranteed painted
 
-        return () => {
-            if (zoomAnimFrameRef.current) {
-                cancelAnimationFrame(zoomAnimFrameRef.current);
-                zoomAnimFrameRef.current = null;
-            }
-        };
+            requestAnimationFrame(() => {
+                if (wvRef.current) {
+                    wvRef.current.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
+                    wvRef.current.style.transform = 'scale(1)';
+                }
+            });
+
+            zoomAnimTimerRef.current = setTimeout(() => {
+                if (wvRef.current) {
+                    wvRef.current.style.transition = '';
+                    wvRef.current.style.transform = '';
+                    wvRef.current.style.willChange = '';
+                }
+            }, 190);
+        }
     }, [zoomLevel, isActive]);
+
+    useEffect(() => {
+        return () => {
+            if (zoomAnimTimerRef.current) clearTimeout(zoomAnimTimerRef.current);
+        };
+    }, []);
 
     // Sync Audio Muting with webview
     useEffect(() => {
@@ -1950,9 +2007,10 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
   } = useTabStore();
   const { 
     isRightPanelOpen, isFullscreen, isSplitView, 
-    splitRightTabId, zoomLevel, showSwitcherUI, currentUrl, 
+    splitRightTabId, zoomLevel, currentUrl, 
     isForceDark, darkExclusions,
-    activePopover, activeModal, isOmniboxOpen, activePinnedStack, theme,
+    activePopover, isPopoverClosing, activeModal, isModalClosing, 
+    isOmniboxOpen, activePinnedStack, isPinnedStackClosing, theme,
     activeDialog
   } = useUIStore();
   const activeProfileId = useProfileStore(state => state.activeProfileId);
@@ -1993,7 +2051,13 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
   const containerRef = useRef(null);
 
   const isBright = theme === 'light' && space !== 'ghost' && space !== 'tor';
-  const isWebviewBlurred = Boolean(activePopover || activeModal || isOmniboxOpen || activePinnedStack || activeDialog);
+  const isWebviewBlurred = Boolean(
+    (activePopover && !isPopoverClosing) || 
+    (activeModal && !isModalClosing) || 
+    isOmniboxOpen || 
+    (activePinnedStack && !isPinnedStackClosing) || 
+    activeDialog
+  );
 
   return (
     <div 
@@ -2018,7 +2082,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
           }
 
           const isActive = activeTab && tab.id === activeTab.id;
-          const isVisible = isActive && isSpaceActive && !showSwitcherUI;
+          const isVisible = isActive && isSpaceActive;
 
           return (
               <WebViewItem 
@@ -2030,7 +2094,7 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
                   isActive={isActive}
                   isSpaceActive={isSpaceActive}
                   setSpaceTabs={setSpaceTabs}
-                  zoomLevel={zoomLevel}
+                  zoomLevel={isActive ? zoomLevel : 100}
                   isForceDark={isForceDark}
                   darkExclusions={darkExclusions}
                   theme={theme}
@@ -2038,12 +2102,12 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
           );
       })}
 
-      {/* Depth Focus Scrim Overlay to pop dialogs and popovers into sharp focus */}
+      {/* Depth Focus Scrim Overlay to pop dialogs and popovers into sharp focus with smooth exit */}
       <div 
-        className={`absolute inset-0 z-20 pointer-events-none transition-opacity duration-200 ease-out ${
-          isWebviewBlurred 
-            ? (isBright ? 'bg-black/[0.03] backdrop-blur-[1px] opacity-100' : 'bg-black/[0.10] backdrop-blur-[1px] opacity-100')
-            : 'opacity-0'
+        className={`absolute inset-0 z-20 pointer-events-none transition-opacity duration-200 ease-out will-change-[opacity] ${
+          isBright ? 'bg-black/[0.04]' : 'bg-black/[0.12]'
+        } backdrop-blur-[1.5px] ${
+          isWebviewBlurred ? 'opacity-100' : 'opacity-0'
         }`}
       />
     </div>

@@ -1069,20 +1069,47 @@ export default function QVaultPopover({ isClosing }) {
                                 <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 px-3.5 py-2.5 rounded-2xl font-mono font-medium">
                                     {error}
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        if (window.confirm("Reset local vault? This will erase locally stored credentials on this device so you can initialize a fresh vault.")) {
-                                            await resetVault();
-                                            showToast("Local vault reset. You can now set a new Master Password.");
-                                        }
-                                    }}
-                                    className={`text-[11px] underline font-mono text-center cursor-pointer transition py-0.5 active:scale-95 ${
-                                        isBright ? 'text-zinc-500 hover:text-red-600' : 'text-white/65 hover:text-red-400'
-                                    }`}
-                                >
-                                    Forgot password? Reset local vault
-                                </button>
+                                {!confirmReset ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfirmReset(true)}
+                                        className={`text-[11px] underline font-mono text-center cursor-pointer transition py-0.5 active:scale-95 ${
+                                            isBright ? 'text-zinc-500 hover:text-red-600' : 'text-white/65 hover:text-red-400'
+                                        }`}
+                                    >
+                                        Forgot password? Reset local vault
+                                    </button>
+                                ) : (
+                                    <div className={`p-3 rounded-2xl border flex flex-col gap-2 ${
+                                        isBright ? 'bg-red-50/80 border-red-200 text-zinc-800' : 'bg-red-500/10 border-red-500/25 text-white/90'
+                                    }`}>
+                                        <p className="text-[11px] leading-relaxed text-center font-medium">
+                                            Erase locally stored credentials on this device and initialize a fresh vault?
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setConfirmReset(false)}
+                                                className={`flex-1 h-8 rounded-full text-[11px] font-semibold transition cursor-pointer border ${
+                                                    isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700' : 'bg-white/10 hover:bg-white/15 border-white/10 text-white/80'
+                                                }`}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    setConfirmReset(false);
+                                                    await resetVault();
+                                                    showToast("Local vault reset. You can now set a new Master Password.");
+                                                }}
+                                                className="flex-1 h-8 rounded-full text-[11px] font-bold bg-red-500 hover:bg-red-600 text-white transition cursor-pointer active:scale-95"
+                                            >
+                                                Confirm Reset
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 

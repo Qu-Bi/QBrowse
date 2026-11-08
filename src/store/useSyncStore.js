@@ -3,6 +3,7 @@ import useUIStore from './useUIStore';
 import useVaultStore from './useVaultStore';
 import useTabStore, { isValidSyncTab, getCleanTabTitle } from './useTabStore';
 import useHistoryStore from './useHistoryStore';
+import { saveCustomPresetsToStorage, setSavedPresetId } from '../utils/experiencePresets';
 import { auth, db } from '../services/firebase';
 import { 
     createUserWithEmailAndPassword, 
@@ -244,46 +245,253 @@ async function healBloatedRootDocument(userId) {
     }
 }
 
+// Persistent Device Identification for Cross-Device Tabs Sync
+export function getOrCreateDeviceId() {
+    let id = '';
+    try {
+        id = localStorage.getItem('qbrowse_device_id');
+        if (!id) {
+            id = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+                ? crypto.randomUUID() 
+                : `dev-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            localStorage.setItem('qbrowse_device_id', id);
+        }
+    } catch (_) {
+        id = `dev-${Date.now()}`;
+    }
+    return id;
+}
+
+export function getDeviceName() {
+    try {
+        const customName = localStorage.getItem('qbrowse_custom_device_name');
+        if (customName && customName.trim()) return customName.trim();
+        const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+        if (ua.includes('Windows')) return 'Windows PC';
+        if (ua.includes('Macintosh') || ua.includes('Mac OS')) return 'Mac';
+        if (ua.includes('Linux') && !ua.includes('Android')) return 'Linux PC';
+        if (ua.includes('Android')) return 'Android Device';
+        if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS Device';
+        return 'Browser Client';
+    } catch (_) {
+        return 'Browser Client';
+    }
+}
+
+// Aggregates remote devices from Firestore snapshot while strictly ignoring the current device
+async function parseRemoteDevicesFromSnapshot(data, masterPassword, currentDeviceId) {
+    if (!data || !masterPassword) return [];
+    const rawDeviceMap = { ...(data.devices || {}), ...(data.deviceTabs || {}) };
+    const remoteList = [];
+
+    for (const [dId, devData] of Object.entries(rawDeviceMap)) {
+        if (!devData) continue;
+        // Strictly ignore tabs from current device to prevent startup race & self-echo
+        if (dId === currentDeviceId || devData.deviceId === currentDeviceId) {
+            continue;
+        }
+
+        let dec = null;
+        if (devData.encrypted) {
+            try {
+                dec = await decryptData(devData.encrypted, masterPassword);
+            } catch (e) {
+                console.warn('[Sync] Could not decrypt device tabs for:', dId, e);
+            }
+        } else if (Array.isArray(devData.tabs)) {
+            dec = devData;
+        }
+
+        if (dec) {
+            let tabs = Array.isArray(dec.tabs) ? dec.tabs.filter(isValidSyncTab) : [];
+            if (tabs.length === 0) {
+                const p = (dec.privateTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'personal', spaceName: 'Personal' }));
+                const w = (dec.workTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'work', spaceName: 'Work' }));
+                const c = [];
+                if (dec.customSpaceTabs && typeof dec.customSpaceTabs === 'object') {
+                    Object.entries(dec.customSpaceTabs).forEach(([sId, list]) => {
+                        (list || []).filter(isValidSyncTab).forEach(t => c.push({ ...t, spaceId: sId, spaceName: sId }));
+                    });
+                }
+                tabs = [...p, ...w, ...c];
+            }
+
+            remoteList.push({
+                deviceId: dId,
+                deviceName: dec.deviceName || devData.deviceName || 'Remote Device',
+                lastSynced: dec.lastSynced || devData.lastSynced || (devData.updatedAt ? new Date(devData.updatedAt).getTime() : Date.now()),
+                tabs
+            });
+        }
+    }
+
+    // Fallback: If no structured device tabs yet, check legacy data.tabs.encrypted
+    // Ensure we do NOT echo back if it was written by this same device!
+    if (remoteList.length === 0 && data.tabs?.encrypted && data.lastSyncDeviceId !== currentDeviceId) {
+        try {
+            const dec = await decryptData(data.tabs.encrypted, masterPassword);
+            if (dec) {
+                const p = (dec.privateTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'personal', spaceName: 'Personal' }));
+                const w = (dec.workTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'work', spaceName: 'Work' }));
+                const c = [];
+                if (dec.customSpaceTabs && typeof dec.customSpaceTabs === 'object') {
+                    Object.entries(dec.customSpaceTabs).forEach(([sId, list]) => {
+                        (list || []).filter(isValidSyncTab).forEach(t => c.push({ ...t, spaceId: sId, spaceName: sId }));
+                    });
+                }
+                const tabs = [...p, ...w, ...c];
+                if (tabs.length > 0) {
+                    remoteList.push({
+                        deviceId: 'legacy-remote',
+                        deviceName: data.userAgent?.includes('Mac') ? 'Mac' : data.userAgent?.includes('Windows') ? 'Windows PC' : 'Remote Client',
+                        lastSynced: data.tabs.updatedAt ? new Date(data.tabs.updatedAt).getTime() : Date.now(),
+                        tabs
+                    });
+                }
+            }
+        } catch (_) {}
+    }
+
+    return remoteList;
+}
+
 // Global active snapshot listener unsubscribers
 let unsubscribeCloudListeners = [];
 let isApplyingCloudUpdate = false;
 let autoSyncIntervalTimer = null;
 let debounceSyncTimer = null;
 let storeUnsubscribers = [];
+let lastAutoSyncExecutedAt = 0;
+let lastLocalWriteIso = '';
+const MIN_AUTO_SYNC_COOLDOWN_MS = 30000; // Minimum 30s between automatic silent syncs
+
+// Cached payload signatures to prevent re-encrypting & re-uploading unchanged categories
+let lastSyncedSignatures = {
+    settings: '',
+    vault: '',
+    tabs: '',
+    pinnedTabs: '',
+    history: ''
+};
+
+let lastObservedTabSig = '';
+let lastObservedVaultSig = '';
+let lastObservedSettingsSig = '';
+
+function computeTabsWatcherSignature(tabState) {
+    if (!tabState) return '';
+    const formatSigTab = (t) => `${t.id}|${t.url || ''}|${getCleanTabTitle(t)}`;
+    const priv = (tabState.privateTabs || []).filter(isValidSyncTab).map(formatSigTab).join(';');
+    const work = (tabState.workTabs || []).filter(isValidSyncTab).map(formatSigTab).join(';');
+    const customEntries = Object.entries(tabState.customSpaceTabs || {})
+        .map(([sId, list]) => `${sId}:${(list || []).filter(isValidSyncTab).map(formatSigTab).join(',')}`)
+        .join('|');
+    const pins = (tabState.pinnedTabs || []).map(p => `${p.id}|${p.domain || ''}|${p.title || ''}`).join(';');
+    const spaces = JSON.stringify(tabState.customSpaces || []);
+    return `${priv}::${work}::${customEntries}::${pins}::${spaces}`;
+}
+
+function computeVaultWatcherSignature(vaultState) {
+    if (!vaultState || !Array.isArray(vaultState.passwords)) return '';
+    return vaultState.passwords
+        .map(p => `${p.id}|${p.updatedAt || ''}|${p.url || ''}|${p.username || ''}|${p.password || ''}`)
+        .join(';');
+}
+
+function computeSettingsWatcherSignature(uiState) {
+    if (!uiState) return '';
+    const s = { ...(uiState.settings || {}) };
+    delete s.syncedCloudSettings;
+    if (s.customWallpaperSource !== 'url') {
+        delete s.customWallpaper;
+        delete s.customWallpaperOriginalUrl;
+    }
+    return JSON.stringify({
+        s,
+        activePresetId: uiState.activePresetId || uiState.activePreset || '',
+        customPresets: uiState.customPresets || [],
+        presetOverrides: uiState.presetOverrides || {},
+        theme: uiState.theme || 'dark',
+        accentColor: uiState.accentColor || '#d4bc94'
+    });
+}
+
+function applySyncedUIPresetsAndTheme(decryptedSettings) {
+    if (!decryptedSettings || typeof decryptedSettings !== 'object') return;
+    const uiStore = useUIStore.getState();
+
+    if (Array.isArray(decryptedSettings._syncCustomPresets)) {
+        try {
+            saveCustomPresetsToStorage(decryptedSettings._syncCustomPresets);
+            useUIStore.setState({ customPresets: decryptedSettings._syncCustomPresets });
+        } catch (_) {}
+    }
+    if (decryptedSettings._syncPresetOverrides && typeof decryptedSettings._syncPresetOverrides === 'object') {
+        try {
+            localStorage.setItem('qbrowse_preset_overrides', JSON.stringify(decryptedSettings._syncPresetOverrides));
+            useUIStore.setState({ presetOverrides: decryptedSettings._syncPresetOverrides });
+        } catch (_) {}
+    }
+    const syncedPresetId = decryptedSettings._syncActivePresetId || decryptedSettings._syncActivePreset;
+    if (syncedPresetId && syncedPresetId !== uiStore.activePresetId) {
+        try {
+            setSavedPresetId(syncedPresetId);
+            useUIStore.setState({ activePresetId: syncedPresetId });
+        } catch (_) {}
+    }
+    if (decryptedSettings._syncTheme && decryptedSettings._syncTheme !== uiStore.theme && typeof uiStore.setTheme === 'function') {
+        try {
+            uiStore.setTheme(decryptedSettings._syncTheme);
+        } catch (_) {}
+    }
+    if (decryptedSettings._syncAccentColor && decryptedSettings._syncAccentColor !== uiStore.accentColor && typeof uiStore.setAccentColor === 'function') {
+        try {
+            uiStore.setAccentColor(decryptedSettings._syncAccentColor);
+        } catch (_) {}
+    }
+}
 
 function setupLocalStoreWatchers() {
     if (storeUnsubscribers.length > 0) return;
 
     try {
-        const unsubTabs = useTabStore.subscribe((state, prevState) => {
+        lastObservedTabSig = computeTabsWatcherSignature(useTabStore.getState());
+        lastObservedVaultSig = computeVaultWatcherSignature(useVaultStore.getState());
+        lastObservedSettingsSig = computeSettingsWatcherSignature(useUIStore.getState());
+
+        const unsubTabs = useTabStore.subscribe((state) => {
             if (isApplyingCloudUpdate) return;
             const current = useSyncStore.getState();
             if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
-            if (
-                state.privateTabs !== prevState?.privateTabs || 
-                state.workTabs !== prevState?.workTabs ||
-                state.pinnedTabs !== prevState?.pinnedTabs
-            ) {
-                current.triggerDebouncedSync(8000);
+            const nextSig = computeTabsWatcherSignature(state);
+            if (nextSig !== lastObservedTabSig) {
+                lastObservedTabSig = nextSig;
+                current.triggerDebouncedSync(30000);
             }
         });
 
-        const unsubVault = useVaultStore.subscribe((state, prevState) => {
+        const unsubVault = useVaultStore.subscribe((state) => {
             if (isApplyingCloudUpdate) return;
             const current = useSyncStore.getState();
             if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
-            if (state.passwords !== prevState?.passwords || (state.isUnlocked && !prevState?.isUnlocked)) {
-                current.triggerDebouncedSync(3000);
+            const nextSig = computeVaultWatcherSignature(state);
+            if (nextSig !== lastObservedVaultSig) {
+                lastObservedVaultSig = nextSig;
+                current.triggerDebouncedSync(12000);
             }
         });
 
-        const unsubUI = useUIStore.subscribe((state, prevState) => {
+        const unsubUI = useUIStore.subscribe((state) => {
             if (isApplyingCloudUpdate) return;
             const current = useSyncStore.getState();
             if (!current.autoSyncEnabled || !current.user || !current.masterPassword) return;
-            if (state.settings !== prevState?.settings) {
-                // Responsive 1.5s debounce for settings changes
-                current.triggerDebouncedSync(1500);
+            const nextSig = computeSettingsWatcherSignature(state);
+            if (nextSig !== lastObservedSettingsSig) {
+                lastObservedSettingsSig = nextSig;
+                try {
+                    localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+                } catch (_) {}
+                current.triggerDebouncedSync(15000);
             }
         });
 
@@ -307,9 +515,15 @@ const useSyncStore = create((set, get) => ({
     isLoadingBackups: false,
     isCreatingBackup: false,
 
+    // Cross-Device Cloud Tabs Sync
+    deviceId: getOrCreateDeviceId(),
+    deviceName: getDeviceName(),
+    remoteDeviceTabs: [],
+    isRefreshingTabs: false,
+
     // Auto-Sync Configuration
     autoSyncEnabled: localStorage.getItem('qbrowse_auto_sync') !== 'false',
-    autoSyncIntervalMinutes: 5,
+    autoSyncIntervalMinutes: 15,
 
     syncCategories: (() => {
         try {
@@ -463,14 +677,14 @@ const useSyncStore = create((set, get) => ({
         }
     },
 
-    startAutoSync: (intervalMinutes = 5) => {
+    startAutoSync: (intervalMinutes = 15) => {
         if (autoSyncIntervalTimer) {
             clearInterval(autoSyncIntervalTimer);
             autoSyncIntervalTimer = null;
         }
         setupLocalStoreWatchers();
 
-        const ms = Math.max(1, intervalMinutes) * 60 * 1000;
+        const ms = Math.max(5, intervalMinutes) * 60 * 1000;
         autoSyncIntervalTimer = setInterval(() => {
             const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
             if (autoSyncEnabled && user && masterPassword && !isSyncing && !isApplyingCloudUpdate) {
@@ -478,13 +692,20 @@ const useSyncStore = create((set, get) => ({
             }
         }, ms);
 
-        // Silent warm-up sync after 4 seconds if ready
+        // Silent warm-up sync after 12 seconds if ready and not recently synced
         setTimeout(() => {
             const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
-            if (autoSyncEnabled && user && masterPassword && !isSyncing && !isApplyingCloudUpdate) {
+            if (
+                autoSyncEnabled &&
+                user &&
+                masterPassword &&
+                !isSyncing &&
+                !isApplyingCloudUpdate &&
+                Date.now() - lastAutoSyncExecutedAt > MIN_AUTO_SYNC_COOLDOWN_MS
+            ) {
                 get().syncNow({ silent: true }).catch(() => {});
             }
-        }, 4000);
+        }, 12000);
     },
 
     stopAutoSync: () => {
@@ -498,7 +719,7 @@ const useSyncStore = create((set, get) => ({
         }
     },
 
-    triggerDebouncedSync: (delayMs = 15000) => {
+    triggerDebouncedSync: (delayMs = 25000) => {
         const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
         if (!autoSyncEnabled || !user || !masterPassword || isSyncing || isApplyingCloudUpdate) {
             return;
@@ -506,12 +727,16 @@ const useSyncStore = create((set, get) => ({
         if (debounceSyncTimer) {
             clearTimeout(debounceSyncTimer);
         }
+        const elapsedSinceLast = Date.now() - lastAutoSyncExecutedAt;
+        const cooldownRemaining = Math.max(0, MIN_AUTO_SYNC_COOLDOWN_MS - elapsedSinceLast);
+        const effectiveDelay = Math.max(delayMs, cooldownRemaining, 10000);
         debounceSyncTimer = setTimeout(() => {
+            debounceSyncTimer = null;
             const state = get();
             if (state.autoSyncEnabled && state.user && state.masterPassword && !state.isSyncing && !isApplyingCloudUpdate) {
                 state.syncNow({ silent: true }).catch(() => {});
             }
-        }, delayMs);
+        }, effectiveDelay);
     },
 
     flushDebouncedSync: () => {
@@ -531,7 +756,7 @@ const useSyncStore = create((set, get) => ({
         localStorage.setItem('qbrowse_auto_sync', next ? 'true' : 'false');
         if (next) {
             get().startAutoSync();
-            useUIStore.getState().showToast("Auto-Sync active (syncs every 5m & on changes)");
+            useUIStore.getState().showToast("Auto-Sync active (syncs periodically & on changes)");
         } else {
             get().stopAutoSync();
             useUIStore.getState().showToast("Auto-Sync turned off");
@@ -632,6 +857,8 @@ const useSyncStore = create((set, get) => ({
     logout: async () => {
         get().stopListening();
         get().stopAutoSync();
+        lastSyncedSignatures = { settings: '', vault: '', tabs: '', pinnedTabs: '', history: '' };
+        lastLocalWriteIso = '';
         await signOut(auth);
         await saveWrappedPassphrase('');
         set({ 
@@ -640,6 +867,7 @@ const useSyncStore = create((set, get) => ({
             lastSyncTime: null, 
             syncedItemsCount: 0, 
             cloudBackups: [],
+            remoteDeviceTabs: [],
             syncStatus: 'offline',
             authError: null 
         });
@@ -685,9 +913,8 @@ const useSyncStore = create((set, get) => ({
         try {
             const encrypted = await encryptData(dataPayload, masterPassword);
             const nowIso = new Date().toISOString();
+            lastLocalWriteIso = nowIso;
 
-            // 1. Write directly to root user doc: doc(db, 'users', user.uid)
-            // Storing on root document fits standard match /users/{userId} security rules!
             const rootRef = doc(db, 'users', user.uid);
             try {
                 await setDoc(rootRef, {
@@ -715,16 +942,6 @@ const useSyncStore = create((set, get) => ({
                 }
             }
 
-            // 2. Also mirror to subcollection for full backwards-compatibility
-            try {
-                await setDoc(doc(db, 'users', user.uid, 'sync', dataName), {
-                    encrypted,
-                    updatedAt: nowIso
-                }, { merge: true });
-            } catch(subErr) {
-                // If subcollection permissions are blocked, root document write already succeeded!
-            }
-
             const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             localStorage.setItem('qbrowse_last_sync', nowTime);
             set({ lastSyncTime: nowTime, syncStatus: 'synced', authError: null });
@@ -737,7 +954,7 @@ const useSyncStore = create((set, get) => ({
 
     syncNow: async (options = { silent: false }) => {
         const isSilent = options && options.silent === true;
-        const { user, masterPassword, syncCategories } = get();
+        const { user, masterPassword, syncCategories, isSyncing } = get();
         if (!user) {
             if (!isSilent) useUIStore.getState().showToast("Sign in to sync your data");
             return;
@@ -747,27 +964,43 @@ const useSyncStore = create((set, get) => ({
             set({ syncStatus: 'error', authError: 'Master encryption passphrase missing.' });
             return;
         }
+        if (isSyncing) return;
 
+        lastAutoSyncExecutedAt = Date.now();
         set({ isSyncing: true, syncStatus: 'syncing', authError: null });
         try {
             let totalItems = 0;
+            const nowIso = new Date().toISOString();
+            const nowMs = new Date(nowIso).getTime();
+            const rootBatchUpdate = {};
+            const updatedSigs = {};
 
             // 1. Sync Settings
             if (syncCategories?.settings !== false) {
-                const uiSettings = { ...useUIStore.getState().settings };
+                const uiState = useUIStore.getState();
+                const uiSettings = { ...uiState.settings };
                 delete uiSettings.syncedCloudSettings;
-                // Safe handling for custom wallpaper: only sync URL backgrounds, keep local file wallpapers device-local
                 if (uiSettings.customWallpaperSource !== 'url') {
                     delete uiSettings.customWallpaper;
                     delete uiSettings.customWallpaperOriginalUrl;
                 } else if (uiSettings.customWallpaperOriginalUrl) {
                     uiSettings.customWallpaper = uiSettings.customWallpaperOriginalUrl;
                 }
-                await get().syncDataToCloud('settings', uiSettings);
+                // Include custom presets, overrides, active preset, theme, and accent color in settings payload
+                uiSettings._syncActivePresetId = uiState.activePresetId || uiState.activePreset || 'default';
+                uiSettings._syncActivePreset = uiSettings._syncActivePresetId;
+                uiSettings._syncCustomPresets = uiState.customPresets || [];
+                uiSettings._syncPresetOverrides = uiState.presetOverrides || {};
+                uiSettings._syncTheme = uiState.theme || 'dark';
+                uiSettings._syncAccentColor = uiState.accentColor || '#d4bc94';
+
+                const settingsSig = JSON.stringify(uiSettings);
                 totalItems += Object.keys(uiSettings).length;
-                try {
-                    localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
-                } catch (_) {}
+                if (!isSilent || settingsSig !== lastSyncedSignatures.settings) {
+                    const encrypted = await encryptData(uiSettings, masterPassword);
+                    rootBatchUpdate.settings = { encrypted, updatedAt: nowIso };
+                    updatedSigs.settings = settingsSig;
+                }
             }
 
             // 2. Sync Vault (Passwords, Passkeys, Cards, Addresses & Notes)
@@ -775,7 +1008,6 @@ const useSyncStore = create((set, get) => ({
                 let vaultItems = useVaultStore.getState().passwords || [];
                 let isVaultUnlockedLocally = useVaultStore.getState().isUnlocked;
 
-                // If vault is not yet unlocked in UI, check if masterPassword matches vault key
                 if (!isVaultUnlockedLocally && masterPassword && window.electronAPI?.checkVaultPassword) {
                     try {
                         const verified = await window.electronAPI.checkVaultPassword(masterPassword);
@@ -791,55 +1023,171 @@ const useSyncStore = create((set, get) => ({
                     } catch(e) {}
                 }
 
-                // SAFEGUARD: Only upload if vault is confirmed unlocked (in UI or via verified master key).
-                // If locked without credentials, NEVER overwrite the cloud vault!
-                // Filter out corrupted raw ciphertext strings!
                 if (isVaultUnlockedLocally) {
                     const cleanVault = (vaultItems || []).filter(item => item && !isRawCiphertextString(item.password));
-                    await get().syncDataToCloud('vault', cleanVault);
+                    const vaultSig = JSON.stringify(cleanVault.map(v => ({
+                        id: v.id,
+                        u: v.username,
+                        url: v.url,
+                        p: v.password,
+                        t: v.title,
+                        up: v.updatedAt
+                    })));
                     totalItems += cleanVault.length;
+                    if (!isSilent || vaultSig !== lastSyncedSignatures.vault) {
+                        const encrypted = await encryptData(cleanVault, masterPassword);
+                        rootBatchUpdate.vault = { encrypted, updatedAt: nowIso };
+                        updatedSigs.vault = vaultSig;
+                    }
                 }
             }
 
-            // 3. Sync Tabs & Pinned Apps (Personal & Work Spaces) - only sync valid open tabs, never empty/placeholder new tabs
+            // 3. Sync Tabs & Pinned Apps (Personal, Work & Custom Spaces)
             if (syncCategories?.tabs !== false) {
+                const tabState = useTabStore.getState();
                 const formatTab = (t) => ({
                     id: t.id,
                     title: getCleanTabTitle(t),
                     url: t.url,
                     lastActiveAt: t.lastActiveAt || Date.now()
                 });
+                const formatSigTab = (t) => ({
+                    id: t.id,
+                    title: getCleanTabTitle(t),
+                    url: t.url
+                });
 
-                const validPrivateTabs = (useTabStore.getState().privateTabs || [])
+                const validPrivateTabs = (tabState.privateTabs || [])
                     .filter(isValidSyncTab)
                     .map(formatTab);
-                const validWorkTabs = (useTabStore.getState().workTabs || [])
+                const validWorkTabs = (tabState.workTabs || [])
                     .filter(isValidSyncTab)
                     .map(formatTab);
-                const pinnedTabsList = useTabStore.getState().pinnedTabs || [];
+                const validCustomSpaceTabs = {};
+                const sigCustomSpaceTabs = {};
+                Object.entries(tabState.customSpaceTabs || {}).forEach(([sId, list]) => {
+                    const filtered = (list || []).filter(isValidSyncTab);
+                    if (filtered.length > 0) {
+                        validCustomSpaceTabs[sId] = filtered.map(formatTab);
+                        sigCustomSpaceTabs[sId] = filtered.map(formatSigTab);
+                    }
+                });
+                const pinnedTabsList = tabState.pinnedTabs || [];
+
+                // Build space lookup map to preserve custom workspace names
+                const customSpacesList = tabState.customSpaces || [];
+                const spaceNameMap = { personal: 'Personal', work: 'Work' };
+                customSpacesList.forEach(s => {
+                    if (s && s.id) spaceNameMap[s.id] = s.name || s.id;
+                });
+
+                // Flat tabs list across all spaces with preserved space labels
+                const flatTabsList = [
+                    ...validPrivateTabs.map(t => ({ ...t, spaceId: 'personal', spaceName: 'Personal' })),
+                    ...validWorkTabs.map(t => ({ ...t, spaceId: 'work', spaceName: 'Work' })),
+                    ...Object.entries(validCustomSpaceTabs).flatMap(([sId, list]) => {
+                        const sName = spaceNameMap[sId] || sId;
+                        return (list || []).map(t => ({ ...t, spaceId: sId, spaceName: sName }));
+                    })
+                ];
+
+                const currentDeviceId = getOrCreateDeviceId();
+                const currentDeviceName = getDeviceName();
 
                 const tabsPayload = {
                     privateTabs: validPrivateTabs,
                     workTabs: validWorkTabs,
-                    pinnedTabs: pinnedTabsList
+                    customSpaceTabs: validCustomSpaceTabs,
+                    tabs: flatTabsList,
+                    pinnedTabs: pinnedTabsList,
+                    customSpaces: customSpacesList,
+                    spaceOrder: tabState.spaceOrder || [],
+                    deviceId: currentDeviceId,
+                    deviceName: currentDeviceName,
+                    lastSynced: Date.now()
                 };
-                await get().syncDataToCloud('tabs', tabsPayload);
-                totalItems += (tabsPayload.privateTabs.length + tabsPayload.workTabs.length);
+                const tabsSig = JSON.stringify({
+                    priv: (tabState.privateTabs || []).filter(isValidSyncTab).map(formatSigTab),
+                    work: (tabState.workTabs || []).filter(isValidSyncTab).map(formatSigTab),
+                    custom: sigCustomSpaceTabs,
+                    pins: pinnedTabsList,
+                    customSpaces: customSpacesList,
+                    spaceOrder: tabState.spaceOrder || []
+                });
 
-                // Granular sync for pinnedTabs category for fast syncing and listener support
-                await get().syncDataToCloud('pinnedTabs', pinnedTabsList);
-                totalItems += pinnedTabsList.length;
+                totalItems += (tabsPayload.privateTabs.length + tabsPayload.workTabs.length + pinnedTabsList.length);
+
+                if (!isSilent || tabsSig !== lastSyncedSignatures.tabs) {
+                    const encryptedTabs = await encryptData(tabsPayload, masterPassword);
+                    rootBatchUpdate.tabs = { encrypted: encryptedTabs, updatedAt: nowIso };
+
+                    // Per-device payload prevents cross-device overwrites
+                    const deviceEntry = {
+                        deviceId: currentDeviceId,
+                        deviceName: currentDeviceName,
+                        lastSynced: Date.now(),
+                        encrypted: encryptedTabs,
+                        updatedAt: nowIso
+                    };
+                    rootBatchUpdate.devices = {
+                        [currentDeviceId]: deviceEntry
+                    };
+                    rootBatchUpdate.deviceTabs = {
+                        [currentDeviceId]: deviceEntry
+                    };
+                    rootBatchUpdate.lastSyncDeviceId = currentDeviceId;
+                    updatedSigs.tabs = tabsSig;
+                }
+
+                const pinsSig = JSON.stringify(pinnedTabsList);
+                if (!isSilent || pinsSig !== lastSyncedSignatures.pinnedTabs) {
+                    const encryptedPins = await encryptData(pinnedTabsList, masterPassword);
+                    rootBatchUpdate.pinnedTabs = { encrypted: encryptedPins, updatedAt: nowIso };
+                    updatedSigs.pinnedTabs = pinsSig;
+                }
             }
 
             // 4. Sync History & Bookmarks (limited to 200 items to keep document lightweight)
             if (syncCategories?.history !== false) {
                 const historyList = useHistoryStore.getState().history || [];
                 const historyPayload = historyList.slice(0, 200);
-                await get().syncDataToCloud('history', historyPayload);
+                const historySig = JSON.stringify(historyPayload.map(h => `${h.url}|${h.timestamp || ''}`));
                 totalItems += historyPayload.length;
+                if (!isSilent || historySig !== lastSyncedSignatures.history) {
+                    const encryptedHistory = await encryptData(historyPayload, masterPassword);
+                    rootBatchUpdate.history = { encrypted: encryptedHistory, updatedAt: nowIso };
+                    updatedSigs.history = historySig;
+                }
+            }
+
+            const changedCategoryKeys = Object.keys(rootBatchUpdate);
+            if (changedCategoryKeys.length > 0) {
+                lastLocalWriteIso = nowIso;
+                rootBatchUpdate.lastSync = nowIso;
+                rootBatchUpdate.userAgent = navigator.userAgent;
+
+                const rootRef = doc(db, 'users', user.uid);
+                try {
+                    await setDoc(rootRef, rootBatchUpdate, { merge: true });
+                } catch(writeErr) {
+                    if (writeErr?.message && writeErr.message.includes('exceeds the maximum allowed size')) {
+                        await healBloatedRootDocument(user.uid);
+                        await setDoc(rootRef, rootBatchUpdate, { merge: true });
+                    } else {
+                        throw writeErr;
+                    }
+                }
+
+                Object.assign(lastSyncedSignatures, updatedSigs);
+                if (rootBatchUpdate.settings) {
+                    try {
+                        localStorage.setItem('qbrowse_settings_updated_at', String(nowMs));
+                    } catch (_) {}
+                }
             }
 
             const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            localStorage.setItem('qbrowse_last_sync', nowTime);
             set({ isSyncing: false, syncStatus: 'synced', lastSyncTime: nowTime, syncedItemsCount: totalItems, authError: null });
             if (!isSilent) {
                 useUIStore.getState().showToast(`Cloud Sync Complete! (${totalItems} items encrypted)`);
@@ -872,7 +1220,8 @@ const useSyncStore = create((set, get) => ({
         set({ isCreatingBackup: true, authError: null });
         try {
             // 1. Clean settings to avoid huge base64 wallpaper bloating payload
-            const cleanSettings = { ...useUIStore.getState().settings };
+            const uiState = useUIStore.getState();
+            const cleanSettings = { ...uiState.settings };
             delete cleanSettings.syncedCloudSettings;
             if (cleanSettings.customWallpaperSource !== 'url') {
                 delete cleanSettings.customWallpaper;
@@ -880,6 +1229,19 @@ const useSyncStore = create((set, get) => ({
             } else if (cleanSettings.customWallpaperOriginalUrl) {
                 cleanSettings.customWallpaper = cleanSettings.customWallpaperOriginalUrl;
             }
+            cleanSettings._syncActivePresetId = uiState.activePresetId || 'default';
+            cleanSettings._syncActivePreset = cleanSettings._syncActivePresetId;
+            cleanSettings._syncCustomPresets = uiState.customPresets || [];
+            cleanSettings._syncPresetOverrides = uiState.presetOverrides || {};
+            cleanSettings._syncTheme = uiState.theme || 'dark';
+            cleanSettings._syncAccentColor = uiState.accentColor || '#d4bc94';
+
+            const tabState = useTabStore.getState();
+            const cleanCustomSpaceTabs = {};
+            Object.entries(tabState.customSpaceTabs || {}).forEach(([sId, list]) => {
+                const filtered = (list || []).filter(isValidSyncTab).map(t => ({ ...t, title: getCleanTabTitle(t) }));
+                if (filtered.length > 0) cleanCustomSpaceTabs[sId] = filtered;
+            });
 
             // 2. Gather browser state (with safe bounds on history)
             const payload = {
@@ -898,15 +1260,17 @@ const useSyncStore = create((set, get) => ({
                     return (v || []).filter(item => item && !isRawCiphertextString(item.password));
                 })(),
                 tabs: {
-                    privateTabs: (useTabStore.getState().privateTabs || [])
+                    privateTabs: (tabState.privateTabs || [])
                         .filter(isValidSyncTab)
                         .map(t => ({ ...t, title: getCleanTabTitle(t) })),
-                    workTabs: (useTabStore.getState().workTabs || [])
+                    workTabs: (tabState.workTabs || [])
                         .filter(isValidSyncTab)
-                        .map(t => ({ ...t, title: getCleanTabTitle(t) }))
+                        .map(t => ({ ...t, title: getCleanTabTitle(t) })),
+                    customSpaceTabs: cleanCustomSpaceTabs,
+                    customSpaces: tabState.customSpaces || []
                 },
                 history: (useHistoryStore.getState().history || []).slice(0, 200),
-                pinnedTabs: useTabStore.getState().pinnedTabs || []
+                pinnedTabs: tabState.pinnedTabs || []
             };
 
             // 3. Encrypt entire payload with AES-GCM
@@ -1104,11 +1468,13 @@ const useSyncStore = create((set, get) => ({
             const decrypted = await decryptData(encryptedPayload, masterPassword);
             if (!decrypted) throw new Error("Could not decrypt backup payload");
 
-            // 1. Restore Settings
+            // 1. Restore Settings & Presets
             if (decrypted.settings) {
                 Object.keys(decrypted.settings).forEach(k => {
+                    if (k.startsWith('_sync')) return;
                     useUIStore.getState().setSettingValue(k, decrypted.settings[k]);
                 });
+                applySyncedUIPresetsAndTheme(decrypted.settings);
             }
 
             // 2. Restore Vault Passwords
@@ -1120,7 +1486,8 @@ const useSyncStore = create((set, get) => ({
             if (decrypted.tabs) {
                 const cleanRemoteTabs = {
                     privateTabs: (decrypted.tabs.privateTabs || []).filter(isValidSyncTab),
-                    workTabs: (decrypted.tabs.workTabs || []).filter(isValidSyncTab)
+                    workTabs: (decrypted.tabs.workTabs || []).filter(isValidSyncTab),
+                    customSpaceTabs: decrypted.tabs.customSpaceTabs || {}
                 };
                 useTabStore.getState().setCloudTabs(cleanRemoteTabs);
                 if (cleanRemoteTabs.privateTabs.length > 0) {
@@ -1128,6 +1495,13 @@ const useSyncStore = create((set, get) => ({
                 }
                 if (cleanRemoteTabs.workTabs.length > 0) {
                     useTabStore.getState().setWorkTabs(cleanRemoteTabs.workTabs);
+                }
+                if (decrypted.tabs.customSpaceTabs && typeof decrypted.tabs.customSpaceTabs === 'object') {
+                    Object.entries(decrypted.tabs.customSpaceTabs).forEach(([sId, list]) => {
+                        if (Array.isArray(list) && list.length > 0 && typeof useTabStore.getState().setTabsForSpace === 'function') {
+                            useTabStore.getState().setTabsForSpace(sId, list.filter(isValidSyncTab));
+                        }
+                    });
                 }
             }
 
@@ -1187,12 +1561,66 @@ const useSyncStore = create((set, get) => ({
         }
     },
 
+    // Cross-Device Remote Tabs Refresh
+    refreshCloudTabs: async (showToastNotice = true) => {
+        const { user, masterPassword } = get();
+        if (!user || !masterPassword) {
+            if (showToastNotice) useUIStore.getState().showToast("Sign in to sync remote tabs");
+            return;
+        }
+
+        try {
+            set({ isRefreshingTabs: true });
+            const rootRef = doc(db, 'users', user.uid);
+            const snap = await getDoc(rootRef);
+            if (!snap.exists()) {
+                set({ isRefreshingTabs: false });
+                return;
+            }
+            const data = snap.data();
+            const currentDeviceId = getOrCreateDeviceId();
+            const remoteDevices = await parseRemoteDevicesFromSnapshot(data, masterPassword, currentDeviceId);
+
+            set({ remoteDeviceTabs: remoteDevices, isRefreshingTabs: false });
+
+            // Mirror to useTabStore cloudTabs for backward compatibility
+            const aggregatedPrivate = [];
+            const aggregatedWork = [];
+            const aggregatedCustom = {};
+            remoteDevices.forEach(dev => {
+                (dev.tabs || []).forEach(t => {
+                    if (t.spaceId === 'work') aggregatedWork.push(t);
+                    else if (t.spaceId && t.spaceId !== 'personal') {
+                        if (!aggregatedCustom[t.spaceId]) aggregatedCustom[t.spaceId] = [];
+                        aggregatedCustom[t.spaceId].push(t);
+                    } else {
+                        aggregatedPrivate.push(t);
+                    }
+                });
+            });
+            useTabStore.getState().setCloudTabs({
+                privateTabs: aggregatedPrivate,
+                workTabs: aggregatedWork,
+                customSpaceTabs: aggregatedCustom
+            });
+
+            if (showToastNotice) {
+                const count = remoteDevices.reduce((acc, d) => acc + (d.tabs?.length || 0), 0);
+                useUIStore.getState().showToast(`Cloud tabs refreshed (${count} tabs from ${remoteDevices.length} device${remoteDevices.length === 1 ? '' : 's'})`);
+            }
+        } catch (e) {
+            console.warn('[Sync] refreshCloudTabs notice:', e);
+            set({ isRefreshingTabs: false });
+        }
+    },
+
     // Offline / Local File Backup Export
     exportLocalBackup: async () => {
         const { masterPassword } = get();
         const passToUse = masterPassword || 'qbrowse_local';
         try {
-            const cleanSettings = { ...useUIStore.getState().settings };
+            const uiState = useUIStore.getState();
+            const cleanSettings = { ...uiState.settings };
             delete cleanSettings.syncedCloudSettings;
             if (cleanSettings.customWallpaperSource !== 'url') {
                 delete cleanSettings.customWallpaper;
@@ -1200,6 +1628,19 @@ const useSyncStore = create((set, get) => ({
             } else if (cleanSettings.customWallpaperOriginalUrl) {
                 cleanSettings.customWallpaper = cleanSettings.customWallpaperOriginalUrl;
             }
+            cleanSettings._syncActivePresetId = uiState.activePresetId || 'default';
+            cleanSettings._syncActivePreset = cleanSettings._syncActivePresetId;
+            cleanSettings._syncCustomPresets = uiState.customPresets || [];
+            cleanSettings._syncPresetOverrides = uiState.presetOverrides || {};
+            cleanSettings._syncTheme = uiState.theme || 'dark';
+            cleanSettings._syncAccentColor = uiState.accentColor || '#d4bc94';
+
+            const tabState = useTabStore.getState();
+            const cleanCustomSpaceTabs = {};
+            Object.entries(tabState.customSpaceTabs || {}).forEach(([sId, list]) => {
+                const filtered = (list || []).filter(isValidSyncTab).map(t => ({ ...t, title: getCleanTabTitle(t) }));
+                if (filtered.length > 0) cleanCustomSpaceTabs[sId] = filtered;
+            });
 
             const payload = {
                 app: "QBrowse",
@@ -1217,15 +1658,17 @@ const useSyncStore = create((set, get) => ({
                     return (v || []).filter(item => item && !isRawCiphertextString(item.password));
                 })(),
                 tabs: {
-                    privateTabs: (useTabStore.getState().privateTabs || [])
+                    privateTabs: (tabState.privateTabs || [])
                         .filter(isValidSyncTab)
                         .map(t => ({ ...t, title: getCleanTabTitle(t) })),
-                    workTabs: (useTabStore.getState().workTabs || [])
+                    workTabs: (tabState.workTabs || [])
                         .filter(isValidSyncTab)
-                        .map(t => ({ ...t, title: getCleanTabTitle(t) }))
+                        .map(t => ({ ...t, title: getCleanTabTitle(t) })),
+                    customSpaceTabs: cleanCustomSpaceTabs,
+                    customSpaces: tabState.customSpaces || []
                 },
                 history: (useHistoryStore.getState().history || []).slice(0, 300),
-                pinnedTabs: useTabStore.getState().pinnedTabs || []
+                pinnedTabs: tabState.pinnedTabs || []
             };
             const encrypted = await encryptData(payload, passToUse);
             const blob = new Blob([JSON.stringify(encrypted, null, 2)], { type: 'application/json' });
@@ -1254,7 +1697,11 @@ const useSyncStore = create((set, get) => ({
             if (!data) throw new Error("Invalid format");
 
             if (data.settings) {
-                Object.keys(data.settings).forEach(k => useUIStore.getState().setSettingValue(k, data.settings[k]));
+                Object.keys(data.settings).forEach(k => {
+                    if (k.startsWith('_sync')) return;
+                    useUIStore.getState().setSettingValue(k, data.settings[k]);
+                });
+                applySyncedUIPresetsAndTheme(data.settings);
             }
             if (Array.isArray(data.vault)) {
                 await get().mergeRemoteVault(data.vault, passToUse);
@@ -1262,7 +1709,8 @@ const useSyncStore = create((set, get) => ({
             if (data.tabs) {
                 const cleanTabs = {
                     privateTabs: (data.tabs.privateTabs || []).filter(isValidSyncTab),
-                    workTabs: (data.tabs.workTabs || []).filter(isValidSyncTab)
+                    workTabs: (data.tabs.workTabs || []).filter(isValidSyncTab),
+                    customSpaceTabs: data.tabs.customSpaceTabs || {}
                 };
                 useTabStore.getState().setCloudTabs(cleanTabs);
             }
@@ -1291,10 +1739,15 @@ const useSyncStore = create((set, get) => ({
         const rootDocRef = doc(db, 'users', user.uid);
         const unsubRoot = onSnapshot(rootDocRef, async (docSnap) => {
             if (!docSnap.exists()) return;
+            const data = docSnap.data();
+
+            // Skip self-echo snapshots produced by our own recent write
+            if (data.lastSync && lastLocalWriteIso && data.lastSync === lastLocalWriteIso) {
+                return;
+            }
+
             isApplyingCloudUpdate = true;
             try {
-                const data = docSnap.data();
-
                 // Handle manual backups update (preserve any in-memory decrypted/encrypted payload references)
                 if (Array.isArray(data.manual_backups)) {
                     const currentBackups = get().cloudBackups || [];
@@ -1312,31 +1765,34 @@ const useSyncStore = create((set, get) => ({
                         const remoteUpdatedAtMs = remoteIso ? new Date(remoteIso).getTime() : 0;
                         const localSettingsUpdatedAt = parseInt(localStorage.getItem('qbrowse_settings_updated_at') || '0', 10);
 
-                        // If local settings were changed AFTER cloud snapshot, local changes win!
-                        if (localSettingsUpdatedAt > remoteUpdatedAtMs) {
-                            get().triggerDebouncedSync(1000);
-                        } else {
+                        if (remoteUpdatedAtMs >= localSettingsUpdatedAt) {
                             const decrypted = await decryptData(data.settings.encrypted, masterPassword);
-                            const currentSettings = useUIStore.getState().settings;
-                            Object.keys(decrypted).forEach(key => {
-                                if (key !== 'syncedCloudSettings' && decrypted[key] !== undefined && currentSettings[key] !== decrypted[key]) {
-                                    if (key === 'customWallpaper' && decrypted.customWallpaper && decrypted.customWallpaperSource === 'url') {
-                                        if (window.electronAPI && window.electronAPI.importWallpaperUrl) {
-                                            window.electronAPI.importWallpaperUrl(decrypted.customWallpaper).then(res => {
-                                                if (res && res.success) {
-                                                    useUIStore.getState().setCustomWallpaper(res.url, 'url', decrypted.customWallpaper);
-                                                }
-                                            }).catch(() => {});
+                            if (decrypted && typeof decrypted === 'object') {
+                                const uiStore = useUIStore.getState();
+                                const currentSettings = uiStore.settings;
+                                Object.keys(decrypted).forEach(key => {
+                                    if (key.startsWith('_sync')) return;
+                                    if (key !== 'syncedCloudSettings' && decrypted[key] !== undefined && currentSettings[key] !== decrypted[key]) {
+                                        if (key === 'customWallpaper' && decrypted.customWallpaper && decrypted.customWallpaperSource === 'url') {
+                                            if (window.electronAPI && window.electronAPI.importWallpaperUrl) {
+                                                window.electronAPI.importWallpaperUrl(decrypted.customWallpaper).then(res => {
+                                                    if (res && res.success) {
+                                                        useUIStore.getState().setCustomWallpaper(res.url, 'url', decrypted.customWallpaper);
+                                                    }
+                                                }).catch(() => {});
+                                            }
+                                        } else {
+                                            uiStore.setSettingValue(key, decrypted[key]);
                                         }
-                                    } else {
-                                        useUIStore.getState().setSettingValue(key, decrypted[key]);
                                     }
+                                });
+                                applySyncedUIPresetsAndTheme(decrypted);
+                                lastSyncedSignatures.settings = JSON.stringify(decrypted);
+                                if (remoteUpdatedAtMs > 0) {
+                                    try {
+                                        localStorage.setItem('qbrowse_settings_updated_at', String(remoteUpdatedAtMs));
+                                    } catch (_) {}
                                 }
-                            });
-                            if (remoteUpdatedAtMs > 0) {
-                                try {
-                                    localStorage.setItem('qbrowse_settings_updated_at', String(remoteUpdatedAtMs));
-                                } catch (_) {}
                             }
                         }
                     } catch(e) {}
@@ -1352,21 +1808,46 @@ const useSyncStore = create((set, get) => ({
                     } catch(e) {}
                 }
 
-                // Sync Tabs
-                if (syncCategories?.tabs !== false && data.tabs?.encrypted) {
+                // Sync Cross-Device Remote Tabs
+                if (syncCategories?.tabs !== false) {
                     try {
-                        const remoteTabs = await decryptData(data.tabs.encrypted, masterPassword);
-                        if (remoteTabs && (remoteTabs.privateTabs || remoteTabs.workTabs)) {
-                            const cleanRemoteTabs = {
-                                privateTabs: (remoteTabs.privateTabs || []).filter(isValidSyncTab),
-                                workTabs: (remoteTabs.workTabs || []).filter(isValidSyncTab)
-                            };
-                            useTabStore.getState().setCloudTabs(cleanRemoteTabs);
+                        const currentDeviceId = getOrCreateDeviceId();
+                        const remoteDevices = await parseRemoteDevicesFromSnapshot(data, masterPassword, currentDeviceId);
+                        set({ remoteDeviceTabs: remoteDevices });
+
+                        // Mirror to useTabStore cloudTabs for backward compatibility
+                        const aggregatedPrivate = [];
+                        const aggregatedWork = [];
+                        const aggregatedCustom = {};
+                        remoteDevices.forEach(dev => {
+                            (dev.tabs || []).forEach(t => {
+                                if (t.spaceId === 'work') aggregatedWork.push(t);
+                                else if (t.spaceId && t.spaceId !== 'personal') {
+                                    if (!aggregatedCustom[t.spaceId]) aggregatedCustom[t.spaceId] = [];
+                                    aggregatedCustom[t.spaceId].push(t);
+                                } else {
+                                    aggregatedPrivate.push(t);
+                                }
+                            });
+                        });
+                        useTabStore.getState().setCloudTabs({
+                            privateTabs: aggregatedPrivate,
+                            workTabs: aggregatedWork,
+                            customSpaceTabs: aggregatedCustom
+                        });
+
+                        // Fallback sync pinned tabs if included in legacy payload
+                        if (data.tabs?.encrypted && !data.pinnedTabs?.encrypted) {
+                            try {
+                                const legacyTabs = await decryptData(data.tabs.encrypted, masterPassword);
+                                if (legacyTabs && Array.isArray(legacyTabs.pinnedTabs) && legacyTabs.pinnedTabs.length > 0) {
+                                    useTabStore.getState().setPinnedTabs(legacyTabs.pinnedTabs);
+                                }
+                            } catch (_) {}
                         }
-                        if (remoteTabs && Array.isArray(remoteTabs.pinnedTabs) && remoteTabs.pinnedTabs.length > 0 && !data.pinnedTabs?.encrypted) {
-                            useTabStore.getState().setPinnedTabs(remoteTabs.pinnedTabs);
-                        }
-                    } catch(e) {}
+                    } catch(e) {
+                        console.warn('[Sync] Notice processing remote tabs in snapshot:', e);
+                    }
                 }
 
                 // Sync Pinned Apps / Tabs
@@ -1375,6 +1856,7 @@ const useSyncStore = create((set, get) => ({
                         const remotePinned = await decryptData(data.pinnedTabs.encrypted, masterPassword);
                         if (Array.isArray(remotePinned) && remotePinned.length > 0) {
                             useTabStore.getState().setPinnedTabs(remotePinned);
+                            lastSyncedSignatures.pinnedTabs = JSON.stringify(remotePinned);
                         }
                     } catch(e) {}
                 }
@@ -1389,11 +1871,19 @@ const useSyncStore = create((set, get) => ({
                     } catch(e) {}
                 }
 
+                // Update local watcher signatures so incoming cloud changes never echo back a sync
+                lastObservedTabSig = computeTabsWatcherSignature(useTabStore.getState());
+                lastObservedVaultSig = computeVaultWatcherSignature(useVaultStore.getState());
+                lastObservedSettingsSig = computeSettingsWatcherSignature(useUIStore.getState());
+
                 set({ syncStatus: 'synced', authError: null });
             } finally {
                 setTimeout(() => {
+                    lastObservedTabSig = computeTabsWatcherSignature(useTabStore.getState());
+                    lastObservedVaultSig = computeVaultWatcherSignature(useVaultStore.getState());
+                    lastObservedSettingsSig = computeSettingsWatcherSignature(useUIStore.getState());
                     isApplyingCloudUpdate = false;
-                }, 1500);
+                }, 2000);
             }
         }, (err) => {
             console.warn("[Sync] Root user listener notice:", err.message);

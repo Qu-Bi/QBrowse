@@ -149,11 +149,11 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
         <>
             <div 
                 onContextMenu={handleContextMenu}
-                className={`mb-2.5 rounded-2xl border transition-all duration-200 select-none shadow-sm ${
+                className={`mb-2.5 rounded-2xl border transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] select-none shadow-sm ${
                     isBright 
-                        ? 'bg-black/[0.02] hover:bg-black/[0.035] border-black/[0.06]' 
-                        : 'bg-white/[0.025] hover:bg-white/[0.04] border-white/[0.06]'
-                } p-2 space-y-2`}
+                        ? (isLiveFolderOpen ? 'bg-black/[0.025] border-black/[0.08]' : 'bg-black/[0.02] hover:bg-black/[0.035] border-black/[0.06]') 
+                        : (isLiveFolderOpen ? 'bg-white/[0.03] border-white/[0.08]' : 'bg-white/[0.025] hover:bg-white/[0.04] border-white/[0.06]')
+                } p-2`}
             >
                 {/* Seamless Header */}
                 <div 
@@ -205,8 +205,14 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                 </div>
 
                 {/* Folder Body */}
-                {isLiveFolderOpen && (
-                    <div className="space-y-2 animate-tab-fade">
+                <div 
+                    className={`overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                        isLiveFolderOpen 
+                            ? 'max-h-[600px] opacity-100 mt-2 pointer-events-auto' 
+                            : 'max-h-0 opacity-0 mt-0 pointer-events-none'
+                    }`}
+                >
+                    <div className="space-y-2">
                         {!authenticated ? (
                             <div className="p-3 text-center rounded-xl bg-black/20 border border-[color:var(--sidebar-border)] space-y-2">
                                 <p className="text-[11px] text-[color:var(--sidebar-text-muted)]">
@@ -229,24 +235,28 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             </div>
                         ) : (
                             <>
-                                {/* Spaces-Switcher Style Round Pill Container */}
+                                {/* Clean Liquid Glass Pill Switcher */}
                                 {visibleTabs.length > 0 && (
                                     <div 
                                         onMouseLeave={() => setHoveredSubFilter(null)}
-                                        className={`relative flex p-0.5 rounded-full border shadow-xs select-none ${
-                                        isBright 
-                                            ? 'bg-black/[0.03] border-black/[0.05]' 
-                                            : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-                                    }`}>
+                                        style={{
+                                            gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))`
+                                        }}
+                                        className={`relative grid items-center p-1 rounded-full border shadow-xs select-none transition-all ${
+                                            isBright 
+                                                ? 'bg-black/[0.04] border-black/10' 
+                                                : 'bg-black/40 border-white/[0.08]'
+                                        }`}
+                                    >
                                         {/* Hover Preview Pill */}
                                         {hoveredIndex !== -1 && hoveredSubFilter !== activeSubFilter && (
                                             <div
-                                                className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-200 pointer-events-none ${
-                                                    isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                                className={`absolute top-1 bottom-1 rounded-full transition-all duration-150 pointer-events-none ${
+                                                    isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'
                                                 }`}
                                                 style={{
-                                                    left: '2px',
-                                                    width: `calc((100% - 4px) / ${visibleTabs.length})`,
+                                                    left: '4px',
+                                                    width: `calc((100% - 8px) / ${visibleTabs.length})`,
                                                     transform: `translateX(${hoveredIndex * 100}%)`,
                                                 }}
                                             />
@@ -254,20 +264,15 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
 
                                         {/* Animated Sliding Pill */}
                                         <div 
-                                            className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                            className={`absolute top-1 bottom-1 rounded-full transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
                                                 isBright
                                                     ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                                                    : 'border'
+                                                    : 'bg-white/10 border border-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)]'
                                             }`} 
                                             style={{ 
-                                                left: '2px',
-                                                width: `calc((100% - 4px) / ${visibleTabs.length})`,
-                                                transform: `translateX(${activeIndex * 100}%)`,
-                                                ...(!isBright ? {
-                                                    borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
-                                                    backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
-                                                    boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
-                                                } : {})
+                                                left: '4px',
+                                                width: `calc((100% - 8px) / ${visibleTabs.length})`,
+                                                transform: `translateX(${activeIndex * 100}%)`
                                             }}
                                         />
 
@@ -279,26 +284,20 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                                     onMouseEnter={() => setHoveredSubFilter(tab.id)}
                                                     onClick={() => setSubFilter(tab.id)}
                                                     title={tab.title}
-                                                    className={`relative z-10 flex-1 flex items-center justify-center gap-1 py-1 px-1 text-[10.5px] font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap select-none overflow-hidden ${
+                                                    className={`relative z-10 w-full min-w-0 flex items-center justify-center gap-1 py-1 px-1 text-[10px] tracking-tight rounded-full transition-colors duration-150 active:scale-95 cursor-pointer select-none outline-none whitespace-nowrap ${
                                                         isActive 
                                                             ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
-                                                            : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'
+                                                            : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-zinc-400 hover:text-white font-medium')
                                                     }`}
                                                 >
-                                                    <span>{tab.label}</span>
-                                                    {tab.count > 0 ? (
-                                                        <span className={`px-1 py-0.2 rounded-full text-[9px] font-bold leading-none ${
-                                                            isActive 
-                                                                ? 'bg-accent/25 text-accent' 
-                                                                : 'bg-white/10 text-zinc-300'
-                                                        }`}>
-                                                            {tab.count}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[9.5px] opacity-40 font-mono">
-                                                            0
-                                                        </span>
-                                                    )}
+                                                    <span className="whitespace-nowrap select-none">{tab.label}</span>
+                                                    <span className={`inline-flex items-center justify-center min-w-[14px] px-1 py-0.5 rounded-full text-[9px] font-mono font-bold leading-none transition-opacity ${
+                                                        isActive 
+                                                            ? (isBright ? 'bg-black/10 text-zinc-950' : 'bg-accent/25 text-accent') 
+                                                            : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-zinc-400')
+                                                    }`}>
+                                                        {tab.count}
+                                                    </span>
                                                 </button>
                                             );
                                         })}
@@ -356,7 +355,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             </>
                         )}
                     </div>
-                )}
+                </div>
             </div>
 
             {/* Right-Click Context Menu with Insta-Hide */}

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { performWebSearch } from '../utils/webSearch';
 import { speakLocal, stopLocalTTS } from '../utils/localTTS';
+import useTabStore from './useTabStore';
+import useUIStore from './useUIStore';
 
 export const MODEL_PRESETS = [
     {
@@ -117,8 +119,13 @@ const useAIStore = create((set, get) => ({
     },
 
     setContextSize: (val) => {
-        set({ contextSize: val });
-        localStorage.setItem('qbrowse_ai_ctx', val.toString());
+        const numericVal = Math.max(512, parseInt(val, 10) || 4096);
+        const prev = get().contextSize;
+        set({ contextSize: numericVal });
+        localStorage.setItem('qbrowse_ai_ctx', numericVal.toString());
+        if (prev !== numericVal && get().isRunning && get().status !== 'downloading') {
+            get().startEngine();
+        }
     },
 
     setGpuLayers: (val) => {
@@ -382,15 +389,93 @@ const useAIStore = create((set, get) => ({
         }
     },
 
+    extractActivePageContext: async (forceExtract = false, fallbackUrl = '') => {
+        const { aiContextEnabled, contextSize } = get();
+        if (!aiContextEnabled && !forceExtract) return '';
+
+        const tabStoreState = useTabStore.getState();
+        const activeTab = typeof tabStoreState.getActiveTab === 'function' ? tabStoreState.getActiveTab() : null;
+        const activeTabId = activeTab?.id;
+        const pageUrl = activeTab?.url || fallbackUrl || '';
+        const pageTitle = activeTab?.title || '';
+        const maxChars = Math.min(18000, Math.max(4000, Math.floor(((contextSize || 4096) - 1024) * 3)));
+
+        // 1. If Reader Mode already extracted clean text for this URL, use it first
+        const uiState = useUIStore.getState();
+        const readerData = uiState?.readerContent;
+        if (readerData && readerData.textContent && (!readerData.url || readerData.url === pageUrl)) {
+            return `Title: ${readerData.title || pageTitle}\nURL: ${pageUrl}\n\nPAGE CONTENT:\n${readerData.textContent.trim().substring(0, maxChars)}`;
+        }
+
+        // 2. Locate the active webview instance
+        let wv = activeTabId && typeof window !== 'undefined' ? window.qbrowseWebviews?.[activeTabId] : null;
+        if (!wv && typeof window !== 'undefined' && window.qbrowseWebviews && pageUrl) {
+            wv = Object.values(window.qbrowseWebviews).find(w => {
+                try {
+                    return w && typeof w.getURL === 'function' && w.getURL() === pageUrl;
+                } catch (_) {
+                    return false;
+                }
+            }) || null;
+        }
+
+        // 3. Extract readable text directly from the live DOM inside the webview
+        if (wv && typeof wv.executeJavaScript === 'function') {
+            try {
+                const extracted = await wv.executeJavaScript(`
+                    (() => {
+                        try {
+                            const title = document.title || '';
+                            const metaDesc = document.querySelector('meta[name="description"]')?.content || '';
+                            const mainEl = document.querySelector('article, [role="main"], main') || document.body;
+                            let rawText = (mainEl ? mainEl.innerText : document.body?.innerText) || '';
+                            if (rawText.trim().length < 200 && document.body?.innerText) {
+                                rawText = document.body.innerText;
+                            }
+                            const cleaned = rawText.replace(/\\n{3,}/g, '\\n\\n').trim();
+                            return { title, metaDesc, text: cleaned };
+                        } catch (e) {
+                            return { title: document.title || '', metaDesc: '', text: document.body?.innerText || '' };
+                        }
+                    })()
+                `);
+                const bodyText = extracted?.text ? extracted.text.substring(0, maxChars) : '';
+                if (bodyText) {
+                    const headerParts = [
+                        (extracted?.title || pageTitle) ? `Title: ${extracted?.title || pageTitle}` : '',
+                        pageUrl ? `URL: ${pageUrl}` : '',
+                        extracted?.metaDesc ? `Description: ${extracted.metaDesc}` : ''
+                    ].filter(Boolean).join('\n');
+                    return `${headerParts}\n\nPAGE CONTENT:\n${bodyText}`;
+                }
+            } catch (e) {
+                console.warn('Failed to extract page text from webview:', e);
+            }
+        }
+
+        return pageUrl ? `Title: ${pageTitle}\nURL: ${pageUrl}` : '';
+    },
+
     // Send AI Stream Request to Local HTTP llama-server (127.0.0.1:8080)
-    sendChatMessage: async (promptText, pageContext = '') => {
-        let { chatInput, attachedFiles, aiContextEnabled, isRunning, chatHistory, startEngine } = get();
+    sendChatMessage: async (promptText, pageContext = '', options = {}) => {
+        let { chatInput, attachedFiles, aiContextEnabled, isRunning, startEngine } = get();
         const query = promptText || chatInput;
-        if (!query.trim()) return;
+        if (!query.trim() && attachedFiles.length === 0) return;
 
         if (!isRunning) {
             await startEngine();
             isRunning = get().isRunning;
+        }
+
+        const isSummarizeRequest = /summari[sz]e\s+(this\s+)?(web\s*)?(page|site|article)/i.test(query);
+        const includeContext = Boolean(options?.forceContext || isSummarizeRequest || aiContextEnabled);
+
+        let resolvedPageContext = includeContext ? (pageContext || '') : '';
+        if (includeContext && (!resolvedPageContext || !resolvedPageContext.includes('PAGE CONTENT:'))) {
+            const extracted = await get().extractActivePageContext(true, resolvedPageContext);
+            if (extracted) {
+                resolvedPageContext = extracted;
+            }
         }
 
         const currentAttachments = [...attachedFiles];
@@ -398,7 +483,7 @@ const useAIStore = create((set, get) => ({
             role: 'user',
             content: query,
             attachments: currentAttachments,
-            pageContext: aiContextEnabled ? pageContext : ''
+            pageContext: includeContext ? resolvedPageContext : ''
         };
 
         set(state => ({
@@ -412,17 +497,38 @@ const useAIStore = create((set, get) => ({
     },
 
     runChatCompletion: async () => {
-        const { chatHistory, temperature, aiContextEnabled, ttsEnabled } = get();
+        const { chatHistory, temperature, ttsEnabled } = get();
         
         // Build message payload from history
-        const apiMessages = [{ role: 'system', content: "You are Qu-AI, a helpful, precise local AI assistant." }];
+        const apiMessages = [{
+            role: 'system',
+            content: "You are Qu-AI, a helpful, precise local AI assistant built into QBrowse. When [Current Web Page Context] is provided with a user message, use its PAGE CONTENT directly to answer questions or summarize the page accurately."
+        }];
+
+        // Find the last user message index that has pageContext so we don't repeat huge page dumps on every turn
+        let lastContextUserIdx = -1;
+        for (let idx = chatHistory.length - 1; idx >= 0; idx--) {
+            if (chatHistory[idx].role === 'user' && chatHistory[idx].pageContext) {
+                lastContextUserIdx = idx;
+                break;
+            }
+        }
         
-        for (const msg of chatHistory) {
+        for (let i = 0; i < chatHistory.length; i++) {
+            const msg = chatHistory[i];
             if (msg.role === 'user') {
                 const imageAttachments = msg.attachments ? msg.attachments.filter(a => a.type === 'image' && a.dataUrl) : [];
                 const textAttachments = msg.attachments ? msg.attachments.filter(a => a.type === 'text') : [];
                 
-                const contextText = msg.pageContext ? `\n[Current Web Page: ${msg.pageContext}]` : '';
+                let contextText = '';
+                if (msg.pageContext) {
+                    if (i === lastContextUserIdx) {
+                        contextText = `\n\n[Current Web Page Context:\n${msg.pageContext}\n]`;
+                    } else {
+                        const headerOnly = msg.pageContext.split('\n\nPAGE CONTENT:')[0];
+                        contextText = `\n\n[Referenced Web Page: ${headerOnly}]`;
+                    }
+                }
                 const filesText = textAttachments.length > 0
                     ? `\n[Attached Files:\n${textAttachments.map(a => `--- ${a.name} ---\n${a.content ? a.content.substring(0, 8000) : '(No readable text)'}\n---`).join('\n')}]`
                     : '';

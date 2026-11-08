@@ -389,14 +389,21 @@ export default function AIEngineSettings() {
                     <div>
                         <label className={`text-xs font-semibold block mb-1.5 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Context Size (-c)</label>
                         <CustomSelect
-                            value={contextSize}
-                            onChange={(val) => setContextSize(Number(val))}
+                            value={Number(contextSize) || 4096}
+                            onChange={(val) => {
+                                const nextCtx = Number(val);
+                                setContextSize(nextCtx);
+                                if (isRunning) {
+                                    showToast(`Resizing llama-server context window to ${nextCtx} tokens...`);
+                                }
+                            }}
                             isBright={isBright}
                             className="w-full !justify-between"
                             options={[
                                 { value: 2048, label: '2048 tokens', badge: 'Compact' },
                                 { value: 4096, label: '4096 tokens', badge: 'Default' },
-                                { value: 8192, label: '8192 tokens', badge: 'Extended' }
+                                { value: 8192, label: '8192 tokens', badge: 'Extended' },
+                                { value: 16384, label: '16384 tokens', badge: 'Max' }
                             ]}
                         />
                     </div>

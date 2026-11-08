@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     Palette, Shield, Cpu, ShieldAlert, Search, Download, X, 
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, History,
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
     Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal, Square,
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
-    Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Server, Wifi, AlertCircle,
+    Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Edit3, Server, Wifi, AlertCircle,
     Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch,
     ArrowLeftRight, ListOrdered, User, Briefcase, Code, Bookmark, Coffee, Folder,
     Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical, Copy,
     Layout, Sidebar
 } from 'lucide-react';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
+import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
 
 const SPACE_ICONS = [
     { id: 'User', label: 'User', icon: User },
@@ -36,6 +38,7 @@ const getSpaceIconComponent = (iconName) => {
 };
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
+const DEFAULT_STOCK_THUMBNAIL = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=70&w=640&auto=format&fit=crop';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useTabStore from '../../store/useTabStore';
@@ -48,6 +51,7 @@ import { getAllBangs } from '../../utils/searchBangs';
 import { DOH_PROVIDERS, DNS_MODES, formatCustomDohUrl, isValidDohUrl } from '../../utils/dnsProviders';
 import { PRESET_SEARCH_ENGINES, getAllSearchEngines, isValidSearchUrlTemplate } from '../../utils/searchEngines';
 import CustomSelect from '../common/CustomSelect';
+import { getLiquidGlassMenuClasses, getLiquidGlassInlineStyle } from '../common/ContextMenuProvider';
 import qbrowseLogo from '../../assets/icon.png';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
@@ -89,9 +93,9 @@ const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
                             </span>
                         )}
                     </div>
-                    {description && <p className={`text-[11px] mt-0.5 leading-snug ${
+                    {description && <div className={`text-[11px] mt-0.5 leading-snug ${
                         isBright ? 'text-zinc-500' : 'text-zinc-400'
-                    }`}>{description}</p>}
+                    }`}>{description}</div>}
                 </div>
             </div>
             <div className="flex-shrink-0">
@@ -259,7 +263,17 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
     );
 };
 
-const SettingsModal = () => {
+const SettingsModalContent = () => {
+    const [isContentReady, setIsContentReady] = useState(false);
+
+    useEffect(() => {
+        // Defer heavy tab content rendering by 1 animation frame so the shell can start cleanly
+        const raf = requestAnimationFrame(() => {
+            setIsContentReady(true);
+        });
+        return () => cancelAnimationFrame(raf);
+    }, []);
+
     const { 
         activeModal, 
         isModalClosing, 
@@ -315,6 +329,7 @@ const SettingsModal = () => {
         customPresets,
         duplicatePreset,
         deleteCustomPreset,
+        openPresetStudio,
         activePresetId: storeActivePresetId,
         setActivePresetId: setStoreActivePresetId,
         setSidebarPosition,
@@ -333,9 +348,14 @@ const SettingsModal = () => {
     const topBarPosition = settings?.topBarPosition || 'top';
     const toolHubPosition = settings?.toolHubPosition || (sidebarPosition === 'left' ? 'right' : 'left');
 
-    const openStudio = () => {
-        if (switchModal) switchModal('presetStudio');
-        else openModal('presetStudio');
+    const openStudio = (presetId = null) => {
+        if (openPresetStudio) {
+            openPresetStudio(presetId);
+        } else if (switchModal) {
+            switchModal('presetStudio');
+        } else {
+            openModal('presetStudio');
+        }
     };
 
     const handleSetSidebarPosition = (pos) => {
@@ -367,6 +387,32 @@ const SettingsModal = () => {
     const [editingSpaceId, setEditingSpaceId] = useState(null);
     const [editingSpaceName, setEditingSpaceName] = useState('');
     const [activeIconPickerSpaceId, setActiveIconPickerSpaceId] = useState(null);
+    const [iconPickerCoords, setIconPickerCoords] = useState(null);
+
+    // Auto-dismiss icon picker on window scroll, resize, or Escape key
+    useEffect(() => {
+        if (!activeIconPickerSpaceId) return;
+        const handleScrollOrResize = () => {
+            setActiveIconPickerSpaceId(null);
+            setIconPickerCoords(null);
+        };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                e.preventDefault();
+                setActiveIconPickerSpaceId(null);
+                setIconPickerCoords(null);
+            }
+        };
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => {
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+            window.removeEventListener('keydown', handleKeyDown, true);
+        };
+    }, [activeIconPickerSpaceId]);
     const [deletingSpace, setDeletingSpace] = useState(null);
     const [draggedSpaceIdx, setDraggedSpaceIdx] = useState(null);
     const [dragOverSpaceIdx, setDragOverSpaceIdx] = useState(null);
@@ -958,7 +1004,7 @@ const SettingsModal = () => {
         { id: 'workmode', label: 'Work Mode & GitHub', icon: GitPullRequest, color: 'text-emerald-400', category: 'Preferences' },
         { id: 'ai', label: 'AI & llama.cpp Engine', icon: Sparkles, color: 'text-violet-400', category: 'Advanced' },
         { id: 'engine', label: 'Engine & Performance', icon: Cpu, color: 'text-rose-400', category: 'Advanced' },
-        { id: 'adblock', label: 'Native AdBlocker', icon: ShieldAlert, color: 'text-emerald-400', category: 'Advanced' },
+        { id: 'adblock', label: 'Shields & AdBlock', icon: Shield, color: 'text-emerald-400', category: 'Advanced' },
         { id: 'about', label: 'About & System Info', icon: Info, color: 'text-cyan-400', category: 'System' }
     ];
 
@@ -971,15 +1017,22 @@ const SettingsModal = () => {
     if (activeModal !== 'settings' && !isClosingThis) return null;
 
     return (
-        <div 
-            id="settings-modal"
-            className={`fixed inset-0 z-[200] flex font-sans w-full h-full overflow-hidden ${
-                isBright 
-                    ? 'bg-zinc-100/95 text-zinc-900' 
-                    : 'bg-[#090a0f]/95 text-white'
-            } backdrop-blur-3xl ${isModalClosing ? 'animate-settings-sheet-out' : 'animate-settings-sheet'}`} 
-            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
-        >
+        <>
+            {/* Ambient Blurred Backdrop behind the settings sheet during enter/exit */}
+            <div 
+                className={`fixed inset-0 z-[199] pointer-events-none transition-opacity duration-300 ${
+                    isBright ? 'bg-black/25' : 'bg-black/55'
+                } backdrop-blur-md ${isModalClosing ? 'opacity-0' : 'opacity-100'}`} 
+            />
+            <div 
+                id="settings-modal"
+                className={`fixed inset-0 z-[200] flex font-sans w-full h-full overflow-hidden ${
+                    isBright 
+                        ? 'bg-[#f4f5f8] text-zinc-900' 
+                        : 'bg-[#090a0f] text-white'
+                } ${isModalClosing ? 'animate-settings-sheet-out' : 'animate-settings-sheet'}`} 
+                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
+            >
             {/* LEFT NAVIGATION SIDEBAR */}
             <div className={`w-64 border-r flex flex-col flex-shrink-0 h-full ${
                 isBright 
@@ -1084,6 +1137,8 @@ const SettingsModal = () => {
                 {/* Scrollable Content Body */}
                 <div className="flex-1 p-6 md:p-10 lg:px-12 overflow-y-auto h-full">
                     <div className="w-full max-w-6xl xl:max-w-7xl mx-auto pb-16">
+                    {isContentReady && (
+                        <React.Fragment>
                     {/* TAB 1: APPEARANCE & THEMES */}
                     {settingsTab === 'appearance' && (
                         <div className="animate-tab-fade space-y-6">
@@ -1101,7 +1156,7 @@ const SettingsModal = () => {
                                         <div className="flex items-center justify-between flex-wrap gap-2">
                                             <div>
                                                 <span className="text-xs font-bold uppercase text-accent tracking-wider block">
-                                                    Browsing Presets & Layouts
+                                                    Browsing Presets &amp; Layouts
                                                 </span>
                                                 <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                     Quick configurations for workspaces, privacy shields, and aesthetics.
@@ -1110,81 +1165,97 @@ const SettingsModal = () => {
                                             <button
                                                 type="button"
                                                 onClick={openStudio}
-                                                className="text-xs px-3 py-1.5 rounded-xl border border-accent/40 bg-accent text-zinc-950 font-bold transition cursor-pointer flex items-center gap-1.5 active:scale-95 hover:brightness-105 shadow-sm"
+                                                className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition cursor-pointer active:scale-95 ${
+                                                    isBright 
+                                                        ? 'text-zinc-700 hover:text-zinc-950 border-black/10 hover:border-black/20 hover:bg-black/5' 
+                                                        : 'text-zinc-300 hover:text-white border-white/10 hover:border-white/20 hover:bg-white/5'
+                                                }`}
                                             >
-                                                <Sliders size={13} strokeWidth={2.4} />
-                                                <span>Open Studio</span>
+                                                <Sliders size={13} strokeWidth={2} />
+                                                <span>Preset Studio &rarr;</span>
                                             </button>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             {[...EXPERIENCE_PRESETS, ...(customPresets || [])].map((p) => {
                                                 const PresetIcon = getPresetIcon(p.icon);
                                                 const isSelected = (storeActivePresetId || activePresetId) === p.id;
+                                                const tagline = PRESET_TAGLINES[p.id] || p.tagline;
+
+                                                const handleActivate = () => {
+                                                    applyExperiencePreset(p, {
+                                                        uiStore: useUIStore.getState(),
+                                                        tabStore: useTabStore.getState(),
+                                                        showToast: showToast || useUIStore.getState().showToast
+                                                    });
+                                                    setActivePresetId(p.id);
+                                                    setStoreActivePresetId?.(p.id);
+                                                };
 
                                                 return (
                                                     <div
                                                         key={p.id}
-                                                        className={`p-3 rounded-xl border text-left transition-all duration-200 flex flex-col justify-between group ${
+                                                        className={`p-3.5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between group relative ${
                                                             isSelected
-                                                                ? (isBright ? 'bg-accent/15 border-accent text-zinc-950 shadow-sm' : 'bg-accent/15 border-accent text-white shadow-sm')
-                                                                : (isBright ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800' : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200')
+                                                                ? (isBright 
+                                                                    ? 'bg-accent/15 border-accent text-zinc-950 shadow-md ring-1 ring-accent/30' 
+                                                                    : 'bg-accent/10 border-accent text-white shadow-[0_0_20px_rgba(var(--accent-rgb,212,188,148),0.15)] ring-1 ring-accent/40')
+                                                                : (isBright 
+                                                                    ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800 hover:shadow-xs' 
+                                                                    : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200 hover:shadow-xs')
                                                         }`}
                                                     >
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                applyExperiencePreset(p, {
-                                                                    uiStore: useUIStore.getState(),
-                                                                    tabStore: useTabStore.getState(),
-                                                                    showToast
-                                                                });
-                                                                setActivePresetId(p.id);
-                                                                setStoreActivePresetId?.(p.id);
-                                                            }}
-                                                            className="w-full text-left flex items-start gap-3 cursor-pointer outline-none active:scale-[0.99]"
-                                                        >
-                                                            <div 
-                                                                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border mt-0.5"
-                                                                style={{
-                                                                    backgroundColor: `${p.accentColor}18`,
-                                                                    borderColor: `${p.accentColor}40`,
-                                                                    color: p.accentColor
-                                                                }}
+                                                        {/* Header: Icon + Name + Active Badge + Action buttons */}
+                                                        <div className="flex items-center justify-between gap-2 mb-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleActivate}
+                                                                className="flex items-center gap-2 min-w-0 text-left cursor-pointer outline-none active:scale-[0.99] flex-1"
                                                             >
-                                                                <PresetIcon size={15} />
-                                                            </div>
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="flex items-center justify-between gap-1">
-                                                                    <div className="flex items-center gap-1.5 min-w-0">
-                                                                        <span className="text-xs font-bold truncate">{p.name}</span>
-                                                                        {p.isCustom ? (
-                                                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                                                                Custom
-                                                                            </span>
-                                                                        ) : p.badge ? (
-                                                                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/10 text-zinc-400 border border-white/10">
-                                                                                {p.badge}
-                                                                            </span>
-                                                                        ) : null}
-                                                                    </div>
-                                                                    <span className="text-[10px] font-mono opacity-60 shrink-0">
-                                                                        {p.spacesSummary}
-                                                                    </span>
+                                                                <div 
+                                                                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
+                                                                    style={{
+                                                                        backgroundColor: `${p.accentColor}18`,
+                                                                        borderColor: `${p.accentColor}40`,
+                                                                        color: p.accentColor
+                                                                    }}
+                                                                >
+                                                                    <PresetIcon size={14} />
                                                                 </div>
-                                                                <p className={`text-[10.5px] mt-0.5 line-clamp-1 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                                    {p.tagline}
-                                                                </p>
-                                                            </div>
-                                                        </button>
+                                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                                    <span className="text-xs font-bold truncate">{p.name}</span>
+                                                                    {isSelected && (
+                                                                        <span 
+                                                                            className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold border"
+                                                                            style={{
+                                                                                borderColor: `${p.accentColor}60`,
+                                                                                backgroundColor: `${p.accentColor}25`,
+                                                                                color: isBright ? '#181b24' : p.accentColor
+                                                                            }}
+                                                                        >
+                                                                            Active
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </button>
 
-                                                        {/* Action Bar on hover/footer */}
-                                                        <div className="mt-2 pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-1 text-[10px]">
-                                                            <span className={`font-mono truncate ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                                                {p.layoutTag || `${p.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${p.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
-                                                            </span>
-
+                                                            {/* Action buttons (Duplicate, Edit, Delete) */}
                                                             <div className="flex items-center gap-1 shrink-0">
+                                                                {p.isCustom && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            openStudio(p.id);
+                                                                        }}
+                                                                        title="Edit in Preset Studio"
+                                                                        className={`p-1 rounded-lg border transition cursor-pointer ${
+                                                                            isBright ? 'border-black/10 hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                                                        }`}
+                                                                    >
+                                                                        <Edit3 size={11} />
+                                                                    </button>
+                                                                )}
                                                                 <button
                                                                     type="button"
                                                                     onClick={(e) => {
@@ -1192,13 +1263,12 @@ const SettingsModal = () => {
                                                                         duplicatePreset(p.id);
                                                                     }}
                                                                     title="Duplicate Preset"
-                                                                    className={`p-1 rounded border transition cursor-pointer ${
+                                                                    className={`p-1 rounded-lg border transition cursor-pointer ${
                                                                         isBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
                                                                     }`}
                                                                 >
-                                                                    <Copy size={10} />
+                                                                    <Copy size={11} />
                                                                 </button>
-
                                                                 {p.isCustom && (
                                                                     <button
                                                                         type="button"
@@ -1207,13 +1277,33 @@ const SettingsModal = () => {
                                                                             deleteCustomPreset(p.id);
                                                                         }}
                                                                         title="Delete Custom Preset"
-                                                                        className="p-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                                                                        className="p-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
                                                                     >
-                                                                        <Trash2 size={10} />
+                                                                        <Trash2 size={11} />
                                                                     </button>
                                                                 )}
                                                             </div>
                                                         </div>
+
+                                                        {/* Visual Wireframe Preview (clickable to activate preset) */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleActivate}
+                                                            className="w-full mb-2 cursor-pointer outline-none active:scale-[0.99] text-left"
+                                                        >
+                                                            <PresetLayoutWireframe preset={p} isSelected={isSelected} isBright={isBright} compact={true} />
+                                                        </button>
+
+                                                        {/* Tagline & Layout summary */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleActivate}
+                                                            className="w-full text-left cursor-pointer outline-none"
+                                                        >
+                                                            <p className={`text-[11px] leading-snug line-clamp-1 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                                                                {tagline}
+                                                            </p>
+                                                        </button>
                                                     </div>
                                                 );
                                             })}
@@ -1382,15 +1472,17 @@ const SettingsModal = () => {
                                         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 rounded-xl bg-black/30 border border-white/[0.04]">
                                             <div className="w-36 h-20 rounded-lg overflow-hidden relative border border-white/10 shadow-md flex-shrink-0 bg-black/60">
                                                 <img 
-                                                    src={customWallpaper || DEFAULT_STOCK_WALLPAPER} 
+                                                    src={customWallpaper || DEFAULT_STOCK_THUMBNAIL} 
                                                     alt="Wallpaper preview" 
+                                                    loading="lazy"
+                                                    decoding="async"
                                                     className="w-full h-full object-cover transition-all duration-300"
                                                     style={{
-                                                        filter: `saturate(1.1) ${(blurWallpaper && wallpaperBlur > 0) ? `blur(${Math.min(12, wallpaperBlur * 0.3)}px)` : ''}`,
-                                                        transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.08)' : 'scale(1)'
+                                                        filter: `saturate(1.1) ${(blurWallpaper && wallpaperBlur > 0) ? `blur(${Math.min(8, wallpaperBlur * 0.2)}px)` : ''}`,
+                                                        transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)'
                                                     }}
                                                     onError={(e) => {
-                                                        e.target.src = DEFAULT_STOCK_WALLPAPER;
+                                                        e.target.src = DEFAULT_STOCK_THUMBNAIL;
                                                     }}
                                                 />
                                                 <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} />
@@ -1690,7 +1782,6 @@ const SettingsModal = () => {
                                             icon={SlidersHorizontal} 
                                             title="Tool Hub Drawer Position" 
                                             description="Side panel dock for extensions, downloads, QVault, and AI assistant."
-                                            badge="Auto-Resolved Collision"
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -1746,12 +1837,7 @@ const SettingsModal = () => {
                                                     <Sliders size={20} strokeWidth={2.2} />
                                                 </div>
                                                 <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <h4 className="text-sm font-bold tracking-tight">Visual Architect &amp; Preset Studio</h4>
-                                                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
-                                                            Interactive Canvas
-                                                        </span>
-                                                    </div>
+                                                    <h4 className="text-sm font-bold tracking-tight">Visual Architect &amp; Preset Studio</h4>
                                                     <p className={`text-xs mt-0.5 max-w-xl ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                                         Craft, preview, and arrange custom spatial architectures with drag-and-drop live preview, custom docking slots, and preset duplication.
                                                     </p>
@@ -1780,8 +1866,7 @@ const SettingsModal = () => {
                                         <SettingCard 
                                             icon={Square} 
                                             title="Window Frame Curvature" 
-                                            description="Adjust curvature across the main webview frame, sidebar container, topbar, and elements."
-                                            badge="(Default: Organic 20px, Cohesive: Refined 12px, Sharp: Square 0px)"
+                                            description="Adjust curvature across the main webview frame, sidebar, topbar, and elements (Default 20px, Cohesive 12px, Sharp 0px)."
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2104,6 +2189,10 @@ const SettingsModal = () => {
                                             </div>
                                         </SettingCard>
 
+                                        <SettingCard icon={RotateCcw} title="Remember Open Websites on Close" description="Restore your previous open tabs and active workspace when reopening QBrowse. When off, QBrowse starts fresh with a New Tab.">
+                                            <SettingToggle isChecked={settings.restoreTabsOnStartup !== false} onToggle={() => toggleSetting('restoreTabsOnStartup')} />
+                                        </SettingCard>
+
                                         <SettingCard icon={XSquare} title="Close Window on Last Tab (Ctrl+W)" description="Close the browser window when pressing Ctrl+W with no open tabs or pinned tabs.">
                                             <SettingToggle isChecked={settings.closeWindowOnLastTab !== false} onToggle={() => toggleSetting('closeWindowOnLastTab')} />
                                         </SettingCard>
@@ -2309,6 +2398,7 @@ const SettingsModal = () => {
                                                         if (dragOverSpaceIdx !== idx) setDragOverSpaceIdx(idx);
                                                     }}
                                                     onDragLeave={(e) => {
+                                                        if (e.currentTarget.contains(e.relatedTarget)) return;
                                                         if (dragOverSpaceIdx === idx) setDragOverSpaceIdx(null);
                                                     }}
                                                     onDrop={(e) => handleSpaceDrop(e, idx)}
@@ -2316,16 +2406,16 @@ const SettingsModal = () => {
                                                         setDraggedSpaceIdx(null);
                                                         setDragOverSpaceIdx(null);
                                                     }}
-                                                    className={`relative rounded-2xl border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                                    className={`relative rounded-2xl border transition-[border-color,box-shadow,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                                                         isIconPickerOpen ? 'z-40' : isDragOver ? 'z-30' : 'z-10'
                                                     } ${
                                                         isBeingDragged
                                                             ? 'opacity-35 scale-[0.98] border-dashed border-accent/60 bg-accent/5 shadow-none'
                                                             : isDragOver
-                                                                ? 'scale-[1.01] -translate-y-1 ring-2 ring-accent/60 shadow-xl border-accent'
+                                                                ? 'ring-2 ring-accent/70 shadow-xl border-accent bg-accent/[0.06]'
                                                                 : (isBright 
-                                                                    ? 'bg-white/75 hover:bg-white/95 border-black/[0.08] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:-translate-y-0.5 hover:shadow-lg' 
-                                                                    : 'bg-white/[0.025] hover:bg-white/[0.045] border-white/[0.05] hover:border-white/[0.12] hover:-translate-y-0.5 hover:shadow-lg')
+                                                                    ? 'bg-white/75 hover:bg-white/95 border-black/[0.08] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-lg' 
+                                                                    : 'bg-white/[0.025] hover:bg-white/[0.045] border-white/[0.05] hover:border-white/[0.12] hover:shadow-lg')
                                                     }`}
                                                 >
                                                     <div className="p-3 px-4 flex items-center justify-between gap-3">
@@ -2345,7 +2435,15 @@ const SettingsModal = () => {
                                                             <div className="relative">
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => setActiveIconPickerSpaceId(isIconPickerOpen ? null : sp.id)}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (isIconPickerOpen) {
+                                                                            setActiveIconPickerSpaceId(null);
+                                                                            setIconPickerCoords(null);
+                                                                        } else {
+                                                                            setActiveIconPickerSpaceId(sp.id);
+                                                                        }
+                                                                    }}
                                                                     title="Change workspace icon"
                                                                     className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer group active:scale-90 ${
                                                                         isBright 
@@ -2356,7 +2454,7 @@ const SettingsModal = () => {
                                                                     <IconComponent size={16} className="transition-transform duration-200 group-hover:scale-110" />
                                                                 </button>
 
-                                                                {/* Icon Popover Dropdown (Liquid glass styling matching context menu) */}
+                                                                {/* Anchored Flagship Liquid Glass Icon Picker Popover (Rendered in-tree over sibling workspace content) */}
                                                                 {isIconPickerOpen && (
                                                                     <>
                                                                         <div 
@@ -2364,22 +2462,32 @@ const SettingsModal = () => {
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
                                                                                 setActiveIconPickerSpaceId(null);
+                                                                                setIconPickerCoords(null);
                                                                             }} 
+                                                                            onContextMenu={(e) => {
+                                                                                e.preventDefault();
+                                                                                e.stopPropagation();
+                                                                                setActiveIconPickerSpaceId(null);
+                                                                                setIconPickerCoords(null);
+                                                                            }}
                                                                         />
                                                                         <div 
-                                                                            className={`absolute top-full left-0 mt-2 z-50 p-2.5 rounded-2xl border shadow-2xl select-none outline-none grid grid-cols-7 gap-1.5 w-64 animate-pop-in ${
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                                            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                                                            className={`absolute left-0 ${idx >= customSpaces.length - 1 && customSpaces.length > 2 ? 'bottom-full mb-2' : 'top-full mt-2'} z-50 p-2.5 rounded-2xl grid grid-cols-7 gap-1.5 w-64 animate-pop-in ${
                                                                                 isBright 
-                                                                                    ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
-                                                                                    : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
+                                                                                    ? 'border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
+                                                                                    : 'border border-white/[0.12] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.18)]'
                                                                             }`}
                                                                             style={{
-                                                                                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
+                                                                                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.78)' : 'rgba(22, 25, 38, 0.65)',
                                                                                 backdropFilter: isBright
                                                                                     ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
+                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) contrast(105%) brightness(1.10)',
                                                                                 WebkitBackdropFilter: isBright
                                                                                     ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) contrast(105%) brightness(1.10)'
                                                                             }}
                                                                         >
                                                                             {SPACE_ICONS.map((ic) => {
@@ -2393,6 +2501,7 @@ const SettingsModal = () => {
                                                                                             e.stopPropagation();
                                                                                             updateSpace(sp.id, { icon: ic.id });
                                                                                             setActiveIconPickerSpaceId(null);
+                                                                                            setIconPickerCoords(null);
                                                                                             showToast('Workspace icon updated');
                                                                                         }}
                                                                                         title={ic.label}
@@ -3286,7 +3395,7 @@ const SettingsModal = () => {
                             >
                                 <SettingToggle 
                                     isChecked={isTorEnabled} 
-                                    onToggle={() => toggleTorEnabled()} 
+                                    onToggle={() => toggleTorEnabled(undefined, { switchSpace: false, fallbackSpace: 'ghost' })} 
                                 />
                             </SettingCard>
 
@@ -4443,6 +4552,8 @@ const SettingsModal = () => {
                                     onChange={(val) => setTabSleepTimeoutMinutes(Number(val))}
                                     isBright={isBright}
                                     options={[
+                                        { value: 1, label: '1 Minute', badge: 'Instant' },
+                                        { value: 2, label: '2 Minutes', badge: 'Ultra Fast' },
                                         { value: 5, label: '5 Minutes', badge: 'Aggressive' },
                                         { value: 15, label: '15 Minutes', badge: 'Balanced' },
                                         { value: 30, label: '30 Minutes', badge: 'Recommended' },
@@ -4458,27 +4569,44 @@ const SettingsModal = () => {
                             <SettingCard 
                                 icon={History} 
                                 title="Instant Back/Forward Cache (bfcache)" 
-                                description="Freezes recently visited pages in high-speed RAM for instant, 0ms back/forward navigation without page reloads. Automatically scales with your active performance tier."
+                                description={
+                                    <div className="flex flex-col gap-1.5 mt-0.5">
+                                        <span>
+                                            Freezes recently visited pages in high-speed RAM for instant, 0ms back/forward navigation without page reloads. Automatically scales with your active performance tier.
+                                        </span>
+                                        <div className="flex items-center gap-2 pt-0.5">
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border backdrop-blur-md transition-all duration-200 ${
+                                                bfcacheEnabled === false
+                                                    ? (isBright ? 'bg-zinc-200/60 border-zinc-300 text-zinc-500' : 'bg-white/[0.04] border-white/10 text-zinc-400')
+                                                    : activePerformanceTier === 'eco'
+                                                    ? (isBright ? 'bg-zinc-200/70 border-zinc-300 text-zinc-600' : 'bg-zinc-500/15 border-zinc-500/30 text-zinc-400')
+                                                    : (isBright ? 'bg-accent/15 border-accent/30 text-zinc-900 font-semibold shadow-[0_1px_4px_var(--accent-20)]' : 'bg-accent/15 border-accent/30 text-accent font-semibold shadow-[0_0_12px_var(--accent-20)]')
+                                            }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                                    bfcacheEnabled === false
+                                                        ? 'bg-zinc-400'
+                                                        : activePerformanceTier === 'eco'
+                                                        ? 'bg-zinc-400'
+                                                        : 'bg-accent animate-pulse shadow-[0_0_6px_var(--accent)]'
+                                                }`} />
+                                                <span>
+                                                    {bfcacheEnabled === false
+                                                        ? 'Cache Disabled'
+                                                        : activePerformanceTier === 'ultra' 
+                                                        ? '6 Pages in RAM (Ultra)' 
+                                                        : activePerformanceTier === 'eco' 
+                                                        ? 'Paused in Eco' 
+                                                        : '3 Pages in RAM (Balanced)'}
+                                                </span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                }
                             >
-                                <div className="flex items-center gap-2.5">
-                                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                                        activePerformanceTier === 'ultra'
-                                            ? 'bg-purple-500/15 border-purple-500/30 text-purple-300 font-bold'
-                                            : activePerformanceTier === 'eco'
-                                            ? 'bg-zinc-500/15 border-zinc-500/30 text-zinc-400'
-                                            : 'bg-sky-500/15 border-sky-500/30 text-sky-300'
-                                    }`}>
-                                        {activePerformanceTier === 'ultra' 
-                                            ? '6 Pages in RAM (Ultra)' 
-                                            : activePerformanceTier === 'eco' 
-                                            ? 'Paused in Eco' 
-                                            : '3 Pages in RAM (Balanced)'}
-                                    </span>
-                                    <SettingToggle 
-                                        isChecked={bfcacheEnabled !== false} 
-                                        onToggle={toggleBfcache} 
-                                    />
-                                </div>
+                                <SettingToggle 
+                                    isChecked={bfcacheEnabled !== false} 
+                                    onToggle={toggleBfcache} 
+                                />
                             </SettingCard>
 
                             {/* Reduce Visual Blurs on Eco Mode */}
@@ -4530,7 +4658,7 @@ const SettingsModal = () => {
                         </div>
                     )}
 
-                    {/* TAB 7: NATIVE ADBLOCKER */}
+                    {/* TAB 7: SHIELDS & ADBLOCK */}
                     {settingsTab === 'adblock' && (() => {
                         const activeFilterLists = settings?.adblockFilterLists || {
                             easylist: true,
@@ -4541,16 +4669,12 @@ const SettingsModal = () => {
                         };
 
                         const filterDefinitions = [
-                            { id: 'easylist', name: 'EasyList Core', count: 94120, desc: 'Primary advertisement blocking rules for global websites' },
-                            { id: 'easyprivacy', name: 'EasyPrivacy Protection', count: 42600, desc: 'Blocks tracking scripts, telemetry pixels, and web beacons' },
-                            { id: 'annoyances', name: 'uBlock Annoyances & Cookies', count: 14844, desc: 'Suppresses cookie banners, GDPR modals, and newsletter overlays' },
-                            { id: 'malware', name: 'Online Malicious & Miner Blocklist', count: 11280, desc: 'Prevents connections to cryptominers, malware, and scam domains' },
-                            { id: 'peterlowe', name: "Peter Lowe's Server List", count: 3650, desc: 'Curated list of authoritative ad servers and tracking hubs' }
+                            { id: 'easylist', name: 'EasyList', desc: 'Core advertisement blocking rules' },
+                            { id: 'easyprivacy', name: 'EasyPrivacy', desc: 'Tracking scripts, beacons, and telemetry' },
+                            { id: 'annoyances', name: 'Cookie & Annoyance Filters', desc: 'Cookie consent dialogs and newsletter popups' },
+                            { id: 'malware', name: 'Malware & Mining Protection', desc: 'Known malicious domains and in-browser miners' },
+                            { id: 'peterlowe', name: "Peter Lowe's Ad Server List", desc: 'Curated ad server and tracking domains' }
                         ];
-
-                        const activeFilterRuleCount = filterDefinitions.reduce((acc, f) => {
-                            return activeFilterLists[f.id] !== false ? acc + f.count : acc;
-                        }, 0);
 
                         const currentAdblockLevel = settings?.adblockLevel || (
                             (settings?.cosmetic !== false && settings?.adblockAnnoyances !== false && settings?.social !== false && settings?.adblockMalware !== false && settings?.adblockYoutubeAds !== false)
@@ -4567,7 +4691,7 @@ const SettingsModal = () => {
                                 setSettingValue('adblockTelemetry', false);
                                 setSettingValue('adblockMalware', true);
                                 setSettingValue('adblockYoutubeAds', true);
-                                showToast('AdBlocker: Standard blocking profile applied');
+                                showToast('Standard blocking applied');
                             } else if (mode === 'strict') {
                                 setSettingValue('adblockLevel', 'strict');
                                 setSettingValue('cosmetic', true);
@@ -4576,20 +4700,22 @@ const SettingsModal = () => {
                                 setSettingValue('adblockTelemetry', true);
                                 setSettingValue('adblockMalware', true);
                                 setSettingValue('adblockYoutubeAds', true);
-                                showToast('AdBlocker: Strict Shield profile applied');
+                                showToast('Strict mode applied');
                             } else {
                                 setSettingValue('adblockLevel', 'custom');
                             }
                         };
 
                         return (
-                            <div className="animate-tab-fade space-y-5">
+                            <div className="animate-tab-fade space-y-6">
                                 <div>
-                                    <h3 className="text-2xl font-bold mb-1">Native AdBlocker</h3>
-                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>High-performance in-memory content filtering, cookie modal suppression, and tracker blocking.</p>
+                                    <h3 className="text-2xl font-bold mb-1">Shields &amp; AdBlock</h3>
+                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                        Manage ad blocking, privacy protection, and site exceptions.
+                                    </p>
                                 </div>
 
-                                {/* 1. MASTER ADBLOCKER STATUS CARD */}
+                                {/* 1. MAIN TOGGLE CARD */}
                                 <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
                                     isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
                                 }`}>
@@ -4597,62 +4723,52 @@ const SettingsModal = () => {
                                         <div className="flex items-center gap-3.5">
                                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
                                                 isAdblockActive 
-                                                    ? (isBright ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/25' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30') 
+                                                    ? (isBright ? 'bg-accent/15 text-accent border border-accent/25' : 'bg-accent/15 text-accent border border-accent/30') 
                                                     : (isBright ? 'bg-black/5 text-zinc-400 border border-black/10' : 'bg-white/5 text-white/40 border border-white/10')
                                             }`}>
-                                                <ShieldAlert size={20} />
+                                                <Shield size={20} />
                                             </div>
                                             <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className={`font-bold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                        Master Native Shield
-                                                    </h4>
-                                                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-                                                        isAdblockActive 
-                                                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
-                                                            : (isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/50')
-                                                    }`}>
-                                                        {isAdblockActive ? 'Active & Protecting' : 'Shield Disabled'}
-                                                    </span>
-                                                </div>
+                                                <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    Ad &amp; Tracker Protection
+                                                </h4>
                                                 <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Intercepts network requests before socket dispatch to strip ads, analytics, and surveillance pixels.
+                                                    Blocks advertising banners, tracking pixels, and analytical telemetry.
                                                 </p>
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-3">
-                                            <div className={`text-right pr-2 border-r ${isBright ? 'border-black/10' : 'border-white/10'}`}>
-                                                <span className={`text-base font-black font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    {blockedTrackersCount.toLocaleString()}
-                                                </span>
-                                                <p className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Requests Blocked</p>
-                                            </div>
+                                        <div className="flex items-center gap-4">
+                                            {blockedTrackersCount > 0 && (
+                                                <div className={`text-right pr-3 border-r ${isBright ? 'border-black/10' : 'border-white/10'}`}>
+                                                    <span className={`text-sm font-semibold font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                        {blockedTrackersCount.toLocaleString()}
+                                                    </span>
+                                                    <p className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>Blocked</p>
+                                                </div>
+                                            )}
                                             <SettingToggle isChecked={isAdblockActive} onToggle={toggleAdblock} />
                                         </div>
                                     </div>
 
-                                    {/* Filter Update Row */}
+                                    {/* Update status row */}
                                     <div className={`flex items-center justify-between pt-3 border-t text-xs ${
                                         isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
                                     }`}>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`w-2 h-2 rounded-full ${isAdblockActive ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-zinc-500'}`} />
-                                            <span className={`text-xs font-mono ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                                {activeFilterRuleCount.toLocaleString()} Compiled In-Memory Rules
-                                            </span>
-                                        </div>
+                                        <span className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                            {filterUpdateStatus || 'Filters updated and ready'}
+                                        </span>
 
                                         <button
                                             type="button"
                                             onClick={async () => {
                                                 setIsUpdatingFilters(true);
                                                 try {
-                                                    if (window.electronAPI && window.electronAPI.updateAdblockFilters) {
+                                                    if (window.electronAPI?.updateAdblockFilters) {
                                                         await window.electronAPI.updateAdblockFilters();
                                                     }
                                                     setFilterUpdateStatus('Updated just now');
-                                                    showToast('Filter lists updated successfully!');
+                                                    showToast('Filter lists updated');
                                                 } catch (err) {
                                                     setFilterUpdateStatus('Updated just now');
                                                     showToast('Filter lists up to date');
@@ -4661,37 +4777,35 @@ const SettingsModal = () => {
                                                 }
                                             }}
                                             disabled={isUpdatingFilters}
-                                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
                                                 isBright 
-                                                    ? 'bg-black/5 hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' 
+                                                    ? 'bg-black/5 hover:bg-black/10 text-zinc-800 border-black/10 shadow-xs' 
                                                     : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
                                             }`}
                                         >
                                             <RefreshCw size={12} className={isUpdatingFilters ? 'animate-spin text-accent' : ''} />
-                                            <span>{isUpdatingFilters ? 'Updating...' : filterUpdateStatus || 'Update Filter Lists'}</span>
+                                            <span>{isUpdatingFilters ? 'Updating...' : 'Check for Updates'}</span>
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* 2. BLOCKING MODE SWITCHER (SPACES-STYLE SLIDING PILL SWITCHER) */}
+                                {/* 2. BLOCKING PROFILE SWITCHER */}
                                 <div className={`p-5 rounded-2xl border transition-all duration-200 space-y-3 ${
                                     isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
                                 }`}>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Blocking Enforcement Level
-                                            </h4>
-                                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                Choose how aggressively intrusive page elements, banners, and overlays are eliminated.
-                                            </p>
-                                        </div>
+                                    <div>
+                                        <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                            Protection Level
+                                        </h4>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Select a balanced standard profile or strict privacy shielding.
+                                        </p>
                                     </div>
 
                                     <SlidingPillSwitcher
                                         options={[
                                             { id: 'standard', label: 'Standard' },
-                                            { id: 'strict', label: 'Strict Shield' },
+                                            { id: 'strict', label: 'Strict' },
                                             { id: 'custom', label: 'Custom' }
                                         ]}
                                         value={currentAdblockLevel}
@@ -4700,18 +4814,18 @@ const SettingsModal = () => {
                                     />
                                 </div>
 
-                                {/* 3. GRANULAR PROTECTION TOGGLES */}
+                                {/* 3. TOGGLE CARDS */}
                                 <SectionHeader 
-                                    icon={Shield} 
-                                    title="Protection Layers" 
-                                    description="Fine-tune individual cosmetic, telemetry, malware, and overlay filters."
+                                    icon={SlidersHorizontal} 
+                                    title="Content Filters" 
+                                    description="Toggle specific categories of blocked content."
                                 />
 
                                 <div className="space-y-2 pt-1">
                                     <SettingCard 
                                         icon={Eye} 
                                         title="Cosmetic Element Hiding" 
-                                        description="Collapse empty DOM containers and leftover page gaps from blocked banners."
+                                        description="Collapse blank containers and empty spaces left by blocked ads."
                                     >
                                         <SettingToggle 
                                             isChecked={settings.cosmetic !== false} 
@@ -4724,8 +4838,8 @@ const SettingsModal = () => {
 
                                     <SettingCard 
                                         icon={Cookie} 
-                                        title="Cookie Consent & Annoyance Popups" 
-                                        description="Automatically block GDPR cookie walls, OneTrust/Cookiebot scripts, and newsletter overlays."
+                                        title="Cookie Consent Popups" 
+                                        description="Automatically dismiss GDPR notices and cookie consent walls."
                                     >
                                         <SettingToggle 
                                             isChecked={settings.adblockAnnoyances !== false} 
@@ -4739,8 +4853,8 @@ const SettingsModal = () => {
 
                                     <SettingCard 
                                         icon={ShieldAlert} 
-                                        title="Social Media Tracking Beacons" 
-                                        description="Strip embedded social widgets, tracking pixels, and cross-site like/share beacons."
+                                        title="Social Trackers" 
+                                        description="Block embedded social media tracking widgets and pixel beacons."
                                     >
                                         <SettingToggle 
                                             isChecked={settings.social !== false} 
@@ -4753,8 +4867,8 @@ const SettingsModal = () => {
 
                                     <SettingCard 
                                         icon={Activity} 
-                                        title="Session Replay & Telemetry" 
-                                        description="Block heatmap recording scripts, keystroke loggers, and behavioral analytics (Hotjar, FullStory, Clarity)."
+                                        title="Analytics & Telemetry" 
+                                        description="Block third-party user recording and telemetry scripts."
                                     >
                                         <SettingToggle 
                                             isChecked={!!settings.adblockTelemetry} 
@@ -4767,8 +4881,8 @@ const SettingsModal = () => {
 
                                     <SettingCard 
                                         icon={Lock} 
-                                        title="Cryptominers & Malicious Domains" 
-                                        description="Block browser-based WebAssembly cryptominers, phishing domains, and pop-under adware."
+                                        title="Malware & Phishing" 
+                                        description="Block connections to known malware and cryptomining domains."
                                     >
                                         <SettingToggle 
                                             isChecked={settings.adblockMalware !== false} 
@@ -4782,8 +4896,8 @@ const SettingsModal = () => {
 
                                     <SettingCard 
                                         icon={Zap} 
-                                        title="Video & Sponsored Overlay Stripping" 
-                                        description="Remove pre-roll video ad containers, companion banners, and promoted feed cards."
+                                        title="Video Ad Stripping" 
+                                        description="Hide video sponsor banners and promoted content cards."
                                     >
                                         <SettingToggle 
                                             isChecked={settings.adblockYoutubeAds !== false} 
@@ -4796,12 +4910,11 @@ const SettingsModal = () => {
                                     </SettingCard>
                                 </div>
 
-                                {/* 4. INTERACTIVE FILTER SUBSCRIPTIONS */}
+                                {/* 4. FILTER LISTS */}
                                 <SectionHeader 
                                     icon={Layers} 
-                                    title="Active Filter Subscriptions" 
-                                    description="Community and privacy maintainer rules compiled into high-speed memory matchers."
-                                    badge={`${activeFilterRuleCount.toLocaleString()} rules active`}
+                                    title="Filter Subscriptions" 
+                                    description="Active community filter lists."
                                 />
 
                                 <div className="space-y-2 pt-1">
@@ -4810,35 +4923,19 @@ const SettingsModal = () => {
                                         return (
                                             <div 
                                                 key={filter.id}
-                                                className={`flex items-center justify-between p-3 px-3.5 rounded-xl border transition-all duration-200 ${
+                                                className={`flex items-center justify-between p-3.5 px-4 rounded-xl border transition-all duration-200 ${
                                                     isBright 
                                                         ? 'bg-white/75 hover:bg-white/95 border-black/[0.08] shadow-xs' 
                                                         : 'bg-white/[0.025] hover:bg-white/[0.04] border-white/[0.04]'
                                                 }`}
                                             >
-                                                <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                                        isEnabled
-                                                            ? (isBright ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25')
-                                                            : (isBright ? 'bg-black/[0.04] text-zinc-400 border border-black/[0.06]' : 'bg-white/[0.03] text-white/30 border border-white/[0.05]')
-                                                    }`}>
-                                                        <ShieldCheck size={15} />
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                                {filter.name}
-                                                            </span>
-                                                            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
-                                                                isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
-                                                            }`}>
-                                                                {filter.count.toLocaleString()} rules
-                                                            </span>
-                                                        </div>
-                                                        <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                            {filter.desc}
-                                                        </p>
-                                                    </div>
+                                                <div className="min-w-0 pr-4">
+                                                    <span className={`text-xs font-semibold block ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                        {filter.name}
+                                                    </span>
+                                                    <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        {filter.desc}
+                                                    </p>
                                                 </div>
                                                 <SettingToggle
                                                     isChecked={isEnabled}
@@ -4856,36 +4953,36 @@ const SettingsModal = () => {
                                     })}
                                 </div>
 
-                                {/* 5. SITE EXCEPTIONS & CUSTOM RULES */}
+                                {/* 5. EXCEPTIONS */}
                                 <SectionHeader 
                                     icon={Globe} 
-                                    title="Site Exceptions & Custom Rules" 
-                                    description="Configure trusted sites where ads are permitted, or add custom domain blocklists."
+                                    title="Exceptions & Rules" 
+                                    description="Allow ads on specific websites, or block additional domains."
                                 />
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                                    {/* Trusted Sites (Allowlist) */}
+                                    {/* Allowlist */}
                                     <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
                                         isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
                                     }`}>
                                         <div className="flex items-center justify-between">
-                                            <span className={`text-xs font-bold font-mono uppercase tracking-wider ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                Trusted Sites (Allowlist)
+                                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                Allowlist
                                             </span>
                                             <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
                                                 isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
                                             }`}>
-                                                {(settings.adblockAllowlist || []).length} Sites
+                                                {(settings.adblockAllowlist || []).length}
                                             </span>
                                         </div>
                                         <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Websites where the Native AdBlocker will be completely bypassed.
+                                            Websites where protection is disabled.
                                         </p>
 
                                         <form onSubmit={handleAddAllowlist} className="flex gap-2">
                                             <input
                                                 type="text"
-                                                placeholder="e.g. example.com"
+                                                placeholder="example.com"
                                                 value={adblockAllowlistInput}
                                                 onChange={(e) => setAdblockAllowlistInput(e.target.value)}
                                                 className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
@@ -4896,7 +4993,7 @@ const SettingsModal = () => {
                                             />
                                             <button
                                                 type="submit"
-                                                className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
+                                                className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95 shadow-xs"
                                             >
                                                 Add
                                             </button>
@@ -4905,7 +5002,7 @@ const SettingsModal = () => {
                                         <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto hide-scroll pt-1">
                                             {(settings.adblockAllowlist || []).length === 0 ? (
                                                 <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                    No sites whitelisted. All sites are protected.
+                                                    No websites allowlisted.
                                                 </span>
                                             ) : (
                                                 (settings.adblockAllowlist || []).map((domain) => (
@@ -4922,7 +5019,7 @@ const SettingsModal = () => {
                                                             type="button"
                                                             onClick={() => handleRemoveAllowlist(domain)}
                                                             className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
-                                                            title="Remove from allowlist"
+                                                            title="Remove"
                                                         >
                                                             <X size={11} />
                                                         </button>
@@ -4937,23 +5034,23 @@ const SettingsModal = () => {
                                         isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
                                     }`}>
                                         <div className="flex items-center justify-between">
-                                            <span className={`text-xs font-bold font-mono uppercase tracking-wider ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                Custom Blocked Domains
+                                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                Custom Blocklist
                                             </span>
                                             <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
                                                 isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
                                             }`}>
-                                                {(settings.adblockCustomBlockedDomains || []).length} Blocked
+                                                {(settings.adblockCustomBlockedDomains || []).length}
                                             </span>
                                         </div>
                                         <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Always block connections to these specific advertising or tracker hosts.
+                                            Specific domains to always block.
                                         </p>
 
                                         <form onSubmit={handleAddBlocklist} className="flex gap-2">
                                             <input
                                                 type="text"
-                                                placeholder="e.g. ads.example.net"
+                                                placeholder="ads.example.com"
                                                 value={adblockBlocklistInput}
                                                 onChange={(e) => setAdblockBlocklistInput(e.target.value)}
                                                 className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
@@ -4964,7 +5061,7 @@ const SettingsModal = () => {
                                             />
                                             <button
                                                 type="submit"
-                                                className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
+                                                className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95 shadow-xs"
                                             >
                                                 Add
                                             </button>
@@ -4973,7 +5070,7 @@ const SettingsModal = () => {
                                         <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto hide-scroll pt-1">
                                             {(settings.adblockCustomBlockedDomains || []).length === 0 ? (
                                                 <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                    No custom domains added. Using standard filter lists.
+                                                    No custom domains added.
                                                 </span>
                                             ) : (
                                                 (settings.adblockCustomBlockedDomains || []).map((domain) => (
@@ -4990,7 +5087,7 @@ const SettingsModal = () => {
                                                             type="button"
                                                             onClick={() => handleRemoveBlocklist(domain)}
                                                             className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
-                                                            title="Remove from blocklist"
+                                                            title="Remove"
                                                         >
                                                             <X size={11} />
                                                         </button>
@@ -5150,6 +5247,17 @@ const SettingsModal = () => {
                                     <SettingToggle 
                                         isChecked={checkDefaultOnStartup} 
                                         onToggle={handleToggleStartupCheck} 
+                                    />
+                                </div>
+
+                                <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-xs text-white/70 font-medium">Remember open websites on close</p>
+                                        <span className="text-[10px] text-white/40">(Reopen previous session tabs on startup)</span>
+                                    </div>
+                                    <SettingToggle 
+                                        isChecked={settings.restoreTabsOnStartup !== false} 
+                                        onToggle={() => toggleSetting('restoreTabsOnStartup')} 
                                     />
                                 </div>
                             </div>
@@ -5401,11 +5509,21 @@ const SettingsModal = () => {
                             </div>
                         </div>
                     )}
+                        </React.Fragment>
+                    )}
                     </div>
                 </div>
             </div>
         </div>
+        </>
     );
+};
+
+// Lightweight Gate Component: prevents 5,500 lines of hooks and DOM trees from evaluating on every app store update while closed
+const SettingsModal = () => {
+    const isSettingsOpen = useUIStore(state => state.activeModal === 'settings' || (state.isModalClosing && state.closingModal === 'settings'));
+    if (!isSettingsOpen) return null;
+    return <SettingsModalContent />;
 };
 
 export default SettingsModal;

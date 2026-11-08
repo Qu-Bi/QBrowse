@@ -112,6 +112,7 @@ export default function Sidebar() {
     const pinnedTabs = useTabStore(state => state.pinnedTabs);
     const draggedItem = useTabStore(state => state.draggedItem);
     const dragOverItem = useTabStore(state => state.dragOverItem);
+    const dragOverPosition = useTabStore(state => state.dragOverPosition);
     
     // Tab Store Actions
     const handleGoHome = useTabStore(state => state.handleGoHome);
@@ -159,10 +160,10 @@ export default function Sidebar() {
     // Actually folder state was in App.jsx. I will manage it with local state in Sidebar for now since it's just visual toggle.
     const [localPrivateOpen, setLocalPrivateOpen] = React.useState(true);
     const [localWorkOpen, setLocalWorkOpen] = React.useState(true);
-    const customSpaces = useUIStore(state => state.settings?.customSpaces || [
+    const customSpaces = useUIStore(state => state.settings?.customSpaces) || [
         { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
         { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
-    ]);
+    ];
     const addSpace = useUIStore(state => state.addSpace);
     const updateSpace = useUIStore(state => state.updateSpace);
     const removeSpace = useUIStore(state => state.removeSpace);
@@ -231,22 +232,29 @@ export default function Sidebar() {
         });
     };
 
-    const [dragPos, setDragPos] = React.useState(null);
+    const dragGhostRef = React.useRef(null);
+    const initialDragPosRef = React.useRef({ x: -9999, y: -9999 });
     const [hoveredSpace, setHoveredSpace] = React.useState(null);
+    const [draggedSidebarSpaceIdx, setDraggedSidebarSpaceIdx] = React.useState(null);
+    const [dragOverSidebarSpaceIdx, setDragOverSidebarSpaceIdx] = React.useState(null);
 
     React.useEffect(() => {
         if (!draggedItem) {
-            setDragPos(null);
             return;
+        }
+        if (dragGhostRef.current && initialDragPosRef.current.x > 0) {
+            dragGhostRef.current.style.transform = `translate3d(${initialDragPosRef.current.x + 12}px, ${initialDragPosRef.current.y - 18}px, 0)`;
+            dragGhostRef.current.style.opacity = '1';
         }
         const handleWindowDragOver = (e) => {
             e.preventDefault();
-            if (e.clientX > 0 || e.clientY > 0) {
-                setDragPos({ x: e.clientX, y: e.clientY });
+            if ((e.clientX > 0 || e.clientY > 0) && dragGhostRef.current) {
+                dragGhostRef.current.style.transform = `translate3d(${e.clientX + 12}px, ${e.clientY - 18}px, 0)`;
+                dragGhostRef.current.style.opacity = '1';
             }
         };
         const handleDragEndWindow = () => {
-            setDragPos(null);
+            initialDragPosRef.current = { x: -9999, y: -9999 };
             useTabStore.getState().setDraggedItem(null);
             useTabStore.getState().setDragOverItem(null);
         };
@@ -295,11 +303,12 @@ export default function Sidebar() {
         } else if (pinTabs.length > 0) {
             // User is not viewing this stack. Switch to the first tab in this stack!
             const targetTab = pinTabs[0];
+            const nowTs = Date.now();
             setTabs(tabs.map(t => ({ 
                 ...t, 
                 active: t.id === targetTab.id,
                 suspended: t.id === targetTab.id ? false : t.suspended,
-                lastActiveAt: t.id === targetTab.id ? Date.now() : t.lastActiveAt
+                lastActiveAt: (t.id === targetTab.id || t.active) ? nowTs : t.lastActiveAt
             })));
             useUIStore.getState().setCurrentUrl(targetTab.url || '');
             closePinnedStack();
@@ -370,23 +379,60 @@ export default function Sidebar() {
             onDragStart: (e) => { 
                 clearTimeout(hoverTimeout.current); 
                 setHoverPreview(null); 
+                initialDragPosRef.current = { x: e.clientX || 0, y: e.clientY || 0 };
                 if (e.dataTransfer) {
                     try {
-                        const emptyImg = new Image();
-                        emptyImg.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
-                        e.dataTransfer.setDragImage(emptyImg, 0, 0);
+                        const dragBadge = document.createElement('div');
+                        dragBadge.style.cssText = 'position:fixed;top:-9999px;left:-9999px;display:flex;align-items:center;gap:8px;padding:6px 12px;background:#141721;color:#fff;border:1px solid rgba(212,188,148,0.5);border-radius:10px;font-size:12px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.6);z-index:999999;pointer-events:none;';
+                        dragBadge.textContent = tabTitle;
+                        document.body.appendChild(dragBadge);
+                        e.dataTransfer.setDragImage(dragBadge, 15, 15);
+                        setTimeout(() => dragBadge.remove(), 50);
                     } catch (_) {}
                 }
                 handleDragStart(e, tab, spaceType); 
             },
-            onDragEnd: () => {
-                setDragPos(null);
+            onDragEnd: (e) => {
+                initialDragPosRef.current = { x: -9999, y: -9999 };
                 useTabStore.getState().setDraggedItem(null);
                 useTabStore.getState().setDragOverItem(null);
+
+                // Tear-off tab into a new window if dropped outside any window
+                if (e && e.dataTransfer && e.dataTransfer.dropEffect === 'none') {
+                    const isOutside = (e.clientX < -10 || e.clientX > window.innerWidth + 10 || e.clientY < -10 || e.clientY > window.innerHeight + 10);
+                    if (isOutside && window.electronAPI?.openNewWindowWithTab) {
+                        window.electronAPI.openNewWindowWithTab({
+                            tab,
+                            spaceType,
+                            screenX: e.screenX,
+                            screenY: e.screenY
+                        });
+                        useTabStore.getState().removeTabById(tab.id);
+                        useUIStore.getState().showToast(`Detached "${tabTitle}" into a new window`);
+                    }
+                }
             },
-            onDragOver: (e) => { e.preventDefault(); handleDragOver(tab.id); },
-            onDragLeave: handleDragLeave,
-            onDrop: (e) => handleDrop(e, tab, spaceType),
+            onDragOver: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                if (draggedItem?.tab?.id === tab.id) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pos = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                handleDragOver(tab.id, pos);
+            },
+            onDragLeave: (e) => {
+                e.stopPropagation();
+                if (e.currentTarget.contains(e.relatedTarget)) return;
+                if (useTabStore.getState().dragOverItem === tab.id) {
+                    handleDragLeave();
+                }
+            },
+            onDrop: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDrop(e, tab, spaceType);
+            },
             onContextMenu: (e) => handleTabContextMenuClick(e, tab, spaceType),
             onClick: () => {
                 const ui = useUIStore.getState();
@@ -404,11 +450,12 @@ export default function Sidebar() {
                         const otherTab = (list || []).find(t => t.id !== tab.id);
                         setSplitRightTabId(otherTab ? otherTab.id : null);
                     }
+                    const nowTs = Date.now();
                     setList((list || []).map(t => ({ 
                         ...t, 
                         active: t.id === tab.id,
                         suspended: t.id === tab.id ? false : t.suspended,
-                        lastActiveAt: t.id === tab.id ? Date.now() : t.lastActiveAt
+                        lastActiveAt: (t.id === tab.id || t.active) ? nowTs : t.lastActiveAt
                     })));
                     ui.setCurrentUrl(tab.url || '');
                 }
@@ -554,6 +601,22 @@ export default function Sidebar() {
             );
         };
 
+        const isDropTarget = dragOverItem === tab.id && draggedItem?.tab?.id !== tab.id;
+        const renderDropIndicator = () => {
+            if (!isDropTarget) return null;
+            const isAfter = dragOverPosition === 'after';
+            return (
+                <div
+                    className={`pointer-events-none absolute left-1 right-1 z-30 flex items-center ${
+                        isAfter ? '-bottom-[5px]' : '-top-[5px]'
+                    }`}
+                >
+                    <div className="w-2 h-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)] -ml-0.5 shrink-0" />
+                    <div className="h-[2.5px] flex-1 bg-accent rounded-full shadow-[0_0_12px_var(--accent)]" />
+                </div>
+            );
+        };
+
         // 1. Compact High-Density Row Mode
         if (tabPresentation === 'compact') {
             return (
@@ -561,7 +624,7 @@ export default function Sidebar() {
                     {...commonProps}
                     className={`sidebar-tab-item group relative flex items-center justify-between py-1 px-2.5 ${
                         isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-lg' : 'rounded-md'
-                    } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-150 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
+                    } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-150 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${isDropTarget ? 'bg-accent/[0.06] border-accent/35' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
                         tab.active 
                             ? (isBright 
                                 ? 'bg-white/90 border-black/15 text-zinc-950 font-semibold shadow-xs' 
@@ -571,6 +634,7 @@ export default function Sidebar() {
                                 : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent')
                     }`}
                 >
+                    {renderDropIndicator()}
                     <div className="flex items-center gap-2 w-full justify-center md:justify-start pointer-events-none pr-7">
                         {renderTabIcon(12)}
                         <span className={`text-xs truncate hidden md:block transition-colors duration-150 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-normal'}`}>
@@ -596,7 +660,7 @@ export default function Sidebar() {
                     {...commonProps}
                     className={`sidebar-tab-item group relative flex flex-col justify-between p-2.5 ${
                         isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-2xl' : 'rounded-xl'
-                    } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
+                    } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${isDropTarget ? 'bg-accent/[0.06] border-accent/40' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
                         tab.active 
                             ? (isBright 
                                 ? 'bg-white/95 border-accent/40 shadow-sm text-zinc-950' 
@@ -606,6 +670,7 @@ export default function Sidebar() {
                                 : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.05] hover:border-white/[0.10] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)]')
                     }`}
                 >
+                    {renderDropIndicator()}
                     {/* Top row: Favicon in clear container + Title */}
                     <div className="flex items-center gap-2.5 w-full pointer-events-none pr-6">
                         <div className={`w-6 h-6 ${isSquare ? 'rounded-none' : 'rounded-lg'} flex items-center justify-center flex-shrink-0 border ${
@@ -648,8 +713,10 @@ export default function Sidebar() {
             <div 
                 {...commonProps}
                 className={`sidebar-tab-item group relative flex items-center justify-between ${
-                    isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-xl' : (uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl')
-                } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${dragOverItem === tab.id ? 'border-t-2 border-t-accent' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
+                    uiScale === 'compact' ? 'py-2 px-2.5' : 'p-3'
+                } ${
+                    isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
+                } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${isDropTarget ? 'bg-accent/[0.06] border-accent/40' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
                     tab.active 
                         ? (isBright 
                             ? 'bg-white/80 border-black/[0.08] text-zinc-950 font-bold shadow-[0_2px_8px_rgba(0,0,0,0.06)]' 
@@ -664,6 +731,7 @@ export default function Sidebar() {
                     boxShadow: draggedItem?.tab?.id === tab.id ? 'none' : '0 0 18px var(--accent-30)'
                 } : undefined}
             >
+                {renderDropIndicator()}
                 <div className="flex items-center gap-2.5 w-full justify-center md:justify-start pointer-events-none pr-8">
                     {renderTabIcon(14)}
                     <span className={`${uiScale === 'compact' ? 'text-xs' : 'text-sm'} truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
@@ -774,7 +842,7 @@ export default function Sidebar() {
                 }}
             >
                 {windowControlsStyle === 'windows' ? (
-                    <div className={`flex items-center gap-0.5 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'}`} style={{ WebkitAppRegion: 'no-drag' }}>
+                    <div className="flex items-center gap-0.5 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
                         <button 
                             onClick={() => window.electronAPI?.minimize?.()} 
                             className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
@@ -804,7 +872,7 @@ export default function Sidebar() {
                         </button>
                     </div>
                 ) : windowControlsStyle === 'minimal' ? (
-                    <div className={`flex items-center gap-2 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'}`} style={{ WebkitAppRegion: 'no-drag' }}>
+                    <div className="flex items-center gap-2 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
                         <button 
                             onClick={() => window.electronAPI?.close?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
@@ -841,7 +909,7 @@ export default function Sidebar() {
                     </div>
                 ) : (
                     /* macOS Window Controls (Default) */
-                    <div className={`flex gap-2 ${sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'}`} style={{ WebkitAppRegion: 'no-drag' }}>
+                    <div className="flex gap-2 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
                         <button 
                             onClick={() => window.electronAPI?.close?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-red-500/80 hover:bg-red-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(239,68,68,0.5)] flex items-center justify-center group/btn cursor-pointer`}
@@ -865,9 +933,7 @@ export default function Sidebar() {
                         </button>
                     </div>
                 )}
-                <div className={`hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center ${
-                    sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'
-                }`} style={{ WebkitAppRegion: 'no-drag' }}>
+                <div className="hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
                     <button 
                         onClick={() => togglePopover('user')} 
                         className={`w-[25px] h-[25px] rounded-full flex items-center justify-center border transition-all duration-200 hover:scale-110 active:scale-90 cursor-pointer relative ${
@@ -923,23 +989,36 @@ export default function Sidebar() {
                     return (
                     <div key={pin.id} className="relative group flex justify-center animate-pin-in">
                         <button 
-                            onClick={(e) => handlePinnedTabClick(e, pin)} 
-                            onContextMenu={(e) => handlePinnedContextMenu(e, pin)}
+                            onClick={(e) => {
+                                if (isGitHubPin) useGitHubStore.getState().closeHoverGlance();
+                                handlePinnedTabClick(e, pin);
+                            }} 
+                            onContextMenu={(e) => {
+                                if (isGitHubPin) useGitHubStore.getState().closeHoverGlance();
+                                handlePinnedContextMenu(e, pin);
+                            }}
                             onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
-                            onAuxClick={(e) => handlePinnedAuxClick(e, pin)}
+                            onAuxClick={(e) => {
+                                if (isGitHubPin) useGitHubStore.getState().closeHoverGlance();
+                                handlePinnedAuxClick(e, pin);
+                            }}
                             onMouseEnter={(e) => {
                                 if (isGitHubPin) {
+                                    useGitHubStore.getState().cancelCloseHoverGlance();
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     if (ghHoverTimeoutRef.current) clearTimeout(ghHoverTimeoutRef.current);
                                     ghHoverTimeoutRef.current = setTimeout(() => {
                                         openHoverGlance(rect);
-                                    }, 280);
+                                    }, 240);
                                 }
                             }}
                             onMouseLeave={() => {
                                 if (ghHoverTimeoutRef.current) {
                                     clearTimeout(ghHoverTimeoutRef.current);
                                     ghHoverTimeoutRef.current = null;
+                                }
+                                if (isGitHubPin) {
+                                    useGitHubStore.getState().scheduleCloseHoverGlance(180);
                                 }
                             }}
                             className={`relative w-10 h-10 flex flex-col items-center justify-center border rounded-xl transition-all duration-200 active:scale-95 shadow-sm overflow-hidden ${
@@ -1046,7 +1125,10 @@ export default function Sidebar() {
                                         } overflow-y-auto hide-scroll`}
                                         style={{ width: `${100 / allSpaces.length}%` }}
                                         onDragOver={(e) => { e.preventDefault(); handleDragOver(`root-${sp.id}`); }}
-                                        onDragLeave={handleDragLeave}
+                                        onDragLeave={(e) => {
+                                            if (e.currentTarget.contains(e.relatedTarget)) return;
+                                            handleDragLeave();
+                                        }}
                                         onDrop={(e) => handleDropRoot(e, sp.id)}
                                     >
                                         {/* GitHub Live Integration (Pull Requests & Issues) if enabled for this workspace */}
@@ -1078,7 +1160,9 @@ export default function Sidebar() {
                                                         onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} 
                                                         onAuxClick={handleNewTabAuxClick} 
                                                         className={`group relative flex items-center justify-between ${
-                                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : (uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl')
+                                                            uiScale === 'compact' ? 'py-2 px-2.5' : 'p-3'
+                                                        } ${
+                                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
                                                         } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} 
                                                         title="New Tab (Middle-click for background)"
                                                     >
@@ -1106,7 +1190,10 @@ export default function Sidebar() {
                                 } overflow-y-auto hide-scroll`}
                                 style={{ width: `${100 / allSpaces.length}%` }}
                                 onDragOver={(e) => { e.preventDefault(); handleDragOver('root-ghost'); }}
-                                onDragLeave={handleDragLeave}
+                                onDragLeave={(e) => {
+                                    if (e.currentTarget.contains(e.relatedTarget)) return;
+                                    handleDragLeave();
+                                }}
                                 onDrop={(e) => handleDropRoot(e, 'ghost')}
                             >
                                 <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-ghost' ? 'border-[#a855f7] border-dashed bg-[#a855f7]/10 py-1' : 'border-transparent'}`}>
@@ -1114,13 +1201,6 @@ export default function Sidebar() {
                                         <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">Incognito Tabs</h3>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <button 
-                                            onClick={() => useTorStore.getState().toggleTorEnabled(true)}
-                                            className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-purple-400 hover:text-purple-300 hover:bg-purple-500/15 transition-all duration-200 hover:scale-105 active:scale-95 border border-purple-500/20" 
-                                            title="Enable Tor Onion Routing (converts private space to Tor space)"
-                                        >
-                                            <Globe size={11} /> Tor Mode
-                                        </button>
                                         <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T • Middle-click for background)">
                                             <Plus size={12} strokeWidth={2.5} />
                                         </button>
@@ -1131,7 +1211,9 @@ export default function Sidebar() {
                                     if (filtered.length === 0) {
                                         return (
                                             <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${
-                                                frameCurvature === 'square' ? 'rounded-none !rounded-none' : (uiScale === 'compact' ? 'py-2 px-2.5 rounded-lg' : 'p-3 rounded-xl')
+                                                uiScale === 'compact' ? 'py-2 px-2.5' : 'p-3'
+                                            } ${
+                                                frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
                                             } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (Middle-click for background)">
                                                 <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
@@ -1155,7 +1237,10 @@ export default function Sidebar() {
                                 } overflow-y-auto hide-scroll`}
                                 style={{ width: `${100 / allSpaces.length}%` }}
                                 onDragOver={(e) => { e.preventDefault(); handleDragOver('root-tor'); }}
-                                onDragLeave={handleDragLeave}
+                                onDragLeave={(e) => {
+                                    if (e.currentTarget.contains(e.relatedTarget)) return;
+                                    handleDragLeave();
+                                }}
                                 onDrop={(e) => handleDropRoot(e, 'tor')}
                             >
                                 <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-tor' ? 'border-purple-400 border-dashed bg-purple-500/10 py-1' : 'border-transparent'}`}>
@@ -1165,8 +1250,8 @@ export default function Sidebar() {
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button 
-                                            onClick={() => useTorStore.getState().toggleTorEnabled(false)}
-                                            className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10" 
+                                            onClick={() => useTorStore.getState().toggleTorEnabled(false, { fallbackSpace: 'ghost' })}
+                                            className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10 cursor-pointer" 
                                             title="Turn off Tor and return to Ghost mode"
                                         >
                                             <Ghost size={11} /> Ghost
@@ -1321,6 +1406,12 @@ export default function Sidebar() {
                 })()}
                 <div 
                     id="tour-spaces-container"
+                    onDragOver={(e) => {
+                        if (draggedSidebarSpaceIdx !== null) {
+                            e.preventDefault();
+                            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                        }
+                    }}
                     onMouseLeave={() => setHoveredSpace(null)}
                     onDoubleClick={(e) => {
                         if (e.target === e.currentTarget) {
@@ -1387,31 +1478,85 @@ export default function Sidebar() {
                                     ? customSpaces.every(s => (s.name || '').length <= 8)
                                     : false;
 
-                        return customSpaces.map((sp) => {
+                        return customSpaces.map((sp, spIdx) => {
                             const isActive = activeSpace === sp.id && !isIncognito && !isTor;
+                            const isSpaceDragOver = dragOverSidebarSpaceIdx === spIdx && draggedSidebarSpaceIdx !== null && draggedSidebarSpaceIdx !== spIdx;
 
                             return (
-                                <button 
+                                <div 
                                     key={sp.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    draggable={customSpaces.length > 1}
+                                    onDragStart={(e) => {
+                                        e.stopPropagation();
+                                        setDraggedSidebarSpaceIdx(spIdx);
+                                        if (e.dataTransfer) {
+                                            e.dataTransfer.effectAllowed = 'move';
+                                            e.dataTransfer.setData('text/plain', String(spIdx));
+                                        }
+                                    }}
+                                    onDragOver={(e) => {
+                                        if (draggedSidebarSpaceIdx === null) return;
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                                        if (dragOverSidebarSpaceIdx !== spIdx) {
+                                            setDragOverSidebarSpaceIdx(spIdx);
+                                        }
+                                    }}
+                                    onDragLeave={(e) => {
+                                        if (e.currentTarget.contains(e.relatedTarget)) return;
+                                        if (dragOverSidebarSpaceIdx === spIdx) {
+                                            setDragOverSidebarSpaceIdx(null);
+                                        }
+                                    }}
+                                    onDrop={(e) => {
+                                        if (draggedSidebarSpaceIdx === null) return;
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (draggedSidebarSpaceIdx !== spIdx && reorderSpaces) {
+                                            const next = [...customSpaces];
+                                            const [moved] = next.splice(draggedSidebarSpaceIdx, 1);
+                                            next.splice(spIdx, 0, moved);
+                                            reorderSpaces(next);
+                                        }
+                                        setDraggedSidebarSpaceIdx(null);
+                                        setDragOverSidebarSpaceIdx(null);
+                                    }}
+                                    onDragEnd={() => {
+                                        setDraggedSidebarSpaceIdx(null);
+                                        setDragOverSidebarSpaceIdx(null);
+                                    }}
                                     onClick={() => setActiveSpace(sp.id)} 
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setActiveSpace(sp.id);
+                                        }
+                                    }}
                                     onMouseEnter={() => setHoveredSpace(sp.id)}
                                     onContextMenu={(e) => handleSpaceContextMenu(e, sp)}
                                     onDoubleClick={(e) => {
                                         e.stopPropagation();
                                         setRenamingSpaceId(sp.id);
                                     }}
-                                    className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 p-1.5 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer outline-none min-w-0 ${
+                                    className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 p-1.5 text-xs font-semibold rounded-full transition-all duration-200 active:scale-95 cursor-pointer outline-none min-w-0 ${
+                                        draggedSidebarSpaceIdx === spIdx ? 'opacity-35 scale-[0.98]' : ''
+                                    } ${
+                                        isSpaceDragOver ? 'ring-2 ring-accent bg-accent/20' : ''
+                                    } ${
                                         isActive 
                                             ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
                                             : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'
                                     }`}
-                                    title={`${sp.name} (Right-click for options • Double-click to rename)`}
+                                    title={`${sp.name} (Drag to reorder • Right-click for options • Double-click to rename)`}
                                 >
-                                    {getSpaceIcon(sp.icon, { size: showSpaceLabels ? 14 : 15, className: 'shrink-0' })}
+                                    {getSpaceIcon(sp.icon, { size: showSpaceLabels ? 14 : 15, className: 'shrink-0 pointer-events-none' })}
                                     {showSpaceLabels && (
-                                        <span className="hidden md:inline whitespace-nowrap select-none">{sp.name}</span>
+                                        <span className="hidden md:inline whitespace-nowrap select-none pointer-events-none">{sp.name}</span>
                                     )}
-                                </button>
+                                </div>
                             );
                         });
                     })()}
@@ -1420,18 +1565,28 @@ export default function Sidebar() {
                 {/* Animated Morphing Ghost <-> Onion Button */}
                 <button
                     onClick={() => {
+                        const lastNormal = useTabStore.getState().lastNormalSpace;
+                        const returnSpace = (lastNormal && customSpaces.some(s => s.id === lastNormal))
+                            ? lastNormal
+                            : (customSpaces[0]?.id || 'personal');
                         if (isTorEnabled) {
-                            setActiveSpace(isTor ? (customSpaces[0]?.id || 'personal') : 'tor');
+                            setActiveSpace(isTor ? returnSpace : 'tor');
                             showToast(!isTor ? 'Tor Space: Activated' : 'Tor Space: Deactivated');
                         } else {
-                            setActiveSpace(isIncognito ? (customSpaces[0]?.id || 'personal') : 'ghost');
+                            setActiveSpace(isIncognito ? returnSpace : 'ghost');
                             showToast(!isIncognito ? 'Ghost Mode: Activated' : 'Ghost Mode: Deactivated');
                         }
                     }}
                     onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        useTorStore.getState().toggleTorEnabled();
+                        const currentSpace = useTabStore.getState().activeSpace;
+                        const inPrivateSpace = currentSpace === 'ghost' || currentSpace === 'tor';
+                        useTorStore.getState().toggleTorEnabled(undefined, {
+                            switchSpace: inPrivateSpace,
+                            targetSpace: 'tor',
+                            fallbackSpace: 'ghost'
+                        });
                     }}
                     className={`relative p-2 rounded-2xl transition-all duration-300 active:scale-90 hover:scale-105 border flex-shrink-0 overflow-hidden group cursor-pointer ${
                         (isTorEnabled ? isTor : isIncognito)
@@ -1497,16 +1652,19 @@ export default function Sidebar() {
             </div>
             </div>
         </aside>
-        {draggedItem && dragPos && (
+        {draggedItem && (
             <div
-                className={`fixed pointer-events-none z-[999999] flex items-center justify-between px-3 py-2.5 border select-none shadow-2xl backdrop-blur-2xl transition-none ${
+                ref={dragGhostRef}
+                className={`fixed left-0 top-0 pointer-events-none z-[999999] flex items-center justify-between px-3 py-2.5 border select-none shadow-2xl backdrop-blur-2xl transition-none will-change-transform ${
                     isBright 
                         ? 'bg-white/95 border-black/15 text-zinc-950 shadow-[0_12px_28px_rgba(0,0,0,0.18)]' 
                         : 'bg-[#18191f]/95 border-accent/40 text-accent shadow-[0_16px_36px_rgba(0,0,0,0.8),0_0_15px_var(--accent-20)]'
                 }`}
                 style={{
-                    left: `${dragPos.x + 10}px`,
-                    top: `${dragPos.y - 18}px`,
+                    transform: initialDragPosRef.current.x > 0
+                        ? `translate3d(${initialDragPosRef.current.x + 12}px, ${initialDragPosRef.current.y - 18}px, 0)`
+                        : 'translate3d(-9999px, -9999px, 0)',
+                    opacity: initialDragPosRef.current.x > 0 ? 1 : 0,
                     width: uiScale === 'compact' ? '200px' : '220px',
                     borderRadius: uiScale === 'compact' ? '8px' : '12px'
                 }}

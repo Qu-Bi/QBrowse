@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { 
     Command, Search, ChevronUp, ChevronDown, X, Moon, Sun, Trash2, 
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
@@ -283,6 +283,19 @@ export default function MainFrame() {
     const zoomLevel = useUIStore(state => state.zoomLevel);
     const isZoomHUDVisible = useUIStore(state => state.isZoomHUDVisible);
     const setZoomLevel = useUIStore(state => state.setZoomLevel);
+    const zoomIn = useUIStore(state => state.zoomIn);
+    const zoomOut = useUIStore(state => state.zoomOut);
+    const resetZoom = useUIStore(state => state.resetZoom);
+    const canvasZoomLevel = useUIStore(state => state.canvasZoomLevel);
+    const isCanvasZoomHUDVisible = useUIStore(state => state.isCanvasZoomHUDVisible);
+
+    const handleResetCanvasZoom = useCallback(() => {
+        const activeTab = useTabStore.getState().getActiveTab();
+        const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
+        if (wv && typeof wv.send === 'function') {
+            try { wv.send('webview-visual-zoom', 'reset'); } catch (_) {}
+        }
+    }, []);
     const isSplitView = useUIStore(state => state.isSplitView);
     const splitRightTabId = useUIStore(state => state.splitRightTabId);
     const setSplitRightTabId = useUIStore(state => state.setSplitRightTabId);
@@ -316,10 +329,10 @@ export default function MainFrame() {
     const isPeekClosing = useUIStore(state => state.isPeekClosing);
     const closePeek = useUIStore(state => state.closePeek);
 
-    const customSpaces = useUIStore(state => state.settings?.customSpaces || [
+    const customSpaces = useUIStore(state => state.settings?.customSpaces) || [
         { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
         { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
-    ]);
+    ];
 
     const activeSpace = useTabStore(state => state.activeSpace);
     const privateTabs = useTabStore(state => state.privateTabs);
@@ -360,10 +373,13 @@ export default function MainFrame() {
     const uiScale = useUIStore(state => state.settings?.uiScale);
     const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
 
-    const [currentTime, setCurrentTime] = useState(new Date());
+    const [currentTime, setCurrentTime] = useState(() => new Date());
 
     useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        const timer = setInterval(() => {
+            const now = new Date();
+            setCurrentTime(prev => (prev.getMinutes() !== now.getMinutes() ? now : prev));
+        }, 5000);
         return () => clearInterval(timer);
     }, []);
 
@@ -827,6 +843,7 @@ export default function MainFrame() {
 
             {(activePopover === 'downloads' || (isPopoverClosing && activePopover === 'downloads')) && (
                 <div 
+                    id="popover-downloads-container"
                     onClick={e => e.stopPropagation()} 
                     style={downloadsAnchor.style}
                     className={`absolute z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
@@ -902,6 +919,7 @@ export default function MainFrame() {
                         className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} pt-0`}
                     >
                         <div 
+                            id="qbrowse-viewport-frame"
                             className={`relative w-full h-full overflow-hidden transition-[border-radius,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex ${
                                 isSplitLeft ? 'flex-row-reverse' : 'flex-row'
                             } ${
@@ -949,11 +967,12 @@ export default function MainFrame() {
                                 transform: `translateX(-${activeIndex * (100 / visibleSpaces.length)}%)` 
                             }}
                         >
-                            {visibleSpaces.map(sp => {
+                            {[...visibleSpaces].sort((a, b) => String(a.id).localeCompare(String(b.id))).map(sp => {
                                 const isActive = activeSpace === sp.id;
                                 const isEmpty = isSpaceEmpty(sp.id);
                                 const isSpaceTor = sp.id === 'tor';
                                 const isSpaceGhost = sp.id === 'ghost';
+                                const visualOrder = visibleSpaces.findIndex(v => v.id === sp.id);
 
                                 return (
                                     <div 
@@ -963,7 +982,7 @@ export default function MainFrame() {
                                         } ${
                                             isSpaceGhost || isSpaceTor ? 'text-white' : (!isBright ? 'text-white' : 'text-zinc-900')
                                         }`}
-                                        style={{ width: `${100 / visibleSpaces.length}%` }}
+                                        style={{ width: `${100 / visibleSpaces.length}%`, order: visualOrder >= 0 ? visualOrder : 0 }}
                                         aria-hidden={!isActive}
                                         {...(!isActive ? { inert: '' } : {})}
                                     >
@@ -1307,51 +1326,83 @@ export default function MainFrame() {
                 </div>
             )}
 
-            {/* FLOATING ZOOM HUD */}
-            <div className={`absolute bottom-8 right-8 z-[9990] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                isZoomHUDVisible 
-                    ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' 
-                    : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
-            }`}>
-                <div 
-                    className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all ${
-                        isBright 
-                            ? 'bg-white/90 border-black/10 text-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]' 
-                            : 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]'
-                    }`}
-                >
-                    <ZoomIn size={14} className="text-accent" />
-                    <span className="text-xs font-bold font-mono tracking-tight min-w-[42px] text-center select-none">
-                        {zoomLevel}%
-                    </span>
-                    <div className={`flex items-center gap-1 pl-2 border-l ${isBright ? 'border-black/10' : 'border-white/10'}`}>
-                        <button 
-                            onClick={() => setZoomLevel(zoomLevel - 10)}
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
-                                isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
-                            }`}
-                            title="Zoom Out (Ctrl -)"
-                        >
-                            -
-                        </button>
-                        <button 
-                            onClick={() => setZoomLevel(zoomLevel + 10)}
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
-                                isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
-                            }`}
-                            title="Zoom In (Ctrl +)"
-                        >
-                            +
-                        </button>
-                        {zoomLevel !== 100 && (
+            {/* FLOATING ZOOM HUDS (Page Zoom & Canvas Zoom) */}
+            <div className="absolute bottom-8 right-8 z-[9990] flex flex-col items-end gap-2 pointer-events-none">
+                {/* CANVAS ZOOM HUD (Ctrl+Alt+Wheel / Ctrl+Alt++) */}
+                <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    isCanvasZoomHUDVisible 
+                        ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' 
+                        : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
+                }`}>
+                    <div 
+                        className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all ${
+                            isBright 
+                                ? 'bg-white/90 border-black/10 text-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]' 
+                                : 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]'
+                        }`}
+                    >
+                        <ZoomIn size={14} className="text-accent" />
+                        <span className="text-xs font-semibold tracking-tight select-none">
+                            Canvas Zoom: <span className="font-mono font-bold">{canvasZoomLevel}%</span>
+                        </span>
+                        {canvasZoomLevel !== 100 && (
                             <button 
-                                onClick={() => setZoomLevel(100)}
+                                onClick={handleResetCanvasZoom}
                                 className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1"
-                                title="Reset Zoom (Ctrl 0)"
+                                title="Reset Canvas Zoom (Ctrl+Alt+0)"
                             >
                                 <RotateCcw size={10} /> Reset
                             </button>
                         )}
+                    </div>
+                </div>
+
+                {/* PAGE ZOOM HUD */}
+                <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    isZoomHUDVisible 
+                        ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' 
+                        : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
+                }`}>
+                    <div 
+                        className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all ${
+                            isBright 
+                                ? 'bg-white/90 border-black/10 text-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]' 
+                                : 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]'
+                        }`}
+                    >
+                        <ZoomIn size={14} className="text-accent" />
+                        <span className="text-xs font-bold font-mono tracking-tight min-w-[42px] text-center select-none">
+                            {zoomLevel}%
+                        </span>
+                        <div className={`flex items-center gap-1 pl-2 border-l ${isBright ? 'border-black/10' : 'border-white/10'}`}>
+                            <button 
+                                onClick={() => zoomOut()}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
+                                    isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
+                                }`}
+                                title="Zoom Out (Ctrl -)"
+                            >
+                                -
+                            </button>
+                            <button 
+                                onClick={() => zoomIn()}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
+                                    isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
+                                }`}
+                                title="Zoom In (Ctrl +)"
+                            >
+                                +
+                            </button>
+                            {zoomLevel !== 100 && (
+                                <button 
+                                    onClick={() => resetZoom()}
+                                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1"
+                                    title="Reset Zoom (Ctrl 0)"
+                                >
+                                    <RotateCcw size={10} /> Reset
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

@@ -59,6 +59,16 @@ export default function ToolHub() {
             return '';
         }
     });
+    const [spaceNotesMap, setSpaceNotesMap] = useState(() => {
+        try {
+            const raw = localStorage.getItem('qbrowse_notes_spaces');
+            return raw ? JSON.parse(raw) : {};
+        } catch {
+            return {};
+        }
+    });
+    const [scratchpadScope, setScratchpadScope] = useState('global'); // 'global' or spaceId
+    const [hoveredScratchpadScope, setHoveredScratchpadScope] = useState(null);
 
     const [hubToast, setHubToast] = useState(null);
     const fileInputRef = useRef(null);
@@ -98,8 +108,23 @@ export default function ToolHub() {
     const removeAnnotation = useAnnotationStore(state => state.removeAnnotation);
     const updateAnnotation = useAnnotationStore(state => state.updateAnnotation);
     const activeSpace = useTabStore(state => state.activeSpace);
+    const customSpaces = useUIStore(state => state.settings?.customSpaces) || [
+        { id: 'personal', name: 'Personal', icon: 'User' },
+        { id: 'work', name: 'Work', icon: 'Briefcase' }
+    ];
     const theme = useUIStore(state => state.theme);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    const getSpaceDisplayName = (spaceId) => {
+        if (!spaceId) return 'Personal';
+        const found = (customSpaces || []).find(s => s.id === spaceId);
+        if (found && found.name) return found.name;
+        if (spaceId === 'personal') return 'Personal';
+        if (spaceId === 'work') return 'Work';
+        if (spaceId === 'ghost') return 'Incognito';
+        if (spaceId === 'tor') return 'Tor';
+        return spaceId;
+    };
 
     const toggleDomainCollapse = (domain) => {
         setCollapsedDomains(prev => ({ ...prev, [domain]: !prev[domain] }));
@@ -114,11 +139,13 @@ export default function ToolHub() {
             tabStore.setActiveSpace(currentSpace);
         }
 
-        const spaceTabs = currentSpace === 'personal' 
-            ? tabStore.privateTabs 
-            : (currentSpace === 'work' 
-                ? tabStore.workTabs 
-                : (currentSpace === 'tor' ? (tabStore.torTabs || []) : tabStore.ghostTabs));
+        const spaceTabs = tabStore.getTabsForSpace
+            ? (tabStore.getTabsForSpace(currentSpace) || [])
+            : (currentSpace === 'personal' 
+                ? tabStore.privateTabs 
+                : (currentSpace === 'work' 
+                    ? tabStore.workTabs 
+                    : (currentSpace === 'tor' ? (tabStore.torTabs || []) : tabStore.ghostTabs)));
 
         const targetCleanUrl = normalizeAnnotationUrl(ann.url);
         let existingTab = spaceTabs.find(t => normalizeAnnotationUrl(t.url) === targetCleanUrl);
@@ -176,7 +203,8 @@ export default function ToolHub() {
     };
 
     const handleExportMarkdown = () => {
-        const md = exportToMarkdown(webNotesSpaceFilter === 'current' ? activeSpace : null);
+        const exportSpace = webNotesSpaceFilter === 'all' ? null : (webNotesSpaceFilter === 'current' ? activeSpace : webNotesSpaceFilter);
+        const md = exportToMarkdown(exportSpace);
         try {
             const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
             const url = URL.createObjectURL(blob);
@@ -207,6 +235,12 @@ export default function ToolHub() {
             localStorage.setItem('qbrowse_notes_content', notesContent);
         } catch(e) {}
     }, [notesContent]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('qbrowse_notes_spaces', JSON.stringify(spaceNotesMap));
+        } catch(e) {}
+    }, [spaceNotesMap]);
 
     // Real System Clipboard Reader
     const syncSystemClipboard = async () => {
@@ -379,24 +413,32 @@ export default function ToolHub() {
         e.target.value = null; // Reset input
     };
 
+    const extractActivePageContext = async (forceExtract = false) => {
+        if (!aiContextEnabled && !forceExtract) return '';
+        if (typeof useAIStore.getState().extractActivePageContext === 'function') {
+            return await useAIStore.getState().extractActivePageContext(forceExtract, currentUrl);
+        }
+        return currentUrl || '';
+    };
+
     const handleSend = async () => {
         if (!chatInput.trim() && attachedFiles.length === 0) return;
-        
-        let fullPageContext = currentUrl;
-        if (aiContextEnabled) {
-            const activeTabId = useTabStore.getState().activeTabId;
-            const wv = window.qbrowseWebviews?.[activeTabId];
-            if (wv && typeof wv.executeJavaScript === 'function') {
-                try {
-                    const text = await wv.executeJavaScript('document.body.innerText');
-                    fullPageContext = `URL: ${currentUrl}\n\nPAGE CONTENT:\n${text ? text.substring(0, 15000) : '(No text found on page)'}`;
-                } catch(e) {
-                    console.warn('Failed to extract page text:', e);
-                }
-            }
-        }
-
+        const fullPageContext = await extractActivePageContext(false);
         sendChatMessage(chatInput, fullPageContext);
+    };
+
+    const handleSummarizePage = async () => {
+        if (isGenerating) return;
+        const fullPageContext = await extractActivePageContext(true);
+        if (!fullPageContext || (!fullPageContext.includes('PAGE CONTENT:') && !currentUrl)) {
+            showHubToast('Open a web page first to summarize it');
+            return;
+        }
+        sendChatMessage(
+            "Summarize this web page clearly with key takeaways and main points based on its content.",
+            fullPageContext,
+            { forceContext: true }
+        );
     };
 
     const handleMicToggle = async () => {
@@ -430,7 +472,7 @@ export default function ToolHub() {
         <>
             {/* Click-outside backdrop with smooth depth animation */}
             <div 
-                className={`fixed inset-0 z-[44999] bg-black/35 backdrop-blur-[3px] transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                className={`fixed inset-0 z-[44999] bg-black/35 backdrop-blur-[3px] transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                     isRightPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
                 onClick={() => setIsRightPanelOpen(false)}
@@ -467,16 +509,24 @@ export default function ToolHub() {
 
             <div 
                 id="toolhub-container"
+                style={{
+                    transform: isRightPanelOpen
+                        ? 'translate3d(0, 0, 0) scale(1)'
+                        : (toolHubPosition === 'left'
+                            ? 'translate3d(-108%, 0, 0) scale(0.97)'
+                            : 'translate3d(108%, 0, 0) scale(0.97)'),
+                    willChange: 'transform, opacity'
+                }}
                 className={`fixed top-2 bottom-2 md:top-2 md:bottom-2 ${
                     toolHubPosition === 'left' ? 'left-2 md:left-3' : 'right-2 md:right-3'
                 } w-96 md:w-[460px] ${
                 isBright 
                     ? 'bg-white/90 backdrop-blur-3xl border border-black/[0.08] text-zinc-900 shadow-[0_30px_90px_-10px_rgba(0,0,0,0.18),0_12px_35px_-5px_rgba(0,0,0,0.08),inset_0_1px_2px_0_rgba(255,255,255,0.9)] ring-1 ring-black/[0.05]' 
                     : 'bg-[#0c0d14]/94 backdrop-blur-3xl border border-white/[0.08] text-white shadow-[0_35px_100px_-15px_rgba(0,0,0,0.95),0_15px_45px_-5px_rgba(0,0,0,0.75),0_2px_10px_rgba(0,0,0,0.6),inset_0_1px_1px_0_rgba(255,255,255,0.15)] ring-1 ring-white/[0.06]'
-            } rounded-3xl flex flex-col overflow-hidden z-[45000] transform-gpu transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            } rounded-3xl flex flex-col overflow-hidden z-[45000] transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                 isRightPanelOpen 
-                    ? `translate-x-0 opacity-100 scale-100 ${toolHubPosition === 'left' ? 'animate-slide-in-left' : 'animate-slide-in-right'}` 
-                    : `${toolHubPosition === 'left' ? '-translate-x-[110%]' : 'translate-x-[110%]'} opacity-0 scale-[0.98]`
+                    ? 'opacity-100 pointer-events-auto' 
+                    : 'opacity-0 pointer-events-none select-none'
             }`} 
                 onClick={e => e.stopPropagation()}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
@@ -691,14 +741,96 @@ export default function ToolHub() {
                         </div>
 
                         {notesSubTab === 'scratchpad' ? (
-                            <div className={`flex-1 flex flex-col min-h-0 ${isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'} border rounded-2xl p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]`}>
-                                <textarea
-                                    value={notesContent}
-                                    onChange={e => setNotesContent(e.target.value)}
-                                    placeholder="Jot down quick thoughts, notes, links... markdown supported."
-                                    className={`w-full h-full bg-transparent text-sm ${isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white/90 placeholder-white/30'} resize-none outline-none custom-scrollbar leading-relaxed font-sans`}
-                                    spellCheck="false"
-                                />
+                            <div className="flex-1 flex flex-col min-h-0 gap-2.5">
+                                {(() => {
+                                    const scratchpadTabs = [
+                                        { id: 'global', name: 'Global' },
+                                        { id: 'current', name: `${getSpaceDisplayName(activeSpace)} Space` },
+                                        ...(customSpaces || []).filter(sp => sp.id !== activeSpace).map(sp => ({ id: sp.id, name: sp.name }))
+                                    ];
+                                    const activeIdx = Math.max(0, scratchpadTabs.findIndex(t => t.id === scratchpadScope));
+                                    const hoveredIdx = scratchpadTabs.findIndex(t => t.id === hoveredScratchpadScope);
+                                    const resolvedSpaceKey = scratchpadScope === 'global'
+                                        ? 'global'
+                                        : (scratchpadScope === 'current' ? (activeSpace || 'personal') : scratchpadScope);
+                                    const currentPadValue = resolvedSpaceKey === 'global'
+                                        ? notesContent
+                                        : (spaceNotesMap[resolvedSpaceKey] ?? '');
+
+                                    return (
+                                        <>
+                                            <div
+                                                onMouseLeave={() => setHoveredScratchpadScope(null)}
+                                                className={`relative flex items-center p-0.5 rounded-full border shadow-xs select-none flex-shrink-0 overflow-hidden ${
+                                                    isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                                                }`}
+                                            >
+                                                {hoveredIdx >= 0 && hoveredIdx !== activeIdx && (
+                                                    <div
+                                                        className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-200 pointer-events-none ${
+                                                            isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                                        }`}
+                                                        style={{
+                                                            width: `calc((100% - 4px) / ${scratchpadTabs.length})`,
+                                                            transform: `translateX(${hoveredIdx * 100}%)`,
+                                                            left: '2px'
+                                                        }}
+                                                    />
+                                                )}
+                                                <div
+                                                    className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                                        isBright ? 'bg-white border border-black/[0.08] shadow-xs' : 'border'
+                                                    }`}
+                                                    style={{
+                                                        width: `calc((100% - 4px) / ${scratchpadTabs.length})`,
+                                                        transform: `translateX(${activeIdx * 100}%)`,
+                                                        left: '2px',
+                                                        ...(!isBright ? {
+                                                            borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                                            backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                                            boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                                        } : {})
+                                                    }}
+                                                />
+                                                {scratchpadTabs.map(tabItem => {
+                                                    const isSelected = scratchpadScope === tabItem.id;
+                                                    return (
+                                                        <button
+                                                            key={tabItem.id}
+                                                            type="button"
+                                                            onMouseEnter={() => setHoveredScratchpadScope(tabItem.id)}
+                                                            onClick={() => setScratchpadScope(tabItem.id)}
+                                                            className={`relative z-10 flex-1 flex items-center justify-center text-center px-2 py-1 rounded-full text-[10px] font-semibold truncate transition-all duration-300 active:scale-95 cursor-pointer ${
+                                                                isSelected
+                                                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                                                    : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/45 hover:text-white')
+                                                            }`}
+                                                            title={`Scratchpad: ${tabItem.name}`}
+                                                        >
+                                                            <span className="truncate">{tabItem.name}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className={`flex-1 flex flex-col min-h-0 ${isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'} border rounded-2xl p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]`}>
+                                                <textarea
+                                                    value={currentPadValue}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        if (resolvedSpaceKey === 'global') {
+                                                            setNotesContent(val);
+                                                        } else {
+                                                            setSpaceNotesMap(prev => ({ ...prev, [resolvedSpaceKey]: val }));
+                                                        }
+                                                    }}
+                                                    placeholder={resolvedSpaceKey === 'global' ? "Jot down global thoughts, notes, links... markdown supported." : `Scratchpad for ${getSpaceDisplayName(resolvedSpaceKey)} Space... markdown supported.`}
+                                                    className={`w-full h-full bg-transparent text-sm ${isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white/90 placeholder-white/30'} resize-none outline-none custom-scrollbar leading-relaxed font-sans`}
+                                                    spellCheck="false"
+                                                />
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         ) : (
                             <div className="flex-1 flex flex-col min-h-0">
@@ -721,70 +853,77 @@ export default function ToolHub() {
                                     </div>
 
                                     <div className="flex items-center justify-between gap-2">
-                                        <div 
-                                            onMouseLeave={() => setHoveredWebNotesSpaceFilter(null)}
-                                            className={`relative flex items-center p-0.5 rounded-full border shadow-xs min-w-[210px] select-none ${
-                                            isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-                                        }`}>
-                                            {/* Subtle Hover Preview Pill */}
-                                            {hoveredWebNotesSpaceFilter && hoveredWebNotesSpaceFilter !== webNotesSpaceFilter && (
-                                                <div
-                                                    className={`absolute top-0.5 bottom-0.5 w-[calc(50%-1px)] rounded-full transition-all duration-200 pointer-events-none ${
-                                                        isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
-                                                    }`}
-                                                    style={{
-                                                        transform: hoveredWebNotesSpaceFilter === 'current' ? 'translateX(100%)' : 'translateX(0)',
-                                                        left: '1px'
-                                                    }}
-                                                />
-                                            )}
-                                            {/* Animated Sliding Indicator Pill */}
-                                            <div 
-                                                className={`absolute top-0.5 bottom-0.5 w-[calc(50%-1px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
-                                                    isBright
-                                                        ? 'bg-white border border-black/[0.08] shadow-xs'
-                                                        : 'border'
-                                                }`}
-                                                style={{
-                                                    transform: webNotesSpaceFilter === 'current' ? 'translateX(100%)' : 'translateX(0)',
-                                                    left: '1px',
-                                                    ...(!isBright ? {
-                                                        borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
-                                                        backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
-                                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
-                                                    } : {})
-                                                }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onMouseEnter={() => setHoveredWebNotesSpaceFilter('all')}
-                                                onClick={() => setWebNotesSpaceFilter('all')}
-                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-all duration-300 active:scale-95 cursor-pointer ${
-                                                    webNotesSpaceFilter === 'all' 
-                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
-                                                        : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
-                                                }`}
-                                            >
-                                                All Spaces
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onMouseEnter={() => setHoveredWebNotesSpaceFilter('current')}
-                                                onClick={() => setWebNotesSpaceFilter('current')}
-                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-3 py-1 rounded-full text-[10px] font-semibold transition-all duration-300 active:scale-95 cursor-pointer ${
-                                                    webNotesSpaceFilter === 'current' 
-                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
-                                                        : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
-                                                }`}
-                                            >
-                                                <span className="capitalize">{activeSpace}</span>&nbsp;Space
-                                            </button>
-                                        </div>
+                                        {(() => {
+                                            const filterTabs = [
+                                                { id: 'all', label: 'All Spaces' },
+                                                { id: 'current', label: `${getSpaceDisplayName(activeSpace)} Space` },
+                                                ...(customSpaces || []).filter(sp => sp.id !== activeSpace).map(sp => ({ id: sp.id, label: sp.name }))
+                                            ];
+                                            const activeFilterIdx = Math.max(0, filterTabs.findIndex(f => f.id === webNotesSpaceFilter));
+                                            const hoveredFilterIdx = filterTabs.findIndex(f => f.id === hoveredWebNotesSpaceFilter);
+
+                                            return (
+                                                <div 
+                                                    onMouseLeave={() => setHoveredWebNotesSpaceFilter(null)}
+                                                    className={`relative flex-1 flex items-center p-0.5 rounded-full border shadow-xs min-w-0 select-none overflow-hidden ${
+                                                    isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                                                }`}>
+                                                    {hoveredFilterIdx >= 0 && hoveredFilterIdx !== activeFilterIdx && (
+                                                        <div
+                                                            className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-200 pointer-events-none ${
+                                                                isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                                            }`}
+                                                            style={{
+                                                                width: `calc((100% - 2px) / ${filterTabs.length})`,
+                                                                transform: `translateX(${hoveredFilterIdx * 100}%)`,
+                                                                left: '1px'
+                                                            }}
+                                                        />
+                                                    )}
+                                                    <div 
+                                                        className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                                                            isBright
+                                                                ? 'bg-white border border-black/[0.08] shadow-xs'
+                                                                : 'border'
+                                                        }`}
+                                                        style={{
+                                                            width: `calc((100% - 2px) / ${filterTabs.length})`,
+                                                            transform: `translateX(${activeFilterIdx * 100}%)`,
+                                                            left: '1px',
+                                                            ...(!isBright ? {
+                                                                borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                                                backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                                                boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                                            } : {})
+                                                        }}
+                                                    />
+                                                    {filterTabs.map(fTab => {
+                                                        const isSelected = webNotesSpaceFilter === fTab.id;
+                                                        return (
+                                                            <button
+                                                                key={fTab.id}
+                                                                type="button"
+                                                                onMouseEnter={() => setHoveredWebNotesSpaceFilter(fTab.id)}
+                                                                onClick={() => setWebNotesSpaceFilter(fTab.id)}
+                                                                className={`relative z-10 flex-1 flex items-center justify-center text-center px-2 py-1 rounded-full text-[10px] font-semibold truncate transition-all duration-300 active:scale-95 cursor-pointer ${
+                                                                    isSelected 
+                                                                        ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
+                                                                        : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
+                                                                }`}
+                                                                title={fTab.label}
+                                                            >
+                                                                <span className="truncate">{fTab.label}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
 
                                         <button
                                             onClick={handleExportMarkdown}
                                             disabled={annotations.length === 0}
-                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full flex-shrink-0 ${
                                                 isBright 
                                                     ? 'bg-black/[0.03] hover:bg-black/[0.06] text-zinc-700 hover:text-zinc-950 border-black/10' 
                                                     : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white border-white/[0.08]'
@@ -800,7 +939,12 @@ export default function ToolHub() {
                                 {/* Domain-Grouped Highlights List */}
                                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-0.5 flex flex-col gap-2.5">
                                     {(() => {
-                                        const spaceFiltered = webNotesSpaceFilter === 'current' ? annotations.filter(a => a.space === activeSpace) : annotations;
+                                        const resolvedFilterSpace = webNotesSpaceFilter === 'all'
+                                            ? null
+                                            : (webNotesSpaceFilter === 'current' ? activeSpace : webNotesSpaceFilter);
+                                        const spaceFiltered = resolvedFilterSpace
+                                            ? annotations.filter(a => (a.space || 'personal') === resolvedFilterSpace)
+                                            : annotations;
                                         const queryLower = webNotesQuery.toLowerCase().trim();
                                         const filtered = queryLower
                                             ? spaceFiltered.filter(a =>
@@ -900,7 +1044,7 @@ export default function ToolHub() {
                                                                                 </span>
                                                                             </div>
                                                                             <span className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded-md ${isBright ? 'bg-black/5 border-black/5 text-zinc-500' : 'bg-white/5 border-white/5 text-white/50'} border`}>
-                                                                                {ann.space || 'personal'}
+                                                                                {getSpaceDisplayName(ann.space || 'personal')}
                                                                             </span>
                                                                         </div>
 
@@ -1450,7 +1594,7 @@ export default function ToolHub() {
                                 </div>
 
                                 <button
-                                    onClick={() => sendChatMessage("Summarize this web page", currentUrl)}
+                                    onClick={handleSummarizePage}
                                     className={`px-3 py-1.5 rounded-full ${
                                         isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.08] hover:border-white/20 text-white/70 hover:text-white'
                                     } border text-[10px] font-medium tracking-wide transition cursor-pointer flex-shrink-0 flex items-center gap-1.5`}

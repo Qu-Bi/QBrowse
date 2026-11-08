@@ -134,7 +134,39 @@ export default function App() {
             if (spaceParam && ['personal', 'work', 'ghost'].includes(spaceParam)) {
                 useTabStore.getState().setActiveSpace(spaceParam);
             }
+            const initialTabParam = params.get('initialTab');
+            if (initialTabParam) {
+                try {
+                    const rawTab = JSON.parse(decodeURIComponent(initialTabParam));
+                    if (rawTab && (rawTab.url || rawTab.title)) {
+                        const targetSpace = spaceParam || 'personal';
+                        const newTab = {
+                            ...rawTab,
+                            id: `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                            active: true,
+                            lastActiveAt: Date.now()
+                        };
+                        useTabStore.getState().setTabsForSpace(targetSpace, [newTab]);
+                        useUIStore.getState().setCurrentUrl(newTab.url || '');
+                    }
+                } catch (_) {}
+            }
         } catch(e) {}
+
+        // Initialize Window ID for Cross-Window Drag & Drop
+        if (window.electronAPI && window.electronAPI.getWindowId) {
+            window.electronAPI.getWindowId().then(id => {
+                window.__qbrowseWindowId = id;
+            }).catch(() => {});
+        }
+
+        // Listen for tab transfers to other windows
+        let unsubTabRemoved = null;
+        if (window.electronAPI && window.electronAPI.onTabRemovedFromWindow) {
+            unsubTabRemoved = window.electronAPI.onTabRemovedFromWindow(({ tabId }) => {
+                useTabStore.getState().removeTabById(tabId);
+            });
+        }
 
         // Listen for URLs opened externally from other apps when QBrowse is default browser
         let lastExternalUrl = null;
@@ -152,52 +184,9 @@ export default function App() {
             window.electronAPI.getInitialLaunchUrl().then(handleExternalNavigation).catch(() => {});
         }
 
-        if (window.electronAPI && window.electronAPI.onOpenUrl) {
-            const unlisten = window.electronAPI.onOpenUrl(({ url }) => {
-                handleExternalNavigation(url);
-            });
-            return () => {
-                if (typeof unlisten === 'function') unlisten();
-            };
-        }
-    }, []);
-
-    // Memory Saver Engine: Auto-suspend inactive background tabs based on hardware profile & user settings
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const memorySaverEnabled = useUIStore.getState().settings?.memory !== false;
-            if (!memorySaverEnabled) return;
-
-            const sleepTimeoutMinutes = useUIStore.getState().tabSleepTimeoutMinutes;
-            if (!sleepTimeoutMinutes || sleepTimeoutMinutes <= 0) return; // 0 or negative = never suspend
-
-            const now = Date.now();
-            const maxInactiveMs = sleepTimeoutMinutes * 60 * 1000;
-
-            const checkAndSuspend = (tabs, setTabs) => {
-                let updated = false;
-                const next = tabs.map(t => {
-                    // Do not suspend active, already suspended, blank, pinned, or media-playing tabs
-                    const isProtected = t.active || t.suspended || t.pinned || t.isAudioPlaying || t.mediaPlaying || !t.url || t.url === 'about:blank';
-                    if (!isProtected && t.lastActiveAt && (now - t.lastActiveAt > maxInactiveMs)) {
-                        updated = true;
-                        return { ...t, suspended: true };
-                    }
-                    return t;
-                });
-                if (updated) {
-                    setTabs(next);
-                    useUIStore.getState().showToast(`Memory Saver: Suspended inactive tabs (${sleepTimeoutMinutes}m)`);
-                }
-            };
-
-            const tabState = useTabStore.getState();
-            checkAndSuspend(tabState.privateTabs, tabState.setPrivateTabs);
-            checkAndSuspend(tabState.workTabs, tabState.setWorkTabs);
-            checkAndSuspend(tabState.ghostTabs, tabState.setGhostTabs);
-        }, 30000);
-
-        return () => clearInterval(interval);
+        return () => {
+            if (unsubTabRemoved) unsubTabRemoved();
+        };
     }, []);
 
     // Listen to backend events
@@ -400,19 +389,59 @@ export default function App() {
         };
     }, []);
 
-    // Global Drag & Drop: Open local files/folders dropped into QBrowse window
+    // Global Drag & Drop: Cross-Window Tabs & Local Files/Folders
     useEffect(() => {
+        let dragCounter = 0;
+        const handleWindowDragEnter = (e) => {
+            dragCounter++;
+            if (e.dataTransfer && e.dataTransfer.types) {
+                if (e.dataTransfer.types.includes('application/qbrowse-tab') || e.dataTransfer.types.includes('Files')) {
+                    document.body.classList.add('is-dragging-global');
+                }
+            }
+        };
+
+        const handleWindowDragLeave = (e) => {
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                document.body.classList.remove('is-dragging-global');
+            }
+        };
+
         const handleWindowDragOver = (e) => {
-            if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'copy';
+            if (e.dataTransfer && e.dataTransfer.types) {
+                if (e.dataTransfer.types.includes('application/qbrowse-tab') || e.dataTransfer.types.includes('Files')) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = e.dataTransfer.types.includes('application/qbrowse-tab') ? 'move' : 'copy';
+                }
             }
         };
 
         const handleWindowDrop = (e) => {
-            // Ignore if internal tab drag is in progress
+            dragCounter = 0;
+            document.body.classList.remove('is-dragging-global');
+
+            // 1. Cross-window tab dropped onto main window canvas
+            if (e.dataTransfer) {
+                try {
+                    const raw = e.dataTransfer.getData('application/qbrowse-tab');
+                    if (raw) {
+                        const payload = JSON.parse(raw);
+                        if (payload && payload.tab) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            useTabStore.getState().handleDropRoot(e, useTabStore.getState().activeSpace);
+                            return;
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            // 2. Ignore if internal tab drag is in progress
             if (useTabStore.getState().draggedItem) return;
 
+            // 3. Local file dropped
             if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 e.preventDefault();
                 const files = Array.from(e.dataTransfer.files);
@@ -431,11 +460,16 @@ export default function App() {
             }
         };
 
+        window.addEventListener('dragenter', handleWindowDragEnter);
+        window.addEventListener('dragleave', handleWindowDragLeave);
         window.addEventListener('dragover', handleWindowDragOver);
         window.addEventListener('drop', handleWindowDrop);
         return () => {
+            window.removeEventListener('dragenter', handleWindowDragEnter);
+            window.removeEventListener('dragleave', handleWindowDragLeave);
             window.removeEventListener('dragover', handleWindowDragOver);
             window.removeEventListener('drop', handleWindowDrop);
+            document.body.classList.remove('is-dragging-global');
         };
     }, []);
 
@@ -457,42 +491,63 @@ export default function App() {
             const uiStore = useUIStore.getState();
             if (uiStore.settings?.memory === false) return;
 
-            const sleepTimeoutMinutes = uiStore.tabSleepTimeoutMinutes || 15;
+            const rawTimeout = uiStore.tabSleepTimeoutMinutes;
+            const sleepTimeoutMinutes = (rawTimeout !== undefined && rawTimeout !== null) ? Number(rawTimeout) : 15;
             if (sleepTimeoutMinutes <= 0) return; // 0 = Never sleep
 
-            const suspendTimeoutMs = sleepTimeoutMinutes * 60 * 1000;
+            const effectiveTimeoutMinutes = Math.max(15, sleepTimeoutMinutes);
+            const suspendTimeoutMs = effectiveTimeoutMinutes * 60 * 1000;
+            const AUDIO_GRACE_PERIOD_MS = 5 * 60 * 1000;
             const tabStore = useTabStore.getState();
-            const allTabs = [
-                ...tabStore.privateTabs, 
-                ...tabStore.workTabs, 
-                ...tabStore.ghostTabs, 
-                ...(tabStore.torTabs || [])
+            const splitRightTabId = uiStore.isSplitView ? uiStore.splitRightTabId : null;
+
+            const spaceEntries = [
+                ['personal', tabStore.privateTabs || []],
+                ['work', tabStore.workTabs || []],
+                ['ghost', tabStore.ghostTabs || []],
+                ['tor', tabStore.torTabs || []],
+                ...Object.entries(tabStore.customSpaceTabs || {})
             ];
+
+            const seenIds = new Set();
             const now = Date.now();
-
             let suspendedCount = 0;
-            allTabs.forEach(tab => {
-                const isImmune = (
-                    tab.active || 
-                    tab.suspended || 
-                    tab.isAudible || 
-                    tab.hasAudio || 
-                    tab.isPinned || 
-                    tab.isDownloading || 
-                    !tab.url || 
-                    tab.url === 'about:blank'
-                );
 
-                if (!isImmune && (now - (tab.lastActiveAt || now) > suspendTimeoutMs)) {
-                    tabStore.suspendTab(tab.id, true);
-                    suspendedCount++;
-                }
+            spaceEntries.forEach(([spaceId, list]) => {
+                (list || []).forEach(tab => {
+                    if (!tab || seenIds.has(tab.id)) return;
+                    seenIds.add(tab.id);
+
+                    const isActiveTab = tab.active || (splitRightTabId && tab.id === splitRightTabId);
+                    const isAudioGrace = tab.lastAudibleAt && (now - tab.lastAudibleAt < AUDIO_GRACE_PERIOD_MS);
+                    const isImmune = (
+                        isActiveTab ||
+                        tab.suspended ||
+                        tab.isAudible ||
+                        tab.hasAudio ||
+                        tab.isAudioPlaying ||
+                        tab.mediaPlaying ||
+                        isAudioGrace ||
+                        tab.isPinned ||
+                        tab.pinned ||
+                        tab.isDownloading ||
+                        !tab.url ||
+                        tab.url === 'about:blank' ||
+                        tab.url.startsWith('qbrowse://')
+                    );
+
+                    const lastActive = tab.lastActiveAt || tab.createdAt || now;
+                    if (!isImmune && (now - lastActive >= suspendTimeoutMs)) {
+                        tabStore.suspendTab(tab.id, true);
+                        suspendedCount++;
+                    }
+                });
             });
 
             if (suspendedCount > 0) {
-                console.log(`[MemorySaver] Suspended ${suspendedCount} inactive tabs to free RAM (timeout: ${sleepTimeoutMinutes}m).`);
+                console.log(`[MemorySaver] Suspended ${suspendedCount} inactive tabs to free RAM (timeout: ${effectiveTimeoutMinutes}m).`);
             }
-        }, 30000);
+        }, 10000);
 
         return () => clearInterval(interval);
     }, []);
@@ -567,10 +622,28 @@ export default function App() {
     };
 
     const handleContextMenu = (e) => {
-        // Prevent opening webpage context menu anywhere on application UI chrome, modals, and tool containers.
-        // Webpage context menus are exclusively handled by active webviews in WebViewContainer.
         e.preventDefault();
         e.stopPropagation();
+        const targetEl = e.target?.closest?.('input, textarea, [contenteditable="true"]');
+        if (targetEl) {
+            const type = (targetEl.getAttribute?.('type') || 'text').toLowerCase();
+            if (!['checkbox', 'radio', 'range', 'button', 'submit', 'color', 'file', 'hidden'].includes(type)) {
+                window.__qbrowseContextInput = targetEl;
+                const x = e.clientX + 210 > window.innerWidth ? window.innerWidth - 220 : e.clientX;
+                const y = e.clientY + 210 > window.innerHeight ? window.innerHeight - 220 : e.clientY;
+                useUIStore.getState().setInputContextMenu({
+                    openedAt: Date.now(),
+                    x,
+                    y,
+                    isPassword: type === 'password',
+                    readOnly: !!(targetEl.readOnly || targetEl.disabled),
+                    hasSelection: typeof targetEl.selectionStart === 'number'
+                        ? targetEl.selectionStart !== targetEl.selectionEnd
+                        : !!window.getSelection?.()?.toString()
+                });
+                return;
+            }
+        }
     };
 
     return (
@@ -643,7 +716,7 @@ export default function App() {
                         )}
                         <div 
                             id="zen-top-peek-trigger"
-                            className="fixed top-0 left-0 right-0 h-2.5 z-[99975] pointer-events-auto bg-transparent"
+                            className={`fixed ${useUIStore.getState().settings?.topBarPosition === 'bottom' ? 'bottom-0' : 'top-0'} left-0 right-0 h-2.5 z-[99975] pointer-events-auto bg-transparent`}
                             onMouseEnter={() => useUIStore.getState().setIsTopBarPeeking(true)}
                         />
                     </>

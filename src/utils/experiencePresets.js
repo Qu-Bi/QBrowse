@@ -295,29 +295,29 @@ export const findPresetById = (id, customPresets = null) => {
 export const applyExperiencePreset = (preset, { uiStore, tabStore, showToast } = {}) => {
     if (!preset) return;
 
-    // Apply layout positions
-    if (preset.sidebarPosition && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('sidebarPosition', preset.sidebarPosition);
-    }
-    if (preset.topBarPosition && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('topBarPosition', preset.topBarPosition);
-    }
-    if (preset.toolHubPosition && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('toolHubPosition', preset.toolHubPosition);
+    const batchUpdates = {};
+    if (preset.sidebarPosition) batchUpdates.sidebarPosition = preset.sidebarPosition;
+    if (preset.topBarPosition) batchUpdates.topBarPosition = preset.topBarPosition;
+    if (preset.toolHubPosition) batchUpdates.toolHubPosition = preset.toolHubPosition;
+    if (preset.omniboxStyle) batchUpdates.omniboxStyle = preset.omniboxStyle;
+    if (preset.frameCurvature) batchUpdates.frameCurvature = preset.frameCurvature;
+    if (preset.tabPresentation) batchUpdates.tabPresentation = preset.tabPresentation;
+    if (preset.windowControlsStyle) batchUpdates.windowControlsStyle = preset.windowControlsStyle;
+    if (preset.adblockLevel) batchUpdates.adblockLevel = preset.adblockLevel;
+    if (preset.searchEngine) batchUpdates.searchEngine = preset.searchEngine;
+    if (preset.uiScale) batchUpdates.uiScale = preset.uiScale;
+    if (Array.isArray(preset.customSpaces)) batchUpdates.customSpaces = preset.customSpaces;
+
+    if (Object.keys(batchUpdates).length > 0) {
+        if (uiStore?.setSettingsBatch) {
+            uiStore.setSettingsBatch(batchUpdates);
+        } else if (uiStore?.setSettingValue) {
+            Object.entries(batchUpdates).forEach(([k, v]) => uiStore.setSettingValue(k, v));
+        }
     }
 
-    // Apply UI architecture styles
-    if (preset.omniboxStyle && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('omniboxStyle', preset.omniboxStyle);
-    }
-    if (preset.frameCurvature && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('frameCurvature', preset.frameCurvature);
-    }
-    if (preset.tabPresentation && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('tabPresentation', preset.tabPresentation);
-    }
-    if (preset.windowControlsStyle && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('windowControlsStyle', preset.windowControlsStyle);
+    if (Array.isArray(preset.customSpaces) && tabStore?.setActiveSpace) {
+        tabStore.setActiveSpace('personal');
     }
 
     // Apply theme
@@ -325,39 +325,14 @@ export const applyExperiencePreset = (preset, { uiStore, tabStore, showToast } =
         uiStore.setTheme(preset.theme);
     }
 
-    // Apply accent color & CSS variables
+    // Apply accent color & CSS variables via store's unified setter
     if (preset.accentColor && uiStore?.setAccentColor) {
         uiStore.setAccentColor(preset.accentColor);
-        if (typeof document !== 'undefined') {
-            document.documentElement.style.setProperty('--accent', preset.accentColor);
-            if (preset.accentRgb) {
-                document.documentElement.style.setProperty('--accent-rgb', preset.accentRgb);
-            }
-        }
     }
 
     // Apply adblock & privacy level
     if (preset.isAdblockActive !== undefined && uiStore?.setIsAdblockActive) {
         uiStore.setIsAdblockActive(preset.isAdblockActive);
-    }
-    if (preset.adblockLevel && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('adblockLevel', preset.adblockLevel);
-    }
-
-    // Apply search engine & UI scale
-    if (preset.searchEngine && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('searchEngine', preset.searchEngine);
-    }
-    if (preset.uiScale && uiStore?.setSettingValue) {
-        uiStore.setSettingValue('uiScale', preset.uiScale);
-    }
-
-    // Apply custom spaces & reset active space to personal
-    if (Array.isArray(preset.customSpaces) && uiStore?.reorderSpaces) {
-        uiStore.reorderSpaces(preset.customSpaces);
-        if (tabStore?.setActiveSpace) {
-            tabStore.setActiveSpace('personal');
-        }
     }
 
     // Persist active preset id in local storage and store
@@ -366,7 +341,8 @@ export const applyExperiencePreset = (preset, { uiStore, tabStore, showToast } =
         uiStore.setActivePresetId(preset.id);
     }
 
-    if (showToast) {
-        showToast(`Preset Applied: ${preset.name}`);
+    const toastFn = showToast || uiStore?.showToast;
+    if (typeof toastFn === 'function') {
+        toastFn(`Preset Applied: ${preset.name}`);
     }
 };

@@ -130,8 +130,8 @@ export const handleEscapeDismissal = () => {
         return true;
     }
 
-    // 14. Fullscreen Mode
-    if (uiStore.isWebviewHtmlFullscreen || uiStore.htmlFullscreenTabId) {
+    // 14. HTML5 Video / Element Fullscreen Mode (Note: F11 window fullscreen is NOT exited via Escape)
+    if (uiStore.isWebviewHtmlFullscreen || uiStore.htmlFullscreenTabId || uiStore.isWebviewFullscreen) {
         const activeTabId = uiStore.htmlFullscreenTabId;
         const wv = activeTabId ? document.querySelector(`webview#webview-${activeTabId}`) : document.querySelector('webview');
         if (wv) {
@@ -140,14 +140,6 @@ export const handleEscapeDismissal = () => {
             } catch (_) {}
         }
         uiStore.setHtmlFullscreen(null, false);
-        return true;
-    }
-
-    if (uiStore.isFullscreen || uiStore.isWebviewFullscreen) {
-        if (window.electronAPI && window.electronAPI.setFullscreen) {
-            window.electronAPI.setFullscreen(false);
-        }
-        uiStore.setIsFullscreen(false);
         uiStore.setIsWebviewFullscreen(false);
         return true;
     }
@@ -347,6 +339,9 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             if (uiStore.isTopBarOmniboxActive) {
                 uiStore.setIsTopBarOmniboxActive(false);
             } else {
+                if (uiStore.isFullscreen) {
+                    uiStore.setIsTopBarPeeking(true);
+                }
                 const activeTab = tabStore.getActiveTab();
                 const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
                 if (!activeUrl) {
@@ -447,7 +442,7 @@ export const executeShortcut = (key, shift = false, alt = false) => {
         // Tab Switcher (Cmd+Tab)
         case 'tab': {
             const now = Date.now();
-            if (now - lastTabShortcutTime < 140) {
+            if (now - lastTabShortcutTime < 50) {
                 break;
             }
             lastTabShortcutTime = now;
@@ -477,18 +472,62 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             break;
         }
 
-        // Zoom Controls
+        // Zoom Controls:
+        // - Ctrl++ / Ctrl+- / Ctrl+0 -> Browser page layout zoom (overrules websites)
+        // - Ctrl+Alt++ / Ctrl+Alt+- / Ctrl+Alt+0 -> Cursor-centered visual zoom on the website (no layout reflow)
         case '+':
         case '=':
-            uiStore.setZoomLevel(uiStore.zoomLevel + 10);
+        case 'add': {
+            if (alt) {
+                const activeTab = tabStore.getActiveTab();
+                const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
+                if (wv && typeof wv.send === 'function') {
+                    try { wv.send('webview-visual-zoom', 'in'); } catch (_) {}
+                }
+            } else {
+                uiStore.zoomIn();
+            }
             break;
+        }
         case '-':
         case '_':
-            uiStore.setZoomLevel(uiStore.zoomLevel - 10);
+        case 'subtract': {
+            if (alt) {
+                const activeTab = tabStore.getActiveTab();
+                const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
+                if (wv && typeof wv.send === 'function') {
+                    try { wv.send('webview-visual-zoom', 'out'); } catch (_) {}
+                }
+            } else {
+                uiStore.zoomOut();
+            }
             break;
-        case '0':
-            uiStore.setZoomLevel(100);
+        }
+        case '0': {
+            const activeTab = tabStore.getActiveTab();
+            const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
+            if (wv && typeof wv.send === 'function') {
+                try { wv.send('webview-visual-zoom', 'reset'); } catch (_) {}
+            }
+            if (!alt) {
+                uiStore.resetZoom();
+            }
             break;
+        }
+
+        // F5 Reload (F5 = Reload, Shift+F5 / Ctrl+F5 = Hard Reload)
+        case 'f5': {
+            if (shift) {
+                if (window.electronAPI && window.electronAPI.clearAllData) {
+                    window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
+                }
+                uiStore.refresh();
+                uiStore.showToast('Hard Reload: Cache purged & refreshed');
+            } else {
+                uiStore.refresh();
+            }
+            break;
+        }
 
         // Resource & Task Manager (Shift+Escape)
         case 'shift+escape':
@@ -538,7 +577,12 @@ export const executeShortcut = (key, shift = false, alt = false) => {
 
 export default function useGlobalShortcuts() {
     useEffect(() => {
+        let isHostPhysicalCtrl = false;
+
         const handleKeyDown = (e) => {
+            if (e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight' || e.key === 'Meta') {
+                isHostPhysicalCtrl = true;
+            }
             if (e.key === 'Escape') {
                 if (e.shiftKey) {
                     // Shift+Escape -> Task Manager
@@ -563,6 +607,12 @@ export default function useGlobalShortcuts() {
             }
 
             const cmdOrCtrl = e.metaKey || e.ctrlKey;
+
+            if (e.key === 'F5' || e.code === 'F5') {
+                e.preventDefault();
+                executeShortcut('f5', e.shiftKey || cmdOrCtrl);
+                return;
+            }
 
             if (e.key === 'F11' || e.key === 'F12' || e.key === 'F3') {
                 e.preventDefault();
@@ -617,7 +667,11 @@ export default function useGlobalShortcuts() {
                     return;
                 }
                 e.preventDefault();
-                executeShortcut(e.key.toLowerCase(), e.shiftKey, e.altKey);
+                let normalizedKey = (e.key || '').toLowerCase();
+                if (e.code === 'Equal' || e.code === 'NumpadAdd') normalizedKey = '+';
+                else if (e.code === 'Minus' || e.code === 'NumpadSubtract') normalizedKey = '-';
+                else if (e.code === 'Digit0' || e.code === 'Numpad0') normalizedKey = '0';
+                executeShortcut(normalizedKey, e.shiftKey, e.altKey);
             }
         };
 
@@ -627,6 +681,7 @@ export default function useGlobalShortcuts() {
             const isCtrlOrMeta = keyLower === 'control' || keyLower === 'meta' || 
                                  codeLower.startsWith('control') || codeLower.startsWith('meta');
             if (isCtrlOrMeta) {
+                isHostPhysicalCtrl = false;
                 const uiStore = useUIStore.getState();
                 if (uiStore.showSwitcher) {
                     uiStore.confirmSwitcher();
@@ -636,6 +691,8 @@ export default function useGlobalShortcuts() {
 
         let globalWheelAccumulator = 0;
         let globalWheelResetTimer = null;
+        let pageWheelAccumulator = 0;
+        let pageWheelResetTimer = null;
         let lastZoomTime = 0;
 
         const handleWheel = (e) => {
@@ -643,10 +700,67 @@ export default function useGlobalShortcuts() {
             if (e.__qbrowseZoomHandled) return;
             e.__qbrowseZoomHandled = true;
 
+            // Always prevent the QBrowse UI shell itself from zooming on touchpad pinch or Ctrl+Wheel
             e.preventDefault();
             e.stopPropagation();
             if (typeof e.stopImmediatePropagation === 'function') {
                 e.stopImmediatePropagation();
+            }
+
+            // Touchpad Pinch on host UI -> Visual Canvas Zoom (only when physical Ctrl is NOT held on keyboard)
+            const isTouchpadPinch = !isHostPhysicalCtrl && !e.altKey && e.deltaMode === 0 && (
+                (e.deltaY % 1 !== 0) ||
+                (e.deltaX % 1 !== 0)
+            );
+
+            if (isTouchpadPinch) {
+                clearTimeout(globalWheelResetTimer);
+                globalWheelResetTimer = setTimeout(() => {
+                    globalWheelAccumulator = 0;
+                }, 180);
+
+                globalWheelAccumulator += e.deltaY;
+                const threshold = 15;
+                if (Math.abs(globalWheelAccumulator) >= threshold) {
+                    const now = performance.now();
+                    if (now - lastZoomTime >= 40) {
+                        const action = globalWheelAccumulator < 0 ? 'in' : 'out';
+                        globalWheelAccumulator = 0;
+                        lastZoomTime = now;
+                        const activeTab = useTabStore.getState().getActiveTab();
+                        const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
+                        if (wv && typeof wv.send === 'function') {
+                            try { wv.send('webview-visual-zoom', action); } catch (_) {}
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Ctrl + Wheel (without Alt) -> Page Zoom on active tab
+            if (!e.altKey) {
+                clearTimeout(pageWheelResetTimer);
+                pageWheelResetTimer = setTimeout(() => {
+                    pageWheelAccumulator = 0;
+                }, 180);
+
+                let dy = e.deltaY;
+                if (e.deltaMode === 1) dy *= 33;
+                else if (e.deltaMode === 2) dy *= 100;
+
+                pageWheelAccumulator += dy;
+
+                const threshold = 40;
+                const now = performance.now();
+                if (Math.abs(pageWheelAccumulator) >= threshold && (now - lastZoomTime >= 60)) {
+                    lastZoomTime = now;
+                    const direction = pageWheelAccumulator < 0 ? 1 : -1;
+                    pageWheelAccumulator = 0;
+                    const ui = useUIStore.getState();
+                    if (direction > 0) ui.zoomIn();
+                    else ui.zoomOut();
+                }
+                return;
             }
 
             clearTimeout(globalWheelResetTimer);
@@ -654,9 +768,6 @@ export default function useGlobalShortcuts() {
                 globalWheelAccumulator = 0;
             }, 180);
 
-            // Normalize delta across input modes:
-            // deltaMode 1 (DOM_DELTA_LINE): Standard Windows mouse wheel notch is 1-3 lines (~33px/line)
-            // deltaMode 2 (DOM_DELTA_PAGE): Page scroll
             let normalizedDelta = e.deltaY;
             if (e.deltaMode === 1) {
                 normalizedDelta *= 33;
@@ -665,20 +776,24 @@ export default function useGlobalShortcuts() {
             }
 
             globalWheelAccumulator += normalizedDelta;
-            const threshold = 30;
+            const threshold = 20;
             if (Math.abs(globalWheelAccumulator) >= threshold) {
                 const now = performance.now();
-                if (now - lastZoomTime >= 40) {
-                    const delta = globalWheelAccumulator < 0 ? 10 : -10;
+                if (now - lastZoomTime >= 30) {
+                    const action = globalWheelAccumulator < 0 ? 'in' : 'out';
                     globalWheelAccumulator = 0;
                     lastZoomTime = now;
-                    const ui = useUIStore.getState();
-                    ui.setZoomLevel(ui.zoomLevel + delta);
+                    const activeTab = useTabStore.getState().getActiveTab();
+                    const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
+                    if (wv && typeof wv.send === 'function') {
+                        try { wv.send('webview-visual-zoom', action); } catch (_) {}
+                    }
                 }
             }
         };
 
         const handleBlur = () => {
+            isHostPhysicalCtrl = false;
             const ui = useUIStore.getState();
             if (ui.showSwitcher) {
                 ui.confirmSwitcher();
@@ -694,7 +809,6 @@ export default function useGlobalShortcuts() {
         // Listen for shortcuts captured natively by Electron (e.g. when webview has focus)
         if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
             window.electronAPI.onGlobalShortcut((data) => {
-                console.log('[DEBUG] Received global-shortcut:', data);
                 const shortcut = typeof data === 'string' ? data : data.shortcut;
                 const shift = typeof data === 'string' ? false : data.shift;
                 
@@ -715,13 +829,12 @@ export default function useGlobalShortcuts() {
 
                 if (shortcut.startsWith('cmd+')) {
                     const key = shortcut.replace('cmd+', '');
-                    console.log('[DEBUG] Executing shortcut:', key);
                     executeShortcut(key, shift, !!data.alt);
                     return;
                 }
 
-                if (shortcut === 'f11' || shortcut === 'f12' || shortcut === 'f3' || shortcut === 'f7' || shortcut === 'alt_r') {
-                    executeShortcut(shortcut, shift);
+                if (shortcut === 'f5' || shortcut === 'f11' || shortcut === 'f12' || shortcut === 'f3' || shortcut === 'f7' || shortcut === 'alt_r') {
+                    executeShortcut(shortcut, shift, !!data.alt);
                 }
             });
         }

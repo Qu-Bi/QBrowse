@@ -64,14 +64,14 @@ const getSpaceIcon = (iconName) => {
 const ContextMenuThemeContext = React.createContext({ isBright: false });
 
 // Shared Liquid Glass surface styling for context menus & submenus
-const getLiquidGlassMenuClasses = (isBright) =>
+export const getLiquidGlassMenuClasses = (isBright) =>
     `p-1.5 rounded-2xl border select-none outline-none transition-colors ${
         isBright
             ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]'
             : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
     }`;
 
-const getLiquidGlassInlineStyle = (isBright) => ({
+export const getLiquidGlassInlineStyle = (isBright) => ({
     backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
     backdropFilter: isBright
         ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
@@ -203,6 +203,7 @@ function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {
                     left: `${pos.x}px`,
                     ...getLiquidGlassInlineStyle(isBright)
                 }}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 onClick={(e) => e.stopPropagation()}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
             >
@@ -491,6 +492,7 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disa
                     }}
                     onMouseEnter={handleMouseEnter}
                     onMouseLeave={handleMouseLeave}
+                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                     onClick={(e) => e.stopPropagation()}
                     onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
@@ -499,6 +501,7 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disa
                         aria-hidden="true" 
                     />
                     <div
+                        data-context-menu
                         className={`w-full flex flex-col max-h-[320px] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden animate-pop-in ${getLiquidGlassMenuClasses(isBright)}`}
                         style={getLiquidGlassInlineStyle(isBright)}
                     >
@@ -588,6 +591,11 @@ export default function ContextMenuProvider({ children }) {
     const spaceContextMenu = useUIStore(state => state.spaceContextMenu);
     const isSpaceContextMenuClosing = useUIStore(state => state.isSpaceContextMenuClosing);
     const closeSpaceContextMenu = useUIStore(state => state.closeSpaceContextMenu);
+
+    const inputContextMenu = useUIStore(state => state.inputContextMenu);
+    const isInputContextMenuClosing = useUIStore(state => state.isInputContextMenuClosing);
+    const closeInputContextMenu = useUIStore(state => state.closeInputContextMenu);
+
     const setRenamingSpaceId = useUIStore(state => state.setRenamingSpaceId);
     const addSpace = useUIStore(state => state.addSpace);
     const updateSpace = useUIStore(state => state.updateSpace);
@@ -652,6 +660,78 @@ export default function ContextMenuProvider({ children }) {
     const getTargetWebview = (tabId) => {
         if (tabId && window.qbrowseWebviews?.[tabId]) return window.qbrowseWebviews[tabId];
         return getActiveWebview();
+    };
+
+    const copyTextToClipboard = async (text) => {
+        if (!text) return;
+        try {
+            if (window.electronAPI?.writeClipboardText) {
+                await window.electronAPI.writeClipboardText(String(text));
+                return;
+            }
+        } catch (_) {}
+        try {
+            await navigator.clipboard.writeText(String(text));
+        } catch (_) {}
+    };
+
+    const handleCopyWebviewImage = async (cm, wv) => {
+        try {
+            let wcId = null;
+            if (wv && typeof wv.getWebContentsId === 'function') {
+                try { wcId = wv.getWebContentsId(); } catch (_) {}
+            }
+            if (window.electronAPI?.copyWebviewImage) {
+                const res = await window.electronAPI.copyWebviewImage({
+                    webContentsId: wcId,
+                    x: cm.localX ?? cm.x,
+                    y: cm.localY ?? cm.y,
+                    rawX: cm.rawX,
+                    rawY: cm.rawY,
+                    srcURL: cm.srcURL
+                });
+                if (res?.needsCanvasDecode && res?.dataUrl && window.electronAPI?.writeClipboardImageDataUrl) {
+                    const pngDataUrl = await new Promise((resolve) => {
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => {
+                            try {
+                                const canvas = document.createElement('canvas');
+                                canvas.width = img.naturalWidth || img.width || 1;
+                                canvas.height = img.naturalHeight || img.height || 1;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0);
+                                resolve(canvas.toDataURL('image/png'));
+                            } catch (_) {
+                                resolve(null);
+                            }
+                        };
+                        img.onerror = () => resolve(null);
+                        img.src = res.dataUrl;
+                    });
+                    if (pngDataUrl) {
+                        const writeRes = await window.electronAPI.writeClipboardImageDataUrl(pngDataUrl);
+                        if (writeRes?.success) {
+                            showToast('Image copied to clipboard');
+                            return;
+                        }
+                    }
+                }
+                if (res?.success) {
+                    showToast('Image copied to clipboard');
+                    return;
+                }
+            }
+            if (wv && typeof wv.copyImageAt === 'function') {
+                wv.copyImageAt(Math.round(cm.localX ?? cm.x ?? 0), Math.round(cm.localY ?? cm.y ?? 0));
+                showToast('Image copied to clipboard');
+                return;
+            }
+            showToast('Could not copy image');
+        } catch (err) {
+            console.error('Failed to copy image:', err);
+            showToast('Could not copy image');
+        }
     };
 
     // Annotation handlers
@@ -747,8 +827,8 @@ export default function ContextMenuProvider({ children }) {
             {(contextMenu || isContextMenuClosing) && (() => {
                 const cm = contextMenu || {};
                 const wv = getTargetWebview(cm.tabId);
-                const hasImage = cm.hasImage || cm.mediaType === 'image' || !!cm.srcURL;
-                const hasSelection = !hasImage && (cm.hasSelection || !!(cm.selectionText && cm.selectionText.trim()));
+                const hasImage = Boolean(cm.hasImage || cm.mediaType === 'image' || cm.mediaType === 'canvas');
+                const hasSelection = Boolean(cm.hasSelection || (cm.selectionText && cm.selectionText.trim()));
                 const selectionText = cm.selectionText || '';
                 const linkURL = cm.linkURL || '';
                 const srcURL = cm.srcURL || '';
@@ -797,7 +877,7 @@ export default function ContextMenuProvider({ children }) {
                         title: 'Copy Page URL',
                         onClick: () => {
                             if (pageURL) {
-                                navigator.clipboard.writeText(pageURL);
+                                copyTextToClipboard(pageURL);
                                 showToast('Page URL copied to clipboard');
                             }
                             closeContextMenu();
@@ -818,39 +898,52 @@ export default function ContextMenuProvider({ children }) {
                         <MenuHeaderPills items={headerPillItems} />
 
                         {/* MEDIA / IMAGE CONTEXT (Prioritized on image right-click) */}
-                        {hasImage && srcURL && (
+                        {hasImage && (
                             <>
                                 <div className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/65'}`}>
                                     Image
                                 </div>
                                 <MenuItem
-                                    icon={ImageIcon}
-                                    label="Open Image in New Tab"
-                                    onClick={() => {
-                                        handleNewTab(srcURL);
-                                        closeContextMenu();
-                                    }}
-                                />
-                                <MenuItem
                                     icon={Copy}
-                                    label="Copy Image Address"
+                                    label="Copy Image"
+                                    accent
                                     onClick={() => {
-                                        navigator.clipboard.writeText(srcURL);
-                                        showToast('Image address copied');
+                                        handleCopyWebviewImage(cm, wv);
                                         closeContextMenu();
                                     }}
                                 />
-                                <MenuItem
-                                    icon={Download}
-                                    label="Save Image As..."
-                                    onClick={() => {
-                                        if (wv && typeof wv.downloadURL === 'function') {
-                                            wv.downloadURL(srcURL);
-                                        }
-                                        showToast('Downloading image...');
-                                        closeContextMenu();
-                                    }}
-                                />
+                                {srcURL && (
+                                    <>
+                                        <MenuItem
+                                            icon={ImageIcon}
+                                            label="Open Image in New Tab"
+                                            onClick={() => {
+                                                handleNewTab(srcURL);
+                                                closeContextMenu();
+                                            }}
+                                        />
+                                        <MenuItem
+                                            icon={Copy}
+                                            label="Copy Image Address"
+                                            onClick={() => {
+                                                copyTextToClipboard(srcURL);
+                                                showToast('Image address copied');
+                                                closeContextMenu();
+                                            }}
+                                        />
+                                        <MenuItem
+                                            icon={Download}
+                                            label="Save Image As..."
+                                            onClick={() => {
+                                                if (wv && typeof wv.downloadURL === 'function') {
+                                                    wv.downloadURL(srcURL);
+                                                }
+                                                showToast('Downloading image...');
+                                                closeContextMenu();
+                                            }}
+                                        />
+                                    </>
+                                )}
                                 <MenuDivider />
                             </>
                         )}
@@ -908,7 +1001,7 @@ export default function ContextMenuProvider({ children }) {
                                     label="Copy Link Address"
                                     shortcut="Ctrl+C"
                                     onClick={() => {
-                                        navigator.clipboard.writeText(linkURL);
+                                        copyTextToClipboard(linkURL);
                                         showToast('Link address copied');
                                         closeContextMenu();
                                     }}
@@ -943,7 +1036,8 @@ export default function ContextMenuProvider({ children }) {
                                     label="Copy"
                                     shortcut="Ctrl+C"
                                     onClick={() => {
-                                        navigator.clipboard.writeText(selectionText);
+                                        try { wv?.focus?.(); wv?.copy?.(); } catch (_) {}
+                                        copyTextToClipboard(selectionText);
                                         showToast('Selected text copied');
                                         closeContextMenu();
                                     }}
@@ -1027,7 +1121,10 @@ export default function ContextMenuProvider({ children }) {
                                     shortcut="Ctrl+Z"
                                     disabled={editFlags.canUndo === false}
                                     onClick={() => {
-                                        if (wv && typeof wv.undo === 'function') wv.undo();
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.undo === 'function') wv.undo();
+                                        }
                                         closeContextMenu();
                                     }}
                                 />
@@ -1037,7 +1134,10 @@ export default function ContextMenuProvider({ children }) {
                                     shortcut="Ctrl+Y"
                                     disabled={editFlags.canRedo === false}
                                     onClick={() => {
-                                        if (wv && typeof wv.redo === 'function') wv.redo();
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.redo === 'function') wv.redo();
+                                        }
                                         closeContextMenu();
                                     }}
                                 />
@@ -1046,9 +1146,13 @@ export default function ContextMenuProvider({ children }) {
                                     icon={Scissors}
                                     label="Cut"
                                     shortcut="Ctrl+X"
-                                    disabled={editFlags.canCut === false}
+                                    disabled={editFlags.canCut === false && !hasSelection}
                                     onClick={() => {
-                                        if (wv && typeof wv.cut === 'function') wv.cut();
+                                        if (selectionText) copyTextToClipboard(selectionText);
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.cut === 'function') wv.cut();
+                                        }
                                         closeContextMenu();
                                     }}
                                 />
@@ -1056,9 +1160,13 @@ export default function ContextMenuProvider({ children }) {
                                     icon={Copy}
                                     label="Copy"
                                     shortcut="Ctrl+C"
-                                    disabled={editFlags.canCopy === false}
+                                    disabled={editFlags.canCopy === false && !hasSelection}
                                     onClick={() => {
-                                        if (wv && typeof wv.copy === 'function') wv.copy();
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.copy === 'function') wv.copy();
+                                        }
+                                        if (selectionText) copyTextToClipboard(selectionText);
                                         closeContextMenu();
                                     }}
                                 />
@@ -1066,9 +1174,27 @@ export default function ContextMenuProvider({ children }) {
                                     icon={Clipboard}
                                     label="Paste"
                                     shortcut="Ctrl+V"
-                                    disabled={editFlags.canPaste === false}
                                     onClick={() => {
-                                        if (wv && typeof wv.paste === 'function') wv.paste();
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.paste === 'function') wv.paste();
+                                        }
+                                        closeContextMenu();
+                                    }}
+                                />
+                                <MenuItem
+                                    icon={FileText}
+                                    label="Paste as Plain Text"
+                                    shortcut="Ctrl+Shift+V"
+                                    onClick={() => {
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.pasteAndMatchStyle === 'function') {
+                                                wv.pasteAndMatchStyle();
+                                            } else if (typeof wv.paste === 'function') {
+                                                wv.paste();
+                                            }
+                                        }
                                         closeContextMenu();
                                     }}
                                 />
@@ -1076,9 +1202,11 @@ export default function ContextMenuProvider({ children }) {
                                     icon={CheckSquare}
                                     label="Select All"
                                     shortcut="Ctrl+A"
-                                    disabled={editFlags.canSelectAll === false}
                                     onClick={() => {
-                                        if (wv && typeof wv.selectAll === 'function') wv.selectAll();
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.selectAll === 'function') wv.selectAll();
+                                        }
                                         closeContextMenu();
                                     }}
                                 />
@@ -1089,6 +1217,31 @@ export default function ContextMenuProvider({ children }) {
                         {/* GENERAL PAGE ACTIONS */}
                         {!linkURL && !hasImage && !hasSelection && !isEditable && (
                             <>
+                                <MenuItem
+                                    icon={Clipboard}
+                                    label="Paste"
+                                    shortcut="Ctrl+V"
+                                    onClick={() => {
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.paste === 'function') wv.paste();
+                                        }
+                                        closeContextMenu();
+                                    }}
+                                />
+                                <MenuItem
+                                    icon={CheckSquare}
+                                    label="Select All"
+                                    shortcut="Ctrl+A"
+                                    onClick={() => {
+                                        if (wv) {
+                                            try { wv.focus?.(); } catch (_) {}
+                                            if (typeof wv.selectAll === 'function') wv.selectAll();
+                                        }
+                                        closeContextMenu();
+                                    }}
+                                />
+                                <MenuDivider />
                                 <MenuItem
                                     icon={BookOpen}
                                     label="Toggle Reader Mode"
@@ -1820,14 +1973,29 @@ export default function ContextMenuProvider({ children }) {
                         </MenuSectionHeader>
 
                         <MenuItem
+                            icon={Scissors}
+                            label="Cut"
+                            shortcut="Ctrl+X"
+                            onClick={() => {
+                                window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'cut' } }));
+                                closeTopBarContextMenu();
+                            }}
+                        />
+                        <MenuItem
                             icon={Copy}
-                            label="Copy Current URL"
+                            label="Copy"
                             shortcut="Ctrl+C"
                             onClick={() => {
-                                if (url) {
-                                    navigator.clipboard.writeText(url);
-                                    showToast('URL copied to clipboard');
-                                }
+                                window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'copy' } }));
+                                closeTopBarContextMenu();
+                            }}
+                        />
+                        <MenuItem
+                            icon={Clipboard}
+                            label="Paste"
+                            shortcut="Ctrl+V"
+                            onClick={() => {
+                                window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'paste' } }));
                                 closeTopBarContextMenu();
                             }}
                         />
@@ -1837,6 +2005,29 @@ export default function ContextMenuProvider({ children }) {
                             accent
                             onClick={async () => {
                                 await handlePasteAndGo();
+                                closeTopBarContextMenu();
+                            }}
+                        />
+                        <MenuItem
+                            icon={CheckSquare}
+                            label="Select All"
+                            shortcut="Ctrl+A"
+                            onClick={() => {
+                                window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'selectAll' } }));
+                                closeTopBarContextMenu();
+                            }}
+                        />
+
+                        <MenuDivider />
+
+                        <MenuItem
+                            icon={Copy}
+                            label="Copy Current URL"
+                            onClick={() => {
+                                if (url) {
+                                    copyTextToClipboard(url);
+                                    showToast('URL copied to clipboard');
+                                }
                                 closeTopBarContextMenu();
                             }}
                         />
@@ -2062,6 +2253,32 @@ export default function ContextMenuProvider({ children }) {
                                         }}
                                     />
                                 )}
+                                {(() => {
+                                    const spaces = useUIStore.getState().settings?.customSpaces || [
+                                        { id: 'personal', name: 'Personal' },
+                                        { id: 'work', name: 'Work' }
+                                    ];
+                                    const otherSpaces = spaces.filter(sp => sp.id !== (item.space || 'personal'));
+                                    if (otherSpaces.length === 0) return null;
+                                    return (
+                                        <>
+                                            <MenuDivider />
+                                            <MenuSectionHeader>Move Note to Space</MenuSectionHeader>
+                                            {otherSpaces.map(sp => (
+                                                <MenuItem
+                                                    key={sp.id}
+                                                    icon={ArrowRightLeft}
+                                                    label={`Move to ${sp.name}`}
+                                                    onClick={() => {
+                                                        useAnnotationStore.getState().updateAnnotation(item.id, { space: sp.id });
+                                                        showToast(`Moved note to ${sp.name}`);
+                                                        closeToolHubContextMenu();
+                                                    }}
+                                                />
+                                            ))}
+                                        </>
+                                    );
+                                })()}
                                 <MenuDivider />
                                 <MenuItem
                                     icon={Trash2}
@@ -2226,6 +2443,148 @@ export default function ContextMenuProvider({ children }) {
                             onClick={() => {
                                 closeSpaceContextMenu();
                                 openSettings('spaces');
+                            }}
+                        />
+                    </MenuContainer>
+                );
+            })()}
+
+            {/* ========================================================================= */}
+            {/* 8. UI INPUT / TEXTAREA CONTEXT MENU */}
+            {/* ========================================================================= */}
+            {(inputContextMenu || isInputContextMenuClosing) && (() => {
+                const icm = inputContextMenu || {};
+                const updateNativeInputValue = (el, nextValue, cursorStart, cursorEnd = cursorStart) => {
+                    if (!el) return;
+                    try {
+                        const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+                        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                        if (nativeSetter) {
+                            nativeSetter.call(el, nextValue);
+                        } else {
+                            el.value = nextValue;
+                        }
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.focus();
+                        if (typeof cursorStart === 'number' && typeof el.setSelectionRange === 'function') {
+                            el.setSelectionRange(cursorStart, cursorEnd);
+                        }
+                    } catch (_) {}
+                };
+
+                return (
+                    <MenuContainer
+                        key={`input-${icm.openedAt || `${icm.x}-${icm.y}`}`}
+                        x={icm.x}
+                        y={icm.y}
+                        isClosing={isInputContextMenuClosing}
+                        onClose={closeInputContextMenu}
+                        className="w-52"
+                    >
+                        <MenuItem
+                            icon={Scissors}
+                            label="Cut"
+                            shortcut="Ctrl+X"
+                            disabled={icm.readOnly || icm.isPassword}
+                            onClick={async () => {
+                                const el = window.__qbrowseContextInput;
+                                if (el && !icm.readOnly && !icm.isPassword) {
+                                    if (typeof el.value === 'string') {
+                                        const start = el.selectionStart ?? 0;
+                                        const end = el.selectionEnd ?? el.value.length;
+                                        const selected = start !== end ? el.value.slice(start, end) : el.value;
+                                        if (selected) await copyTextToClipboard(selected);
+                                        const nextVal = start !== end ? (el.value.slice(0, start) + el.value.slice(end)) : '';
+                                        updateNativeInputValue(el, nextVal, start !== end ? start : 0);
+                                    } else {
+                                        const sel = window.getSelection?.()?.toString();
+                                        if (sel) await copyTextToClipboard(sel);
+                                        try { document.execCommand('cut'); } catch (_) {}
+                                    }
+                                }
+                                closeInputContextMenu();
+                            }}
+                        />
+                        <MenuItem
+                            icon={Copy}
+                            label="Copy"
+                            shortcut="Ctrl+C"
+                            disabled={icm.isPassword}
+                            onClick={async () => {
+                                const el = window.__qbrowseContextInput;
+                                if (el && !icm.isPassword) {
+                                    if (typeof el.value === 'string') {
+                                        const start = el.selectionStart ?? 0;
+                                        const end = el.selectionEnd ?? el.value.length;
+                                        const selected = start !== end ? el.value.slice(start, end) : el.value;
+                                        if (selected) {
+                                            await copyTextToClipboard(selected);
+                                            showToast('Copied to clipboard');
+                                        }
+                                    } else {
+                                        const sel = window.getSelection?.()?.toString() || el.innerText || '';
+                                        if (sel) {
+                                            await copyTextToClipboard(sel);
+                                            showToast('Copied to clipboard');
+                                        }
+                                    }
+                                }
+                                closeInputContextMenu();
+                            }}
+                        />
+                        <MenuItem
+                            icon={Clipboard}
+                            label="Paste"
+                            shortcut="Ctrl+V"
+                            disabled={icm.readOnly}
+                            onClick={async () => {
+                                const el = window.__qbrowseContextInput;
+                                if (el && !icm.readOnly) {
+                                    let clip = '';
+                                    try {
+                                        if (window.electronAPI?.readClipboardText) {
+                                            clip = await window.electronAPI.readClipboardText();
+                                        } else {
+                                            clip = await navigator.clipboard.readText();
+                                        }
+                                    } catch (_) {}
+                                    if (clip) {
+                                        if (typeof el.value === 'string') {
+                                            const clean = el.tagName === 'TEXTAREA' ? clip : clip.replace(/[\r\n]+/g, ' ');
+                                            const start = el.selectionStart ?? el.value.length;
+                                            const end = el.selectionEnd ?? el.value.length;
+                                            const nextVal = el.value.slice(0, start) + clean + el.value.slice(end);
+                                            updateNativeInputValue(el, nextVal, start + clean.length);
+                                        } else {
+                                            el.focus();
+                                            try { document.execCommand('insertText', false, clip); } catch (_) {}
+                                        }
+                                    }
+                                }
+                                closeInputContextMenu();
+                            }}
+                        />
+                        <MenuDivider />
+                        <MenuItem
+                            icon={CheckSquare}
+                            label="Select All"
+                            shortcut="Ctrl+A"
+                            onClick={() => {
+                                const el = window.__qbrowseContextInput;
+                                if (el) {
+                                    el.focus();
+                                    if (typeof el.select === 'function') {
+                                        el.select();
+                                    } else if (window.getSelection && document.createRange) {
+                                        const range = document.createRange();
+                                        range.selectNodeContents(el);
+                                        const sel = window.getSelection();
+                                        sel.removeAllRanges();
+                                        sel.addRange(range);
+                                    }
+                                }
+                                closeInputContextMenu();
                             }}
                         />
                     </MenuContainer>

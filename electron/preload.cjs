@@ -169,6 +169,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Adblocker
     setAdblock: (active) => ipcRenderer.send('set-adblock', active),
     updateAdblockFilters: () => ipcRenderer.invoke('update-adblock-filters'),
+    getAdblockStatus: () => ipcRenderer.invoke('get-adblock-status'),
     onTrackerBlocked: (callback) => {
         ipcRenderer.on('tracker-blocked-batch', (event, data) => callback(data));
         ipcRenderer.on('tracker-blocked', (event, url) => callback(url));
@@ -215,11 +216,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setWebRTC: (enabled) => ipcRenderer.invoke('set-webrtc', enabled),
     getSettings: () => ipcRenderer.invoke('get-settings'),
     saveSetting: (key, value) => ipcRenderer.invoke('save-setting', { key, value }),
+    saveSettingsBatch: (batch) => ipcRenderer.invoke('save-setting', { batch }),
     syncSmartDarkState: (state) => ipcRenderer.send('sync-smart-dark-state', state),
     getAppMetrics: () => ipcRenderer.invoke('get-app-metrics'),
     killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
     openNewWindow: (options) => ipcRenderer.invoke('open-new-window', options),
     closeCurrentWindow: () => ipcRenderer.invoke('close-current-window'),
+    getWindowId: () => ipcRenderer.invoke('get-window-id'),
+    tabTransferred: (data) => ipcRenderer.invoke('tab-transferred', data),
+    onTabRemovedFromWindow: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('tab-removed-from-window', handler);
+        return () => ipcRenderer.removeListener('tab-removed-from-window', handler);
+    },
+    openNewWindowWithTab: (data) => ipcRenderer.invoke('open-new-window-with-tab', data),
 
     // Tor Engine & HUD
     torGetStatus: () => ipcRenderer.invoke('tor-get-status'),
@@ -279,6 +289,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     captureSliceDataUrl: (opts) => ipcRenderer.invoke('capture-slice-dataurl', opts),
     saveScreenshotDataUrl: (opts) => ipcRenderer.invoke('save-screenshot-dataurl', opts),
     copyImageToClipboard: (filePath) => ipcRenderer.invoke('copy-image-to-clipboard', filePath),
+    copyWebviewImage: (opts) => ipcRenderer.invoke('copy-webview-image', opts),
+    writeClipboardImageDataUrl: (dataUrl) => ipcRenderer.invoke('write-clipboard-image-dataurl', dataUrl),
     allowInsecureHost: (hostname) => ipcRenderer.invoke('allow-insecure-host', hostname),
 
     // Performance & Hardware Profiling

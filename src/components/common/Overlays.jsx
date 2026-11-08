@@ -4,6 +4,7 @@ import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import AuthModal from '../modals/AuthModal';
 import PresetStudioModal from '../modals/PresetStudioModal';
+import LiquidTooltip from './LiquidTooltip';
 
 export default function Overlays() {
     const activeModal = useUIStore(state => state.activeModal);
@@ -88,6 +89,7 @@ export default function Overlays() {
             )}
             <AuthModal />
             {activeModal === 'presetStudio' && <PresetStudioModal />}
+            <LiquidTooltip />
         </>
     );
 }

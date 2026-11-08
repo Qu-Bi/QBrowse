@@ -255,15 +255,22 @@ const localDialogServer = http.createServer((req, res) => {
         return;
     }
 
-    // Security: Require cryptographic token to block local port scanning & cross-origin abuse
-    const clientToken = req.headers['x-qbrowse-dialog-token'];
+    // Security: Require cryptographic token (via query parameter or header) to block local port scanning & cross-origin abuse
+    let parsedPathname = req.url || '';
+    let queryToken = '';
+    try {
+        const reqUrlObj = new URL(req.url || '/', 'http://127.0.0.1');
+        parsedPathname = reqUrlObj.pathname;
+        queryToken = reqUrlObj.searchParams.get('token') || '';
+    } catch (_) {}
+    const clientToken = req.headers['x-qbrowse-dialog-token'] || queryToken;
     if (!clientToken || clientToken !== localDialogAuthToken) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Forbidden: Unauthorized dialog request' }));
         return;
     }
 
-    if (req.method === 'POST' && (req.url === '/dialog' || req.url === '/prompt')) {
+    if (req.method === 'POST' && (parsedPathname === '/dialog' || parsedPathname === '/prompt')) {
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
@@ -272,11 +279,39 @@ const localDialogServer = http.createServer((req, res) => {
                 const dialogId = 'dlg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
                 pendingPromptResponses.set(dialogId, res);
 
+                const resolveDialogTargetWin = () => {
+                    const focused = BrowserWindow.getFocusedWindow();
+                    if (focused && !focused.isDestroyed() && !activeOAuthWindows.has(focused)) {
+                        return focused;
+                    }
+                    if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+                    return Array.from(browserWindows).find(w => w && !w.isDestroyed()) || null;
+                };
+
+                const targetWin = resolveDialogTargetWin();
+
+                // Safety timeout: never allow a synchronous dialog XHR to block a webview forever
+                const safetyTimer = setTimeout(() => {
+                    if (pendingPromptResponses.has(dialogId)) {
+                        pendingPromptResponses.delete(dialogId);
+                        if (!res.writableEnded) {
+                            try {
+                                res.writeHead(200, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify({ cancelled: true, value: null }));
+                            } catch (_) {}
+                        }
+                        if (targetWin && !targetWin.isDestroyed()) {
+                            try { targetWin.webContents.send('qbrowse-js-dialog-dismiss', { dialogId }); } catch (_) {}
+                        }
+                    }
+                }, 60000);
+
                 res.on('close', () => {
+                    clearTimeout(safetyTimer);
                     if (!res.writableEnded && pendingPromptResponses.has(dialogId)) {
                         pendingPromptResponses.delete(dialogId);
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            mainWindow.webContents.send('qbrowse-js-dialog-dismiss', { dialogId });
+                        if (targetWin && !targetWin.isDestroyed()) {
+                            try { targetWin.webContents.send('qbrowse-js-dialog-dismiss', { dialogId }); } catch (_) {}
                         }
                     }
                 });
@@ -293,10 +328,10 @@ const localDialogServer = http.createServer((req, res) => {
                 } catch (_) {}
                 if (!hostname) hostname = 'Website';
 
-                const dialogType = data.type || (req.url === '/prompt' ? 'prompt' : 'alert');
+                const dialogType = data.type || (parsedPathname === '/prompt' ? 'prompt' : 'alert');
 
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('qbrowse-js-dialog-open', {
+                if (targetWin && !targetWin.isDestroyed()) {
+                    targetWin.webContents.send('qbrowse-js-dialog-open', {
                         dialogId,
                         dialogType,
                         message: data.message || '',
@@ -305,6 +340,8 @@ const localDialogServer = http.createServer((req, res) => {
                         defaultValue: data.defaultValue || ''
                     });
                 } else {
+                    clearTimeout(safetyTimer);
+                    pendingPromptResponses.delete(dialogId);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ cancelled: true, value: null }));
                 }
@@ -355,13 +392,18 @@ dialog.showMessageBox = function(targetWindow, options) {
         } catch (_) {}
         if (!hostname) hostname = 'Website';
 
+        const focused = BrowserWindow.getFocusedWindow();
+        const targetWin = (focused && !focused.isDestroyed() && !activeOAuthWindows.has(focused))
+            ? focused
+            : ((mainWindow && !mainWindow.isDestroyed()) ? mainWindow : Array.from(browserWindows).find(w => w && !w.isDestroyed()) || null);
+
         activeWebviewDialogs.set(dialogId, {
             resolve,
             type: dialogType
         });
 
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('qbrowse-js-dialog-open', {
+        if (targetWin && !targetWin.isDestroyed()) {
+            targetWin.webContents.send('qbrowse-js-dialog-open', {
                 dialogId,
                 dialogType,
                 message: opts.message || opts.detail || '',
@@ -370,6 +412,7 @@ dialog.showMessageBox = function(targetWindow, options) {
                 defaultValue: ''
             });
         } else {
+            activeWebviewDialogs.delete(dialogId);
             resolve({ response: 0, checkboxChecked: false });
         }
     });
@@ -912,12 +955,26 @@ ipcMain.handle('open-with-dialog', async (event, url) => {
     }
 });
 const { spawn, execFile } = require('child_process');
+const { adblockEngine } = require('./adblockEngine.cjs');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
 const torEngine = require('./torEngine.cjs');
 
 crashReporter.start({
   uploadToServer: false,
+});
+
+process.on('uncaughtException', (err) => {
+    const msg = String(err?.message || '');
+    if (msg.includes('assert(!this.paused)') || msg.includes('ECONNRESET') || msg.includes('EPIPE')) {
+        console.warn('[Electron Main] Handled internal stream/socket exception:', msg);
+        return;
+    }
+    console.error('[Electron Main] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.warn('[Electron Main] Unhandled Rejection:', reason?.message || reason);
 });
 
 let mainWindow;
@@ -961,12 +1018,15 @@ if (!gotTheLock) {
     initialUrlToOpen = extractUrlFromArgs(process.argv);
 
     app.on('second-instance', (event, commandLine, workingDirectory) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.focus();
+        const targetWin = (BrowserWindow.getFocusedWindow() && browserWindows.has(BrowserWindow.getFocusedWindow()))
+            ? BrowserWindow.getFocusedWindow()
+            : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : Array.from(browserWindows)[0]);
+        if (targetWin && !targetWin.isDestroyed()) {
+            if (targetWin.isMinimized()) targetWin.restore();
+            targetWin.focus();
             const incomingUrl = extractUrlFromArgs(commandLine);
             if (incomingUrl) {
-                mainWindow.webContents.send('open-new-tab-url', { url: incomingUrl, disposition: 'default' });
+                targetWin.webContents.send('open-new-tab-url', { url: incomingUrl, disposition: 'default' });
             }
         }
     });
@@ -974,8 +1034,11 @@ if (!gotTheLock) {
 
 app.on('open-url', (event, url) => {
     event.preventDefault();
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('open-new-tab-url', { url, disposition: 'default' });
+    const targetWin = (BrowserWindow.getFocusedWindow() && browserWindows.has(BrowserWindow.getFocusedWindow()))
+        ? BrowserWindow.getFocusedWindow()
+        : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : Array.from(browserWindows)[0]);
+    if (targetWin && !targetWin.isDestroyed()) {
+        targetWin.webContents.send('open-new-tab-url', { url, disposition: 'default' });
     } else {
         initialUrlToOpen = url;
     }
@@ -1600,13 +1663,13 @@ async function toggleMaximizeSmooth(win) {
 function createWindow(options = {}) {
   ensureVault();
 
-  const win = new BrowserWindow({
+  const winConfig = {
     title: 'QBrowse',
     appDetails: {
       appId: 'com.qbrowse.app'
     },
-    width: 1580,
-    height: 1000,
+    width: options.width || 1580,
+    height: options.height || 1000,
     minWidth: 1280,
     minHeight: 820,
     show: false,
@@ -1622,7 +1685,14 @@ function createWindow(options = {}) {
       nodeIntegration: false,
       disableHtmlFullscreenWindowResize: true
     }
-  });
+  };
+
+  if (typeof options.x === 'number' && typeof options.y === 'number') {
+    winConfig.x = Math.max(0, options.x);
+    winConfig.y = Math.max(0, options.y);
+  }
+
+  const win = new BrowserWindow(winConfig);
 
   browserWindows.add(win);
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1658,6 +1728,7 @@ function createWindow(options = {}) {
   const queryParams = {};
   if (options.space) queryParams.space = options.space;
   if (options.profileId) queryParams.profileId = options.profileId;
+  if (options.initialTab) queryParams.initialTab = encodeURIComponent(JSON.stringify(options.initialTab));
   const searchStr = new URLSearchParams(queryParams).toString();
   const query = searchStr ? `?${searchStr}` : '';
   if (isDev) {
@@ -1734,44 +1805,6 @@ function createWindow(options = {}) {
   return win;
 }
 
-  // Setup Ghostery Adblocker (EasyList + EasyPrivacy)
-  let isNativeAdblockActive = settingsStore.adblockEnabled !== false;
-  ipcMain.on('set-adblock', (event, active) => {
-      isNativeAdblockActive = Boolean(active);
-      settingsStore.adblockEnabled = isNativeAdblockActive;
-      console.log(`Adblocker ${isNativeAdblockActive ? 'enabled' : 'disabled'}`);
-  });
-
-  let globalBlocker = null;
-
-  ipcMain.handle('update-adblock-filters', async () => {
-      try {
-          if (!globalBlocker) {
-              globalBlocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
-          }
-      } catch (err) {
-          console.warn('[Adblocker] Failed to prebuild adblock filters:', err);
-      }
-      const filterCounts = {
-          easylist: 151564,
-          easyprivacy: 48210,
-          annoyances: 32450,
-          malware: 18920,
-          peterlowe: 3820
-      };
-      const lists = (settingsStore && typeof settingsStore.adblockFilterLists === 'object' && settingsStore.adblockFilterLists)
-          ? settingsStore.adblockFilterLists
-          : { easylist: true, easyprivacy: true, annoyances: true, malware: true, peterlowe: true };
-      let count = 0;
-      for (const [key, enabled] of Object.entries(lists)) {
-          if (enabled !== false && filterCounts[key]) {
-              count += filterCounts[key];
-          }
-      }
-      if (count === 0) count = 151564;
-      return { success: true, count, updatedAt: Date.now() };
-  });
-
   const bypassedInsecureHosts = new Set();
 
   ipcMain.handle('allow-insecure-host', (event, hostname) => {
@@ -1796,301 +1829,9 @@ function createWindow(options = {}) {
       callback(false);
   });
 
-  const { fromElectronDetails } = require('@ghostery/adblocker-electron');
-
   function applyAdblockerToSession(sess) {
-      if (!sess || !sess.webRequest) return;
-      try {
-          sess.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-              const url = details.url;
-              if (!url) return callback({ cancel: false });
-
-              // 1. HTTPS Upgrade
-              if (settingsStore.httpsOnly !== false && url.startsWith('http://')) {
-                  try {
-                      const parsed = new URL(url);
-                      if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1' && !parsed.hostname.endsWith('.onion')) {
-                          const host = parsed.hostname.toLowerCase();
-                          const isBypassed = bypassedInsecureHosts.has(host) || bypassedInsecureHosts.has(host.replace(/^www\./, ''));
-                          if (!isBypassed) {
-                              const secureUrl = url.replace(/^http:\/\//i, 'https://');
-                              return callback({ redirectURL: secureUrl });
-                          }
-                      }
-                  } catch (_) {}
-              }
-
-              if (!isNativeAdblockActive) return callback({ cancel: false });
-
-              // Trusted Sites Allowlist (settingsStore.adblockAllowlist)
-              const allowlist = Array.isArray(settingsStore.adblockAllowlist) ? settingsStore.adblockAllowlist : [];
-              if (allowlist.length > 0) {
-                  const candidates = [
-                      details.referrer,
-                      latestActiveWebviewUrl,
-                      url
-                  ].filter(Boolean);
-
-                  const isWhitelisted = candidates.some(cand => {
-                      try {
-                          let candHost = '';
-                          if (cand.startsWith('http://') || cand.startsWith('https://') || cand.includes('://')) {
-                              candHost = new URL(cand).hostname.toLowerCase().replace(/^www\./, '');
-                          } else {
-                              candHost = cand.toLowerCase().trim().replace(/^www\./, '');
-                          }
-                          if (!candHost) return false;
-                          return allowlist.some(allowed => {
-                              if (!allowed || typeof allowed !== 'string') return false;
-                              const cleanAllowed = allowed.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
-                              return candHost === cleanAllowed || candHost.endsWith('.' + cleanAllowed);
-                          });
-                      } catch (_) {
-                          return false;
-                      }
-                  });
-
-                  if (isWhitelisted) {
-                      return callback({ cancel: false });
-                  }
-              }
-
-              const u = url.toLowerCase();
-
-              // 2. HYBRID BYPASS: Instantly allow media streams before Ghostery serialization to prevent IPC crash
-              if (
-                  u.includes('googlevideo.com/videoplayback') ||
-                  u.includes('manifest.googlevideo.com') ||
-                  u.includes('.ttvnw.net/v1/')
-              ) {
-                  return callback({ cancel: false });
-              }
-
-              // 3. Auth, Webmail & Identity bypass: NEVER block Gmail/Google Workspace, authentication, OAuth, or Firebase identity endpoints!
-              const ref = (details.referrer || '').toLowerCase();
-              const init = (details.initiator || '').toLowerCase();
-              const isGmailTraffic = u.includes('mail.google.com') ||
-                                     u.includes('googleusercontent.com') ||
-                                     u.includes('gmail.com') ||
-                                     ref.includes('mail.google.com') ||
-                                     init.includes('mail.google.com');
-
-              if (
-                  isGmailTraffic ||
-                  u.includes('accounts.google.com') ||
-                  u.includes('accounts.youtube.com') ||
-                  u.includes('play.google.com/log') ||
-                  u.includes('ssl.gstatic.com/accounts') ||
-                  u.includes('firebaseapp.com') ||
-                  u.includes('identitytoolkit.googleapis.com') ||
-                  u.includes('securetoken.googleapis.com') ||
-                  u.includes('firebaseinstallations.googleapis.com') ||
-                  u.includes('apis.google.com') ||
-                  u.includes('appleid.apple.com') ||
-                  u.includes('theverge.com/auth') ||
-                  u.includes('/oauth') ||
-                  u.includes('/auth') ||
-                  u.includes('/login') ||
-                  u.includes('/signin') ||
-                  u.includes('challenges.cloudflare.com') ||
-                  u.includes('/cdn-cgi/challenge-platform') ||
-                  u.includes('hcaptcha.com') ||
-                  u.includes('recaptcha')
-              ) {
-                  return callback({ cancel: false });
-              }
-
-              let reqHost = '';
-              try {
-                  reqHost = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-              } catch (_) {}
-
-              const notifyBlocked = () => {
-                  if (!global.__pendingBlockedBatch) global.__pendingBlockedBatch = 0;
-                  global.__pendingBlockedBatch++;
-                  global.__lastBlockedUrl = url;
-                  if (!global.__blockedBatchTimer) {
-                      global.__blockedBatchTimer = setTimeout(() => {
-                          global.__blockedBatchTimer = null;
-                          if (mainWindow && !mainWindow.isDestroyed() && global.__pendingBlockedBatch > 0) {
-                              try {
-                                  mainWindow.webContents.send('tracker-blocked-batch', { count: global.__pendingBlockedBatch, url: global.__lastBlockedUrl });
-                                  mainWindow.webContents.send('tracker-blocked', global.__lastBlockedUrl);
-                              } catch (_) {}
-                              global.__pendingBlockedBatch = 0;
-                          }
-                      }, 200);
-                  }
-              };
-
-              // 4. User Custom Blocked Domains (settingsStore.adblockCustomBlockedDomains)
-              const customBlocked = Array.isArray(settingsStore.adblockCustomBlockedDomains) ? settingsStore.adblockCustomBlockedDomains : [];
-              if (reqHost && customBlocked.length > 0) {
-                  const isCustomMatched = customBlocked.some(d => {
-                      if (!d || typeof d !== 'string') return false;
-                      const cleanD = d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
-                      return reqHost === cleanD || reqHost.endsWith('.' + cleanD);
-                  });
-                  if (isCustomMatched) {
-                      notifyBlocked();
-                      return callback({ cancel: true });
-                  }
-              }
-
-              // 5. Cryptominers & Malicious Domains (settingsStore.adblockMalware !== false && settingsStore.adblockFilterLists?.malware !== false)
-              const isMalwareBlocked = settingsStore.adblockMalware !== false && (settingsStore.adblockFilterLists ? settingsStore.adblockFilterLists.malware !== false : true);
-              if (isMalwareBlocked) {
-                  const malwareDomains = [
-                      'coinhive.com', 'crypto-loot.com', 'coin-hive.com', 'jsecoin.com',
-                      'webminepool.com', 'minero.cc', 'authedmine.com', 'cryptoloot.pro',
-                      'popads.net', 'popcash.net', 'propellerads.com'
-                  ];
-                  if (malwareDomains.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
-                      notifyBlocked();
-                      return callback({ cancel: true });
-                  }
-              }
-
-              // 6. Cookie Consent & Annoyance Scripts (settingsStore.adblockAnnoyances !== false && settingsStore.adblockFilterLists?.annoyances !== false)
-              const isAnnoyancesBlocked = settingsStore.adblockAnnoyances !== false && (settingsStore.adblockFilterLists ? settingsStore.adblockFilterLists.annoyances !== false : true);
-              if (isAnnoyancesBlocked) {
-                  const annoyanceEndpoints = [
-                      'cdn.cookielaw.org', 'consent.cookiebot.com', 'consent.trustarc.com',
-                      'quantcast.mgr.consensu.org', 'fundingchoicesmessages.google.com', 'cmp.osano.com'
-                  ];
-                  if (annoyanceEndpoints.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
-                      notifyBlocked();
-                      return callback({ cancel: true });
-                  }
-              }
-
-              // 7. Session Replay, Telemetry & Fingerprinting (settingsStore.adblockTelemetry !== false && settingsStore.adblockFilterLists?.easyprivacy !== false)
-              const isTelemetryBlocked = settingsStore.adblockTelemetry !== false && (settingsStore.adblockFilterLists ? settingsStore.adblockFilterLists.easyprivacy !== false : true);
-              if (isTelemetryBlocked) {
-                  const telemetryEndpoints = [
-                      'static.hotjar.com', 'script.hotjar.com', 'edge.fullstory.com', 'rs.fullstory.com',
-                      'clarity.ms', 'cdn.mouseflow.com', 'api-js.mixpanel.com', 'cdn.heapanalytics.com',
-                      'api.amplitude.com', 'rum.browser-intake-datadoghq.com'
-                  ];
-                  if (telemetryEndpoints.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
-                      notifyBlocked();
-                      return callback({ cancel: true });
-                  }
-              }
-
-              // 8. Social Tracking Check (only if not an auth endpoint)
-              const isSocialBlocked = settingsStore.social !== false;
-              if (isSocialBlocked) {
-                  if (
-                      u.includes('connect.facebook.net') ||
-                      u.includes('facebook.com/tr') ||
-                      u.includes('static.ads-twitter.com') ||
-                      u.includes('analytics.tiktok.com') ||
-                      u.includes('snap.licdn.com')
-                  ) {
-                      notifyBlocked();
-                      return callback({ cancel: true });
-                  }
-              }
-
-              // 9. Strict Mode (settingsStore.adblockLevel === 'strict')
-              if (settingsStore.adblockLevel === 'strict') {
-                  const strictDomains = [
-                      'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
-                      'adnxs.com', 'criteo.com', 'taboola.com', 'outbrain.com',
-                      'rubiconproject.com', 'pubmatic.com', 'openx.net',
-                      'scorecardresearch.com', 'amazon-adsystem.com'
-                  ];
-                  if (strictDomains.some(d => reqHost === d || reqHost.endsWith('.' + d) || u.includes(d))) {
-                      notifyBlocked();
-                      return callback({ cancel: true });
-                  }
-              }
-
-              // Allow core UI framework, stylesheets and essential bundles on wp.pl
-              const isWpCoreScript = reqHost.endsWith('wp.pl') && (
-                  u.includes('dwiubwlu') || // ui.min
-                  u.includes('z29mzxi') ||  // gofer
-                  u.includes('d3bqc2xpyjy') // wpjslib6
-              );
-              if (isWpCoreScript) {
-                  return callback({ cancel: false });
-              }
-
-              // 9.5. Regional & Polish/EU Ad Network & Obfuscated Script Blocking (wp.pl, onet.pl, interia.pl, etc.)
-              const isRegionalAdNetwork = Boolean(
-                  reqHost.includes('gemius.') ||
-                  reqHost.includes('adocean.') ||
-                  reqHost.includes('adform.') ||
-                  reqHost.includes('smartadserver.') ||
-                  reqHost.includes('adkontekst.') ||
-                  reqHost.includes('netsprint.') ||
-                  reqHost.includes('teads.tv') ||
-                  reqHost.includes('criteo.') ||
-                  reqHost.includes('rubiconproject.') ||
-                  reqHost.includes('pubmatic.') ||
-                  reqHost.includes('openx.') ||
-                  reqHost.includes('adnxs.') ||
-                  reqHost === 'dot.wp.pl' ||
-                  reqHost.endsWith('.dot.wp.pl') ||
-                  reqHost === 'adv.wp.pl' ||
-                  reqHost === 'dynacrems.wp.pl' ||
-                  reqHost === 'corto.www.wp.pl' ||
-                  // WP Header-Bidding (<script id="hb">) & Ad Telemetry / Detectors on wp.pl:
-                  (reqHost.endsWith('wp.pl') && (
-                      u.includes('d3aucgwu') ||
-                      u.includes('nmvlytaz') ||
-                      u.includes('pwa_adbd') ||
-                      u.includes('pvid=')
-                  )) ||
-                  // WP Ad Media & Creatives on wpimg.pl
-                  (reqHost.endsWith('wpimg.pl') && (
-                      u.includes('/b/') ||
-                      u.includes('/advert/') ||
-                      u.includes('/b-') ||
-                      u.includes('/rek/') ||
-                      u.includes('/banner')
-                  ))
-              );
-              if (isRegionalAdNetwork) {
-                  notifyBlocked();
-                  return callback({ cancel: true });
-              }
-
-              if (!globalBlocker) {
-                  return callback({ cancel: false });
-              }
-
-              // 10. Feed to Ghostery manually
-              try {
-                  const requestObj = fromElectronDetails(details);
-                  const match = globalBlocker.match(requestObj);
-                  
-                  if (match.match) {
-                      notifyBlocked();
-                      return callback({ cancel: true });
-                  }
-                  callback({ cancel: false });
-              } catch(e) {
-                  callback({ cancel: false });
-              }
-          });
-      } catch(e) {
-          console.warn('[Adblocker] Failed to attach to session:', e);
-      }
+      adblockEngine.applyToSession(sess, settingsStore, bypassedInsecureHosts);
   }
-
-  ElectronBlocker.fromPrebuiltFull(fetch).then((blocker) => {
-      globalBlocker = blocker;
-      console.log('Ghostery Full Adblocker initialized successfully (Hybrid Mode).');
-  }).catch(() => {
-      ElectronBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
-          globalBlocker = blocker;
-          console.log('Ghostery Adblocker initialized successfully (Standard Mode).');
-      }).catch(err => {
-          console.error('Failed to initialize Adblocker:', err);
-      });
-  });
 
     ipcMain.on('debug-terminal-log', (event, message, data) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -2108,7 +1849,22 @@ function createWindow(options = {}) {
         if (contents.getType() === 'webview') {
             try {
                 contents.setBackgroundColor(getEffectiveColorScheme() === 'dark' ? '#121212' : '#ffffff');
+                contents.setVisualZoomLevelLimits(1, 5).catch(() => {});
             } catch (_) {}
+            contents.on('did-finish-load', () => {
+                try {
+                    contents.setVisualZoomLevelLimits(1, 5).catch(() => {});
+                } catch (_) {}
+            });
+        } else {
+            contents.on('did-finish-load', () => {
+                try {
+                    const ownerWin = BrowserWindow.fromWebContents(contents);
+                    if (ownerWin && browserWindows.has(ownerWin)) {
+                        contents.setVisualZoomLevelLimits(1, 1).catch(() => {});
+                    }
+                } catch (_) {}
+            });
         }
 
         // Security: Strictly enforce sandbox and process isolation on any attached <webview>
@@ -2131,12 +1887,53 @@ function createWindow(options = {}) {
         const getTargetWindow = () => {
             if (contents.hostWebContents) {
                 const hostWin = BrowserWindow.fromWebContents(contents.hostWebContents);
-                if (hostWin && !hostWin.isDestroyed()) return hostWin;
+                if (hostWin && !hostWin.isDestroyed() && !activeOAuthWindows.has(hostWin)) return hostWin;
             }
-            return BrowserWindow.fromWebContents(contents) || BrowserWindow.getFocusedWindow() || mainWindow;
+            const selfWin = BrowserWindow.fromWebContents(contents);
+            if (selfWin && !selfWin.isDestroyed() && !activeOAuthWindows.has(selfWin)) {
+                return selfWin;
+            }
+            const focusedWin = BrowserWindow.getFocusedWindow();
+            if (focusedWin && !focusedWin.isDestroyed() && !activeOAuthWindows.has(focusedWin)) {
+                return focusedWin;
+            }
+            if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+            return Array.from(browserWindows).find(w => w && !w.isDestroyed()) || null;
         };
 
-        // Handle window.open: Distinguish OAuth popups (Firebase, Google, etc.) from normal link navigations
+        const isLikelyAuthOrOAuthPopupUrl = (targetUrl) => {
+            if (!targetUrl || typeof targetUrl !== 'string') return false;
+            const lower = targetUrl.toLowerCase();
+            return (
+                lower.includes('/oauth') ||
+                lower.includes('/authorize') ||
+                lower.includes('/auth/') ||
+                lower.includes('accounts.google.com') ||
+                lower.includes('appleid.apple.com') ||
+                lower.includes('github.com/login') ||
+                lower.includes('login.microsoftonline.com') ||
+                lower.includes('login.live.com') ||
+                lower.includes('discord.com/oauth2') ||
+                lower.includes('facebook.com/dialog/oauth') ||
+                lower.includes('api.twitter.com/oauth') ||
+                lower.includes('x.com/i/oauth2') ||
+                lower.includes('auth0.com') ||
+                lower.includes('clerk.') ||
+                lower.includes('firebaseapp.com/__/auth') ||
+                lower.includes('supabase.co/auth') ||
+                lower.includes('paypal.com/checkoutnow') ||
+                lower.includes('checkout.stripe.com') ||
+                lower.includes('accounts.spotify.com') ||
+                lower.includes('id.twitch.tv/oauth2') ||
+                lower.includes('linkedin.com/oauth') ||
+                lower.includes('slack.com/oauth') ||
+                lower.includes('openid') ||
+                lower.includes('saml') ||
+                lower.includes('sso.')
+            );
+        };
+
+        // Handle window.open: Distinguish genuine OAuth/Auth popups from normal website link navigations
         contents.setWindowOpenHandler(({ url, frameName, disposition, features }) => {
             console.log('\x1b[33m[QBrowse Main] window.open intercepted:\x1b[0m', {
                 url: url || '(blank/script)',
@@ -2153,13 +1950,14 @@ function createWindow(options = {}) {
                 return { action: 'deny' };
             }
 
-            // Distinguish explicit popup requests (with window dimensions or new-popup disposition) from regular link clicks
-            const isPopupWithDims = Boolean(features && (features.includes('width=') || features.includes('height=')));
-            const isExplicitPopup = isPopupWithDims || Boolean(features && (features.includes('popup=true') || features.includes('popup=1')));
-            const isBlankTarget = !url || url === 'about:blank' || url === '';
+            const featLower = (features || '').toLowerCase();
+            const hasNoOpener = featLower.includes('noopener') || featLower.includes('noreferrer');
+            const isPopupWithDims = Boolean(featLower && (featLower.includes('width=') || featLower.includes('height=')));
+            const isExplicitPopupFlag = Boolean(featLower && (featLower.includes('popup=true') || featLower.includes('popup=1')));
+            const isAuthPopup = isLikelyAuthOrOAuthPopupUrl(url);
 
-            // Allow as a sleek child popup window whenever explicitly requested with dimensions (Gmail pop-out, OAuth popups, etc.)
-            const shouldOpenAsPopupWindow = disposition === 'new-popup' || isExplicitPopup || (isBlankTarget && features && features.trim().length > 0);
+            // Only open a separate child popup window for genuine OAuth/Auth flows or explicit dimensional popups without noopener
+            const shouldOpenAsPopupWindow = !hasNoOpener && (isAuthPopup || isExplicitPopupFlag || (isPopupWithDims && disposition === 'new-popup'));
 
             if (shouldOpenAsPopupWindow) {
                 let popupWidth = 800;
@@ -2209,10 +2007,11 @@ function createWindow(options = {}) {
                 };
             }
 
-            // Normal browsing links (e.g. target="_blank") -> Route to a new tab in QBrowse
+            // Normal browsing links (e.g. target="_blank" or general window.open) -> Route to a new tab in the caller's QBrowse window
             if (url && url !== 'about:blank') {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('open-new-tab-url', { url, disposition });
+                const targetWin = getTargetWindow();
+                if (targetWin && !targetWin.isDestroyed()) {
+                    targetWin.webContents.send('open-new-tab-url', { url, disposition });
                 }
             }
             return { action: 'deny' };
@@ -2333,26 +2132,27 @@ function createWindow(options = {}) {
                             label: 'Zoom In',
                             accelerator: 'CmdOrCtrl+Plus',
                             click: () => {
-                                const z = Math.min(3.0, childWindow.webContents.getZoomFactor() + 0.1);
-                                childWindow.webContents.setZoomFactor(z);
-                                childWindow.webContents.send('oauth-zoom-changed', Math.round(z * 100));
+                                try {
+                                    childWindow.webContents.send('oauth-zoom-command', 'in');
+                                } catch (_) {}
                             }
                         }));
                         menu.append(new MenuItem({
                             label: 'Zoom Out',
                             accelerator: 'CmdOrCtrl+-',
                             click: () => {
-                                const z = Math.max(0.5, childWindow.webContents.getZoomFactor() - 0.1);
-                                childWindow.webContents.setZoomFactor(z);
-                                childWindow.webContents.send('oauth-zoom-changed', Math.round(z * 100));
+                                try {
+                                    childWindow.webContents.send('oauth-zoom-command', 'out');
+                                } catch (_) {}
                             }
                         }));
                         menu.append(new MenuItem({
                             label: 'Actual Size',
                             accelerator: 'CmdOrCtrl+0',
                             click: () => {
-                                childWindow.webContents.setZoomFactor(1.0);
-                                childWindow.webContents.send('oauth-zoom-changed', 100);
+                                try {
+                                    childWindow.webContents.send('oauth-zoom-command', 'reset');
+                                } catch (_) {}
                             }
                         }));
                     }
@@ -2427,6 +2227,11 @@ function createWindow(options = {}) {
             }
         };
 
+        // Prevent website beforeunload handlers from silently freezing navigation in guest webviews
+        contents.on('will-prevent-unload', (event) => {
+            event.preventDefault();
+        });
+
         // Intelligent Background Throttling:
         // Throttle inactive background webviews to prevent CPU/GPU drains and battery drain,
         // but automatically unthrottle whenever media (YouTube, Spotify, etc.) starts playing.
@@ -2498,94 +2303,83 @@ function createWindow(options = {}) {
             console.warn(`[Electron Main] render-process-gone on webContents (${contents.id}, type: ${contents.getType()}): `, details);
         });
 
-        // Track active webview URL for accurate domain resolution in in-tab dialogs
+        // Track active webview URL and dynamically inject site-specific adblock cosmetic filters
         if (contents.getType() === 'webview') {
+            const injectCosmeticsNow = (url) => {
+                const targetUrl = url || contents.getURL() || latestActiveWebviewUrl;
+                if (targetUrl && targetUrl !== 'about:blank') {
+                    adblockEngine.injectCosmetics(contents, targetUrl, settingsStore);
+                }
+            };
+
+            contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+                if (isMainFrame !== false && url && url !== 'about:blank') {
+                    latestActiveWebviewUrl = url;
+                }
+            });
             contents.on('did-navigate', (event, url) => {
-                if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
+                if (url && url !== 'about:blank') {
+                    latestActiveWebviewUrl = url;
+                    injectCosmeticsNow(url);
+                }
             });
             contents.on('did-navigate-in-page', (event, url, isMainFrame) => {
                 if (isMainFrame === false) return;
-                if (url && url !== 'about:blank') latestActiveWebviewUrl = url;
+                if (url && url !== 'about:blank') {
+                    latestActiveWebviewUrl = url;
+                    injectCosmeticsNow(url);
+                }
             });
             contents.on('dom-ready', () => {
-                let isWhitelisted = false;
-                let isYouTube = false;
-                let isGoogleOrMail = false;
-                let currentUrl = '';
-                try {
-                    currentUrl = contents.getURL() || latestActiveWebviewUrl || '';
-                    if (currentUrl && currentUrl !== 'about:blank') {
-                        const host = new URL(currentUrl).hostname.toLowerCase().replace(/^www\./, '');
-                        isYouTube = host === 'youtube.com' || host.endsWith('.youtube.com');
-                        isGoogleOrMail = host === 'mail.google.com' || host === 'gmail.com' || host.endsWith('.google.com') || host === 'google.com';
-                        const allowlist = Array.isArray(settingsStore.adblockAllowlist) ? settingsStore.adblockAllowlist : [];
-                        isWhitelisted = allowlist.some(d => {
-                            if (!d || typeof d !== 'string') return false;
-                            const cleanD = d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
-                            return host === cleanD || host.endsWith('.' + cleanD);
-                        });
-                    }
-                } catch (_) {}
-
-                if (!isWhitelisted && isNativeAdblockActive && !isGoogleOrMail) {
-                    if (!isYouTube && settingsStore.cosmetic !== false) {
-                        const cosmeticCSS = `
-                            .ad-banner, .advertisement, [id*="google_ads"], [class*="google_ads"],
-                            .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder,
-                            [class*="reklama"], [id*="reklama"], [id*="Reklama"], [class*="Reklama"],
-                            .wp-header-panel, [class*="wp-header-panel"], [class*="bmjdxfegh"],
-                            [class*="screeningWallpaper"], [class*="GGAGE"], .cHJldmVudENC,
-                            [data-st-area*="reklama"], [data-vab-box],
-                            [class*="Billboard"], [id*="Billboard"], [class*="Wallpaper"], [id*="Wallpaper"],
-                            [class*="Tapeta"], [id*="Tapeta"], [class*="Branding"], [id*="Branding"],
-                            [id^="wp-ad-"], [class^="wp-ad-"], [class*=" wp-ad-"], [id^="gpt-ad"], [class*="gpt-ad"], [id^="ad-desktop"],
-                            [class*="ad-desktop"], [class*="AdSlot"], [class*="ad-slot"], [class*="ad_slot"] {
-                                display: none !important;
-                                visibility: hidden !important;
-                                height: 0 !important;
-                                min-height: 0 !important;
-                            }
-                        `;
-                        try { contents.insertCSS(cosmeticCSS).catch(() => {}); } catch (_) {}
-
-                        if (currentUrl && currentUrl.toLowerCase().includes('wp.pl')) {
-                            const wpWallpaperCSS = `
-                                body, html, #root, #app {
-                                    background-image: none !important;
-                                }
-                                .wp-header-panel, [class*="wp-header-panel"], [class*="screeningWallpaper"], [class*="bmjdxfegh"] {
-                                    display: none !important;
-                                    height: 0 !important;
-                                }
-                            `;
-                            try { contents.insertCSS(wpWallpaperCSS).catch(() => {}); } catch (_) {}
-                        }
-                    }
-
-                    if (!isYouTube && settingsStore.adblockAnnoyances !== false) {
-                        const annoyancesCSS = `
-                            #onetrust-consent-sdk, #CybotCookiebotDialog, .cc-window, .cc-banner, #qc-cmp2-container, .fc-consent-root, [id*="cookie-banner"], [class*="cookie-consent-banner"] {
-                                display: none !important;
-                                visibility: hidden !important;
-                                pointer-events: none !important;
-                            }
-                        `;
-                        try { contents.insertCSS(annoyancesCSS).catch(() => {}); } catch (_) {}
-                    }
-
-                    if (isYouTube && settingsStore.adblockYoutubeAds !== false) {
-                        const youtubeAdsCSS = `
-                            .ytp-ad-overlay-container, .ytp-ad-message-container, ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer, #masthead-ad {
-                                display: none !important;
-                            }
-                        `;
-                        try { contents.insertCSS(youtubeAdsCSS).catch(() => {}); } catch (_) {}
-                    }
-                }
+                injectCosmeticsNow();
             });
         }
 
         contents.on('before-input-event', (event, input) => {
+            const selfWin = BrowserWindow.fromWebContents(contents);
+            if (selfWin && !selfWin.isDestroyed() && activeOAuthWindows.has(selfWin)) {
+                if (input.type === 'keyDown') {
+                    const isCmdOrCtrl = input.control || input.meta;
+                    const keyLower = String(input.key || '').toLowerCase();
+                    const codeRaw = String(input.code || '');
+
+                    if (isCmdOrCtrl) {
+                        if (keyLower === '+' || keyLower === '=' || keyLower === 'add' || codeRaw === 'Equal' || codeRaw === 'NumpadAdd') {
+                            event.preventDefault();
+                            try { selfWin.webContents.send('oauth-zoom-command', 'in'); } catch (_) {}
+                            return;
+                        }
+                        if (keyLower === '-' || keyLower === '_' || keyLower === 'subtract' || codeRaw === 'Minus' || codeRaw === 'NumpadSubtract') {
+                            event.preventDefault();
+                            try { selfWin.webContents.send('oauth-zoom-command', 'out'); } catch (_) {}
+                            return;
+                        }
+                        if (keyLower === '0' || codeRaw === 'Digit0' || codeRaw === 'Numpad0') {
+                            event.preventDefault();
+                            try { selfWin.webContents.send('oauth-zoom-command', 'reset'); } catch (_) {}
+                            return;
+                        }
+                        if (keyLower === 'w') {
+                            event.preventDefault();
+                            try { selfWin.close(); } catch (_) {}
+                            return;
+                        }
+                        if (keyLower === 'r') {
+                            event.preventDefault();
+                            try { selfWin.webContents.reload(); } catch (_) {}
+                            return;
+                        }
+                    }
+                    if (input.key === 'F5' || keyLower === 'f5') {
+                        event.preventDefault();
+                        try { selfWin.webContents.reload(); } catch (_) {}
+                        return;
+                    }
+                }
+                // Never forward OAuth window events to mainWindow!
+                return;
+            }
+
             const targetWin = getTargetWindow();
             if (!targetWin || targetWin.isDestroyed()) return;
 
@@ -2629,12 +2423,54 @@ function createWindow(options = {}) {
             }
 
             const isCmdOrCtrl = input.control || input.meta;
-            if (isCmdOrCtrl || input.key === 'F11' || input.key === 'F12' || input.key === 'Escape' || input.key === 'F3') {
+            const keyRaw = String(input.key || '');
+            const keyLower = keyRaw.toLowerCase();
+            const codeRaw = String(input.code || '');
+
+            // F5 Reload (F5 = Reload, Shift+F5 / Ctrl+F5 = Hard Reload)
+            if (keyRaw === 'F5' || keyLower === 'f5' || codeRaw === 'F5') {
+                event.preventDefault();
+                try {
+                    targetWin.webContents.send('global-shortcut', {
+                        shortcut: 'f5',
+                        shift: Boolean(input.shift || isCmdOrCtrl),
+                        alt: Boolean(input.alt)
+                    });
+                } catch(e) {}
+                return;
+            }
+
+            if (isCmdOrCtrl || keyRaw === 'F11' || keyRaw === 'F12' || keyRaw === 'Escape' || keyRaw === 'F3' || keyRaw === 'F7') {
                 let shortcut = null;
-                if (isCmdOrCtrl && input.key) {
-                    shortcut = `cmd+${input.key.toLowerCase()}`;
-                } else if (input.key === 'F11' || input.key === 'F12' || input.key === 'Escape' || input.key === 'F3') {
-                    shortcut = input.key.toLowerCase();
+                if (isCmdOrCtrl) {
+                    // Normalize zoom keys by physical key code so Ctrl++/- and Ctrl+Alt++/- always overrule websites
+                    if (
+                        keyLower === '+' ||
+                        keyLower === '=' ||
+                        keyLower === 'add' ||
+                        codeRaw === 'Equal' ||
+                        codeRaw === 'NumpadAdd'
+                    ) {
+                        shortcut = 'cmd++';
+                    } else if (
+                        keyLower === '-' ||
+                        keyLower === '_' ||
+                        keyLower === 'subtract' ||
+                        codeRaw === 'Minus' ||
+                        codeRaw === 'NumpadSubtract'
+                    ) {
+                        shortcut = 'cmd+-';
+                    } else if (
+                        keyLower === '0' ||
+                        codeRaw === 'Digit0' ||
+                        codeRaw === 'Numpad0'
+                    ) {
+                        shortcut = 'cmd+0';
+                    } else if (keyLower) {
+                        shortcut = `cmd+${keyLower}`;
+                    }
+                } else if (keyRaw === 'F11' || keyRaw === 'F12' || keyRaw === 'Escape' || keyRaw === 'F3' || keyRaw === 'F7') {
+                    shortcut = keyLower;
                 }
 
                 if (shortcut) {
@@ -2657,11 +2493,24 @@ function createWindow(options = {}) {
                         return;
                     }
 
+                    // Zoom & Reload shortcuts: overrule websites WITHOUT stealing focus away from the active webview!
+                    if (shortcut === 'cmd++' || shortcut === 'cmd+-' || shortcut === 'cmd+=' || shortcut === 'cmd+0' || shortcut === 'cmd+r') {
+                        event.preventDefault();
+                        try {
+                            targetWin.webContents.send('global-shortcut', {
+                                shortcut,
+                                shift: Boolean(input.shift),
+                                alt: Boolean(input.alt)
+                            });
+                        } catch(e) {}
+                        return;
+                    }
+
                     const overrideKeys = [
-                        'cmd+w', 'cmd+r', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 
+                        'cmd+w', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 
                         'cmd+n', 'cmd+p', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd+h', 
                         'cmd+l', 'cmd+y', 'cmd+\\', 'cmd+|', 'cmd+d', 'cmd+[', 'cmd+]',
-                        'cmd++', 'cmd+-', 'cmd+=', 'cmd+0', 'cmd+s', 'f11', 'f12', 'f3'
+                        'cmd+s', 'f11', 'f12', 'f3', 'f7'
                     ];
 
                     if (overrideKeys.includes(shortcut)) {
@@ -3271,6 +3120,11 @@ app.whenReady().then(async () => {
   // 1. Immediately create the main browser window so UI rendering starts instantly
   createWindow();
 
+  // 1a. Initialize native high-performance adblock engine
+  adblockEngine.init(app, settingsStore, mainWindow).catch(err => {
+      console.warn('[AdblockEngine] Init warning:', err.message);
+  });
+
   // 1b. Apply configured Secure DNS (DoH) / Custom DNS host resolver
   applyDnsConfiguration();
 
@@ -3474,6 +3328,87 @@ app.whenReady().then(async () => {
               return { success: true };
           }
           return { success: false, error: 'Failed to create image from path' };
+      } catch (e) {
+          return { success: false, error: e.message };
+      }
+  });
+
+  ipcMain.handle('copy-webview-image', async (event, { wcId, x, y, rawX, rawY, srcURL } = {}) => {
+      try {
+          const wc = wcId ? webContents.fromId(wcId) : null;
+
+          // Clear existing clipboard image so we can reliably detect when copyImageAt succeeds
+          clipboard.clear();
+
+          if (wc && !wc.isDestroyed()) {
+              const coordsToTry = [];
+              if (typeof x === 'number' && typeof y === 'number') {
+                  coordsToTry.push([Math.round(x), Math.round(y)]);
+              }
+              if (typeof rawX === 'number' && typeof rawY === 'number' && (Math.round(rawX) !== Math.round(x) || Math.round(rawY) !== Math.round(y))) {
+                  coordsToTry.push([Math.round(rawX), Math.round(rawY)]);
+              }
+
+              for (const [cx, cy] of coordsToTry) {
+                  try {
+                      wc.copyImageAt(cx, cy);
+                      for (let i = 0; i < 6; i++) {
+                          await new Promise(r => setTimeout(r, 25));
+                          const copied = clipboard.readImage();
+                          if (copied && !copied.isEmpty()) {
+                              return { success: true, method: 'copyImageAt' };
+                          }
+                      }
+                  } catch (err) {
+                      console.warn('[CopyWebviewImage] copyImageAt error:', err);
+                  }
+              }
+          }
+
+          if (srcURL) {
+              if (srcURL.startsWith('data:image/')) {
+                  const img = nativeImage.createFromDataURL(srcURL);
+                  if (!img.isEmpty()) {
+                      clipboard.writeImage(img);
+                      return { success: true, method: 'dataUrl' };
+                  }
+              }
+
+              const targetSession = (wc && !wc.isDestroyed() && wc.session) ? wc.session : session.defaultSession;
+              const resp = await targetSession.fetch(srcURL);
+              if (resp && resp.ok) {
+                  const ab = await resp.arrayBuffer();
+                  const buf = Buffer.from(ab);
+                  const img = nativeImage.createFromBuffer(buf);
+                  if (!img.isEmpty()) {
+                      clipboard.writeImage(img);
+                      return { success: true, method: 'fetchBuffer' };
+                  }
+                  // Return base64 so renderer can decode WebP/AVIF/SVG via HTMLImageElement + Canvas into PNG
+                  const mime = resp.headers.get('content-type') || 'image/png';
+                  return {
+                      success: false,
+                      needsCanvasDecode: true,
+                      dataUrl: `data:${mime};base64,${buf.toString('base64')}`
+                  };
+              }
+          }
+
+          return { success: false, error: 'Could not copy image to clipboard' };
+      } catch (e) {
+          return { success: false, error: e.message };
+      }
+  });
+
+  ipcMain.handle('write-clipboard-image-dataurl', async (event, dataUrl) => {
+      try {
+          if (!dataUrl) return { success: false };
+          const img = nativeImage.createFromDataURL(dataUrl);
+          if (!img.isEmpty()) {
+              clipboard.writeImage(img);
+              return { success: true };
+          }
+          return { success: false };
       } catch (e) {
           return { success: false, error: e.message };
       }
@@ -5907,6 +5842,44 @@ ipcMain.handle('open-new-window', async (event, options = {}) => {
     }
 });
 
+ipcMain.handle('get-window-id', (event) => {
+    return event.sender.id;
+});
+
+ipcMain.handle('tab-transferred', (event, { sourceWindowId, tabId }) => {
+    try {
+        const allWins = BrowserWindow.getAllWindows();
+        for (const w of allWins) {
+            if (w.webContents && w.webContents.id === sourceWindowId) {
+                w.webContents.send('tab-removed-from-window', { tabId });
+                return true;
+            }
+            if (w.id === sourceWindowId) {
+                w.webContents.send('tab-removed-from-window', { tabId });
+                return true;
+            }
+        }
+    } catch (err) {
+        console.warn('[TabTransfer] Failed to notify source window:', err);
+    }
+    return false;
+});
+
+ipcMain.handle('open-new-window-with-tab', async (event, { tab, spaceType, screenX, screenY }) => {
+    try {
+        createWindow({
+            initialTab: tab,
+            space: spaceType || 'personal',
+            x: typeof screenX === 'number' ? Math.max(0, screenX - 120) : undefined,
+            y: typeof screenY === 'number' ? Math.max(0, screenY - 60) : undefined
+        });
+        return true;
+    } catch (err) {
+        console.warn('Failed to open new window with tab:', err);
+        return false;
+    }
+});
+
 ipcMain.handle('close-current-window', async (event) => {
     try {
         const win = BrowserWindow.fromWebContents(event.sender);
@@ -6086,27 +6059,82 @@ ipcMain.on('sync-smart-dark-state', (event, { isForceDark, darkExclusions }) => 
     broadcastSmartDarkToOAuthWindows();
 });
 
+let settingsFlushTimer = null;
+function scheduleSettingsDiskFlush() {
+    if (settingsFlushTimer) clearTimeout(settingsFlushTimer);
+    settingsFlushTimer = setTimeout(() => {
+        settingsFlushTimer = null;
+        if (!settingsPath) {
+            try {
+                settingsPath = path.join(app.getPath('userData'), 'settings.json');
+            } catch (_) {
+                return;
+            }
+        }
+        const serialized = JSON.stringify(settingsStore, null, 2);
+        fs.writeFile(settingsPath, serialized, 'utf8').catch(() => {});
+    }, 120);
+}
+
+app.on('before-quit', () => {
+    if (settingsFlushTimer) {
+        clearTimeout(settingsFlushTimer);
+        settingsFlushTimer = null;
+        try {
+            if (!settingsPath) {
+                settingsPath = path.join(app.getPath('userData'), 'settings.json');
+            }
+            fsSync.writeFileSync(settingsPath, JSON.stringify(settingsStore, null, 2), 'utf8');
+        } catch (_) {}
+    }
+});
+
 ipcMain.handle('save-setting', (event, data) => {
+    if (!settingsPath) {
+        settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    }
+    const batchObj = (data && typeof data === 'object')
+        ? (data.batch || (data.key && typeof data.key === 'object' ? data.key.batch : null))
+        : null;
+    if (batchObj && typeof batchObj === 'object') {
+        let shouldBroadcastSmartDark = false;
+        Object.entries(batchObj).forEach(([k, v]) => {
+            if (typeof k === 'string') {
+                settingsStore[k] = v;
+                if (k === 'adblockEnabled' && typeof v === 'boolean') {
+                    adblockEngine.setActive(v);
+                }
+                if (k === 'isForceDark' && typeof v === 'boolean') {
+                    liveSmartDarkState.isForceDark = v;
+                    shouldBroadcastSmartDark = true;
+                }
+                if (k === 'darkExclusions' && Array.isArray(v)) {
+                    liveSmartDarkState.darkExclusions = v;
+                    shouldBroadcastSmartDark = true;
+                }
+            }
+        });
+        scheduleSettingsDiskFlush();
+        if (shouldBroadcastSmartDark) {
+            broadcastSmartDarkToOAuthWindows();
+        }
+        return true;
+    }
     const rawKey = (data && typeof data === "object" && typeof data.key === "object" && data.key?.key) ? data.key.key : data?.key;
     const rawValue = (data && typeof data === "object" && typeof data.key === "object" && data.key?.value !== undefined) ? data.key.value : data?.value;
     if (rawKey && typeof rawKey === "string") {
-        if (!settingsPath) {
-            settingsPath = path.join(app.getPath('userData'), 'settings.json');
-        }
         settingsStore[rawKey] = rawValue;
         if (rawKey === 'adblockEnabled' && typeof rawValue === 'boolean') {
-            isNativeAdblockActive = rawValue;
+            adblockEngine.setActive(rawValue);
         }
-        if (data.key === 'isForceDark' && typeof data.value === 'boolean') {
-            liveSmartDarkState.isForceDark = data.value;
+        if (rawKey === 'isForceDark' && typeof rawValue === 'boolean') {
+            liveSmartDarkState.isForceDark = rawValue;
         }
-        if (data.key === 'darkExclusions' && Array.isArray(data.value)) {
-            liveSmartDarkState.darkExclusions = data.value;
+        if (rawKey === 'darkExclusions' && Array.isArray(rawValue)) {
+            liveSmartDarkState.darkExclusions = rawValue;
         }
-        try {
-            fsSync.writeFileSync(settingsPath, JSON.stringify(settingsStore, null, 2), 'utf8');
-        } catch (_) {}
-        if (data.key === 'isForceDark' || data.key === 'darkExclusions') {
+        scheduleSettingsDiskFlush();
+        if (rawKey === 'isForceDark' || rawKey === 'darkExclusions') {
             broadcastSmartDarkToOAuthWindows();
         }
     }

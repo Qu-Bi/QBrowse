@@ -5,6 +5,7 @@ import {
     Lock, ArrowRight, Sliders, Palette, Layers, History, 
     Cloud, UploadCloud, DownloadCloud, Trash2, Download, Upload,
     ChevronDown, ChevronUp, Plus, ExternalLink,
+    Laptop, Monitor,
     Rocket, Zap, Sparkles, Terminal, Compass, Gem, Flame, Crown, Shield, Activity
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
@@ -51,6 +52,21 @@ const PROFILE_COLORS = [
     '#a78bfa', '#fbbf24', '#f87171', '#38bdf8'
 ];
 
+function formatTimeAgo(ts) {
+    if (!ts) return 'Just now';
+    const num = Number(ts);
+    if (isNaN(num) || num <= 0) return 'Just now';
+    const diff = Math.floor((Date.now() - num) / 1000);
+    if (diff < 30) return 'Just now';
+    if (diff < 60) return `${diff}s ago`;
+    const mins = Math.floor(diff / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
 export default function UserProfilePopover({ isClosing }) {
     const { closePopover, openModal, showToast, theme } = useUIStore();
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
@@ -77,6 +93,10 @@ export default function UserProfilePopover({ isClosing }) {
     const cloudTabs = useTabStore(state => state.cloudTabs);
     const openCloudTab = useTabStore(state => state.openCloudTab);
     const restoreAllCloudTabs = useTabStore(state => state.restoreAllCloudTabs);
+
+    const remoteDeviceTabs = useSyncStore(state => state.remoteDeviceTabs) || [];
+    const refreshCloudTabs = useSyncStore(state => state.refreshCloudTabs);
+    const [isRefreshingTabs, setIsRefreshingTabs] = useState(false);
 
     const isVaultUnlocked = useVaultStore(state => state.isUnlocked);
     const vaultCount = useVaultStore(state => state.passwords?.length || 0);
@@ -163,10 +183,16 @@ export default function UserProfilePopover({ isClosing }) {
     };
 
     const handleDeleteProfile = (id, name) => {
-        if (window.confirm(`Are you sure you want to delete profile "${name}"? All associated local data will be removed.`)) {
-            deleteProfile(id);
-            showToast(`Profile "${name}" deleted`);
-        }
+        useUIStore.getState().setActiveDialog({
+            type: 'confirm',
+            hostname: 'QBrowse Profiles',
+            message: `Are you sure you want to delete profile "${name}"? All associated local data will be removed.`,
+            onConfirm: () => {
+                deleteProfile(id);
+                showToast(`Profile "${name}" deleted`);
+            },
+            onCancel: () => {}
+        });
     };
 
     const handleSaveProfile = () => {
@@ -233,10 +259,43 @@ export default function UserProfilePopover({ isClosing }) {
         reader.readAsText(file);
     };
 
-    const validCloudPrivateTabs = useMemo(() => (cloudTabs?.privateTabs || []).filter(isValidSyncTab), [cloudTabs?.privateTabs]);
-    const validCloudWorkTabs = useMemo(() => (cloudTabs?.workTabs || []).filter(isValidSyncTab), [cloudTabs?.workTabs]);
-    const allValidCloudTabs = useMemo(() => [...validCloudPrivateTabs, ...validCloudWorkTabs], [validCloudPrivateTabs, validCloudWorkTabs]);
-    const totalCloudTabs = allValidCloudTabs.length;
+    // Grouped Remote Devices & Tabs
+    const displayDevices = useMemo(() => {
+        if (Array.isArray(remoteDeviceTabs) && remoteDeviceTabs.length > 0) {
+            return remoteDeviceTabs;
+        }
+        // Fallback: legacy cloudTabs from useTabStore
+        const rawPrivate = (cloudTabs?.privateTabs || []).filter(isValidSyncTab);
+        const rawWork = (cloudTabs?.workTabs || []).filter(isValidSyncTab);
+        const customEntries = Object.entries(cloudTabs?.customSpaceTabs || {}).flatMap(([sId, list]) => 
+            (list || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: sId, spaceName: sId }))
+        );
+        const legacyTabs = [
+            ...rawPrivate.map(t => ({ ...t, spaceId: 'personal', spaceName: 'Personal' })),
+            ...rawWork.map(t => ({ ...t, spaceId: 'work', spaceName: 'Work' })),
+            ...customEntries
+        ];
+        if (legacyTabs.length > 0) {
+            return [{
+                deviceId: 'legacy-remote',
+                deviceName: 'Remote Device',
+                lastSynced: Date.now(),
+                tabs: legacyTabs
+            }];
+        }
+        return [];
+    }, [remoteDeviceTabs, cloudTabs]);
+
+    const totalCloudTabs = useMemo(() => {
+        return displayDevices.reduce((sum, d) => sum + (d.tabs?.length || 0), 0);
+    }, [displayDevices]);
+
+    // Auto-fetch fresh cloud tabs snapshot when switching to Tabs category
+    React.useEffect(() => {
+        if (activeCategory === 'tabs' && user && refreshCloudTabs) {
+            refreshCloudTabs(false);
+        }
+    }, [activeCategory, user, refreshCloudTabs]);
 
     const validPrivateTabsCount = useTabStore(state => (state.privateTabs || []).filter(isValidSyncTab).length);
     const validWorkTabsCount = useTabStore(state => (state.workTabs || []).filter(isValidSyncTab).length);
@@ -520,55 +579,204 @@ export default function UserProfilePopover({ isClosing }) {
                 {/* 2. TABS TAB (OTHER DEVICES) */}
                 {activeCategory === 'tabs' && (
                     <div className="animate-fade-in space-y-3 text-left">
-                        <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-2.5`}>
-                            <div className="flex items-center justify-between pb-1.5 border-b border-white/[0.04]">
-                                <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                    <Layers size={13} className="text-accent" /> Other Devices {totalCloudTabs > 0 && `(${totalCloudTabs})`}
-                                </span>
-                                {totalCloudTabs > 0 && (
+                        <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-3`}>
+                            {/* Section Header */}
+                            <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                        <Layers size={13} className="text-accent" /> Tabs from Other Devices {totalCloudTabs > 0 && `(${totalCloudTabs})`}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
                                     <button
-                                        onClick={() => restoreAllCloudTabs('personal')}
-                                        className="text-accent hover:underline font-semibold text-xs cursor-pointer px-2 py-0.5 rounded-full"
+                                        type="button"
+                                        onClick={async () => {
+                                            setIsRefreshingTabs(true);
+                                            await refreshCloudTabs(true);
+                                            setIsRefreshingTabs(false);
+                                        }}
+                                        disabled={isRefreshingTabs || isSyncing}
+                                        className={`p-1.5 rounded-lg border transition-all duration-200 cursor-pointer active:scale-95 ${
+                                            isBright 
+                                                ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/[0.08] text-zinc-700' 
+                                                : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-zinc-300 hover:text-white'
+                                        }`}
+                                        title="Refresh remote tabs"
                                     >
-                                        Open All
+                                        <RefreshCw size={12} className={`${isRefreshingTabs || isSyncing ? 'animate-spin text-accent' : ''}`} />
                                     </button>
-                                )}
+                                    {totalCloudTabs > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                let count = 0;
+                                                displayDevices.forEach(d => {
+                                                    (d.tabs || []).forEach(tab => {
+                                                        if (isValidSyncTab(tab)) {
+                                                            count++;
+                                                            useTabStore.getState().addTab({
+                                                                id: `t-remote-${Date.now()}-${count}`,
+                                                                title: getCleanTabTitle(tab),
+                                                                url: tab.url,
+                                                                active: false,
+                                                                folderId: null
+                                                            }, tab.spaceId || 'personal');
+                                                        }
+                                                    });
+                                                });
+                                                showToast(`Opened ${count} tabs across workspaces`);
+                                            }}
+                                            className="text-accent hover:underline font-semibold text-xs cursor-pointer px-2 py-0.5 rounded-full"
+                                        >
+                                            Open All
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             {totalCloudTabs === 0 ? (
-                                <div className={`text-center py-7 text-xs ${isBright ? 'text-zinc-400' : 'text-white/40'} space-y-1.5`}>
-                                    <Layers size={22} className="text-accent/40 mx-auto opacity-70" />
-                                    <p className={`font-medium ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>No tabs from other devices</p>
-                                    <p className="text-[10px] opacity-60">Tabs opened on your other devices will appear here automatically.</p>
+                                <div className={`text-center py-7 text-xs ${isBright ? 'text-zinc-400' : 'text-white/40'} space-y-2`}>
+                                    <div className={`w-9 h-9 rounded-xl mx-auto flex items-center justify-center ${
+                                        isBright ? 'bg-black/[0.03] text-accent/70 border border-black/[0.06]' : 'bg-white/[0.03] text-accent/70 border border-white/[0.05]'
+                                    }`}>
+                                        <Layers size={18} />
+                                    </div>
+                                    <p className={`font-semibold ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>No tabs from other devices</p>
+                                    <p className="text-[10px] opacity-60 max-w-[260px] mx-auto leading-relaxed">
+                                        Tabs opened on your other connected devices will appear here automatically with real-time updates.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            setIsRefreshingTabs(true);
+                                            await refreshCloudTabs(true);
+                                            setIsRefreshingTabs(false);
+                                        }}
+                                        className={`mt-1.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border transition cursor-pointer active:scale-95 ${
+                                            isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10' : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                                        }`}
+                                    >
+                                        <RefreshCw size={11} className={isRefreshingTabs || isSyncing ? 'animate-spin' : ''} />
+                                        Refresh Now
+                                    </button>
                                 </div>
                             ) : (
-                                <div className="space-y-1.5 max-h-[50vh] overflow-y-auto hide-scroll">
-                                    {allValidCloudTabs.map((tab, idx) => {
-                                        const cleanTitle = getCleanTabTitle(tab);
+                                <div className="space-y-3 max-h-[50vh] overflow-y-auto hide-scroll pr-0.5">
+                                    {displayDevices.map((device, devIdx) => {
+                                        const isLaptop = /Mac|Laptop|Notebook|Book/i.test(device.deviceName);
+                                        const DeviceIcon = isLaptop ? Laptop : Monitor;
+                                        const timeAgo = formatTimeAgo(device.lastSynced);
+                                        const devTabs = (device.tabs || []).filter(isValidSyncTab);
+
                                         return (
                                             <div 
-                                                key={tab.id || idx}
-                                                onClick={() => openCloudTab(tab, 'personal')}
-                                                className={`px-3 py-2 rounded-xl border transition cursor-pointer flex items-center justify-between group active:scale-[0.99] ${
-                                                    isBright ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.04]' : 'bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.04] hover:border-accent/40'
+                                                key={device.deviceId || devIdx}
+                                                className={`p-2.5 rounded-xl border backdrop-blur-md transition-all duration-200 ${
+                                                    isBright 
+                                                        ? 'bg-black/[0.02] border-black/[0.06] shadow-xs' 
+                                                        : 'bg-white/[0.025] border-white/[0.06]'
                                                 }`}
                                             >
-                                                <div className="flex items-center gap-2 min-w-0 pr-2">
-                                                    {tab.url ? (
-                                                        <img 
-                                                            src={`https://www.google.com/s2/favicons?sz=32&domain=${tab.url}`} 
-                                                            alt="" 
-                                                            className="w-3.5 h-3.5 rounded-sm flex-shrink-0"
-                                                            onError={e => e.target.style.display = 'none'} 
-                                                        />
-                                                    ) : <Globe size={13} className="opacity-40" />}
-                                                    <span className={`text-xs block font-medium truncate ${isBright ? 'text-zinc-800' : 'text-white/90'} group-hover:text-accent transition-colors`}>
-                                                        {cleanTitle}
-                                                    </span>
+                                                {/* Device Header */}
+                                                <div className="flex items-center justify-between gap-2 pb-1.5 mb-2 border-b border-white/[0.04]">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                                            isBright ? 'bg-black/[0.05] text-accent' : 'bg-white/[0.06] text-accent'
+                                                        }`}>
+                                                            <DeviceIcon size={12} />
+                                                        </div>
+                                                        <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                            {device.deviceName || 'Remote Device'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                                                            isBright 
+                                                                ? 'bg-black/[0.04] text-zinc-500 border-black/[0.06]' 
+                                                                : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'
+                                                        }`}>
+                                                            {timeAgo}
+                                                        </span>
+                                                        {devTabs.length > 0 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    let count = 0;
+                                                                    devTabs.forEach((tab, index) => {
+                                                                        count++;
+                                                                        useTabStore.getState().addTab({
+                                                                            id: `t-remote-${Date.now()}-${index}`,
+                                                                            title: getCleanTabTitle(tab),
+                                                                            url: tab.url,
+                                                                            active: false,
+                                                                            folderId: null
+                                                                        }, tab.spaceId || 'personal');
+                                                                    });
+                                                                    showToast(`Opened ${count} tabs from ${device.deviceName}`);
+                                                                }}
+                                                                className="text-accent hover:underline font-medium text-[11px] cursor-pointer"
+                                                            >
+                                                                Open All
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <span className="text-[10px] text-accent opacity-0 group-hover:opacity-100 transition-opacity font-semibold shrink-0">
-                                                    Open →
-                                                </span>
+
+                                                {/* Tab List */}
+                                                <div className="space-y-1">
+                                                    {devTabs.map((tab, idx) => {
+                                                        const cleanTitle = getCleanTabTitle(tab);
+                                                        return (
+                                                            <div 
+                                                                key={tab.id || idx}
+                                                                onClick={() => {
+                                                                    useTabStore.getState().addTab({
+                                                                        id: `t-${Date.now()}-${idx}`,
+                                                                        title: cleanTitle,
+                                                                        url: tab.url,
+                                                                        active: true,
+                                                                        folderId: null
+                                                                    }, tab.spaceId || 'personal');
+                                                                    showToast(`Opened: ${cleanTitle}`);
+                                                                }}
+                                                                className={`px-2.5 py-1.5 rounded-lg border transition cursor-pointer flex items-center justify-between group active:scale-[0.99] ${
+                                                                    isBright 
+                                                                        ? 'bg-white/60 hover:bg-white/95 border-black/[0.04] hover:border-black/[0.1]' 
+                                                                        : 'bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.03] hover:border-accent/40'
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-2 min-w-0 pr-2">
+                                                                    {tab.url ? (
+                                                                        <img 
+                                                                            src={`https://www.google.com/s2/favicons?sz=32&domain=${tab.url}`} 
+                                                                            alt="" 
+                                                                            className="w-3.5 h-3.5 rounded-xs flex-shrink-0"
+                                                                            onError={e => { e.target.style.display = 'none'; }} 
+                                                                        />
+                                                                    ) : (
+                                                                        <Globe size={12} className="opacity-40 flex-shrink-0" />
+                                                                    )}
+                                                                    <span className={`text-xs block font-medium truncate ${
+                                                                        isBright ? 'text-zinc-800' : 'text-zinc-200'
+                                                                    } group-hover:text-accent transition-colors`}>
+                                                                        {cleanTitle}
+                                                                    </span>
+                                                                    {tab.spaceName && (
+                                                                        <span className={`text-[9px] uppercase tracking-wider font-mono px-1.5 py-0.2 rounded-xs flex-shrink-0 ${
+                                                                            isBright ? 'bg-black/[0.05] text-zinc-600' : 'bg-white/[0.06] text-zinc-400'
+                                                                        }`}>
+                                                                            {tab.spaceName}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="inline-flex items-center gap-1 text-[11px] text-accent opacity-0 group-hover:opacity-100 transition-opacity font-medium shrink-0">
+                                                                    <span>Open</span>
+                                                                    <ExternalLink size={10} />
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         );
                                     })}

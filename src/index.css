@@ -192,7 +192,7 @@ body {
 @keyframes settingsSheetEnter {
   0% {
     opacity: 0;
-    transform: scale(0.93) translateY(24px) translateZ(0);
+    transform: scale(0.985) translateY(10px) translateZ(0);
   }
   65% {
     opacity: 1;
@@ -210,19 +210,19 @@ body {
   }
   100% {
     opacity: 0;
-    transform: scale(0.96) translateY(14px) translateZ(0);
+    transform: scale(0.985) translateY(8px) translateZ(0);
   }
 }
 
 .animate-settings-sheet {
-  animation: settingsSheetEnter 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  animation: settingsSheetEnter 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
   will-change: transform, opacity;
   transform: translateZ(0);
 }
 
 .animate-settings-sheet-out {
-  animation: settingsSheetExit 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
-  will-change: transform, opacity, filter;
+  animation: settingsSheetExit 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  will-change: transform, opacity;
   transform: translateZ(0);
 }
 
@@ -230,19 +230,17 @@ body {
 @keyframes tabFadeIn {
   0% {
     opacity: 0;
-    transform: translateY(8px) scale(0.995);
-    filter: blur(1px);
+    transform: translateY(6px);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
+    transform: translateY(0);
   }
 }
 
 .animate-tab-fade {
-  animation: tabFadeIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  will-change: transform, opacity, filter;
+  animation: tabFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
 }
 
 @keyframes readerFadeInScale {
@@ -567,6 +565,11 @@ body {
   filter: blur(4px) !important;
   pointer-events: none !important;
   transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+/* Cross-window drag & drop: disable pointer events on guest webviews during active drag */
+body.is-dragging-global webview {
+  pointer-events: none !important;
 }
 
 /* Reader Mode Article Canvas Styles */
@@ -981,7 +984,7 @@ html.eco-mode {
 
 html.no-glass .liquid-glass-dark,
 html.eco-mode .liquid-glass-dark {
-  background-color: #0c0d14 !important;
+  background-color: rgba(12, 14, 20, 0.68) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
@@ -989,7 +992,7 @@ html.eco-mode .liquid-glass-dark {
 
 html.no-glass .liquid-glass-bright,
 html.eco-mode .liquid-glass-bright {
-  background-color: #f4f4f5 !important;
+  background-color: rgba(244, 244, 245, 0.76) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
@@ -1005,13 +1008,14 @@ html.eco-mode [data-context-menu] {
 
 /* =========================================================
    Eco Mode: Solid Non-Bleeding Panel System
-   Replaces translucent glass backgrounds with crisp, solid,
-   high-contrast surfaces when GPU composite blur is disabled.
+   Replaces translucent glass backgrounds on floating overlays
+   with crisp, solid, high-contrast surfaces when GPU blur is off.
    ========================================================= */
 
 /* Dark Theme - Solid Eco Panels, Modals, Popovers & Drawers */
 html:not(.theme-light).eco-mode #toolhub-container,
 html:not(.theme-light).eco-mode #settings-modal,
+html:not(.theme-light).eco-mode #preset-studio-modal,
 html:not(.theme-light).eco-mode #history-modal,
 html:not(.theme-light).eco-mode #cookies-modal,
 html:not(.theme-light).eco-mode #resource-manager-modal,
@@ -1027,6 +1031,11 @@ html:not(.theme-light).eco-mode #qvault-popover,
 html:not(.theme-light).eco-mode #site-info-popover,
 html:not(.theme-light).eco-mode #user-profile-popover,
 html:not(.theme-light).eco-mode #popover-tor-container,
+html:not(.theme-light).eco-mode #popover-darkmode-container,
+html:not(.theme-light).eco-mode #popover-adblock-container,
+html:not(.theme-light).eco-mode #popover-downloads-container,
+html:not(.theme-light).eco-mode #popover-media-container,
+html:not(.theme-light).eco-mode #github-glance-popover,
 html:not(.theme-light).eco-mode #save-password-banner,
 html:not(.theme-light).eco-mode #pinned-stack-popup,
 html:not(.theme-light).eco-mode #download-toast-popup,
@@ -1069,6 +1078,7 @@ html:not(.theme-light).eco-mode #toolhub-container [class*="rounded-full"] {
 /* Bright Theme - Solid Eco Panels, Modals, Popovers & Drawers */
 html.theme-light.eco-mode #toolhub-container,
 html.theme-light.eco-mode #settings-modal,
+html.theme-light.eco-mode #preset-studio-modal,
 html.theme-light.eco-mode #history-modal,
 html.theme-light.eco-mode #cookies-modal,
 html.theme-light.eco-mode #resource-manager-modal,
@@ -1084,6 +1094,11 @@ html.theme-light.eco-mode #qvault-popover,
 html.theme-light.eco-mode #site-info-popover,
 html.theme-light.eco-mode #user-profile-popover,
 html.theme-light.eco-mode #popover-tor-container,
+html.theme-light.eco-mode #popover-darkmode-container,
+html.theme-light.eco-mode #popover-adblock-container,
+html.theme-light.eco-mode #popover-downloads-container,
+html.theme-light.eco-mode #popover-media-container,
+html.theme-light.eco-mode #github-glance-popover,
 html.theme-light.eco-mode #save-password-banner,
 html.theme-light.eco-mode #pinned-stack-popup,
 html.theme-light.eco-mode #download-toast-popup,
@@ -1835,3 +1850,86 @@ html.a11y-reduced-motion .animate-tabmap-orb {
   transition-duration: 0.001ms !important;
   transition-delay: 0s !important;
 }
+
+/* ==========================================================================
+   Liquid Tooltip Engine (Item #42)
+   VisionOS Liquid Glass styling, 60-120fps hardware composited, zero render churn
+   ========================================================================== */
+#q-liquid-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 999999;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(18, 19, 24, 0.82);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px -4px rgba(0, 0, 0, 0.5), 0 2px 8px -1px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  opacity: 0;
+  visibility: hidden;
+  scale: 0.96;
+  transition: opacity 120ms cubic-bezier(0.16, 1, 0.3, 1), scale 120ms cubic-bezier(0.16, 1, 0.3, 1), visibility 120ms;
+  will-change: transform, opacity;
+}
+
+#q-liquid-tooltip[data-state="visible"] {
+  opacity: 1;
+  visibility: visible;
+  scale: 1;
+}
+
+#q-liquid-tooltip .q-tooltip-label {
+  display: inline-block;
+}
+
+#q-liquid-tooltip .q-tooltip-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  font-size: 9.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+
+#q-liquid-tooltip .q-tooltip-subtext {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+/* Light Mode Overrides */
+html.light #q-liquid-tooltip {
+  color: rgba(24, 24, 27, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 10px 28px -4px rgba(0, 0, 0, 0.16), 0 2px 8px -1px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+html.light #q-liquid-tooltip .q-tooltip-kbd {
+  color: rgba(39, 39, 42, 0.85);
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+}
+
+html.light #q-liquid-tooltip .q-tooltip-subtext {
+  color: rgba(113, 113, 122, 0.8);
+}
+

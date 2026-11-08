@@ -155,9 +155,10 @@ export default function HomepageOmnibox({
     const activeStateRef = useRef({ isFocused: false, hasInput: false });
     activeStateRef.current = { isFocused, hasInput: Boolean(inputValue.length > 0 || activeBang) };
 
-    // Click outside to reset Homepage Omnibox back to normal state
+    // Click outside to reset Homepage Omnibox back to normal state (capture phase so stopPropagation elements still close it)
     useEffect(() => {
         const handleClickOutside = (e) => {
+            if (e.target?.closest?.('[data-context-menu]')) return;
             if (
                 !wrapperRef.current?.contains(e.target) &&
                 !dropdownPortalRef.current?.contains(e.target)
@@ -167,8 +168,8 @@ export default function HomepageOmnibox({
                 }
             }
         };
-        window.addEventListener('mousedown', handleClickOutside);
-        return () => window.removeEventListener('mousedown', handleClickOutside);
+        window.addEventListener('mousedown', handleClickOutside, true);
+        return () => window.removeEventListener('mousedown', handleClickOutside, true);
     }, []);
 
     const isDropdownVisible = canBeActive && (shouldShowDropdown || displayedDropdown);

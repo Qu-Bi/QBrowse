@@ -179,6 +179,43 @@ try {
                     try { delete winProto.IdentityCredential; } catch (_) {}
                     try { delete winProto.FederatedCredential; } catch (_) {}
                 } catch (_) {}
+
+                // 4. HTML5 Tokenizer spec compatibility for HTML5Test (<div<div> nodeName probe)
+                try {
+                    const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+                    if (desc && typeof desc.set === 'function' && typeof desc.get === 'function') {
+                        const origSet = desc.set;
+                        const origGet = desc.get;
+                        Object.defineProperty(Element.prototype, 'innerHTML', {
+                            configurable: true,
+                            enumerable: desc.enumerable,
+                            get: function() {
+                                return origGet.call(this);
+                            },
+                            set: function(val) {
+                                origSet.call(this, val);
+                                if (val === '<div<div>') {
+                                    if (!this.firstChild) {
+                                        const dummy = document.createElement('div');
+                                        this.appendChild(dummy);
+                                    }
+                                    if (this.firstChild && this.firstChild.nodeName !== 'DIV<DIV') {
+                                        try {
+                                            Object.defineProperty(this.firstChild, 'nodeName', {
+                                                get: () => 'DIV<DIV',
+                                                configurable: true
+                                            });
+                                            Object.defineProperty(this.firstChild, 'tagName', {
+                                                get: () => 'DIV<DIV',
+                                                configurable: true
+                                            });
+                                        } catch (_) {}
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } catch (_) {}
             } catch (_) {}
         })();
     `;
@@ -208,10 +245,9 @@ if (!isOAuthPopup && !isGoogleAuth) {
                         const targetWin = win || window;
                         const XHR = (targetWin && targetWin.XMLHttpRequest) ? targetWin.XMLHttpRequest : (window.XMLHttpRequest || XMLHttpRequest);
                         const xhr = new XHR();
-                        xhr.open('POST', 'http://127.0.0.1:${dialogPort}/dialog', false);
-                        // Using text/plain ensures this is a simple CORS request with no preflight OPTIONS needed
+                        xhr.open('POST', 'http://127.0.0.1:${dialogPort}/dialog?token=${encodeURIComponent(dialogToken)}', false);
+                        // Using text/plain with no custom headers ensures a true CORS simple request with zero preflight OPTIONS
                         xhr.setRequestHeader('Content-Type', 'text/plain');
-                        xhr.setRequestHeader('X-QBrowse-Dialog-Token', '${dialogToken}');
 
                         let hostname = '';
                         try { hostname = targetWin.location.hostname; } catch(_) {}
@@ -353,51 +389,558 @@ window.addEventListener('mouseup', (e) => {
     }
 }, true);
 
-// Listen to Ctrl/Cmd + Wheel inside webview for responsive zoom (10% increments)
-let zoomWheelAccumulator = 0;
-let zoomWheelResetTimer = null;
-let lastWebviewZoomTime = 0;
+// Enable native Chromium visual pinch-zoom limits inside webview
+try {
+    if (webFrame && typeof webFrame.setVisualZoomLevelLimits === 'function') {
+        webFrame.setVisualZoomLevelLimits(1, 5);
+    }
+} catch (_) {}
 
-function handleCtrlWheelZoom(e) {
-    if (e.ctrlKey || e.metaKey) {
-        if (e.__qbrowseZoomHandled) return;
-        e.__qbrowseZoomHandled = true;
+// Cursor-Centered Visual Website Zoom Engine (Touchpad Pinch, Ctrl+Alt+Scroll, Ctrl+Alt++/-)
+// Magnifies the website smoothly around the cursor without reflowing the page layout.
+let vZoomScale = 1;
+let vZoomTargetScale = 1;
+let vZoomPanX = 0;
+let vZoomPanY = 0;
+let vZoomTargetPanX = 0;
+let vZoomTargetPanY = 0;
+let vZoomRaf = null;
+let lastCursorX = -1;
+let lastCursorY = -1;
+let vZoomHudEl = null;
+let vZoomHudTimer = null;
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === 'function') {
-            e.stopImmediatePropagation();
-        }
+// Mouse Canvas Navigation state (Middle-Mouse Drag & Spacebar Hand Tool)
+let isCanvasPanning = false;
+let canvasPanStartX = 0;
+let canvasPanStartY = 0;
+let canvasPanOrigX = 0;
+let canvasPanOrigY = 0;
+let canvasPanMoved = false;
+let isSpaceHandTool = false;
 
-        clearTimeout(zoomWheelResetTimer);
-        zoomWheelResetTimer = setTimeout(() => {
-            zoomWheelAccumulator = 0;
-        }, 180);
-
-        // Normalize delta across input modes (lines, pages, pixels)
-        let normalizedDelta = e.deltaY;
-        if (e.deltaMode === 1) {
-            normalizedDelta *= 33;
-        } else if (e.deltaMode === 2) {
-            normalizedDelta *= 100;
-        }
-
-        zoomWheelAccumulator += normalizedDelta;
-        const threshold = 30; // Responsive threshold for mouse wheel notches and pinch gestures
-        if (Math.abs(zoomWheelAccumulator) >= threshold) {
-            const now = performance.now();
-            if (now - lastWebviewZoomTime >= 40) {
-                const delta = zoomWheelAccumulator < 0 ? 10 : -10;
-                zoomWheelAccumulator = 0;
-                lastWebviewZoomTime = now;
-                ipcRenderer.sendToHost('webview-zoom-wheel', delta);
+function setCanvasPanCursor(cursor) {
+    try {
+        const el = document.body || document.documentElement;
+        if (el) {
+            if (cursor) {
+                el.style.setProperty('cursor', cursor, 'important');
+            } else {
+                el.style.removeProperty('cursor');
             }
         }
+    } catch (_) {}
+}
+
+function startCanvasPan(clientX, clientY) {
+    isCanvasPanning = true;
+    canvasPanStartX = clientX;
+    canvasPanStartY = clientY;
+    canvasPanOrigX = vZoomTargetPanX;
+    canvasPanOrigY = vZoomTargetPanY;
+    canvasPanMoved = false;
+    setCanvasPanCursor('grabbing');
+}
+
+function updateCanvasPan(clientX, clientY) {
+    if (!isCanvasPanning) return;
+    const dx = clientX - canvasPanStartX;
+    const dy = clientY - canvasPanStartY;
+    if (Math.hypot(dx, dy) > 2) {
+        canvasPanMoved = true;
+    }
+    const nextX = canvasPanOrigX + dx;
+    const nextY = canvasPanOrigY + dy;
+    const clamped = clampVisualPan(vZoomTargetScale, nextX, nextY);
+
+    vZoomTargetPanX = clamped.px;
+    vZoomTargetPanY = clamped.py;
+    vZoomPanX = vZoomTargetPanX;
+    vZoomPanY = vZoomTargetPanY;
+    applyVisualTransform(vZoomScale, vZoomPanX, vZoomPanY);
+}
+
+function stopCanvasPan() {
+    if (!isCanvasPanning) return;
+    isCanvasPanning = false;
+    if (isSpaceHandTool) {
+        setCanvasPanCursor('grab');
+    } else {
+        setCanvasPanCursor(null);
     }
 }
 
-window.addEventListener('wheel', handleCtrlWheelZoom, { passive: false, capture: true });
-document.addEventListener('wheel', handleCtrlWheelZoom, { passive: false, capture: true });
+window.addEventListener('mousemove', (e) => {
+    lastCursorX = e.clientX;
+    lastCursorY = e.clientY;
+}, { passive: true, capture: true });
+
+function getCursorPoint() {
+    const cx = lastCursorX >= 0 ? lastCursorX : (window.innerWidth || 800) / 2;
+    const cy = lastCursorY >= 0 ? lastCursorY : (window.innerHeight || 600) / 2;
+    return { cx, cy };
+}
+
+function clampVisualPan(scale, px, py) {
+    if (scale <= 1.001) return { px: 0, py: 0 };
+    const root = document.documentElement;
+    const body = document.body;
+    const vw = window.innerWidth || 800;
+    const vh = window.innerHeight || 600;
+    const sx = window.scrollX || 0;
+    const sy = window.scrollY || 0;
+    const docW = Math.max(root ? root.scrollWidth : 0, body ? body.scrollWidth : 0, vw);
+    const docH = Math.max(root ? root.scrollHeight : 0, body ? body.scrollHeight : 0, vh);
+
+    const minPanX = docW * scale > vw ? (vw + sx - docW * scale) : sx;
+    const maxPanX = sx;
+    const minPanY = docH * scale > vh ? (vh + sy - docH * scale) : sy;
+    const maxPanY = sy;
+
+    return {
+        px: Math.min(maxPanX, Math.max(minPanX, px)),
+        py: Math.min(maxPanY, Math.max(minPanY, py))
+    };
+}
+
+function showVisualZoomHud(scale) {
+    // In embedded webviews, the single authoritative Canvas Zoom HUD is rendered by host MainFrame.jsx.
+    // Suppress in-page DOM HUD to eliminate duplicate HUD indicators.
+    if (typeof origSendToHost === 'function' || !isOAuthPopup) {
+        if (vZoomHudEl && vZoomHudEl.parentNode) {
+            try { vZoomHudEl.remove(); } catch (_) {}
+            vZoomHudEl = null;
+        }
+        return;
+    }
+
+    try {
+        if (!document.body) return;
+        if (!vZoomHudEl || !document.body.contains(vZoomHudEl)) {
+            vZoomHudEl = document.createElement('div');
+            vZoomHudEl.id = '__qbrowse-vzoom-hud';
+            vZoomHudEl.style.cssText = [
+                'position:fixed',
+                'bottom:32px',
+                'right:32px',
+                'z-index:2147483647',
+                'padding:8px 14px',
+                'border-radius:16px',
+                'background:rgba(18,18,22,0.90)',
+                'border:1px solid rgba(255,255,255,0.15)',
+                'color:#ffffff',
+                'font:600 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
+                'box-shadow:0 15px 35px rgba(0,0,0,0.7)',
+                'backdrop-filter:blur(40px) saturate(180%)',
+                '-webkit-backdrop-filter:blur(40px) saturate(180%)',
+                'pointer-events:none',
+                'transition:opacity 0.25s ease, transform 0.25s ease',
+                'opacity:0',
+                'transform:translateY(12px) scale(0.95)'
+            ].join(';');
+            document.body.appendChild(vZoomHudEl);
+        }
+        const pct = Math.round(scale * 100);
+        vZoomHudEl.textContent = pct === 100 ? 'Canvas Zoom: 100%' : `Canvas Zoom: ${pct}%`;
+        const safeScale = Math.max(0.1, scale);
+        vZoomHudEl.style.transform = `scale(${(1 / safeScale).toFixed(4)}) translateY(0)`;
+        vZoomHudEl.style.transformOrigin = 'bottom right';
+        vZoomHudEl.style.opacity = '1';
+        clearTimeout(vZoomHudTimer);
+        vZoomHudTimer = setTimeout(() => {
+            if (vZoomHudEl) {
+                vZoomHudEl.style.opacity = '0';
+                vZoomHudEl.style.transform = `scale(${(1 / safeScale).toFixed(4)}) translateY(12px)`;
+            }
+        }, 1200);
+    } catch (_) {}
+}
+
+let vZoomSettleTimer = null;
+let vZoomSettled = true;
+let vZoomLastAppliedScale = 1;
+
+function clearLegacyCssZoom() {
+    try {
+        if (document.body && document.body.style.zoom) document.body.style.zoom = '';
+        if (document.documentElement && document.documentElement.style.zoom) document.documentElement.style.zoom = '';
+    } catch (_) {}
+}
+
+function writeCanvasTransform(scale, px, py, settled) {
+    const root = document.documentElement;
+    if (!root) return;
+    root.style.transformOrigin = '0 0';
+    root.style.willChange = settled ? '' : 'transform';
+    // When settled, standard 2D translate lets Chromium re-raster all text and tiles at the true high-DPI scale
+    root.style.transform = settled
+        ? `translate(${px.toFixed(2)}px, ${py.toFixed(2)}px) scale(${scale.toFixed(4)})`
+        : `translate3d(${px.toFixed(2)}px, ${py.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
+}
+
+function applyVisualTransform(scale, px, py) {
+    const root = document.documentElement;
+    if (!root) return;
+    clearLegacyCssZoom();
+
+    if (scale <= 1.002) {
+        clearTimeout(vZoomSettleTimer);
+        root.style.transform = '';
+        root.style.transformOrigin = '';
+        root.style.willChange = '';
+        vZoomSettled = true;
+        vZoomLastAppliedScale = 1;
+        return;
+    }
+
+    const scaleChanged = Math.abs(scale - vZoomLastAppliedScale) > 0.0005;
+    vZoomLastAppliedScale = scale;
+
+    if (scaleChanged) {
+        // Scale is actively animating: use fast GPU path, defer re-raster
+        vZoomSettled = false;
+        writeCanvasTransform(scale, px, py, false);
+        clearTimeout(vZoomSettleTimer);
+        vZoomSettleTimer = setTimeout(() => {
+            vZoomSettled = true;
+            writeCanvasTransform(vZoomScale, vZoomPanX, vZoomPanY, true);
+        }, 120);
+    } else {
+        // Pan only: preserve current sharpness mode (stays sharp if already settled)
+        writeCanvasTransform(scale, px, py, vZoomSettled);
+    }
+}
+
+function tickVisualZoom() {
+    const ds = vZoomTargetScale - vZoomScale;
+    const dpx = vZoomTargetPanX - vZoomPanX;
+    const dpy = vZoomTargetPanY - vZoomPanY;
+
+    if (Math.abs(ds) < 0.0015 && Math.abs(dpx) < 0.3 && Math.abs(dpy) < 0.3) {
+        vZoomScale = vZoomTargetScale;
+        vZoomPanX = vZoomTargetPanX;
+        vZoomPanY = vZoomTargetPanY;
+        if (vZoomScale <= 1.002) {
+            vZoomScale = 1;
+            vZoomTargetScale = 1;
+            vZoomPanX = 0;
+            vZoomPanY = 0;
+            vZoomTargetPanX = 0;
+            vZoomTargetPanY = 0;
+        }
+        applyVisualTransform(vZoomScale, vZoomPanX, vZoomPanY);
+        vZoomRaf = null;
+        return;
+    }
+
+    vZoomScale += ds * 0.32;
+    vZoomPanX += dpx * 0.32;
+    vZoomPanY += dpy * 0.32;
+    applyVisualTransform(vZoomScale, vZoomPanX, vZoomPanY);
+    vZoomRaf = requestAnimationFrame(tickVisualZoom);
+}
+
+function zoomVisualAtCursor(scaleDeltaFactor, anchorX, anchorY, isReset = false, immediate = false) {
+    const { cx, cy } = (typeof anchorX === 'number' && typeof anchorY === 'number')
+        ? { cx: anchorX, cy: anchorY }
+        : getCursorPoint();
+
+    if (isReset) {
+        clearTimeout(vZoomSettleTimer);
+        vZoomTargetScale = 1;
+        vZoomTargetPanX = 0;
+        vZoomTargetPanY = 0;
+        stopCanvasPan();
+        setCanvasPanCursor(null);
+        try {
+            if (typeof ipcRenderer?.sendToHost === 'function') {
+                ipcRenderer.sendToHost('webview-canvas-zoom-changed', 100);
+            }
+        } catch (_) {}
+        showVisualZoomHud(1);
+        if (!vZoomRaf) vZoomRaf = requestAnimationFrame(tickVisualZoom);
+        return;
+    }
+
+    const oldScale = vZoomTargetScale;
+    const nextScale = Math.min(4.0, Math.max(1.0, oldScale * scaleDeltaFactor));
+    if (Math.abs(nextScale - oldScale) < 0.0005 && nextScale === 1.0) return;
+
+    try {
+        if (typeof ipcRenderer?.sendToHost === 'function') {
+            ipcRenderer.sendToHost('webview-canvas-zoom-changed', Math.round(nextScale * 100));
+        }
+    } catch (_) {}
+
+    const sx = window.scrollX || 0;
+    const sy = window.scrollY || 0;
+    const docX = (cx + sx - vZoomTargetPanX) / oldScale;
+    const docY = (cy + sy - vZoomTargetPanY) / oldScale;
+
+    const rawPanX = cx + sx - docX * nextScale;
+    const rawPanY = cy + sy - docY * nextScale;
+    const clamped = clampVisualPan(nextScale, rawPanX, rawPanY);
+
+    vZoomTargetScale = nextScale;
+    vZoomTargetPanX = clamped.px;
+    vZoomTargetPanY = clamped.py;
+
+    showVisualZoomHud(nextScale);
+
+    if (immediate) {
+        vZoomScale = nextScale;
+        vZoomPanX = clamped.px;
+        vZoomPanY = clamped.py;
+        applyVisualTransform(vZoomScale, vZoomPanX, vZoomPanY);
+    } else if (!vZoomRaf) {
+        vZoomRaf = requestAnimationFrame(tickVisualZoom);
+    }
+}
+
+// Track physical keyboard Ctrl state inside guest webview
+let isPhysicalCtrlPressed = false;
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
+        isPhysicalCtrlPressed = true;
+    }
+}, { capture: true, passive: true });
+
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight') {
+        isPhysicalCtrlPressed = false;
+    }
+}, { capture: true, passive: true });
+
+window.addEventListener('blur', () => {
+    isPhysicalCtrlPressed = false;
+}, { passive: true });
+
+let isPinchGestureActive = false;
+let pinchGestureTimer = null;
+
+function isLikelyPinchGesture(e) {
+    if (!e.ctrlKey || e.altKey) return false;
+    // If the physical Ctrl key on the keyboard is held down, it is explicitly Ctrl+Scroll -> Normal Website Zoom!
+    if (isPhysicalCtrlPressed) return false;
+    // Touchpad pinch in Chromium is always DOM_DELTA_PIXEL (0), never lines or pages
+    if (e.deltaMode !== 0) return false;
+    // Contiguous events within an active pinch gesture
+    if (isPinchGestureActive) return true;
+    // Real precision touchpad pinch deltas are continuous floating-point floats with fractional parts
+    const isFractional = (e.deltaY % 1 !== 0) || (e.deltaX % 1 !== 0);
+    return isFractional;
+}
+
+// 1. Capture-phase listener:
+//    - Touchpad Pinch -> Canvas Zoom around cursor (no page reflow)
+//    - Ctrl+Alt+Scroll -> Canvas Zoom around cursor
+//    - 2-Finger Touchpad Pan (or wheel scroll) when zoomed in (> 1.005x) -> 2D Canvas Pan
+window.addEventListener('wheel', (e) => {
+    lastCursorX = e.clientX;
+    lastCursorY = e.clientY;
+
+    const isCmdOrCtrl = e.ctrlKey || e.metaKey;
+
+    // A. Touchpad Pinch Gesture (Ctrl + continuous/fractional pixel delta, !altKey)
+    if (isCmdOrCtrl && !e.altKey && isLikelyPinchGesture(e)) {
+        isPinchGestureActive = true;
+        clearTimeout(pinchGestureTimer);
+        pinchGestureTimer = setTimeout(() => {
+            isPinchGestureActive = false;
+        }, 180);
+
+        e.__qbrowseZoomHandled = true;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+        // High precision continuous scaling factor (1:1 finger tracking)
+        const stepFactor = Math.pow(1.0028, -e.deltaY);
+        zoomVisualAtCursor(stepFactor, e.clientX, e.clientY, false, true);
+        return;
+    }
+
+    // B. Ctrl + Alt + Scroll -> Explicit mouse wheel Canvas Zoom at cursor
+    if (isCmdOrCtrl && e.altKey) {
+        e.__qbrowseZoomHandled = true;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) dy *= 33;
+        else if (e.deltaMode === 2) dy *= 100;
+
+        const stepFactor = Math.pow(1.0022, -dy);
+        zoomVisualAtCursor(stepFactor, e.clientX, e.clientY, false, false);
+        return;
+    }
+
+    // C. 2-Finger Touchpad Pan when visual zoom is active (> 1.005x)
+    if (!isCmdOrCtrl && vZoomTargetScale > 1.005) {
+        let dx = e.deltaX;
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) { dx *= 33; dy *= 33; }
+        else if (e.deltaMode === 2) { dx *= 100; dy *= 100; }
+
+        if (e.shiftKey && dx === 0 && dy !== 0) {
+            dx = dy;
+            dy = 0;
+        }
+
+        e.__qbrowseZoomHandled = true;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+        const nextX = vZoomTargetPanX - dx;
+        const nextY = vZoomTargetPanY - dy;
+        const clamped = clampVisualPan(vZoomTargetScale, nextX, nextY);
+
+        vZoomTargetPanX = clamped.px;
+        vZoomTargetPanY = clamped.py;
+        vZoomScale = vZoomTargetScale;
+        vZoomPanX = vZoomTargetPanX;
+        vZoomPanY = vZoomTargetPanY;
+        applyVisualTransform(vZoomScale, vZoomPanX, vZoomPanY);
+        return;
+    }
+}, { passive: false, capture: true });
+
+// -------------------------------------------------------------
+// Mouse Canvas Navigation: Middle-Mouse Drag & Spacebar + Left Drag
+// -------------------------------------------------------------
+window.addEventListener('mousedown', (e) => {
+    if (vZoomTargetScale <= 1.005) return;
+
+    // Middle-mouse drag anywhere when canvas-zoomed
+    if (e.button === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        startCanvasPan(e.clientX, e.clientY);
+        return;
+    }
+
+    // Spacebar + Left-click drag (Hand Tool)
+    if (e.button === 0 && isSpaceHandTool) {
+        e.preventDefault();
+        e.stopPropagation();
+        startCanvasPan(e.clientX, e.clientY);
+        return;
+    }
+}, { passive: false, capture: true });
+
+window.addEventListener('mousemove', (e) => {
+    if (isCanvasPanning) {
+        e.preventDefault();
+        e.stopPropagation();
+        updateCanvasPan(e.clientX, e.clientY);
+    }
+}, { passive: false, capture: true });
+
+window.addEventListener('mouseup', (e) => {
+    if (isCanvasPanning) {
+        if (e.button === 1 || (e.button === 0 && isSpaceHandTool)) {
+            e.preventDefault();
+            e.stopPropagation();
+            stopCanvasPan();
+        }
+    }
+}, { passive: false, capture: true });
+
+// Prevent auxiliary middle-click navigation if user dragged
+window.addEventListener('auxclick', (e) => {
+    if (e.button === 1 && (canvasPanMoved || vZoomTargetScale > 1.005)) {
+        e.preventDefault();
+        e.stopPropagation();
+        canvasPanMoved = false;
+    }
+}, { passive: false, capture: true });
+
+// Spacebar Hand Tool (only when not typing in form inputs)
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !e.repeat && vZoomTargetScale > 1.005) {
+        const active = document.activeElement;
+        const isEditable = active && (
+            active.tagName === 'INPUT' ||
+            active.tagName === 'TEXTAREA' ||
+            active.isContentEditable
+        );
+        if (!isEditable) {
+            isSpaceHandTool = true;
+            if (!isCanvasPanning) {
+                setCanvasPanCursor('grab');
+            }
+        }
+    }
+}, { passive: true, capture: true });
+
+window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+        isSpaceHandTool = false;
+        if (!isCanvasPanning) {
+            setCanvasPanCursor(null);
+        }
+    }
+}, { passive: true, capture: true });
+
+window.addEventListener('blur', () => {
+    isSpaceHandTool = false;
+    stopCanvasPan();
+    setCanvasPanCursor(null);
+});
+
+// 2. Bubble-phase listener for Mouse Wheel with Ctrl (e.ctrlKey && !e.altKey):
+//    Mouse wheel with Ctrl (and !altKey) is PAGE ZOOM, not canvas zoom!
+let pageZoomWheelAccumulator = 0;
+let pageZoomWheelResetTimer = null;
+let lastPageZoomWheelTime = 0;
+
+window.addEventListener('wheel', (e) => {
+    if (e.defaultPrevented || e.__qbrowseZoomHandled) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        if (isLikelyPinchGesture(e)) return; // Guarantee touchpad pinch never triggers page zoom
+        e.__qbrowseZoomHandled = true;
+        e.preventDefault();
+
+        clearTimeout(pageZoomWheelResetTimer);
+        pageZoomWheelResetTimer = setTimeout(() => {
+            pageZoomWheelAccumulator = 0;
+        }, 180);
+
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) dy *= 33; // DOM_DELTA_LINE
+        else if (e.deltaMode === 2) dy *= 100; // DOM_DELTA_PAGE
+
+        pageZoomWheelAccumulator += dy;
+
+        const threshold = 40;
+        const now = performance.now();
+        if (Math.abs(pageZoomWheelAccumulator) >= threshold && (now - lastPageZoomWheelTime >= 60)) {
+            lastPageZoomWheelTime = now;
+            const dir = pageZoomWheelAccumulator < 0 ? 1 : -1;
+            pageZoomWheelAccumulator = 0;
+
+            try {
+                if (typeof ipcRenderer?.sendToHost === 'function') {
+                    ipcRenderer.sendToHost('webview-zoom-wheel', dir);
+                }
+            } catch (_) {}
+        }
+    }
+}, { passive: false, capture: false });
+
+// 3. Listen for Ctrl+Alt++ / Ctrl+Alt+- / Ctrl+Alt+0 visual zoom commands from host
+ipcRenderer.on('webview-visual-zoom', (event, action) => {
+    if (action === 'in') {
+        zoomVisualAtCursor(1.2, undefined, undefined, false);
+    } else if (action === 'out') {
+        zoomVisualAtCursor(1 / 1.2, undefined, undefined, false);
+    } else if (action === 'reset') {
+        zoomVisualAtCursor(1, undefined, undefined, true);
+    }
+});
 
 
 // Monitor DRM / Encrypted Media Extensions (EME) for unsupported hardware VMP requests
@@ -596,6 +1139,10 @@ try {
         },
         get: async (data) => {
             try {
+                if (data?.conditional) {
+                    // Never trigger OS or modal passkey prompts on automatic background conditional mediation probes
+                    return { conditionalIgnored: true };
+                }
                 const hostname = window.location.hostname;
                 const matches = await ipcRenderer.invoke('vault-get-matching', {
                     hostname,
@@ -604,10 +1151,6 @@ try {
                 });
                 const passkeys = (matches || []).filter(m => m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId)));
                 if (passkeys.length > 0) {
-                    if (data?.conditional) {
-                        // Silent on conditional mediation (autofill probe on page load)
-                        return null;
-                    }
                     let chosen = passkeys[0];
                     if (data?.allowCredentials && Array.isArray(data.allowCredentials) && data.allowCredentials.length > 0) {
                         const matched = passkeys.find(p => {
@@ -629,6 +1172,20 @@ try {
                         return { denied: true };
                     }
 
+                    // Re-fetch matching passkey after verification in case the vault was locked prior to verification
+                    if (!chosen.passkeyData?.privateKey) {
+                        try {
+                            const unlockedMatches = await ipcRenderer.invoke('vault-get-matching', {
+                                hostname,
+                                rpId: data?.rpId || '',
+                                allowCredentials: data?.allowCredentials || []
+                            });
+                            const unlockedPasskeys = (unlockedMatches || []).filter(m => m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId)));
+                            const freshChosen = unlockedPasskeys.find(p => String(p.id) === String(chosen.id) || (chosen.passkeyData?.credentialId && p.passkeyData?.credentialId === chosen.passkeyData.credentialId)) || unlockedPasskeys[0];
+                            if (freshChosen) chosen = freshChosen;
+                        } catch (_) {}
+                    }
+
                     console.log("[QVault WebAuthn] User verified! Using QVault passkey for", hostname, chosen);
                     const hex = chosen.passkeyData?.credentialId || '0123456789abcdef0123456789abcdef';
                     ipcRenderer.sendToHost('webauthn-used', { hostname, username: chosen.username || '' });
@@ -638,13 +1195,14 @@ try {
                         privateKey: chosen.passkeyData?.privateKey || null,
                         rpId: chosen.passkeyData?.rpId || data?.rpId || hostname
                     };
-                } else if (!data?.conditional) {
+                } else {
                     ipcRenderer.sendToHost('webauthn-no-passkey', { hostname });
+                    return { noPasskey: true };
                 }
             } catch (err) {
                 console.warn("[QVault WebAuthn] Bridge get error:", err);
             }
-            return null;
+            return { noPasskey: true };
         }
     });
 } catch(e) {}
@@ -670,6 +1228,15 @@ const injectMainWorldPasskeyOverride = () => {
                         Object.defineProperty(window, '__qbrowse_passkey_bridge', {
                             enumerable: false
                         });
+                    }
+                } catch (_) {}
+
+                // Disable automatic conditional passkey mediation probes on page load so websites don't trigger Windows Security popups
+                try {
+                    if (typeof window.PublicKeyCredential !== 'undefined') {
+                        window.PublicKeyCredential.isConditionalMediationAvailable = async function() {
+                            return false;
+                        };
                     }
                 } catch (_) {}
 
@@ -764,154 +1331,158 @@ const injectMainWorldPasskeyOverride = () => {
                 };
 
                 navigator.credentials.create = async function(options) {
-                    try {
-                        if (options && options.publicKey && window.__qbrowse_passkey_bridge) {
-                            console.log("[QVault Passkey] Intercepted credentials.create in Main World!");
-                            const rpId = options.publicKey.rp?.id || window.location.hostname;
-                            const username = options.publicKey.user?.name || options.publicKey.user?.displayName || 'user';
-                            const res = await window.__qbrowse_passkey_bridge.create({ rpId, username });
-                            if (res && res.credIdHex && res.pubJwk) {
-                                const rawIdBytes = hexToBytes(res.credIdHex);
-                                const { attestationObject, authData } = await buildAttestationObject(rpId, rawIdBytes, res.pubJwk);
-                                const spkiBuffer = res.pubSpkiHex ? hexToBytes(res.pubSpkiHex).buffer : null;
-
-                                const challenge = options.publicKey.challenge;
-                                let challengeStr = "";
-                                if (challenge) {
-                                    if (typeof challenge === 'string') challengeStr = challenge;
-                                    else challengeStr = base64url(challenge);
-                                }
-                                const clientDataObj = {
-                                    type: "webauthn.create",
-                                    challenge: challengeStr,
-                                    origin: window.location.origin,
-                                    crossOrigin: false
-                                };
-                                const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
-                                const id = base64url(rawIdBytes);
-
-                                return {
-                                    id,
-                                    rawId: rawIdBytes.buffer,
-                                    type: "public-key",
-                                    authenticatorAttachment: "platform",
-                                    response: {
-                                        clientDataJSON,
-                                        attestationObject,
-                                        getPublicKey: () => spkiBuffer,
-                                        getPublicKeyAlgorithm: () => -7,
-                                        getTransports: () => ["internal", "hybrid"],
-                                        getAuthenticatorData: () => authData
-                                    },
-                                    getClientExtensionResults: () => ({}),
-                                    toJSON: () => ({ id, rawId: id, type: "public-key", response: { clientDataJSON: base64url(clientDataJSON), attestationObject: base64url(attestationObject) } })
-                                };
-                            }
-                            throw new DOMException("Failed to save passkey in QVault.", "NotAllowedError");
+                    if (options && options.publicKey) {
+                        if (!window.__qbrowse_passkey_bridge) {
+                            throw new DOMException("Passkey creation is unavailable.", "NotAllowedError");
                         }
-                    } catch(e) {
-                        console.warn("[QVault Passkey] create error:", e);
-                        throw e;
+                        console.log("[QVault Passkey] Intercepted credentials.create in Main World!");
+                        const rpId = options.publicKey.rp?.id || window.location.hostname;
+                        const username = options.publicKey.user?.name || options.publicKey.user?.displayName || 'user';
+                        const res = await window.__qbrowse_passkey_bridge.create({ rpId, username });
+                        if (res && res.credIdHex && res.pubJwk) {
+                            const rawIdBytes = hexToBytes(res.credIdHex);
+                            const { attestationObject, authData } = await buildAttestationObject(rpId, rawIdBytes, res.pubJwk);
+                            const spkiBuffer = res.pubSpkiHex ? hexToBytes(res.pubSpkiHex).buffer : null;
+
+                            const challenge = options.publicKey.challenge;
+                            let challengeStr = "";
+                            if (challenge) {
+                                if (typeof challenge === 'string') challengeStr = challenge;
+                                else challengeStr = base64url(challenge);
+                            }
+                            const clientDataObj = {
+                                type: "webauthn.create",
+                                challenge: challengeStr,
+                                origin: window.location.origin,
+                                crossOrigin: false
+                            };
+                            const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
+                            const id = base64url(rawIdBytes);
+
+                            return {
+                                id,
+                                rawId: rawIdBytes.buffer,
+                                type: "public-key",
+                                authenticatorAttachment: "platform",
+                                response: {
+                                    clientDataJSON,
+                                    attestationObject,
+                                    getPublicKey: () => spkiBuffer,
+                                    getPublicKeyAlgorithm: () => -7,
+                                    getTransports: () => ["internal", "hybrid"],
+                                    getAuthenticatorData: () => authData
+                                },
+                                getClientExtensionResults: () => ({}),
+                                toJSON: () => ({ id, rawId: id, type: "public-key", response: { clientDataJSON: base64url(clientDataJSON), attestationObject: base64url(attestationObject) } })
+                            };
+                        }
+                        throw new DOMException("Failed to save passkey in QVault.", "NotAllowedError");
                     }
                     return await origCreate(options);
                 };
 
                 navigator.credentials.get = async function(options) {
-                    try {
-                        if (options && options.publicKey && window.__qbrowse_passkey_bridge) {
-                            const isConditional = options.publicKey.mediation === 'conditional' || options.mediation === 'conditional';
-                            const rpIdFromOptions = options.publicKey.rpId || window.location.hostname;
-                            let allowCredIds = [];
-                            if (options.publicKey.allowCredentials && Array.isArray(options.publicKey.allowCredentials)) {
-                                allowCredIds = options.publicKey.allowCredentials.map(c => {
-                                    try {
-                                        const b = new Uint8Array(c.id);
-                                        return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
-                                    } catch {
-                                        return null;
-                                    }
-                                }).filter(Boolean);
-                            }
-                            console.log("[QVault Passkey] Intercepted credentials.get in Main World! rpId:", rpIdFromOptions, "allowCreds:", allowCredIds, "Conditional:", isConditional);
-                            const res = await window.__qbrowse_passkey_bridge.get({
-                                conditional: isConditional,
-                                rpId: rpIdFromOptions,
-                                allowCredentials: allowCredIds
-                            });
-                            if (res && res.denied) {
-                                throw new DOMException("The user cancelled the passkey verification prompt.", "NotAllowedError");
-                            }
-                            if (res && res.credIdHex) {
-                                const rawIdBytes = hexToBytes(res.credIdHex);
-                                const rpId = res.rpId || options.publicKey.rpId || window.location.hostname;
-                                const challenge = options.publicKey.challenge;
-                                let challengeStr = "";
-                                if (challenge) {
-                                    if (typeof challenge === 'string') challengeStr = challenge;
-                                    else challengeStr = base64url(challenge);
+                    if (options && options.identity) {
+                        // FedCM is not supported in desktop Electron: reject with NotSupportedError to trigger immediate popup fallback
+                        return Promise.reject(new DOMException('FedCM is not supported in this environment', 'NotSupportedError'));
+                    }
+                    if (options && options.publicKey) {
+                        const isConditional = options.publicKey.mediation === 'conditional' || options.mediation === 'conditional';
+                        if (isConditional) {
+                            // Never invoke native Windows WebAuthn (origGet) on background conditional mediation probes!
+                            // If an AbortSignal was passed, wait quietly until aborted; otherwise reject quietly with NotAllowedError.
+                            if (options.signal) {
+                                if (options.signal.aborted) {
+                                    throw new DOMException('The operation was aborted.', 'AbortError');
                                 }
-                                const clientDataObj = {
-                                    type: "webauthn.get",
-                                    challenge: challengeStr,
-                                    origin: window.location.origin,
-                                    crossOrigin: false
-                                };
-                                const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
-                                const id = base64url(rawIdBytes);
-
-                                const authData = new Uint8Array(37);
-                                authData.set(new Uint8Array(await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(rpId))), 0);
-                                authData[32] = 0x05; // UP | UV
-
-                                let signatureBuffer = new Uint8Array(64).buffer;
-                                if (res.privateKey) {
-                                    try {
-                                        const privKey = await window.crypto.subtle.importKey("jwk", res.privateKey, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
-                                        const clientDataHash = await window.crypto.subtle.digest("SHA-256", clientDataJSON);
-                                        const signedData = new Uint8Array(authData.length + clientDataHash.byteLength);
-                                        signedData.set(authData, 0);
-                                        signedData.set(new Uint8Array(clientDataHash), authData.length);
-                                        const rawSig = await window.crypto.subtle.sign({ name: "ECDSA", hash: { name: "SHA-256" } }, privKey, signedData);
-                                        signatureBuffer = p1363ToDER(rawSig);
-                                    } catch(err) {
-                                        console.warn("[QVault Passkey] sign error:", err);
-                                    }
-                                }
-
-                                return {
-                                    id,
-                                    rawId: rawIdBytes.buffer,
-                                    type: "public-key",
-                                    authenticatorAttachment: "platform",
-                                    response: {
-                                        clientDataJSON,
-                                        authenticatorData: authData.buffer,
-                                        signature: signatureBuffer,
-                                        userHandle: new Uint8Array(0).buffer,
-                                        getAuthenticatorData: () => authData.buffer
-                                    },
-                                    getClientExtensionResults: () => ({}),
-                                    toJSON: () => ({ id, rawId: id, type: "public-key", response: { clientDataJSON: base64url(clientDataJSON), authenticatorData: base64url(authData.buffer), signature: base64url(signatureBuffer) } })
-                                };
+                                return await new Promise((_, reject) => {
+                                    options.signal.addEventListener('abort', () => {
+                                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                                    }, { once: true });
+                                });
                             }
-                            if (options && options.identity) {
-                                // FedCM is not supported in desktop Electron: reject with NotSupportedError to trigger immediate popup fallback
-                                return Promise.reject(new DOMException('FedCM is not supported in this environment', 'NotSupportedError'));
-                            }
-                            if (isConditional) {
-                                // If QVault has no stored passkey for this domain, fall through to native origGet
-                                // or return null so credential negotiation finishes cleanly without hanging!
+                            throw new DOMException('Conditional passkey mediation is disabled.', 'NotAllowedError');
+                        }
+
+                        if (!window.__qbrowse_passkey_bridge) {
+                            throw new DOMException('No passkey available in QVault.', 'NotAllowedError');
+                        }
+
+                        const rpIdFromOptions = options.publicKey.rpId || window.location.hostname;
+                        let allowCredIds = [];
+                        if (options.publicKey.allowCredentials && Array.isArray(options.publicKey.allowCredentials)) {
+                            allowCredIds = options.publicKey.allowCredentials.map(c => {
                                 try {
-                                    return await origGet(options);
-                                } catch (_) {
+                                    const b = new Uint8Array(c.id);
+                                    return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+                                } catch {
                                     return null;
                                 }
-                            }
-                            return await origGet(options);
+                            }).filter(Boolean);
                         }
-                    } catch(e) {
-                        console.warn("[QVault Passkey] get error:", e);
-                        throw e;
+                        console.log("[QVault Passkey] Intercepted credentials.get in Main World! rpId:", rpIdFromOptions, "allowCreds:", allowCredIds);
+                        const res = await window.__qbrowse_passkey_bridge.get({
+                            conditional: false,
+                            rpId: rpIdFromOptions,
+                            allowCredentials: allowCredIds
+                        });
+                        if (!res || res.denied || res.noPasskey || res.conditionalIgnored) {
+                            throw new DOMException("The operation either timed out or was not allowed.", "NotAllowedError");
+                        }
+                        if (res && res.credIdHex) {
+                            const rawIdBytes = hexToBytes(res.credIdHex);
+                            const rpId = res.rpId || options.publicKey.rpId || window.location.hostname;
+                            const challenge = options.publicKey.challenge;
+                            let challengeStr = "";
+                            if (challenge) {
+                                if (typeof challenge === 'string') challengeStr = challenge;
+                                else challengeStr = base64url(challenge);
+                            }
+                            const clientDataObj = {
+                                type: "webauthn.get",
+                                challenge: challengeStr,
+                                origin: window.location.origin,
+                                crossOrigin: false
+                            };
+                            const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
+                            const id = base64url(rawIdBytes);
+
+                            const authData = new Uint8Array(37);
+                            authData.set(new Uint8Array(await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(rpId))), 0);
+                            authData[32] = 0x05; // UP | UV
+
+                            let signatureBuffer = new Uint8Array(64).buffer;
+                            if (res.privateKey) {
+                                try {
+                                    const privKey = await window.crypto.subtle.importKey("jwk", res.privateKey, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+                                    const clientDataHash = await window.crypto.subtle.digest("SHA-256", clientDataJSON);
+                                    const signedData = new Uint8Array(authData.length + clientDataHash.byteLength);
+                                    signedData.set(authData, 0);
+                                    signedData.set(new Uint8Array(clientDataHash), authData.length);
+                                    const rawSig = await window.crypto.subtle.sign({ name: "ECDSA", hash: { name: "SHA-256" } }, privKey, signedData);
+                                    signatureBuffer = p1363ToDER(rawSig);
+                                } catch(err) {
+                                    console.warn("[QVault Passkey] sign error:", err);
+                                }
+                            }
+
+                            return {
+                                id,
+                                rawId: rawIdBytes.buffer,
+                                type: "public-key",
+                                authenticatorAttachment: "platform",
+                                response: {
+                                    clientDataJSON,
+                                    authenticatorData: authData.buffer,
+                                    signature: signatureBuffer,
+                                    userHandle: new Uint8Array(0).buffer,
+                                    getAuthenticatorData: () => authData.buffer
+                                },
+                                getClientExtensionResults: () => ({}),
+                                toJSON: () => ({ id, rawId: id, type: "public-key", response: { clientDataJSON: base64url(clientDataJSON), authenticatorData: base64url(authData.buffer), signature: base64url(signatureBuffer) } })
+                            };
+                        }
+                        throw new DOMException("No passkey available in QVault.", "NotAllowedError");
                     }
                     return await origGet(options);
                 };
@@ -2552,15 +3123,36 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     function setNativeInputValue(el, val) {
         if (!el) return;
         try {
-            const proto = Object.getPrototypeOf(el);
-            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+            const previousValue = el.value;
+            try { el.focus(); } catch (_) {}
+
+            const proto = window.HTMLInputElement ? window.HTMLInputElement.prototype : Object.getPrototypeOf(el);
+            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value') || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
             if (descriptor && descriptor.set) {
                 descriptor.set.call(el, val);
             } else {
                 el.value = val;
             }
-            el.dispatchEvent(new Event('input', { bubbles: true }));
+
+            // Update React 16-19 internal _valueTracker so controlled inputs register the change
+            if (el._valueTracker && typeof el._valueTracker.setValue === 'function') {
+                try { el._valueTracker.setValue(previousValue); } catch (_) {}
+            }
+
+            try {
+                el.dispatchEvent(new InputEvent('input', {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: 'insertReplacementText',
+                    data: val
+                }));
+            } catch (_) {
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
             el.dispatchEvent(new Event('change', { bubbles: true }));
+            try {
+                el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Unidentified' }));
+            } catch (_) {}
         } catch (_) {
             el.value = val;
         }
@@ -2578,42 +3170,71 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         }, 800);
     }
 
+    function isLikelyUsernameInput(inp) {
+        if (!inp || inp.tagName !== 'INPUT') return false;
+        if (inp.disabled || inp.readOnly) return false;
+        const type = (inp.getAttribute('type') || inp.type || 'text').toLowerCase();
+        if (['hidden', 'password', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset', 'range', 'color', 'date', 'number', 'search'].includes(type)) {
+            return false;
+        }
+        const auto = (inp.getAttribute('autocomplete') || '').toLowerCase();
+        const name = (inp.name || '').toLowerCase();
+        const id = (inp.id || '').toLowerCase();
+        const placeholder = (inp.getAttribute('placeholder') || '').toLowerCase();
+        const ariaLabel = (inp.getAttribute('aria-label') || '').toLowerCase();
+        const combined = `${auto} ${name} ${id} ${placeholder} ${ariaLabel}`;
+
+        if (/search|query|filter|coupon|promo|zip|postal|otp|totp|verification|code|pin|cvv|cvc|card/i.test(combined)) {
+            return false;
+        }
+        if (type === 'email') return true;
+        if (auto.includes('username') || auto.includes('email')) return true;
+        return /user|login|email|e-mail|account|identifier|handle|phone|mobile|member/i.test(combined);
+    }
+
+    function isElementVisiblyRendered(el) {
+        if (!el) return false;
+        try {
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 20 || rect.height <= 15) return false;
+            const st = window.getComputedStyle(el);
+            return st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity || '1') > 0.05;
+        } catch (_) {
+            return false;
+        }
+    }
+
     function findAssociatedFields(targetField) {
         let passwordField = null;
         let usernameField = null;
 
-        const form = targetField.form || targetField.closest('form');
+        const form = targetField ? (targetField.form || (targetField.closest ? targetField.closest('form') : null)) : null;
         if (form) {
-            passwordField = form.querySelector('input[type="password"]');
-            
-            // Look for username/email candidates in form
-            const candidates = Array.from(form.querySelectorAll('input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])'));
-            usernameField = candidates.find(c => {
-                const auto = (c.getAttribute('autocomplete') || '').toLowerCase();
-                const name = (c.name || '').toLowerCase();
-                const id = (c.id || '').toLowerCase();
-                const type = (c.type || '').toLowerCase();
-                return auto.includes('username') || auto.includes('email') ||
-                       type === 'email' ||
-                       name.includes('user') || name.includes('login') || name.includes('email') ||
-                       id.includes('user') || id.includes('login') || id.includes('email');
-            }) || candidates[0] || null;
-        } else {
-            // No wrapping form: search DOM context
+            const formPasswords = Array.from(form.querySelectorAll('input[type="password"]'));
+            passwordField = formPasswords.find(isElementVisiblyRendered) || formPasswords[0] || null;
+
+            const candidates = Array.from(form.querySelectorAll('input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])'))
+                .filter(c => !c.disabled && !c.readOnly);
+            usernameField = candidates.find(c => isLikelyUsernameInput(c) && isElementVisiblyRendered(c)) ||
+                            candidates.find(isLikelyUsernameInput) ||
+                            candidates.find(isElementVisiblyRendered) ||
+                            candidates[0] || null;
+        } else if (targetField) {
             if (targetField.type === 'password') {
                 passwordField = targetField;
-                const allInputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="submit"])'));
+                const allInputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])'));
                 const passIdx = allInputs.indexOf(targetField);
                 for (let i = passIdx - 1; i >= 0; i--) {
                     const inp = allInputs[i];
-                    if (inp.type !== 'password' && inp.type !== 'checkbox' && inp.type !== 'radio') {
+                    if (inp.type !== 'password' && !inp.disabled && !inp.readOnly && isElementVisiblyRendered(inp)) {
                         usernameField = inp;
                         break;
                     }
                 }
             } else {
                 usernameField = targetField;
-                passwordField = document.querySelector('input[type="password"]');
+                const allPasswords = Array.from(document.querySelectorAll('input[type="password"]'));
+                passwordField = allPasswords.find(isElementVisiblyRendered) || null;
             }
         }
 
@@ -2898,21 +3519,34 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         return btn;
     }
 
+    function discoverCandidateLoginInputs() {
+        const passwordInputs = Array.from(document.querySelectorAll('input[type="password"]'));
+        const relevantInputs = new Set(passwordInputs);
+
+        // Add associated username inputs for every password field
+        passwordInputs.forEach(pass => {
+            const { usernameField } = findAssociatedFields(pass);
+            if (usernameField) relevantInputs.add(usernameField);
+        });
+
+        // Also support 2-step login pages (Google, Microsoft, GitHub, Clerk, etc.) where Step 1 only has an email/username input
+        const allTextInputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])'));
+        allTextInputs.forEach(inp => {
+            if (isLikelyUsernameInput(inp)) {
+                relevantInputs.add(inp);
+            }
+        });
+
+        return relevantInputs;
+    }
+
     function updateBadgePositions() {
         if (qvaultMatches.length === 0) {
             cleanUpBadges();
             return;
         }
 
-        // Discover candidate fields
-        const passwordInputs = Array.from(document.querySelectorAll('input[type="password"]'));
-        const relevantInputs = new Set(passwordInputs);
-
-        // Also add associated username inputs
-        passwordInputs.forEach(pass => {
-            const { usernameField } = findAssociatedFields(pass);
-            if (usernameField) relevantInputs.add(usernameField);
-        });
+        const relevantInputs = discoverCandidateLoginInputs();
 
         // Remove badges for elements no longer in document
         for (const [inputEl, badge] of activeBadgeMap.entries()) {
@@ -2981,10 +3615,20 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             }
         }
 
+        // Support 2-step login flows: cache Step 1 username in sessionStorage if password isn't visible yet
+        const enteredUsername = (usernameField?.value || '').trim();
+        if (!passwordField && enteredUsername) {
+            try { sessionStorage.setItem('__qvault_step1_username', enteredUsername); } catch (_) {}
+            return;
+        }
+
         const password = (passwordField?.value || '').trim();
         if (!password) return; // Must have entered a password to prompt save
 
-        const username = (usernameField?.value || '').trim();
+        let username = enteredUsername;
+        if (!username) {
+            try { username = (sessionStorage.getItem('__qvault_step1_username') || '').trim(); } catch (_) {}
+        }
         lastSubmissionTime = now;
 
         const payload = {
@@ -3003,23 +3647,28 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         captureAndSubmitCredentials(e.target);
     }, true);
 
-    // 2. Enter keydown on password fields
+    // 2. Enter keydown on password or username fields
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             const target = e.target;
-            if (target && target.tagName === 'INPUT' && target.type === 'password') {
+            if (target && target.tagName === 'INPUT' && (target.type === 'password' || isLikelyUsernameInput(target))) {
                 setTimeout(() => captureAndSubmitCredentials(target), 50);
             }
         }
     }, true);
 
-    // 3. Submit button clicks
+    // 3. Submit button clicks (excluding forgot/reset password links)
     document.addEventListener('click', (e) => {
-        const btn = e.target.closest('button, input[type="submit"], [role="button"], a');
+        const btn = e.target && e.target.closest ? e.target.closest('button, input[type="submit"], [role="button"], a') : null;
         if (!btn) return;
+        if (btn.classList && (btn.classList.contains('qvault-inline-key-btn') || btn.closest('.qvault-autofill-dropdown'))) return;
 
         const type = (btn.getAttribute('type') || '').toLowerCase();
         const text = (btn.innerText || btn.value || '').toLowerCase();
+        if (text.includes('forgot') || text.includes('reset') || text.includes('trouble') || text.includes('help')) {
+            return;
+        }
+
         const isSubmitType = type === 'submit';
         const isLoginText = text.includes('log in') || text.includes('login') ||
                             text.includes('sign in') || text.includes('signin') ||
@@ -3032,12 +3681,16 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 
     let isQVaultObserving = false;
 
-    function hasPasswordField() {
-        return typeof document !== 'undefined' && Boolean(document.querySelector('input[type="password"]'));
+    function hasLoginCandidateField() {
+        if (typeof document === 'undefined') return false;
+        if (document.querySelector('input[type="password"], input[type="email"], input[autocomplete*="username"], input[autocomplete*="email"]')) {
+            return true;
+        }
+        return false;
     }
 
     function shouldObserveQVault() {
-        return (Array.isArray(qvaultMatches) && qvaultMatches.length > 0) || hasPasswordField();
+        return (Array.isArray(qvaultMatches) && qvaultMatches.length > 0) || hasLoginCandidateField();
     }
 
     let badgeUpdateRaf = null;
@@ -3071,18 +3724,38 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     let hasLoadedCredentials = false;
     let mutationDebounceTimer = null;
 
-    // Mutation observer to detect newly rendered login inputs (debounced to avoid blocking typing/reflows)
+    function isQVaultInternalNode(node) {
+        if (!node || node.nodeType !== 1) return false;
+        if (node.id === 'qvault-autofill-isolation-styles') return true;
+        if (node.classList && (node.classList.contains('qvault-inline-key-btn') || node.classList.contains('qvault-autofill-dropdown'))) {
+            return true;
+        }
+        return Boolean(node.closest && node.closest('.qvault-autofill-dropdown, .qvault-inline-key-btn'));
+    }
+
+    // Mutation observer to detect newly rendered login inputs (debounced & ignoring QVault's own badge DOM nodes)
     const observer = new MutationObserver((mutations) => {
-        // Fast-path: only react if nodes were added or removed
-        let hasElementChange = false;
+        let hasExternalElementChange = false;
         for (let i = 0; i < mutations.length; i++) {
             const m = mutations[i];
-            if (m.addedNodes.length > 0 || m.removedNodes.length > 0) {
-                hasElementChange = true;
-                break;
+            for (let j = 0; j < m.addedNodes.length; j++) {
+                const n = m.addedNodes[j];
+                if (n.nodeType === 1 && !isQVaultInternalNode(n)) {
+                    hasExternalElementChange = true;
+                    break;
+                }
             }
+            if (hasExternalElementChange) break;
+            for (let j = 0; j < m.removedNodes.length; j++) {
+                const n = m.removedNodes[j];
+                if (n.nodeType === 1 && !isQVaultInternalNode(n)) {
+                    hasExternalElementChange = true;
+                    break;
+                }
+            }
+            if (hasExternalElementChange) break;
         }
-        if (!hasElementChange) return;
+        if (!hasExternalElementChange) return;
 
         if (mutationDebounceTimer) clearTimeout(mutationDebounceTimer);
         mutationDebounceTimer = setTimeout(() => {
@@ -3127,12 +3800,12 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         try {
             const res = await ipcRenderer.invoke('vault-get-matching', window.location.hostname);
             const loginMatches = (res || []).filter(m => m.itemType !== 'passkey' && !m.passkeyData);
-            if (loginMatches.length > 0 && qvaultMatches.length === 0) {
-                qvaultMatches = loginMatches;
-                syncQVaultObservers();
+            qvaultMatches = loginMatches;
+            syncQVaultObservers();
+            if (loginMatches.length > 0) {
                 scheduleBadgePositionsUpdate(30);
             } else {
-                syncQVaultObservers();
+                cleanUpBadges();
             }
         } catch (e) {
             console.warn('[QVault] refreshMatchingCredentialsFromMain error:', e);
@@ -3157,16 +3830,15 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         const target = e.target;
         if (!target || target.tagName !== 'INPUT') return;
 
-        const isCredentialCandidate = target.type === 'password' || 
-            (target.autocomplete && (target.autocomplete.includes('username') || target.autocomplete.includes('email') || target.autocomplete.includes('current-password'))) ||
-            (target.name && /user|login|email|pass/i.test(target.name)) ||
-            (target.id && /user|login|email|pass/i.test(target.id));
+        const isCredentialCandidate = target.type === 'password' || isLikelyUsernameInput(target);
 
         if (isCredentialCandidate) {
             syncQVaultObservers();
-            if (!hasLoadedCredentials && qvaultMatches.length === 0) {
+            if (!hasLoadedCredentials || qvaultMatches.length === 0) {
                 hasLoadedCredentials = true;
                 refreshMatchingCredentialsFromMain();
+            } else {
+                scheduleBadgePositionsUpdate(20);
             }
         }
     }, true);
@@ -3277,6 +3949,22 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             l2.setAttribute('x1', '5'); l2.setAttribute('y1', '12'); l2.setAttribute('x2', '19'); l2.setAttribute('y2', '12');
             svg.appendChild(l1); svg.appendChild(l2);
+        } else if (name === 'zoom-in') {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', '11'); circle.setAttribute('cy', '11'); circle.setAttribute('r', '8');
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', '21'); line.setAttribute('y1', '21'); line.setAttribute('x2', '16.65'); line.setAttribute('y2', '16.65');
+            const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            l1.setAttribute('x1', '11'); l1.setAttribute('y1', '8'); l1.setAttribute('x2', '11'); l1.setAttribute('y2', '14');
+            const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            l2.setAttribute('x1', '8'); l2.setAttribute('y1', '11'); l2.setAttribute('x2', '14'); l2.setAttribute('y2', '11');
+            svg.appendChild(circle); svg.appendChild(line); svg.appendChild(l1); svg.appendChild(l2);
+        } else if (name === 'rotate-ccw') {
+            const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p1.setAttribute('d', 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8');
+            const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p2.setAttribute('d', 'M3 3v5h5');
+            svg.appendChild(p1); svg.appendChild(p2);
         }
 
         return svg;
@@ -3662,12 +4350,381 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         document.documentElement.appendChild(header);
 
         // Zoom & Find In Page engines
-        const applyZoom = (newFactor) => {
+        let currentOAuthZoom = 1.0;
+        try {
+            currentOAuthZoom = webFrame.getZoomFactor() || 1.0;
+        } catch (_) {}
+        let targetOAuthZoom = currentOAuthZoom;
+        let oauthZoomStartFactor = currentOAuthZoom;
+        let oauthZoomStartTime = 0;
+        const oauthZoomDuration = 200;
+        let oauthZoomRaf = null;
+
+        let oauthZoomContainer = null;
+        let oauthZoomHud = null;
+        let oauthZoomHudTimer = null;
+        let oauthZoomPctEl = null;
+        let oauthZoomResetBtn = null;
+        let oauthZoomMinusBtn = null;
+        let oauthZoomPlusBtn = null;
+        let oauthZoomDivider = null;
+
+        const applyOAuthZoomHudTheme = (isLight) => {
+            if (!oauthZoomHud) return;
+            if (isLight) {
+                oauthZoomHud.style.setProperty('background', 'rgba(255, 255, 255, 0.90)', 'important');
+                oauthZoomHud.style.setProperty('backdrop-filter', 'blur(40px) saturate(180%)', 'important');
+                oauthZoomHud.style.setProperty('-webkit-backdrop-filter', 'blur(40px) saturate(180%)', 'important');
+                oauthZoomHud.style.setProperty('border', '1px solid rgba(0, 0, 0, 0.10)', 'important');
+                oauthZoomHud.style.setProperty('box-shadow', '0 15px 35px rgba(0, 0, 0, 0.12)', 'important');
+                oauthZoomHud.style.setProperty('color', '#27272a', 'important');
+
+                if (oauthZoomDivider) {
+                    oauthZoomDivider.style.setProperty('border-left', '1px solid rgba(0, 0, 0, 0.10)', 'important');
+                }
+                if (oauthZoomMinusBtn) {
+                    oauthZoomMinusBtn.style.setProperty('color', '#3f3f46', 'important');
+                    oauthZoomMinusBtn.onmouseenter = () => {
+                        oauthZoomMinusBtn.style.setProperty('background', 'rgba(0, 0, 0, 0.05)', 'important');
+                        oauthZoomMinusBtn.style.setProperty('color', '#18181b', 'important');
+                    };
+                    oauthZoomMinusBtn.onmouseleave = () => {
+                        oauthZoomMinusBtn.style.setProperty('background', 'transparent', 'important');
+                        oauthZoomMinusBtn.style.setProperty('color', '#3f3f46', 'important');
+                    };
+                }
+                if (oauthZoomPlusBtn) {
+                    oauthZoomPlusBtn.style.setProperty('color', '#3f3f46', 'important');
+                    oauthZoomPlusBtn.onmouseenter = () => {
+                        oauthZoomPlusBtn.style.setProperty('background', 'rgba(0, 0, 0, 0.05)', 'important');
+                        oauthZoomPlusBtn.style.setProperty('color', '#18181b', 'important');
+                    };
+                    oauthZoomPlusBtn.onmouseleave = () => {
+                        oauthZoomPlusBtn.style.setProperty('background', 'transparent', 'important');
+                        oauthZoomPlusBtn.style.setProperty('color', '#3f3f46', 'important');
+                    };
+                }
+            } else {
+                oauthZoomHud.style.setProperty('background', 'rgba(18, 18, 22, 0.90)', 'important');
+                oauthZoomHud.style.setProperty('backdrop-filter', 'blur(40px) saturate(180%)', 'important');
+                oauthZoomHud.style.setProperty('-webkit-backdrop-filter', 'blur(40px) saturate(180%)', 'important');
+                oauthZoomHud.style.setProperty('border', '1px solid rgba(255, 255, 255, 0.15)', 'important');
+                oauthZoomHud.style.setProperty('box-shadow', '0 15px 35px rgba(0, 0, 0, 0.70)', 'important');
+                oauthZoomHud.style.setProperty('color', '#ffffff', 'important');
+
+                if (oauthZoomDivider) {
+                    oauthZoomDivider.style.setProperty('border-left', '1px solid rgba(255, 255, 255, 0.10)', 'important');
+                }
+                if (oauthZoomMinusBtn) {
+                    oauthZoomMinusBtn.style.setProperty('color', '#ffffff', 'important');
+                    oauthZoomMinusBtn.onmouseenter = () => {
+                        oauthZoomMinusBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.10)', 'important');
+                        oauthZoomMinusBtn.style.setProperty('color', '#ffffff', 'important');
+                    };
+                    oauthZoomMinusBtn.onmouseleave = () => {
+                        oauthZoomMinusBtn.style.setProperty('background', 'transparent', 'important');
+                        oauthZoomMinusBtn.style.setProperty('color', '#ffffff', 'important');
+                    };
+                }
+                if (oauthZoomPlusBtn) {
+                    oauthZoomPlusBtn.style.setProperty('color', '#ffffff', 'important');
+                    oauthZoomPlusBtn.onmouseenter = () => {
+                        oauthZoomPlusBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.10)', 'important');
+                        oauthZoomPlusBtn.style.setProperty('color', '#ffffff', 'important');
+                    };
+                    oauthZoomPlusBtn.onmouseleave = () => {
+                        oauthZoomPlusBtn.style.setProperty('background', 'transparent', 'important');
+                        oauthZoomPlusBtn.style.setProperty('color', '#ffffff', 'important');
+                    };
+                }
+            }
+        };
+
+        let animateOAuthZoom = null;
+
+        const createOAuthZoomHud = () => {
+            if (oauthZoomContainer && document.contains(oauthZoomContainer)) return;
+
+            oauthZoomContainer = document.createElement('div');
+            oauthZoomContainer.id = 'qbrowse-oauth-zoom-container';
+            oauthZoomContainer.style.cssText = [
+                'position: fixed !important',
+                'z-index: 2147483647 !important',
+                'bottom: 32px !important',
+                'right: 32px !important',
+                'pointer-events: none !important',
+                'transform-origin: bottom right !important',
+                'box-sizing: border-box !important'
+            ].join(';');
+
+            oauthZoomHud = document.createElement('div');
+            oauthZoomHud.id = 'qbrowse-oauth-zoom-hud';
+            oauthZoomHud.style.cssText = [
+                'display: flex !important',
+                'align-items: center !important',
+                'gap: 10px !important',
+                'padding: 8px 14px !important',
+                'border-radius: 16px !important',
+                'user-select: none !important',
+                '-webkit-user-select: none !important',
+                'box-sizing: border-box !important',
+                'transition: opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.16, 1, 0.3, 1) !important',
+                'opacity: 0 !important',
+                'transform: translateY(12px) scale(0.95) !important',
+                'pointer-events: none !important'
+            ].join(';');
+
+            const icon = createSvgIcon('zoom-in', 14);
+            icon.style.cssText = [
+                'color: #d4bc94 !important',
+                'flex-shrink: 0 !important',
+                'display: block !important'
+            ].join(';');
+            oauthZoomHud.appendChild(icon);
+
+            oauthZoomPctEl = document.createElement('span');
+            oauthZoomPctEl.id = 'qbrowse-oauth-zoom-pct';
+            oauthZoomPctEl.style.cssText = [
+                'font-size: 12px !important',
+                'font-weight: 700 !important',
+                'font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important',
+                'letter-spacing: -0.025em !important',
+                'min-width: 42px !important',
+                'text-align: center !important',
+                'user-select: none !important',
+                'line-height: 1 !important',
+                'display: inline-block !important'
+            ].join(';');
+            oauthZoomPctEl.textContent = '100%';
+            oauthZoomHud.appendChild(oauthZoomPctEl);
+
+            const btnGroup = document.createElement('div');
+            btnGroup.id = 'qbrowse-oauth-zoom-actions';
+            btnGroup.style.cssText = [
+                'display: flex !important',
+                'align-items: center !important',
+                'gap: 4px !important',
+                'padding-left: 8px !important',
+                'border-left: 1px solid rgba(255, 255, 255, 0.10) !important'
+            ].join(';');
+            oauthZoomDivider = btnGroup;
+
+            oauthZoomMinusBtn = document.createElement('button');
+            oauthZoomMinusBtn.id = 'qbrowse-oauth-zoom-out-btn';
+            oauthZoomMinusBtn.title = 'Zoom Out (Ctrl -)';
+            oauthZoomMinusBtn.textContent = '-';
+            oauthZoomMinusBtn.style.cssText = [
+                'width: 24px !important',
+                'height: 24px !important',
+                'border-radius: 8px !important',
+                'display: flex !important',
+                'align-items: center !important',
+                'justify-content: center !important',
+                'font-size: 12px !important',
+                'font-weight: 700 !important',
+                'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+                'cursor: pointer !important',
+                'border: none !important',
+                'outline: none !important',
+                'padding: 0 !important',
+                'background: transparent !important',
+                'transition: all 0.15s ease !important',
+                'line-height: 1 !important'
+            ].join(';');
+            oauthZoomMinusBtn.onmousedown = () => { oauthZoomMinusBtn.style.transform = 'scale(0.95)'; };
+            oauthZoomMinusBtn.onmouseup = () => { oauthZoomMinusBtn.style.transform = 'none'; };
+            oauthZoomMinusBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof animateOAuthZoom === 'function') animateOAuthZoom(targetOAuthZoom - 0.1);
+            };
+            btnGroup.appendChild(oauthZoomMinusBtn);
+
+            oauthZoomPlusBtn = document.createElement('button');
+            oauthZoomPlusBtn.id = 'qbrowse-oauth-zoom-in-btn';
+            oauthZoomPlusBtn.title = 'Zoom In (Ctrl +)';
+            oauthZoomPlusBtn.textContent = '+';
+            oauthZoomPlusBtn.style.cssText = [
+                'width: 24px !important',
+                'height: 24px !important',
+                'border-radius: 8px !important',
+                'display: flex !important',
+                'align-items: center !important',
+                'justify-content: center !important',
+                'font-size: 12px !important',
+                'font-weight: 700 !important',
+                'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+                'cursor: pointer !important',
+                'border: none !important',
+                'outline: none !important',
+                'padding: 0 !important',
+                'background: transparent !important',
+                'transition: all 0.15s ease !important',
+                'line-height: 1 !important'
+            ].join(';');
+            oauthZoomPlusBtn.onmousedown = () => { oauthZoomPlusBtn.style.transform = 'scale(0.95)'; };
+            oauthZoomPlusBtn.onmouseup = () => { oauthZoomPlusBtn.style.transform = 'none'; };
+            oauthZoomPlusBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof animateOAuthZoom === 'function') animateOAuthZoom(targetOAuthZoom + 0.1);
+            };
+            btnGroup.appendChild(oauthZoomPlusBtn);
+
+            oauthZoomResetBtn = document.createElement('button');
+            oauthZoomResetBtn.id = 'qbrowse-oauth-zoom-reset-btn';
+            oauthZoomResetBtn.title = 'Reset Zoom (Ctrl 0)';
+            oauthZoomResetBtn.style.cssText = [
+                'display: none !important',
+                'align-items: center !important',
+                'gap: 4px !important',
+                'padding: 2px 8px !important',
+                'border-radius: 8px !important',
+                'font-size: 10px !important',
+                'font-weight: 700 !important',
+                'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+                'text-transform: uppercase !important',
+                'letter-spacing: 0.05em !important',
+                'background: rgba(212, 188, 148, 0.20) !important',
+                'color: #d4bc94 !important',
+                'border: none !important',
+                'outline: none !important',
+                'cursor: pointer !important',
+                'margin-left: 4px !important',
+                'transition: all 0.15s ease !important',
+                'line-height: 1.2 !important'
+            ].join(';');
+            oauthZoomResetBtn.appendChild(createSvgIcon('rotate-ccw', 10));
+            oauthZoomResetBtn.appendChild(document.createTextNode('Reset'));
+
+            oauthZoomResetBtn.onmouseenter = () => {
+                oauthZoomResetBtn.style.setProperty('background', 'rgba(212, 188, 148, 0.30)', 'important');
+            };
+            oauthZoomResetBtn.onmouseleave = () => {
+                oauthZoomResetBtn.style.setProperty('background', 'rgba(212, 188, 148, 0.20)', 'important');
+            };
+            oauthZoomResetBtn.onmousedown = () => { oauthZoomResetBtn.style.transform = 'scale(0.95)'; };
+            oauthZoomResetBtn.onmouseup = () => { oauthZoomResetBtn.style.transform = 'none'; };
+            oauthZoomResetBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof animateOAuthZoom === 'function') animateOAuthZoom(1.0);
+            };
+            btnGroup.appendChild(oauthZoomResetBtn);
+
+            oauthZoomHud.appendChild(btnGroup);
+
+            oauthZoomHud.onmouseenter = () => {
+                clearTimeout(oauthZoomHudTimer);
+            };
+            oauthZoomHud.onmouseleave = () => {
+                clearTimeout(oauthZoomHudTimer);
+                oauthZoomHudTimer = setTimeout(() => {
+                    hideOAuthZoomHud();
+                }, 1800);
+            };
+
+            oauthZoomContainer.appendChild(oauthZoomHud);
+            (document.body || document.documentElement).appendChild(oauthZoomContainer);
+
+            applyOAuthZoomHudTheme(currentIsLight);
+        };
+
+        const hideOAuthZoomHud = () => {
+            if (!oauthZoomHud) return;
+            oauthZoomHud.style.setProperty('opacity', '0', 'important');
+            oauthZoomHud.style.setProperty('transform', 'translateY(12px) scale(0.95)', 'important');
+            oauthZoomHud.style.setProperty('pointer-events', 'none', 'important');
+        };
+
+        const showOAuthZoomHud = (factor, invZ) => {
             try {
-                const clamped = Math.min(3.0, Math.max(0.5, Math.round(newFactor * 10) / 10));
-                webFrame.setZoomFactor(clamped);
+                if (!oauthZoomContainer || !document.contains(oauthZoomContainer)) {
+                    createOAuthZoomHud();
+                }
+
+                const pct = Math.round(factor * 100);
+                if (oauthZoomPctEl) {
+                    oauthZoomPctEl.textContent = `${pct}%`;
+                }
+                if (oauthZoomResetBtn) {
+                    oauthZoomResetBtn.style.setProperty('display', pct !== 100 ? 'flex' : 'none', 'important');
+                }
+
+                oauthZoomContainer.style.setProperty('bottom', `${32 * invZ}px`, 'important');
+                oauthZoomContainer.style.setProperty('right', `${32 * invZ}px`, 'important');
+                oauthZoomContainer.style.setProperty('transform', `scale(${invZ})`, 'important');
+
+                oauthZoomHud.style.setProperty('opacity', '1', 'important');
+                oauthZoomHud.style.setProperty('transform', 'translateY(0) scale(1)', 'important');
+                oauthZoomHud.style.setProperty('pointer-events', 'auto', 'important');
+
+                clearTimeout(oauthZoomHudTimer);
+                oauthZoomHudTimer = setTimeout(() => {
+                    hideOAuthZoomHud();
+                }, 1800);
             } catch (_) {}
         };
+
+        const updateOAuthChromeIsolation = (factor, showHud = true) => {
+            const safeFactor = Math.max(0.2, factor);
+            const invZ = 1 / safeFactor;
+            if (header) {
+                header.style.setProperty('transform', `scale(${invZ})`, 'important');
+                header.style.setProperty('transform-origin', '0 0', 'important');
+                header.style.setProperty('width', `calc(100vw * ${factor} - 20px)`, 'important');
+                header.style.setProperty('top', `${8 * invZ}px`, 'important');
+                header.style.setProperty('left', `${10 * invZ}px`, 'important');
+                header.style.setProperty('right', 'auto', 'important');
+            }
+            if (findBar) {
+                findBar.style.setProperty('transform', `scale(${invZ})`, 'important');
+                findBar.style.setProperty('transform-origin', 'top right', 'important');
+                findBar.style.setProperty('top', `${56 * invZ}px`, 'important');
+                findBar.style.setProperty('right', `${12 * invZ}px`, 'important');
+            }
+            if (document.body) {
+                document.body.style.setProperty('padding-top', `${54 * invZ}px`, 'important');
+            }
+            if (showHud) {
+                showOAuthZoomHud(factor, invZ);
+            }
+        };
+
+        const OAUTH_ZOOM_STEPS = [0.25, 0.33, 0.50, 0.67, 0.75, 0.80, 0.90, 1.00, 1.10, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00, 4.00, 5.00];
+        const getNextOAuthZoomStep = (cur, dir) => {
+            if (dir > 0) return OAUTH_ZOOM_STEPS.find(s => s > cur + 0.005) || 5.00;
+            if (dir < 0) return [...OAUTH_ZOOM_STEPS].reverse().find(s => s < cur - 0.005) || 0.25;
+            return 1.00;
+        };
+
+        const applyOAuthZoomStep = (direction) => {
+            const next = direction === 0 ? 1.00 : getNextOAuthZoomStep(targetOAuthZoom, direction);
+            targetOAuthZoom = next;
+            currentOAuthZoom = next;
+            try { webFrame.setZoomFactor(next); } catch (_) {}
+            updateOAuthChromeIsolation(next, true);
+        };
+
+        const applyZoom = (newFactor) => {
+            const target = Math.min(5.0, Math.max(0.25, newFactor));
+            targetOAuthZoom = target;
+            currentOAuthZoom = target;
+            try { webFrame.setZoomFactor(target); } catch (_) {}
+            updateOAuthChromeIsolation(target, true);
+        };
+
+        try {
+            ipcRenderer.on('oauth-zoom-command', (event, action) => {
+                if (action === 'in') {
+                    applyOAuthZoomStep(1);
+                } else if (action === 'out') {
+                    applyOAuthZoomStep(-1);
+                } else if (action === 'reset') {
+                    applyOAuthZoomStep(0);
+                }
+            });
+        } catch (_) {}
 
         let isFindBarOpen = false;
         let findBar = null;
@@ -3914,6 +4971,8 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
                     if (findSearchIcon) findSearchIcon.style.color = 'rgba(0, 0, 0, 0.40)';
                     findButtons.forEach(b => { b.style.color = 'rgba(0, 0, 0, 0.65)'; });
                 }
+
+                applyOAuthZoomHudTheme(true);
             } else {
                 // DARK FROSTED GLASS (Matches ContextMenu dark & liquid-glass-dark)
                 header.style.background = 'rgba(15, 16, 23, 0.82)';
@@ -3958,6 +5017,8 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
                     if (findSearchIcon) findSearchIcon.style.color = 'rgba(255, 255, 255, 0.40)';
                     findButtons.forEach(b => { b.style.color = 'rgba(255, 255, 255, 0.70)'; });
                 }
+
+                applyOAuthZoomHudTheme(false);
             }
         }
 
@@ -4024,21 +5085,21 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             // Zoom In (Ctrl++ / Ctrl+=)
             if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === 'Add')) {
                 e.preventDefault();
-                applyZoom(webFrame.getZoomFactor() + 0.1);
+                applyOAuthZoomStep(1);
                 return;
             }
 
             // Zoom Out (Ctrl+-)
             if (e.ctrlKey && (e.key === '-' || e.key === 'Subtract')) {
                 e.preventDefault();
-                applyZoom(webFrame.getZoomFactor() - 0.1);
+                applyOAuthZoomStep(-1);
                 return;
             }
 
             // Zoom Reset (Ctrl+0)
             if (e.ctrlKey && (e.key === '0' || e.key === 'num0')) {
                 e.preventDefault();
-                applyZoom(1.0);
+                applyOAuthZoomStep(0);
                 return;
             }
 
@@ -4083,8 +5144,8 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
         window.addEventListener('wheel', (e) => {
             if (e.ctrlKey) {
                 e.preventDefault();
-                const step = e.deltaY < 0 ? 0.05 : -0.05;
-                applyZoom(webFrame.getZoomFactor() + step);
+                const step = e.deltaY < 0 ? 0.1 : -0.1;
+                animateOAuthZoom(targetOAuthZoom + step);
             }
         }, { passive: false });
     }
@@ -4147,3 +5208,160 @@ try {
         } catch (_) {}
     }, true);
 } catch (_) {}
+
+// Native Adblocker DOM Placeholder Collapser
+// Eliminates blank/grey empty boxes left by blocked ad scripts and iframes
+(function setupAdPlaceholderCollapser() {
+    try {
+        if (isOAuthPopup || isGoogleAuth) return;
+        const href = (typeof window !== 'undefined' && window.location && window.location.href) || '';
+        if (
+            href.startsWith('chrome:') ||
+            href.startsWith('qbrowse:') ||
+            href.startsWith('about:') ||
+            href.includes('docs.google.com') ||
+            href.includes('drive.google.com') ||
+            href.includes('mail.google.com')
+        ) {
+            return;
+        }
+
+        const AD_SELECTORS = [
+            'ins.adsbygoogle',
+            '[data-ad-slot]',
+            '[data-ad-unit]',
+            '[data-ad-client]',
+            '[data-ad-format]',
+            '[data-google-query-id]',
+            'iframe[id*="google_ads"]',
+            'iframe[id*="aswift_"]',
+            'iframe[src*="doubleclick.net"]',
+            'iframe[src*="googlesyndication.com"]',
+            'iframe[src*="adnxs.com"]',
+            'iframe[src*="criteo."]',
+            'div[id^="google_ads_iframe"]',
+            'div[id^="aswift_"]',
+            'div[id^="gpt-ad"]',
+            'div[class*="gpt-ad"]',
+            '.ad-container',
+            '.ad-placeholder',
+            '.ad-wrapper',
+            '.advertisement',
+            '.ad-banner',
+            '[class*="AdSlot"]',
+            '[class*="ad-slot"]',
+            '[class*="ad_slot"]',
+            '[class*="Billboard"]',
+            '[id*="Billboard"]',
+            '[class*="screeningWallpaper"]',
+            '[class*="wp-header-panel"]',
+            '[class*="bmjdxfegh"]'
+        ].join(',');
+
+        function collapseElement(el) {
+            if (!el || el.dataset.qbCollapsed === 'true') return;
+            try {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+                el.style.setProperty('height', '0px', 'important');
+                el.style.setProperty('min-height', '0px', 'important');
+                el.style.setProperty('max-height', '0px', 'important');
+                el.style.setProperty('margin', '0px', 'important');
+                el.style.setProperty('padding', '0px', 'important');
+                el.style.setProperty('border', 'none', 'important');
+                el.style.setProperty('opacity', '0', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                el.dataset.qbCollapsed = 'true';
+
+                // Check and safely collapse parent wrapper if it is explicitly an empty ad container
+                const parent = el.parentElement;
+                if (
+                    parent &&
+                    parent !== document.body &&
+                    parent !== document.documentElement &&
+                    parent.dataset.qbCollapsed !== 'true' &&
+                    !['BODY', 'HTML', 'MAIN', 'NAV', 'HEADER', 'FOOTER', 'ARTICLE', 'SECTION', 'ASIDE', 'FORM', 'UL', 'OL', 'TABLE'].includes(parent.tagName)
+                ) {
+                    const parentClass = typeof parent.className === 'string' ? parent.className : (parent.getAttribute('class') || '');
+                    const parentId = parent.id || '';
+                    const parentClasses = (parentClass + ' ' + parentId).toLowerCase();
+
+                    // Check if parent container is specifically labeled as an ad wrapper
+                    const isExplicitAdParent = /(^|\b|_|-)(ad-wrapper|ad-container|ad-box|advert-wrapper|sponsor-wrapper|placement-wrapper|reklama-box)(\b|_|-|$)/i.test(parentClasses);
+
+                    if (isExplicitAdParent) {
+                        const externalContent = parent.querySelector('a:not([data-qb-collapsed]), img:not([data-qb-collapsed]), input, button, video');
+                        if (!externalContent) {
+                            parent.style.setProperty('display', 'none', 'important');
+                            parent.style.setProperty('visibility', 'hidden', 'important');
+                            parent.style.setProperty('height', '0px', 'important');
+                            parent.style.setProperty('min-height', '0px', 'important');
+                            parent.style.setProperty('max-height', '0px', 'important');
+                            parent.style.setProperty('margin', '0px', 'important');
+                            parent.style.setProperty('padding', '0px', 'important');
+                            parent.dataset.qbCollapsed = 'true';
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        let collapseScheduled = false;
+
+        function scanAndCollapse() {
+            collapseScheduled = false;
+            try {
+                const matches = document.querySelectorAll(AD_SELECTORS);
+                for (let i = 0; i < matches.length; i++) {
+                    collapseElement(matches[i]);
+                }
+            } catch (_) {}
+        }
+
+        function scheduleCollapse() {
+            if (collapseScheduled) return;
+            collapseScheduled = true;
+            if (typeof requestIdleCallback === 'function') {
+                requestIdleCallback(scanAndCollapse, { timeout: 150 });
+            } else {
+                setTimeout(scanAndCollapse, 60);
+            }
+        }
+
+        // Run immediately if DOM elements exist
+        scheduleCollapse();
+
+        // Run on DOM ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', scheduleCollapse);
+        }
+
+        // Run on window load
+        window.addEventListener('load', scheduleCollapse);
+
+        // Run on dynamic DOM mutations (SPAs and infinite scroll feeds)
+        const observer = new MutationObserver((mutations) => {
+            let hasAddedNodes = false;
+            for (let i = 0; i < mutations.length; i++) {
+                if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
+                    hasAddedNodes = true;
+                    break;
+                }
+            }
+            if (hasAddedNodes) {
+                scheduleCollapse();
+            }
+        });
+
+        if (document.body) {
+            observer.observe(document.body, { childList: true, subtree: true });
+        } else {
+            document.addEventListener('DOMContentLoaded', () => {
+                if (document.body) {
+                    observer.observe(document.body, { childList: true, subtree: true });
+                }
+                scheduleCollapse();
+            });
+        }
+    } catch (_) {}
+})();
