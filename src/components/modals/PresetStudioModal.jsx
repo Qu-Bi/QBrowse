@@ -209,6 +209,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
         if (setPresetStudioInitialId) {
             setPresetStudioInitialId(null);
         }
+        if (window.electronAPI?.setWindowCornerPreference) {
+            window.electronAPI.setWindowCornerPreference(settings?.frameCurvature || 'default');
+        }
         closeModal();
     };
 
@@ -254,6 +257,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     // Helper: update draft property
     const updateDraft = (key, value) => {
         setDraft(prev => ({ ...prev, [key]: value }));
+        if (key === 'frameCurvature' && window.electronAPI?.setWindowCornerPreference) {
+            window.electronAPI.setWindowCornerPreference(value);
+        }
     };
 
     // Drag and Drop handlers

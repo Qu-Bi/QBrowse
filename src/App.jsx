@@ -32,6 +32,7 @@ import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
 import UserProfilePopover from './components/popovers/UserProfilePopover';
+import WallpaperEngine from './components/common/WallpaperEngine';
 import { isLikelyDownloadUrl } from './utils/downloadHelpers';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
@@ -69,10 +70,6 @@ export default function App() {
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
-    const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
-    const [currentWallpaper, setCurrentWallpaper] = useState(activeWallpaper);
-    const [prevWallpaper, setPrevWallpaper] = useState(null);
-
     // Initialize Windows & OS reduced-motion accessibility synchronization
     useEffect(() => {
         if (typeof initSystemReducedMotion === 'function') {
@@ -80,40 +77,12 @@ export default function App() {
         }
     }, [initSystemReducedMotion]);
 
-    // Preload & GPU-decode wallpaper so it is fully rendered before boot curtain dissolves
-    useEffect(() => {
-        if (activeWallpaper) {
-            const img = new Image();
-            img.src = activeWallpaper;
-            if (img.decode) {
-                img.decode().catch(() => {});
-            }
-        }
-    }, [activeWallpaper]);
-
     useEffect(() => {
         const root = document.documentElement;
         if (!root.classList.contains('eco-mode')) {
             root.style.setProperty('--glass-blur', `${wallpaperBlur}px`);
         }
     }, [wallpaperBlur]);
-
-    useEffect(() => {
-        if (activeWallpaper !== currentWallpaper) {
-            // While boot curtain is still active or animations are disabled, immediately set wallpaper without a visible crossfade lag
-            if (isBooting || a11yReducedMotion || isSystemReducedMotion) {
-                setCurrentWallpaper(activeWallpaper);
-                setPrevWallpaper(null);
-                return;
-            }
-            setPrevWallpaper(currentWallpaper);
-            setCurrentWallpaper(activeWallpaper);
-            const timer = setTimeout(() => {
-                setPrevWallpaper(null);
-            }, 750);
-            return () => clearTimeout(timer);
-        }
-    }, [activeWallpaper, currentWallpaper, isBooting, a11yReducedMotion, isSystemReducedMotion]);
 
 
     const { onDragOver, onDragLeave, onDropRoot } = useDragAndDrop();
@@ -610,6 +579,11 @@ export default function App() {
         root.setAttribute('data-frame-curvature', frameCurvature);
         root.classList.toggle('frame-square', frameCurvature === 'square');
         root.classList.toggle('frame-cohesive', frameCurvature === 'cohesive');
+
+        // Synchronize native Windows 11 DWM window corner preference with preset studio
+        if (window.electronAPI?.setWindowCornerPreference) {
+            window.electronAPI.setWindowCornerPreference(frameCurvature);
+        }
     }, [a11yHighContrast, a11yDyslexiaFont, a11yReducedMotion, a11yFocusRings, isSystemReducedMotion, frameCurvature]);
 
     const handleBootFinish = () => {
@@ -664,40 +638,8 @@ export default function App() {
                 onDragLeave={onDragLeave}
                 onDrop={(e) => onDropRoot(e, activeSpace)}
             >
-                {/* Ultra-Smooth Crossfading Wallpaper Layers */}
-                <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-                    {/* Previous Wallpaper Layer (smoothly sitting underneath during crossfade) */}
-                    {prevWallpaper && (
-                        <div 
-                            className="absolute inset-0 bg-cover bg-center"
-                            style={{ 
-                                backgroundImage: `url('${prevWallpaper}')`,
-                                filter: (blurWallpaper && wallpaperBlur > 0) ? `saturate(1.1) blur(${wallpaperBlur}px)` : 'saturate(1.1)',
-                                transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)'
-                            }}
-                        />
-                    )}
-                    {/* Active Wallpaper Layer (fades in smoothly with subtle Apple Sonoma scale settlement) */}
-                    <div 
-                        key={currentWallpaper}
-                        className="absolute inset-0 bg-cover bg-center animate-wallpaper-fade will-change-transform"
-                        style={{ 
-                            backgroundImage: `url('${currentWallpaper}')`,
-                            filter: (blurWallpaper && wallpaperBlur > 0) ? `saturate(1.1) blur(${wallpaperBlur}px)` : 'saturate(1.1)',
-                            transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)',
-                            transition: (a11yReducedMotion || isSystemReducedMotion) ? 'none' : 'filter 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
-                        }}
-                    />
-                    {/* Dimming / Frosted overlay layer to ensure UI readability without bleaching */}
-                    <div 
-                        className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-300" 
-                        style={{ 
-                            backgroundColor: isBright
-                                ? `rgba(255, 255, 255, ${(wallpaperDimming / 100) * 0.15})` 
-                                : `rgba(0, 0, 0, ${wallpaperDimming / 100})` 
-                        }} 
-                    />
-                </div>
+                {/* Hardware-Optimized Live Wallpaper Engine (Zero Stacking, Live Video/GIF, Background Pausing) */}
+                <WallpaperEngine />
                 {/* Arc-Style Zen Fullscreen Edge Peek Hit Triggers */}
                 {isFullscreen && (
                     <>

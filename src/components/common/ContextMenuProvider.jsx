@@ -15,7 +15,7 @@ import useTabStore from '../../store/useTabStore';
 import useAIStore from '../../store/useAIStore';
 import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { isTabForPin } from '../layout/PinnedStackPopup';
-import { buildSearchEngineUrl, getSearchEngineById } from '../../utils/searchEngines';
+import { buildSearchEngineUrl, getSearchEngineById, isLikelyWebUrl } from '../../utils/searchEngines';
 import { isLikelyDownloadUrl } from '../../utils/downloadHelpers';
 
 // Helper: Search URL generation based on active space and user settings
@@ -782,7 +782,7 @@ export default function ContextMenuProvider({ children }) {
             if (!text) return;
             
             let targetUrl = text;
-            const isUrl = /^(https?:\/\/|[a-z0-9]+([-.][a-z0-9]+)*\.[a-z]{2,}(:\d+)?(\/.*)?$)/i.test(text);
+            const isUrl = isLikelyWebUrl(text);
             if (!isUrl) {
                 targetUrl = getSearchUrl(text);
             } else if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {

@@ -1147,7 +1147,7 @@ export default function Sidebar() {
                                                 onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} 
                                                 onAuxClick={handleNewTabAuxClick} 
                                                 className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md shrink-0" 
-                                                title={`New Tab in ${sp.name} (CMD+T • Middle-click for background)`}
+                                                title={`New Tab in ${sp.name} (CMD+T) • Middle-click for background`}
                                             >
                                                 <Plus size={12} strokeWidth={2.5} />
                                             </button>
@@ -1164,7 +1164,7 @@ export default function Sidebar() {
                                                         } ${
                                                             frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
                                                         } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} 
-                                                        title="New Tab (Middle-click for background)"
+                                                        title="New Tab (CMD+T) • Middle-click for background"
                                                     >
                                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                             <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
@@ -1201,7 +1201,7 @@ export default function Sidebar() {
                                         <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">Incognito Tabs</h3>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T • Middle-click for background)">
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T) • Middle-click for background">
                                             <Plus size={12} strokeWidth={2.5} />
                                         </button>
                                     </div>
@@ -1214,7 +1214,7 @@ export default function Sidebar() {
                                                 uiScale === 'compact' ? 'py-2 px-2.5' : 'p-3'
                                             } ${
                                                 frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
-                                            } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (Middle-click for background)">
+                                            } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (CMD+T) • Middle-click for background">
                                                 <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                                     <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
@@ -1256,7 +1256,7 @@ export default function Sidebar() {
                                         >
                                             <Ghost size={11} /> Ghost
                                         </button>
-                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T • Middle-click for background)">
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T) • Middle-click for background">
                                             <Plus size={12} strokeWidth={2.5} />
                                         </button>
                                     </div>
@@ -1267,7 +1267,7 @@ export default function Sidebar() {
                                         return (
                                             <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between p-3 ${
                                                 frameCurvature === 'square' ? 'rounded-none !rounded-none' : 'rounded-xl'
-                                            } bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tor Tab (Middle-click for background)">
+                                            } bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tor Tab (CMD+T) • Middle-click for background">
                                                 <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
                                                     <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>

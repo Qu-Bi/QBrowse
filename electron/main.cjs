@@ -1725,6 +1725,16 @@ function createWindow(options = {}) {
     }
   });
 
+  win.once('ready-to-show', () => {
+    applyWindowCornerPreference(win, currentWindowCornerPreference);
+  });
+  win.on('unmaximize', () => {
+    applyWindowCornerPreference(win, currentWindowCornerPreference);
+  });
+  win.on('restore', () => {
+    applyWindowCornerPreference(win, currentWindowCornerPreference);
+  });
+
   const queryParams = {};
   if (options.space) queryParams.space = options.space;
   if (options.profileId) queryParams.profileId = options.profileId;
@@ -3132,9 +3142,15 @@ app.whenReady().then(async () => {
   try {
       protocol.handle('qbrowse-media', async (request) => {
           try {
-              const raw = request.url.replace(/^qbrowse-media:\/\/(?:app\/|local\/)?/, '');
-              const decoded = decodeURIComponent(raw);
-              const fileName = path.basename(decoded);
+              let fileName = '';
+              try {
+                  const urlObj = new URL(request.url);
+                  const raw = urlObj.pathname.replace(/^\/(?:app\/|local\/)?/, '');
+                  fileName = path.basename(decodeURIComponent(raw));
+              } catch {
+                  const raw = request.url.replace(/^qbrowse-media:\/\/(?:app\/|local\/)?/, '').split('?')[0].split('#')[0];
+                  fileName = path.basename(decodeURIComponent(raw));
+              }
               if (!fileName) {
                   return new Response('Not Found', { status: 404 });
               }
@@ -3151,7 +3167,17 @@ app.whenReady().then(async () => {
               } catch {
                   return new Response('Not Found', { status: 404 });
               }
-              return net.fetch(pathToFileURL(fullPath).toString());
+              const response = await net.fetch(pathToFileURL(fullPath).toString(), {
+                  headers: request.headers
+              });
+              const responseHeaders = new Headers(response.headers);
+              responseHeaders.set('Access-Control-Allow-Origin', '*');
+              responseHeaders.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+              return new Response(response.body, {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: responseHeaders
+              });
           } catch (err) {
               return new Response('Not Found', { status: 404 });
           }
@@ -3683,6 +3709,53 @@ ipcMain.on('window-drag-by', (event, { deltaX, deltaY }) => {
 ipcMain.on('open-devtools', (e) => {
     const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
     if (win) win.webContents.openDevTools();
+});
+
+// Native OS Window Corner Curvature Adaptation (Windows 11 DWM)
+let currentWindowCornerPreference = 'default';
+
+function applyWindowCornerPreference(win, preference) {
+    if (!win || win.isDestroyed() || process.platform !== 'win32') return;
+    try {
+        currentWindowCornerPreference = preference || currentWindowCornerPreference;
+        const hwndBuf = win.getNativeWindowHandle();
+        if (!hwndBuf || hwndBuf.length < 4) return;
+
+        let hwndStr = '';
+        try {
+            hwndStr = hwndBuf.readBigInt64LE(0).toString();
+        } catch {
+            hwndStr = hwndBuf.readUInt32LE(0).toString();
+        }
+
+        // DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        // 1 = DWMWCP_DONOTROUND (Sharp / Square)
+        // 2 = DWMWCP_ROUND (Default standard rounded corners)
+        // 3 = DWMWCP_ROUNDSMALL (Cohesive small rounded corners)
+        let prefCode = 2;
+        if (preference === 'square' || preference === 'sharp') {
+            prefCode = 1;
+        } else if (preference === 'cohesive') {
+            prefCode = 3;
+        }
+
+        const exePath = path.join(__dirname, 'bin', 'set-window-corners.exe');
+        if (fsSync.existsSync(exePath)) {
+            execFile(exePath, [hwndStr, prefCode.toString()], { stdio: 'ignore' }, (err) => {
+                if (err) console.warn('[DWM] Error setting window corner preference:', err.message);
+            });
+        }
+    } catch (err) {
+        console.warn('[DWM] Failed to set window corner preference:', err.message);
+    }
+}
+
+ipcMain.handle('window-set-corner-preference', (event, preference) => {
+    currentWindowCornerPreference = preference || 'default';
+    for (const win of browserWindows) {
+        applyWindowCornerPreference(win, currentWindowCornerPreference);
+    }
+    return { success: true, preference: currentWindowCornerPreference };
 });
 
 ipcMain.handle('get-hardware-specs', () => {
@@ -6104,6 +6177,9 @@ ipcMain.handle('save-setting', (event, data) => {
                 if (k === 'adblockEnabled' && typeof v === 'boolean') {
                     adblockEngine.setActive(v);
                 }
+                if (k === 'adblockCustomBlockedDomains') {
+                    adblockEngine.rebuildCustomRules(settingsStore);
+                }
                 if (k === 'isForceDark' && typeof v === 'boolean') {
                     liveSmartDarkState.isForceDark = v;
                     shouldBroadcastSmartDark = true;
@@ -6126,6 +6202,9 @@ ipcMain.handle('save-setting', (event, data) => {
         settingsStore[rawKey] = rawValue;
         if (rawKey === 'adblockEnabled' && typeof rawValue === 'boolean') {
             adblockEngine.setActive(rawValue);
+        }
+        if (rawKey === 'adblockCustomBlockedDomains') {
+            adblockEngine.rebuildCustomRules(settingsStore);
         }
         if (rawKey === 'isForceDark' && typeof rawValue === 'boolean') {
             liveSmartDarkState.isForceDark = rawValue;
@@ -7051,7 +7130,9 @@ ipcMain.handle('wallpaper-import-file', async () => {
             title: 'Choose Custom Wallpaper',
             properties: ['openFile'],
             filters: [
-                { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }
+                { name: 'All Supported Media (*.jpg, *.png, *.gif, *.mp4, *.webm)', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'mov', 'm4v'] },
+                { name: 'Live Videos (*.mp4, *.webm, *.mov)', extensions: ['mp4', 'webm', 'mov', 'm4v'] },
+                { name: 'Images & GIFs (*.jpg, *.png, *.gif, *.webp)', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }
             ]
         });
 
@@ -7113,9 +7194,13 @@ ipcMain.handle('wallpaper-import-url', async (event, imageUrl) => {
         }
 
         let ext = path.extname(parsedUrl.pathname).toLowerCase();
-        if (!ext || !['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+        const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov', '.m4v'];
+        if (!ext || !validExtensions.includes(ext)) {
             const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('png')) ext = '.png';
+            if (contentType.includes('mp4')) ext = '.mp4';
+            else if (contentType.includes('webm')) ext = '.webm';
+            else if (contentType.includes('quicktime')) ext = '.mov';
+            else if (contentType.includes('png')) ext = '.png';
             else if (contentType.includes('webp')) ext = '.webp';
             else if (contentType.includes('gif')) ext = '.gif';
             else ext = '.jpg';
@@ -7185,6 +7270,74 @@ ipcMain.handle('wallpaper-reset', async () => {
         return { success: true };
     } catch {
         return { success: true };
+    }
+});
+
+function parseGifBufferDuration(bytes) {
+    if (!bytes || bytes.length < 13) return null;
+    if (bytes[0] !== 0x47 || bytes[1] !== 0x49 || bytes[2] !== 0x46) return null;
+
+    let totalDurationMs = 0;
+    let frameCount = 0;
+    let i = 13;
+    const gctFlag = bytes[10] & 0x80;
+    if (gctFlag) {
+        const gctSize = 3 * (1 << ((bytes[10] & 0x07) + 1));
+        i += gctSize;
+    }
+
+    while (i < bytes.length) {
+        const blockType = bytes[i++];
+        if (blockType === 0x3B) break;
+        if (blockType === 0x21) {
+            const extType = bytes[i++];
+            if (extType === 0xF9) {
+                const blockSize = bytes[i++];
+                if (blockSize >= 4) {
+                    const delay = bytes[i + 1] | (bytes[i + 2] << 8);
+                    totalDurationMs += (delay <= 1 ? 10 : delay) * 10;
+                    frameCount++;
+                }
+                i += blockSize;
+                while (i < bytes.length && bytes[i] !== 0) { i += bytes[i] + 1; }
+                if (i < bytes.length) i++;
+            } else {
+                while (i < bytes.length && bytes[i] !== 0) { i += bytes[i] + 1; }
+                if (i < bytes.length) i++;
+            }
+        } else if (blockType === 0x2C) {
+            i += 9;
+            if (i < bytes.length && (bytes[i - 1] & 0x80)) {
+                const lctSize = 3 * (1 << ((bytes[i - 1] & 0x07) + 1));
+                i += lctSize;
+            }
+            i++;
+            while (i < bytes.length && bytes[i] !== 0) { i += bytes[i] + 1; }
+            if (i < bytes.length) i++;
+        }
+    }
+    return (totalDurationMs > 0 && frameCount > 1) ? totalDurationMs : null;
+}
+
+ipcMain.handle('wallpaper-get-gif-duration', async (event, wallpaperUrl) => {
+    try {
+        if (!wallpaperUrl || typeof wallpaperUrl !== 'string') return null;
+        let fileName = '';
+        try {
+            const urlObj = new URL(wallpaperUrl);
+            const raw = urlObj.pathname.replace(/^\/(?:app\/|local\/)?/, '');
+            fileName = path.basename(decodeURIComponent(raw));
+        } catch {
+            const raw = wallpaperUrl.replace(/^qbrowse-media:\/\/(?:app\/|local\/)?/, '').split('?')[0].split('#')[0];
+            fileName = path.basename(decodeURIComponent(raw));
+        }
+        if (!fileName) return null;
+        const fullPath = path.join(app.getPath('userData'), 'backgrounds', fileName);
+        if (!fsSync.existsSync(fullPath)) return null;
+        const buf = await fs.readFile(fullPath);
+        return parseGifBufferDuration(buf);
+    } catch {
+        return null;
     }
 });
 

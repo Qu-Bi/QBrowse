@@ -1523,10 +1523,20 @@ function sendMediaState() {
             currentTime = activeMedia.currentTime || 0;
             duration = activeMedia.duration || 0;
 
+            // Check YouTube player state if on YouTube
+            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+                const s = ytPlayer.getPlayerState();
+                if (s === 1 || s === 3) isPlaying = true;
+                else if (s === 2 || s === 0) isPlaying = false;
+            }
+
             if (!title) {
                 const ytTitle = document.querySelector('h1.ytd-watch-metadata, yt-formatted-string.ytd-video-primary-info-renderer, div[data-testid="now-playing-widget"]');
                 if (ytTitle) {
                     title = ytTitle.textContent.trim();
+                } else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.title) {
+                    title = navigator.mediaSession.metadata.title;
                 } else if (document.title) {
                     title = document.title.replace(/^\([0-9]+\)\s*/, '').replace(/ - YouTube$/, '').replace(/ - Spotify$/, '').replace(/ \| TIDAL$/, '');
                 }
@@ -1535,13 +1545,19 @@ function sendMediaState() {
             if (!artist) {
                 const ytChannel = document.querySelector('#owner #channel-name, #upload-info #channel-name, a[data-testid="context-item-author"]');
                 if (ytChannel) artist = ytChannel.textContent.trim();
-                else artist = window.location.hostname;
+                else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.artist) {
+                    artist = navigator.mediaSession.metadata.artist;
+                } else {
+                    artist = window.location.hostname;
+                }
             }
 
             if (!albumArt) {
                 const ogImage = document.querySelector('meta[property="og:image"]');
-                if (ogImage) albumArt = ogImage.content;
-                else {
+                if (ogImage && ogImage.content) albumArt = ogImage.content;
+                else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.artwork && navigator.mediaSession.metadata.artwork.length > 0) {
+                    albumArt = navigator.mediaSession.metadata.artwork[navigator.mediaSession.metadata.artwork.length - 1].src;
+                } else {
                     const spCover = document.querySelector('img[data-testid="cover-art-image"]');
                     if (spCover) albumArt = spCover.src;
                 }
@@ -1592,36 +1608,85 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
         const cmd = typeof cmdData === 'string' ? cmdData : (cmdData ? cmdData.action : '');
         console.log('[Preload MediaControl] Received IPC command in page:', cmd, cmdData);
 
+        if (window.__qbrowse_last_media_cmd && Date.now() - window.__qbrowse_last_media_cmd < 350) {
+            console.log('[Preload MediaControl] Debounced duplicate command:', cmd);
+            return;
+        }
+        window.__qbrowse_last_media_cmd = Date.now();
+
         const mediaEls = Array.from(document.querySelectorAll('video, audio'));
         console.log(`[Preload MediaControl] Found ${mediaEls.length} media element(s) in document`);
         const activeMedia = mediaEls.find(el => !el.paused) || mediaEls[0];
 
-        if (cmd === 'toggle-play') {
+        if (cmd === 'toggle-play' || cmd === 'play-pause') {
+            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+                const s = ytPlayer.getPlayerState();
+                if (s === 1 || s === 3) {
+                    if (typeof ytPlayer.pauseVideo === 'function') ytPlayer.pauseVideo();
+                } else {
+                    if (typeof ytPlayer.playVideo === 'function') ytPlayer.playVideo();
+                }
+                return;
+            }
+
+            const playBtn = document.querySelector('.ytp-play-button, button[data-testid="control-button-playpause"], button[data-testid="play-pause-button"], button[data-a-target="player-play-pause-button"], .playControl, #play-pause-button');
+            if (playBtn) {
+                playBtn.click();
+                return;
+            }
+
             if (activeMedia) {
-                if (activeMedia.paused) activeMedia.play();
-                else activeMedia.pause();
+                if (activeMedia.paused) {
+                    const p = activeMedia.play();
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } else {
+                    activeMedia.pause();
+                }
             } else {
-                const playBtn = document.querySelector('.ytp-play-button, button[data-testid="control-button-playpause"], .play-button');
-                if (playBtn) playBtn.click();
+                const keyEv = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', keyCode: 75, which: 75, bubbles: true });
+                document.dispatchEvent(keyEv);
             }
         } else if (cmd === 'next-track') {
-            const nextBtn = document.querySelector('.ytp-next-button, button[data-testid="control-button-skip-forward"]');
-            if (nextBtn) nextBtn.click();
-            else if (activeMedia && activeMedia.duration) {
+            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            if (ytPlayer && typeof ytPlayer.nextVideo === 'function') {
+                ytPlayer.nextVideo();
+                return;
+            }
+            const nextBtn = document.querySelector('.ytp-next-button, button[data-testid="control-button-skip-forward"], .skipControl__next, .next-button');
+            if (nextBtn) {
+                nextBtn.click();
+            } else if (activeMedia && activeMedia.duration) {
                 activeMedia.currentTime = Math.min(activeMedia.duration, activeMedia.currentTime + 10);
             }
         } else if (cmd === 'prev-track') {
-            const prevBtn = document.querySelector('.ytp-prev-button, button[data-testid="control-button-skip-back"]');
-            if (prevBtn) prevBtn.click();
-            else if (activeMedia) {
+            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            if (ytPlayer && typeof ytPlayer.previousVideo === 'function') {
+                ytPlayer.previousVideo();
+                return;
+            }
+            const prevBtn = document.querySelector('.ytp-prev-button, button[data-testid="control-button-skip-back"], .skipControl__previous, .previous-button');
+            if (prevBtn) {
+                prevBtn.click();
+            } else if (activeMedia) {
                 activeMedia.currentTime = Math.max(0, activeMedia.currentTime - 10);
             }
         } else if (cmd === 'seek') {
-            if (activeMedia && typeof cmdData.time === 'number') {
-                activeMedia.currentTime = cmdData.time;
+            const seekTime = typeof cmdData.time === 'number' ? cmdData.time : 0;
+            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+                ytPlayer.seekTo(seekTime, true);
+            } else if (activeMedia) {
+                activeMedia.currentTime = seekTime;
             }
         } else if (cmd === 'mute-toggle') {
-            mediaEls.forEach(el => el.muted = !el.muted);
+            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            if (ytPlayer && typeof ytPlayer.isMuted === 'function') {
+                if (ytPlayer.isMuted()) ytPlayer.unMute?.();
+                else ytPlayer.mute?.();
+            } else {
+                mediaEls.forEach(el => el.muted = !el.muted);
+            }
         } else if (cmd === 'toggle-pip' || cmd === 'pip') {
             console.log('[Preload MediaControl] Executing toggle-pip action');
             try {

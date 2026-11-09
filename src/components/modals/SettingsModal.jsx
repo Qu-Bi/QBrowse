@@ -14,6 +14,15 @@ import {
 } from 'lucide-react';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
 import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
+import { 
+    cleanDomain, 
+    parseBlocklistInput, 
+    isPotentialRemoteListUrl, 
+    normalizeRemoteListUrl 
+} from '../../utils/adblockUrlParser';
+import AdblockImportModal from '../settings/AdblockImportModal';
+import { isVideoWallpaper, isGifWallpaper, isLiveWallpaper, getWallpaperBadgeLabel } from '../../utils/wallpaperHelpers';
+import WallpaperPreviewThumbnail from '../common/WallpaperPreviewThumbnail';
 
 const SPACE_ICONS = [
     { id: 'User', label: 'User', icon: User },
@@ -189,10 +198,13 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
     const hoveredIndex = hoveredId !== null ? options.findIndex(o => o.id === hoveredId) : -1;
     const count = options.length || 1;
 
-    const padding = size === 'sm' ? 'p-0.5' : 'p-1';
-    const itemPy = size === 'sm' ? 'py-1' : size === 'lg' ? 'py-2' : 'py-1.5';
-    const itemPx = size === 'sm' ? 'px-2' : 'px-3';
-    const textSize = size === 'sm' ? 'text-[11px]' : 'text-xs';
+    const isSm = size === 'sm';
+    const padding = isSm ? 'p-0.5' : 'p-1';
+    const itemPy = isSm ? 'py-1' : size === 'lg' ? 'py-2' : 'py-1.5';
+    const itemPx = isSm ? 'px-2.5' : 'px-3';
+    const textSize = isSm ? 'text-[11px]' : 'text-xs';
+    const insetOffset = isSm ? 4 : 8;
+    const insetValue = isSm ? '2px' : '4px';
 
     return (
         <div 
@@ -205,9 +217,12 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
             {/* Subtle Hover Preview Pill */}
             {hoveredIndex >= 0 && hoveredIndex !== activeIndex && (
                 <div 
-                    className="absolute top-1 bottom-1 left-1 rounded-full transition-all duration-200 pointer-events-none"
+                    className="absolute rounded-full transition-all duration-200 pointer-events-none"
                     style={{
-                        width: `calc((100% - 8px) / ${count})`,
+                        top: insetValue,
+                        bottom: insetValue,
+                        left: insetValue,
+                        width: `calc((100% - ${insetOffset}px) / ${count})`,
                         transform: `translateX(${hoveredIndex * 100}%)`,
                         backgroundColor: isBright ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.05)'
                     }}
@@ -216,9 +231,12 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
 
             {/* Signature Liquid Glass Sliding Pill */}
             <div 
-                className="absolute top-1 bottom-1 left-1 rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
+                className="absolute rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
                 style={{
-                    width: `calc((100% - 8px) / ${count})`,
+                    top: insetValue,
+                    bottom: insetValue,
+                    left: insetValue,
+                    width: `calc((100% - ${insetOffset}px) / ${count})`,
                     transform: `translateX(${activeIndex * 100}%)`,
                     backgroundColor: isBright ? '#ffffff' : 'var(--accent-15, rgba(212, 188, 148, 0.16))',
                     border: isBright ? '1px solid rgba(0,0,0,0.08)' : '1px solid var(--accent-30, rgba(212, 188, 148, 0.4))',
@@ -312,6 +330,8 @@ const SettingsModalContent = () => {
         setCustomWallpaper,
         setWallpaperDimming,
         setWallpaperBlur,
+        setWallpaperVideoLoopMode,
+        setWallpaperVideoCrossfadeDuration,
         resetCustomWallpaper,
         bfcacheEnabled,
         toggleBfcache,
@@ -516,6 +536,9 @@ const SettingsModalContent = () => {
     const [filterUpdateStatus, setFilterUpdateStatus] = useState(null);
     const [adblockAllowlistInput, setAdblockAllowlistInput] = useState('');
     const [adblockBlocklistInput, setAdblockBlocklistInput] = useState('');
+    const [isAdblockImportOpen, setIsAdblockImportOpen] = useState(false);
+    const [adblockImportInitialUrl, setAdblockImportInitialUrl] = useState('');
+    const [blocklistSearchQuery, setBlocklistSearchQuery] = useState('');
 
     const isAdblockActive = useUIStore(state => state.isAdblockActive ?? state.isAdblockEnabled ?? true);
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive || state.toggleAdblock);
@@ -532,8 +555,13 @@ const SettingsModalContent = () => {
 
     const handleAddAllowlist = (e) => {
         if (e) e.preventDefault();
-        const clean = adblockAllowlistInput.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-        if (!clean) return;
+        const raw = adblockAllowlistInput.trim();
+        if (!raw) return;
+        const clean = cleanDomain(raw);
+        if (!clean) {
+            showToast('Invalid website URL or domain');
+            return;
+        }
         const current = settings?.adblockAllowlist || [];
         if (current.includes(clean)) {
             showToast(`${clean} is already in trusted sites`);
@@ -552,22 +580,77 @@ const SettingsModalContent = () => {
 
     const handleAddBlocklist = (e) => {
         if (e) e.preventDefault();
-        const clean = adblockBlocklistInput.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-        if (!clean) return;
-        const current = settings?.adblockCustomBlockedDomains || [];
-        if (current.includes(clean)) {
-            showToast(`${clean} is already in custom blocked domains`);
+        const raw = adblockBlocklistInput.trim();
+        if (!raw) return;
+
+        // Auto-detect if user entered a remote list URL (e.g. from GitHub)
+        if (isPotentialRemoteListUrl(raw)) {
+            setAdblockImportInitialUrl(normalizeRemoteListUrl(raw));
+            setIsAdblockImportOpen(true);
+            setAdblockBlocklistInput('');
             return;
         }
-        setSettingValue('adblockCustomBlockedDomains', [...current, clean]);
+
+        // Auto-parse URL / rule / bulk list input
+        const parseResult = parseBlocklistInput(raw);
+        if (parseResult.domains.length === 0) {
+            showToast('Invalid domain or URL format');
+            return;
+        }
+
+        const current = settings?.adblockCustomBlockedDomains || [];
+        const currentSet = new Set(current.map(d => d.toLowerCase()));
+        const newDomains = parseResult.domains.filter(d => !currentSet.has(d.toLowerCase()));
+
+        if (newDomains.length === 0) {
+            showToast(parseResult.domains.length === 1 ? `${parseResult.domains[0]} is already in custom blocklist` : 'Entered domains are already in custom blocklist');
+            return;
+        }
+
+        const updated = [...current, ...newDomains];
+        setSettingValue('adblockCustomBlockedDomains', updated);
         setAdblockBlocklistInput('');
-        showToast(`Added ${clean} to custom blocklist`);
+
+        if (newDomains.length === 1) {
+            showToast(`Blocked ${newDomains[0]}`);
+        } else {
+            showToast(`Added ${newDomains.length} domains to custom blocklist`);
+        }
     };
 
     const handleRemoveBlocklist = (domain) => {
         const current = settings?.adblockCustomBlockedDomains || [];
         setSettingValue('adblockCustomBlockedDomains', current.filter(d => d !== domain));
         showToast(`Removed ${domain} from custom blocklist`);
+    };
+
+    const handleImportBlocklistDomains = (domains, replace = false) => {
+        const current = replace ? [] : (settings?.adblockCustomBlockedDomains || []);
+        const currentSet = new Set(current.map(d => d.toLowerCase()));
+        const toAdd = domains.filter(d => !currentSet.has(d.toLowerCase()));
+        const updated = [...current, ...toAdd];
+        setSettingValue('adblockCustomBlockedDomains', updated);
+        showToast(replace ? `Replaced blocklist with ${updated.length} domains` : `Added ${toAdd.length} domains to custom blocklist`);
+    };
+
+    const handleClearBlocklist = () => {
+        const count = settings?.adblockCustomBlockedDomains?.length || 0;
+        if (count === 0) return;
+        if (window.confirm(`Are you sure you want to clear all ${count.toLocaleString()} custom blocked domains?`)) {
+            setSettingValue('adblockCustomBlockedDomains', []);
+            showToast('Cleared custom blocklist');
+        }
+    };
+
+    const handleExportBlocklist = () => {
+        const list = settings?.adblockCustomBlockedDomains || [];
+        if (list.length === 0) {
+            showToast('Blocklist is empty');
+            return;
+        }
+        const text = list.join('\n');
+        navigator.clipboard?.writeText(text);
+        showToast(`Copied ${list.length.toLocaleString()} domains to clipboard`);
     };
 
     useEffect(() => {
@@ -703,6 +786,13 @@ const SettingsModalContent = () => {
     const wallpaperDimming = settings?.wallpaperDimming ?? 25;
     const wallpaperBlur = settings?.wallpaperBlur ?? 24;
     const blurWallpaper = settings?.blurWallpaper ?? false;
+    const wallpaperVideoLoopMode = settings?.wallpaperVideoLoopMode || 'crossfade';
+    const wallpaperVideoCrossfadeDuration = settings?.wallpaperVideoCrossfadeDuration ?? 1.2;
+
+    const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
+    const isCurrentVideo = isVideoWallpaper(activeWallpaper);
+    const isCurrentGif = isGifWallpaper(activeWallpaper);
+    const isCurrentLive = isLiveWallpaper(activeWallpaper);
 
     const [wallpaperUrlInput, setWallpaperUrlInput] = useState('');
     const [isImportingUrl, setIsImportingUrl] = useState(false);
@@ -1470,29 +1560,15 @@ const SettingsModalContent = () => {
 
                                 {/* Preview and Source Info */}
                                         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 rounded-xl bg-black/30 border border-white/[0.04]">
-                                            <div className="w-36 h-20 rounded-lg overflow-hidden relative border border-white/10 shadow-md flex-shrink-0 bg-black/60">
-                                                <img 
-                                                    src={customWallpaper || DEFAULT_STOCK_THUMBNAIL} 
-                                                    alt="Wallpaper preview" 
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                    className="w-full h-full object-cover transition-all duration-300"
-                                                    style={{
-                                                        filter: `saturate(1.1) ${(blurWallpaper && wallpaperBlur > 0) ? `blur(${Math.min(8, wallpaperBlur * 0.2)}px)` : ''}`,
-                                                        transform: (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)'
-                                                    }}
-                                                    onError={(e) => {
-                                                        e.target.src = DEFAULT_STOCK_THUMBNAIL;
-                                                    }}
-                                                />
-                                                <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})` }} />
-                                                
-                                                <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center pointer-events-none">
-                                                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white/80 border border-white/10">
-                                                        Preview
-                                                    </span>
-                                                </div>
-                                            </div>
+                                            <WallpaperPreviewThumbnail
+                                                customWallpaper={customWallpaper}
+                                                loopMode={wallpaperVideoLoopMode}
+                                                crossfadeDuration={wallpaperVideoCrossfadeDuration}
+                                                dimming={wallpaperDimming}
+                                                blur={wallpaperBlur}
+                                                blurEnabled={blurWallpaper}
+                                                defaultThumbnail={DEFAULT_STOCK_THUMBNAIL}
+                                            />
 
                                             <div className="flex-1 min-w-0 space-y-1">
                                                 <div className="flex items-center gap-2">
@@ -1500,11 +1576,15 @@ const SettingsModalContent = () => {
                                                     <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
                                                         !customWallpaper 
                                                             ? 'bg-white/5 border-white/10 text-white/60' 
-                                                            : customWallpaperSource === 'file' 
-                                                                ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' 
-                                                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                                            : isVideoWallpaper(customWallpaper)
+                                                                ? 'bg-purple-500/15 border-purple-500/35 text-purple-400 font-semibold'
+                                                                : isGifWallpaper(customWallpaper)
+                                                                    ? 'bg-amber-500/15 border-amber-500/35 text-amber-400 font-semibold'
+                                                                    : customWallpaperSource === 'file' 
+                                                                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' 
+                                                                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                                                     }`}>
-                                                        {!customWallpaper ? 'Default Stock' : customWallpaperSource === 'file' ? 'Local File' : 'Web URL'}
+                                                        {getWallpaperBadgeLabel(customWallpaper, customWallpaperSource)}
                                                     </span>
                                                     {customWallpaperSource === 'file' && (
                                                         <span className="text-[10px] text-zinc-500 italic">(Local only, skipped during cloud sync)</span>
@@ -1512,9 +1592,9 @@ const SettingsModalContent = () => {
                                                 </div>
                                                 <p className="text-[11px] text-zinc-400 leading-relaxed truncate">
                                                     {!customWallpaper 
-                                                        ? 'Default dynamic landscape wallpaper is active. Import your own photo or art to personalize your workspace.'
+                                                        ? 'Default dynamic landscape wallpaper is active. Import your own photo, GIF, or looping video to personalize your workspace.'
                                                         : customWallpaperSource === 'file'
-                                                            ? 'Using an imported local image file stored safely in your application data directory.'
+                                                            ? 'Using an imported local media file stored safely in your application data directory.'
                                                             : `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`}
                                                 </p>
                                             </div>
@@ -1530,7 +1610,7 @@ const SettingsModalContent = () => {
                                                         <span>Choose from Hard Drive</span>
                                                     </p>
                                                     <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                                                        Pick a JPG, PNG, WebP, or GIF from your PC. Automatically saved into app storage.
+                                                        Pick a JPG, PNG, WebP, GIF, or MP4/WebM video from your PC. Automatically saved into app storage.
                                                     </p>
                                                 </div>
                                                 <button
@@ -1544,7 +1624,7 @@ const SettingsModalContent = () => {
                                                     ) : (
                                                         <Upload size={13} />
                                                     )}
-                                                    <span>{isImportingFile ? 'Importing...' : 'Browse Image File...'}</span>
+                                                    <span>{isImportingFile ? 'Importing...' : 'Browse Media File...'}</span>
                                                 </button>
                                             </div>
 
@@ -1556,7 +1636,7 @@ const SettingsModalContent = () => {
                                                         <span>Import from Web URL</span>
                                                     </p>
                                                     <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                                                        Paste any public image or GIF URL. Cached locally and synced across your devices.
+                                                        Paste any public image, GIF, or video URL (.mp4, .webm). Cached locally and synced across devices.
                                                     </p>
                                                 </div>
                                                 <form onSubmit={handleImportWallpaperUrl} className="flex gap-2">
@@ -1564,7 +1644,7 @@ const SettingsModalContent = () => {
                                                         type="url"
                                                         value={wallpaperUrlInput}
                                                         onChange={(e) => setWallpaperUrlInput(e.target.value)}
-                                                        placeholder="https://images.unsplash.com/..."
+                                                        placeholder="https://... (.jpg, .png, .gif, .mp4, .webm)"
                                                         className="flex-1 min-w-0 bg-black/40 border border-white/[0.08] focus:border-accent rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/25 outline-none transition-colors"
                                                     />
                                                     <button
@@ -1650,6 +1730,113 @@ const SettingsModalContent = () => {
                                                 <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperBlur}px</span>
                                             </div>
                                         </div>
+
+                                        {/* Live Wallpaper Optimization Toggles (Shown ONLY when a Live Wallpaper - Video or GIF - is selected) */}
+                                        {isCurrentLive && (
+                                            <>
+                                                {/* Pause Live Wallpaper in Background Toggle */}
+                                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                                            <Zap size={15} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Pause Live Wallpapers in Background</p>
+                                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Automatically pause video and animated GIF playback when QBrowse is minimized or unfocused to eliminate CPU/GPU drain.</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                                        <SettingToggle 
+                                                            isChecked={settings?.pauseWallpaperInBackground !== false} 
+                                                            onToggle={() => toggleSetting('pauseWallpaperInBackground')} 
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Pause Live Wallpaper in Eco Mode Toggle */}
+                                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                                            <BatteryCharging size={15} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Pause Live Wallpapers in Eco Mode</p>
+                                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Freeze animated wallpapers during laptop battery saving or Eco Mode.</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                                        <SettingToggle 
+                                                            isChecked={settings?.pauseWallpaperInEcoMode !== false} 
+                                                            onToggle={() => toggleSetting('pauseWallpaperInEcoMode')} 
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* Live Wallpaper Loop Transitions (Shown for Videos and Animated GIFs) */}
+                                        {isCurrentLive && (
+                                            <>
+                                                {/* Live Wallpaper Loop Transition Mode */}
+                                                <div className="pt-3 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                                            <RotateCcw size={15} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Live Wallpaper Loop Mode</p>
+                                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Choose how video and animated GIF wallpapers seamlessly transition between cycles.</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex-shrink-0 w-full sm:w-auto min-w-[280px]">
+                                                        <SlidingPillSwitcher
+                                                            options={[
+                                                                { id: 'crossfade', label: 'Cross-Dissolve' },
+                                                                { id: 'dip', label: 'Ambient Dip' },
+                                                                { id: 'cut', label: 'Instant Cut' }
+                                                            ]}
+                                                            value={wallpaperVideoLoopMode}
+                                                            onChange={(mode) => setWallpaperVideoLoopMode(mode)}
+                                                            isBright={isBright}
+                                                            size="sm"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Loop Transition Duration Slider (Active when crossfade or dip is selected) */}
+                                                {wallpaperVideoLoopMode !== 'cut' && (
+                                                    <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                                                        <div className="flex items-center gap-3 min-w-0 pr-4">
+                                                            <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
+                                                                <SlidersHorizontal size={15} />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                                    {wallpaperVideoLoopMode === 'dip' ? 'Ambient Dip Duration' : 'Loop Dissolve Duration'}
+                                                                </p>
+                                                                <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>
+                                                                    {wallpaperVideoLoopMode === 'dip'
+                                                                        ? 'Total time of the ambient fade-down and return cycle.'
+                                                                        : 'Length of the blending overlap window between loop endings and beginnings.'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3 flex-shrink-0">
+                                                            <input
+                                                                type="range"
+                                                                min={0.4}
+                                                                max={2.5}
+                                                                step={0.1}
+                                                                value={wallpaperVideoCrossfadeDuration}
+                                                                onChange={(e) => setWallpaperVideoCrossfadeDuration(Number(e.target.value))}
+                                                                className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
+                                                            />
+                                                            <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperVideoCrossfadeDuration.toFixed(1)}s</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
 
                                     {/* Glass & Motion Physics */}
@@ -5033,68 +5220,217 @@ const SettingsModalContent = () => {
                                     <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
                                         isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
                                     }`}>
-                                        <div className="flex items-center justify-between">
-                                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                Custom Blocklist
-                                            </span>
-                                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                                                isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
-                                            }`}>
-                                                {(settings.adblockCustomBlockedDomains || []).length}
-                                            </span>
-                                        </div>
-                                        <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Specific domains to always block.
-                                        </p>
-
-                                        <form onSubmit={handleAddBlocklist} className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                placeholder="ads.example.com"
-                                                value={adblockBlocklistInput}
-                                                onChange={(e) => setAdblockBlocklistInput(e.target.value)}
-                                                className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
-                                                    isBright 
-                                                        ? 'bg-white border-black/15 text-zinc-900 focus:border-accent' 
-                                                        : 'bg-black/40 border-white/[0.08] text-white focus:border-accent'
-                                                }`}
-                                            />
-                                            <button
-                                                type="submit"
-                                                className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95 shadow-xs"
-                                            >
-                                                Add
-                                            </button>
-                                        </form>
-
-                                        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto hide-scroll pt-1">
-                                            {(settings.adblockCustomBlockedDomains || []).length === 0 ? (
-                                                <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                    No custom domains added.
+                                        <div className="flex items-center justify-between flex-wrap gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                    Custom Blocklist
                                                 </span>
-                                            ) : (
-                                                (settings.adblockCustomBlockedDomains || []).map((domain) => (
-                                                    <span 
-                                                        key={domain} 
-                                                        className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-mono border ${
-                                                            isBright 
-                                                                ? 'bg-white border-black/10 text-zinc-800 shadow-xs' 
-                                                                : 'bg-white/[0.04] border-white/10 text-zinc-200'
-                                                        }`}
-                                                    >
-                                                        <span>{domain}</span>
+                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                                                    isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
+                                                }`}>
+                                                    {(settings.adblockCustomBlockedDomains || []).length.toLocaleString()}
+                                                </span>
+                                            </div>
+
+                                            {/* Action tools */}
+                                            <div className="flex items-center gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        setAdblockImportInitialUrl('');
+                                                        setIsAdblockImportOpen(true);
+                                                    }}
+                                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs ${
+                                                        isBright 
+                                                            ? 'bg-black/5 hover:bg-black/10 text-zinc-800 border-black/10' 
+                                                            : 'bg-white/10 hover:bg-white/15 text-white border-white/10'
+                                                    }`}
+                                                    title="Import domain lists from GitHub, hosts files, or ABP rules"
+                                                >
+                                                    <Download size={12} className="text-accent" />
+                                                    <span>Import from GitHub / URL</span>
+                                                </button>
+                                                {(settings.adblockCustomBlockedDomains || []).length > 0 && (
+                                                    <>
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleRemoveBlocklist(domain)}
-                                                            className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
-                                                            title="Remove"
+                                                            onClick={handleExportBlocklist}
+                                                            className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                                                                isBright 
+                                                                    ? 'bg-white hover:bg-black/5 text-zinc-600 border-black/10' 
+                                                                    : 'bg-white/5 hover:bg-white/10 text-zinc-300 border-white/10'
+                                                            }`}
+                                                            title="Copy all custom blocked domains to clipboard"
                                                         >
-                                                            <X size={11} />
+                                                            <Copy size={12} />
                                                         </button>
-                                                    </span>
-                                                ))
-                                            )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleClearBlocklist}
+                                                            className="p-1.5 rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+                                                            title="Clear all custom blocked domains"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
+
+                                        <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            Specific domains to always block. Paste full URLs, hosts syntax (<code className="font-mono text-[10px]">0.0.0.0 domain</code>), ABP filter rules, or import community lists from GitHub.
+                                        </p>
+
+                                        {/* Auto-detected Remote List URL Smart Banner */}
+                                        {isPotentialRemoteListUrl(adblockBlocklistInput) && (
+                                            <div className="p-2.5 px-3 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-between gap-2 text-xs animate-fade-in">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <Globe size={14} className="text-accent shrink-0" />
+                                                    <span className="truncate text-xs font-semibold">
+                                                        Detected GitHub / remote blocklist link
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        setAdblockImportInitialUrl(normalizeRemoteListUrl(adblockBlocklistInput));
+                                                        setIsAdblockImportOpen(true);
+                                                        setAdblockBlocklistInput('');
+                                                    }}
+                                                    className="px-3 py-1 rounded-lg bg-accent text-zinc-950 font-bold text-xs shrink-0 hover:bg-accent-hover transition cursor-pointer shadow-xs active:scale-95"
+                                                >
+                                                    Fetch &amp; Import List
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* Input form */}
+                                        <form onSubmit={handleAddBlocklist} className="flex flex-col gap-1.5">
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="ads.example.com, https://..., or GitHub link"
+                                                    value={adblockBlocklistInput}
+                                                    onChange={(e) => setAdblockBlocklistInput(e.target.value)}
+                                                    className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
+                                                        isBright 
+                                                            ? 'bg-white border-black/15 text-zinc-900 focus:border-accent' 
+                                                            : 'bg-black/40 border-white/[0.08] text-white focus:border-accent'
+                                                    }`}
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95 shadow-xs"
+                                                >
+                                                    Add
+                                                </button>
+                                            </div>
+
+                                            {/* Live Auto-Parser Helper Feedback */}
+                                            {(() => {
+                                                const raw = adblockBlocklistInput.trim();
+                                                if (!raw || isPotentialRemoteListUrl(raw)) return null;
+                                                const parsed = parseBlocklistInput(raw);
+                                                if (parsed.domains.length === 1 && parsed.domains[0] !== raw.toLowerCase()) {
+                                                    return (
+                                                        <div className="text-[10px] font-mono opacity-70 px-1 flex items-center gap-1">
+                                                            <span>Auto-parsed domain:</span>
+                                                            <span className="text-accent font-semibold">{parsed.domains[0]}</span>
+                                                        </div>
+                                                    );
+                                                }
+                                                if (parsed.domains.length > 1) {
+                                                    return (
+                                                        <div className="text-[10px] font-mono opacity-70 px-1 flex items-center gap-1">
+                                                            <span>Bulk input detected:</span>
+                                                            <span className="text-accent font-semibold">{parsed.domains.length} domains</span>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
+                                        </form>
+
+                                        {/* In-Card Search Filter (visible when list has multiple items) */}
+                                        {(settings.adblockCustomBlockedDomains || []).length >= 8 && (
+                                            <div className="relative">
+                                                <Search size={12} className="absolute left-2.5 top-2.5 opacity-40" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Filter custom domains..."
+                                                    value={blocklistSearchQuery}
+                                                    onChange={(e) => setBlocklistSearchQuery(e.target.value)}
+                                                    className={`w-full pl-7 pr-3 py-1.5 rounded-lg text-[11px] font-mono outline-none border transition ${
+                                                        isBright 
+                                                            ? 'bg-white border-black/10 text-zinc-800 focus:border-accent' 
+                                                            : 'bg-black/30 border-white/10 text-zinc-200 focus:border-accent'
+                                                    }`}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Domains List */}
+                                        {(() => {
+                                            const allDomains = settings.adblockCustomBlockedDomains || [];
+                                            const filtered = allDomains.filter(d => {
+                                                if (!blocklistSearchQuery.trim()) return true;
+                                                return d.toLowerCase().includes(blocklistSearchQuery.toLowerCase().trim());
+                                            });
+
+                                            if (allDomains.length === 0) {
+                                                return (
+                                                    <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+                                                        No custom domains added yet. Click &quot;Import from GitHub / URL&quot; or enter a domain above.
+                                                    </span>
+                                                );
+                                            }
+
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+                                                        No domains matching &quot;{blocklistSearchQuery}&quot;
+                                                    </span>
+                                                );
+                                            }
+
+                                            const visibleSlice = filtered.slice(0, 120);
+
+                                            return (
+                                                <div className="space-y-1.5">
+                                                    <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto hide-scroll pt-1">
+                                                        {visibleSlice.map((domain) => (
+                                                            <span 
+                                                                key={domain} 
+                                                                className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-mono border ${
+                                                                    isBright 
+                                                                        ? 'bg-white border-black/10 text-zinc-800 shadow-xs' 
+                                                                        : 'bg-white/[0.04] border-white/10 text-zinc-200'
+                                                                }`}
+                                                            >
+                                                                <span>{domain}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveBlocklist(domain)}
+                                                                    className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
+                                                                    title="Remove"
+                                                                >
+                                                                    <X size={11} />
+                                                                </button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                    {filtered.length > 120 && (
+                                                        <p className={`text-[10px] font-mono italic ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                                            Showing 120 of {filtered.length.toLocaleString()} matching domains. Use search above to narrow down.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </div>
@@ -5515,6 +5851,18 @@ const SettingsModalContent = () => {
                 </div>
             </div>
         </div>
+
+        <AdblockImportModal
+            isOpen={isAdblockImportOpen}
+            onClose={() => {
+                setIsAdblockImportOpen(false);
+                setAdblockImportInitialUrl('');
+            }}
+            initialUrl={adblockImportInitialUrl}
+            existingDomains={settings.adblockCustomBlockedDomains || []}
+            onImport={handleImportBlocklistDomains}
+            isBright={isBright}
+        />
         </>
     );
 };

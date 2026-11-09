@@ -91,18 +91,51 @@ export default function LiquidTooltip() {
             let shortcut = null;
             let subtext = null;
 
-            // Extract secondary action hints like "• Right-click to hide"
-            if (text.includes(' • ')) {
-                const parts = text.split(' • ');
-                text = parts[0].trim();
-                subtext = parts.slice(1).join(' • ').trim();
+            // Handle compound parenthetical formats where shortcut and subtext are grouped, e.g.
+            // "New Tab in Personal (CMD+T • Middle-click for background)"
+            // "Back (Alt+Left • Middle-click background)"
+            // "Split View (Ctrl+\ or Ctrl+Shift+D • Right-click to hide)"
+            const compoundMatch = text.match(/^(.*?)\(([^)]+?)\s+•\s+(.*?)\)$/);
+            if (compoundMatch) {
+                text = compoundMatch[1].trim();
+                const candidate = compoundMatch[2].trim();
+                const remainder = compoundMatch[3].trim();
+
+                if (candidate.match(/^(?:(?:Ctrl|Cmd|CMD|Alt|Shift|Option|Meta|Super|Win)\s*[\+\-]\s*)*[A-Za-z0-9\+\-\/\s\\]{1,25}$/i)) {
+                    shortcut = candidate;
+                    subtext = remainder;
+                } else {
+                    subtext = `${candidate} • ${remainder}`;
+                }
+            } else {
+                // Standard bullet separation
+                if (text.includes(' • ')) {
+                    const parts = text.split(' • ');
+                    text = parts[0].trim();
+                    subtext = parts.slice(1).join(' • ').trim();
+                    if (subtext.endsWith(')') && !subtext.includes('(')) {
+                        subtext = subtext.slice(0, -1).trim();
+                    }
+                }
+
+                // Extract keyboard shortcuts in parentheses: (Cmd+T)
+                const match = text.match(SHORTCUT_REGEX);
+                if (match) {
+                    shortcut = match[0].replace(/^\(|\)$/g, '').trim();
+                    text = text.replace(match[0], '').trim();
+                } else if (text.includes('(')) {
+                    // Handle unclosed shortcut parenthetical if one part got cut
+                    const unclosed = text.match(/\(((?:(?:Ctrl|Cmd|CMD|Alt|Shift|Option|Meta|Super|Win)\s*[\+\-]\s*)*[A-Za-z0-9\+\-\/\s\\]{1,25})$/i);
+                    if (unclosed) {
+                        shortcut = unclosed[1].trim();
+                        text = text.replace(unclosed[0], '').trim();
+                    }
+                }
             }
 
-            // Extract keyboard shortcuts in parentheses
-            const match = text.match(SHORTCUT_REGEX);
-            if (match) {
-                shortcut = match[0].replace(/^\(|\)$/g, '').trim();
-                text = text.replace(match[0], '').trim();
+            // Clean any trailing or leading unclosed paren artifacts
+            if (text.endsWith('(')) {
+                text = text.slice(0, -1).trim();
             }
 
             return { label: text || rawText, shortcut, subtext };

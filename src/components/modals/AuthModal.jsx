@@ -499,7 +499,13 @@ const AuthModal = () => {
                                         )}
                                     </div>
                                     <div className="relative flex items-center">
-                                        <Lock size={14} className={`absolute left-3 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
+                                        <Lock size={14} className={`absolute left-3 transition-colors ${
+                                            confirmPassword.length > 0 && password !== confirmPassword
+                                                ? 'text-red-400'
+                                                : confirmPassword.length > 0 && password === confirmPassword
+                                                    ? 'text-emerald-400'
+                                                    : (isBright ? 'text-zinc-400' : 'text-white/40')
+                                        }`} />
                                         <input
                                             type={showConfirmPass ? "text" : "password"}
                                             required
@@ -510,11 +516,19 @@ const AuthModal = () => {
                                             }}
                                             placeholder="••••••••••••"
                                             className={`w-full border rounded-xl py-2 pl-9 pr-9 text-xs outline-none transition-colors ${
+                                                isBright 
+                                                    ? 'bg-black/[0.04] text-zinc-900 placeholder-zinc-400' 
+                                                    : 'bg-white/5 text-white placeholder-white/30'
+                                            } ${
                                                 confirmPassword.length > 0 && password !== confirmPassword
-                                                    ? 'border-red-500/50 focus:border-red-500'
-                                                    : (isBright 
-                                                        ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent' 
-                                                        : 'bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-accent')
+                                                    ? (isBright 
+                                                        ? 'border-red-500/60 bg-red-500/[0.04] focus:border-red-500 ring-1 ring-red-500/20' 
+                                                        : 'border-red-500/60 bg-red-500/[0.06] focus:border-red-500 ring-1 ring-red-500/20')
+                                                    : confirmPassword.length > 0 && password === confirmPassword
+                                                        ? (isBright 
+                                                            ? 'border-emerald-500/60 bg-emerald-500/[0.04] focus:border-emerald-500 ring-1 ring-emerald-500/20' 
+                                                            : 'border-emerald-500/60 bg-emerald-500/[0.06] focus:border-emerald-500 ring-1 ring-emerald-500/20')
+                                                        : (isBright ? 'border-black/10 focus:border-accent' : 'border-white/10 focus:border-accent')
                                             }`}
                                         />
                                         <button

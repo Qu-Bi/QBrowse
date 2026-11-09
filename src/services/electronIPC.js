@@ -126,3 +126,16 @@ export const listenToEvent = async (event, handler) => {
   // Adblock APIs - OBSOLETE (Now handled in main.cjs via session.webRequest)
   export const checkNetworkRequest = async () => false;
   export const getCosmeticCss = async () => "";
+  export const fetchRemoteBlocklist = async (url) => {
+    if (window.electronAPI && window.electronAPI.fetchRemoteBlocklist) {
+      return await window.electronAPI.fetchRemoteBlocklist(url);
+    }
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      return { success: true, text, bytes: text.length, url };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  };

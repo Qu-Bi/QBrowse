@@ -24,7 +24,8 @@ import {
     getAllSearchEngines, 
     getSearchEngineById, 
     buildSearchEngineUrl, 
-    parseKeywordQuery 
+    parseKeywordQuery,
+    isLikelyWebUrl
 } from '../utils/searchEngines';
 
 export const availableCommands = [
@@ -112,7 +113,7 @@ export const parseUrlInput = (input, activeBang = null, customBangs = []) => {
     const isLocal = /^(https?:\/\/)?localhost(:\d+)?(\/.*)?$/i.test(trimmed) ||
                     /^(https?:\/\/)?\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/i.test(trimmed);
                     
-    const isUrl = /^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(:\d+)?(\/.*)?$/i.test(trimmed) || isLocal;
+    const isUrl = isLikelyWebUrl(trimmed);
                   
     if (isUrl) {
         const isOnion = /\.onion(\/.*)?$/i.test(trimmed);

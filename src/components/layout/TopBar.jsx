@@ -383,7 +383,7 @@ export default function TopBar() {
                                                 ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
                                                 : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
                                         }`}
-                                        title={`Back (Alt+Left • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
+                                        title={`Back (Alt+Left) • Middle-click background${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
                                     >
                                         <ChevronLeft size={15} strokeWidth={1.9} />
                                     </button>
@@ -418,7 +418,7 @@ export default function TopBar() {
                                                 ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
                                                 : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
                                         }`}
-                                        title={`Forward (Alt+Right • Middle-click background)${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
+                                        title={`Forward (Alt+Right) • Middle-click background${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
                                     >
                                         <ChevronRight size={15} strokeWidth={1.9} />
                                     </button>
@@ -501,7 +501,7 @@ export default function TopBar() {
                                                         ? (isSplitView ? 'text-accent bg-accent/10' : 'text-zinc-600 hover:bg-black/5 hover:text-zinc-900') 
                                                         : (isSplitView ? 'text-accent bg-accent/10' : 'text-white/60 hover:text-white')
                                                 }`} 
-                                                title="Split View (Ctrl+\ or Ctrl+Shift+D • Right-click to hide)"
+                                                title="Split View (Ctrl+\ or Ctrl+Shift+D) • Right-click to hide"
                                             >
                                                 <SplitSquareHorizontal size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
                                             </button>

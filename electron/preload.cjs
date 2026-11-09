@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Window controls
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
+    isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+    onMaximizeChanged: (callback) => {
+        const handler = (event, isMax) => callback(isMax);
+        ipcRenderer.on('window-maximize-state-changed', handler);
+        return () => ipcRenderer.removeListener('window-maximize-state-changed', handler);
+    },
     setFullscreen: (state) => {
         ipcRenderer.send('window-set-fullscreen', state);
         ipcRenderer.send('set-fullscreen', state);
@@ -18,6 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('window-fullscreen-changed', handler);
     },
     close: () => ipcRenderer.send('window-close'),
+    windowResizeBy: (deltaX, deltaY, edge) => ipcRenderer.send('window-resize-by', { deltaX, deltaY, edge }),
+    setWindowCornerPreference: (preference) => ipcRenderer.invoke('window-set-corner-preference', preference),
     openDevTools: () => ipcRenderer.send('open-devtools'),
     fetchSuggestions: (query) => ipcRenderer.invoke('fetch-suggestions', query),
 
@@ -170,6 +178,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setAdblock: (active) => ipcRenderer.send('set-adblock', active),
     updateAdblockFilters: () => ipcRenderer.invoke('update-adblock-filters'),
     getAdblockStatus: () => ipcRenderer.invoke('get-adblock-status'),
+    fetchRemoteBlocklist: (url) => ipcRenderer.invoke('fetch-remote-blocklist', url),
     onTrackerBlocked: (callback) => {
         ipcRenderer.on('tracker-blocked-batch', (event, data) => callback(data));
         ipcRenderer.on('tracker-blocked', (event, url) => callback(url));
@@ -313,6 +322,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importWallpaperUrl: (url) => ipcRenderer.invoke('wallpaper-import-url', url),
     getActiveWallpaper: () => ipcRenderer.invoke('wallpaper-get-active'),
     resetWallpaper: () => ipcRenderer.invoke('wallpaper-reset'),
+    getGifDuration: (url) => ipcRenderer.invoke('wallpaper-get-gif-duration', url),
 
     // Runtime Firebase Configuration (for production packaged installations like .deb / .exe)
     getFirebaseConfig: () => ipcRenderer.invoke('get-firebase-config'),

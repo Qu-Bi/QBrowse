@@ -235,3 +235,60 @@ export function isValidSearchUrlTemplate(url) {
         return false;
     }
 }
+
+/**
+ * Common file extensions that are NOT web TLDs.
+ * If user types a bare filename without a protocol (e.g. "setup.exe", "discord.exe", "file.pdf"),
+ * it must be treated as a web search query rather than a website domain.
+ */
+export const NON_WEB_TLDS = new Set([
+    // Executables, binaries, installers & scripts
+    'exe', 'msi', 'bat', 'cmd', 'dll', 'sys', 'bin', 'iso', 'apk', 'dmg', 'pkg', 'deb', 'rpm', 'ps1', 'vbs',
+    // Documents, text & spreadsheets
+    'txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'rtf', 'log', 'ini', 'cfg', 'env', 'csv', 'tsv',
+    // Images & vector assets
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg', 'psd', 'tif', 'tiff',
+    // Media, video & audio
+    'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm',
+    // Archives & compressed packages
+    'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
+    // Code, markup & data configs
+    'py', 'cpp', 'cs', 'java', 'json', 'xml', 'yaml', 'yml', 'toml'
+]);
+
+/**
+ * Determines whether raw input is intended as a direct web URL rather than a search query.
+ */
+export function isLikelyWebUrl(rawInput) {
+    if (!rawInput || typeof rawInput !== 'string') return false;
+    const trimmed = rawInput.trim();
+    if (!trimmed) return false;
+
+    // Explicit web protocols or browser schemes
+    if (/^(https?:\/\/|file:\/\/|qbrowse:\/\/|chrome:\/\/|about:)/i.test(trimmed)) {
+        return true;
+    }
+
+    // Localhost or direct IP addresses
+    if (/^(https?:\/\/)?localhost(:\d+)?(\/.*)?$/i.test(trimmed) ||
+        /^(https?:\/\/)?\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/i.test(trimmed)) {
+        return true;
+    }
+
+    // Domain pattern: e.g. domain.tld or sub.domain.tld optionally with port and path
+    const match = trimmed.match(/^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})(:\d+)?(\/.*)?$/i);
+    if (!match) return false;
+
+    const hasProtocol = Boolean(match[1]);
+    const tld = (match[3] || '').toLowerCase();
+
+    // If explicit protocol given, it's definitely a URL
+    if (hasProtocol) return true;
+
+    // If the detected "TLD" is a known non-web file extension (e.g. .exe, .bat, .dll), treat as search
+    if (NON_WEB_TLDS.has(tld)) {
+        return false;
+    }
+
+    return true;
+}

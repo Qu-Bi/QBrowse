@@ -136,6 +136,10 @@ const defaultSettings = {
     wallpaperDimming: 25,
     wallpaperBlur: 24,
     blurWallpaper: false,
+    pauseWallpaperInBackground: true,
+    pauseWallpaperInEcoMode: true,
+    wallpaperVideoLoopMode: 'crossfade', // 'crossfade' (Smooth Dissolve) | 'dip' (Ambient Dip) | 'cut' (Instant Restart)
+    wallpaperVideoCrossfadeDuration: 1.2, // seconds (0.4 - 2.5)
     closeWindowOnLastTab: true,
     restoreTabsOnStartup: true,
     visualTabSwitcher: true, // Show Windows-style visual card switcher overlay on Ctrl+Tab
@@ -189,6 +193,12 @@ const loadSettings = () => {
             }
             if (parsed.blurWallpaper === undefined) {
                 parsed.blurWallpaper = false;
+            }
+            if (!parsed.wallpaperVideoLoopMode) {
+                parsed.wallpaperVideoLoopMode = 'crossfade';
+            }
+            if (parsed.wallpaperVideoCrossfadeDuration === undefined) {
+                parsed.wallpaperVideoCrossfadeDuration = 1.2;
             }
             if (!parsed.sidebarPosition) {
                 parsed.sidebarPosition = 'left';
@@ -729,29 +739,6 @@ const useUIStore = create((set, get) => ({
   currentUrl: '',
   setCurrentUrl: (url) => set({ currentUrl: url }),
 
-  mediaState: {
-      isPlaying: false,
-      title: 'No media playing',
-      artist: '',
-      albumArt: '',
-      currentTime: 0,
-      duration: 0,
-      url: '',
-      tabId: null
-  },
-  setMediaState: (mediaData) => set(state => ({
-      mediaState: { ...state.mediaState, ...mediaData }
-  })),
-  sendMediaCommand: (command) => {
-      try {
-          const webviews = Array.from(document.querySelectorAll('webview'));
-          webviews.forEach(wv => {
-              try {
-                  wv.send('media-control-command', command);
-              } catch(e) {}
-          });
-      } catch(e) {}
-  },
   isRefreshing: false,
   refresh: () => {
     set({ isRefreshing: true });
@@ -1365,23 +1352,220 @@ const useUIStore = create((set, get) => ({
   })),
   sendMediaCommand: (cmd) => {
       const commandName = typeof cmd === 'string' ? cmd : (cmd ? cmd.action : 'unknown');
-      console.log(`[QBrowse MediaControl] Dispatching command: "${commandName}"`, cmd);
-      
-      const webviews = Array.from(document.querySelectorAll('webview'));
-      console.log(`[QBrowse MediaControl] Found ${webviews.length} active webview tag(s) in DOM`);
-      
-      if (webviews.length === 0) {
-          console.warn('[QBrowse MediaControl] No webview elements found in DOM!');
+      const cmdPayload = typeof cmd === 'object' && cmd !== null ? cmd : { action: cmd };
+      console.log(`[QBrowse MediaControl] Dispatching command: "${commandName}"`, cmdPayload);
+
+      // Optimistic state toggle for play/pause
+      if (commandName === 'toggle-play' || commandName === 'play-pause') {
+          set(state => ({
+              mediaState: {
+                  ...state.mediaState,
+                  isPlaying: !state.mediaState.isPlaying
+              }
+          }));
       }
 
-      webviews.forEach((wv, index) => {
+      // Determine target webview(s)
+      const mediaState = get().mediaState;
+      let targetWebviews = [];
+
+      // 1. Try to target the specific tab playing media
+      if (mediaState && mediaState.tabId) {
+          const matchingWv = document.querySelector(`webview#webview-${mediaState.tabId}`);
+          if (matchingWv) {
+              targetWebviews.push(matchingWv);
+          }
+      }
+
+      // 2. Fall back to the active tab's webview
+      if (targetWebviews.length === 0) {
+          const activeWv = get().getActiveWebView?.();
+          if (activeWv) {
+              targetWebviews.push(activeWv);
+          }
+      }
+
+      // 3. Fall back to visible webviews or any webview in DOM
+      if (targetWebviews.length === 0) {
+          const allWvs = Array.from(document.querySelectorAll('webview'));
+          const visibleWvs = allWvs.filter(wv => wv.style.visibility !== 'hidden' && wv.style.display !== 'none');
+          targetWebviews = visibleWvs.length > 0 ? visibleWvs : allWvs;
+      }
+
+      if (targetWebviews.length === 0) {
+          console.warn('[QBrowse MediaControl] No webview element available to receive command');
+          return;
+      }
+
+      targetWebviews.forEach((wv, index) => {
           try {
-              if (commandName === 'toggle-pip' || commandName === 'pip') {
-                  console.log(`[QBrowse MediaControl] Executing userGesture PiP on webview #${index}`);
-                  if (typeof wv.executeJavaScript === 'function') {
-                      wv.executeJavaScript(`
+              if (typeof wv.executeJavaScript === 'function') {
+                  let script = '';
+
+                  if (commandName === 'toggle-play' || commandName === 'play-pause') {
+                      script = `
+                          (function() {
+                              try {
+                                  window.__qbrowse_last_media_cmd = Date.now();
+
+                                  // 1. YouTube Player API
+                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  if (yt && typeof yt.getPlayerState === 'function') {
+                                      const state = yt.getPlayerState();
+                                      if (state === 1 || state === 3) {
+                                          if (typeof yt.pauseVideo === 'function') yt.pauseVideo();
+                                          return 'yt-paused';
+                                      } else {
+                                          if (typeof yt.playVideo === 'function') yt.playVideo();
+                                          return 'yt-played';
+                                      }
+                                  }
+
+                                  // 2. YouTube & YouTube Music Play/Pause Buttons
+                                  const ytBtn = document.querySelector('.ytp-play-button, button.ytp-play-button, #play-pause-button, tp-yt-paper-icon-button#play-pause-button');
+                                  if (ytBtn) {
+                                      ytBtn.click();
+                                      return 'yt-btn-clicked';
+                                  }
+
+                                  // 3. Spotify, Twitch, SoundCloud & Web Player Buttons
+                                  const streamBtn = document.querySelector(
+                                      'button[data-testid="control-button-playpause"], ' +
+                                      'button[data-testid="play-pause-button"], ' +
+                                      'button[data-a-target="player-play-pause-button"], ' +
+                                      '.playControl, ' +
+                                      'button[aria-label*="Play" i], ' +
+                                      'button[aria-label*="Pause" i]'
+                                  );
+                                  if (streamBtn) {
+                                      streamBtn.click();
+                                      return 'stream-btn-clicked';
+                                  }
+
+                                  // 4. HTML5 Video / Audio elements
+                                  const mediaEls = Array.from(document.querySelectorAll('video, audio'));
+                                  const playing = mediaEls.find(m => !m.paused && !m.ended);
+                                  const targetMedia = playing || mediaEls.find(m => m.readyState > 0) || mediaEls[0];
+                                  if (targetMedia) {
+                                      if (targetMedia.paused) {
+                                          const p = targetMedia.play();
+                                          if (p && typeof p.catch === 'function') p.catch(() => {});
+                                          return 'html5-play';
+                                      } else {
+                                          targetMedia.pause();
+                                          return 'html5-pause';
+                                      }
+                                  }
+
+                                  // 5. Fallback keyboard event for YouTube
+                                  const keyEv = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', keyCode: 75, which: 75, bubbles: true });
+                                  document.dispatchEvent(keyEv);
+                                  return 'simulated-key-k';
+                              } catch(e) {
+                                  return 'toggle-err: ' + e.toString();
+                              }
+                          })()
+                      `;
+                  } else if (commandName === 'next-track') {
+                      script = `
+                          (function() {
+                              try {
+                                  window.__qbrowse_last_media_cmd = Date.now();
+                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  if (yt && typeof yt.nextVideo === 'function') {
+                                      yt.nextVideo();
+                                      return 'yt-next';
+                                  }
+                                  const btn = document.querySelector('.ytp-next-button, button[data-testid="control-button-skip-forward"], .skipControl__next, .next-button');
+                                  if (btn) {
+                                      btn.click();
+                                      return 'next-btn';
+                                  }
+                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused) || document.querySelector('video, audio');
+                                  if (media && media.duration) {
+                                      media.currentTime = Math.min(media.duration, media.currentTime + 10);
+                                      return 'skip-10s';
+                                  }
+                              } catch(e) {
+                                  return 'next-err: ' + e.toString();
+                              }
+                          })()
+                      `;
+                  } else if (commandName === 'prev-track') {
+                      script = `
+                          (function() {
+                              try {
+                                  window.__qbrowse_last_media_cmd = Date.now();
+                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  if (yt && typeof yt.previousVideo === 'function') {
+                                      yt.previousVideo();
+                                      return 'yt-prev';
+                                  }
+                                  const btn = document.querySelector('.ytp-prev-button, button[data-testid="control-button-skip-back"], .skipControl__previous, .previous-button');
+                                  if (btn) {
+                                      btn.click();
+                                      return 'prev-btn';
+                                  }
+                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused) || document.querySelector('video, audio');
+                                  if (media) {
+                                      media.currentTime = Math.max(0, media.currentTime - 10);
+                                      return 'rewind-10s';
+                                  }
+                              } catch(e) {
+                                  return 'prev-err: ' + e.toString();
+                              }
+                          })()
+                      `;
+                  } else if (commandName === 'seek') {
+                      const seekTime = typeof cmdPayload.time === 'number' ? cmdPayload.time : 0;
+                      script = `
+                          (function() {
+                              try {
+                                  window.__qbrowse_last_media_cmd = Date.now();
+                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  if (yt && typeof yt.seekTo === 'function') {
+                                      yt.seekTo(${seekTime}, true);
+                                      return 'yt-seek';
+                                  }
+                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused) || document.querySelector('video, audio');
+                                  if (media) {
+                                      media.currentTime = ${seekTime};
+                                      return 'html5-seek';
+                                  }
+                              } catch(e) {
+                                  return 'seek-err: ' + e.toString();
+                              }
+                          })()
+                      `;
+                  } else if (commandName === 'mute-toggle') {
+                      script = `
+                          (function() {
+                              try {
+                                  window.__qbrowse_last_media_cmd = Date.now();
+                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  if (yt && typeof yt.isMuted === 'function') {
+                                      if (yt.isMuted()) yt.unMute?.();
+                                      else yt.mute?.();
+                                      return 'yt-mute';
+                                  }
+                                  const muteBtn = document.querySelector('.ytp-mute-button');
+                                  if (muteBtn) {
+                                      muteBtn.click();
+                                      return 'mute-btn';
+                                  }
+                                  const mediaEls = Array.from(document.querySelectorAll('video, audio'));
+                                  mediaEls.forEach(el => { el.muted = !el.muted; });
+                                  return 'html5-mute';
+                              } catch(e) {
+                                  return 'mute-err: ' + e.toString();
+                              }
+                          })()
+                      `;
+                  } else if (commandName === 'toggle-pip' || commandName === 'pip') {
+                      script = `
                           (async () => {
                               try {
+                                  window.__qbrowse_last_media_cmd = Date.now();
                                   if (document.pictureInPictureElement) {
                                       await document.exitPictureInPicture();
                                       return 'exited-pip';
@@ -1414,15 +1598,24 @@ const useUIStore = create((set, get) => ({
                                   return 'pip-error: ' + e.toString();
                               }
                           })();
-                      `, true)
-                      .then(res => console.log(`[QBrowse MediaControl] PiP result on webview #${index}:`, res))
-                      .catch(err => console.warn(`[QBrowse MediaControl] PiP execution warning on webview #${index}:`, err));
+                      `;
+                  }
+
+                  if (script) {
+                      wv.executeJavaScript(script, true)
+                          .then(res => console.log(`[QBrowse MediaControl] "${commandName}" result on webview #${index}:`, res))
+                          .catch(err => {
+                              console.warn(`[QBrowse MediaControl] executeJavaScript failed on webview #${index}, falling back to IPC:`, err);
+                              if (typeof wv.send === 'function') {
+                                  wv.send('media-control-command', cmdPayload);
+                              }
+                          });
+                      return;
                   }
               }
 
               if (typeof wv.send === 'function') {
-                  wv.send('media-control-command', cmd);
-                  console.log(`[QBrowse MediaControl] Successfully sent "${commandName}" to webview #${index} (${wv.src || 'about:blank'})`);
+                  wv.send('media-control-command', cmdPayload);
               }
           } catch (e) {
               console.error(`[QBrowse MediaControl] Error sending command to webview #${index}:`, e);
@@ -2288,6 +2481,14 @@ const useUIStore = create((set, get) => ({
   },
   setBlurWallpaper: (enabled) => {
       get().setSettingValue('blurWallpaper', Boolean(enabled));
+  },
+  setWallpaperVideoLoopMode: (mode) => {
+      get().setSettingValue('wallpaperVideoLoopMode', mode);
+  },
+  setWallpaperVideoCrossfadeDuration: (dur) => {
+      const raw = Math.max(0.4, Math.min(2.5, Number(dur) || 1.2));
+      const val = Math.round(raw * 10) / 10;
+      get().setSettingValue('wallpaperVideoCrossfadeDuration', val);
   },
   resetCustomWallpaper: async () => {
       if (window.electronAPI && window.electronAPI.resetWallpaper) {

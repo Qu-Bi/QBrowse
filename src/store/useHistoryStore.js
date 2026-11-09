@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getIntelligentTitle, getHistoryDedupeKey, isJunkHistoryUrl } from '../utils/historyExtractors';
 
 const getActiveHistoryKey = () => {
     try {
@@ -20,7 +21,7 @@ const useHistoryStore = create((set, get) => ({
             if (data) {
                 const parsed = JSON.parse(data);
                 const sanitized = Array.isArray(parsed) 
-                    ? parsed.filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor') 
+                    ? parsed.filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor' && !isJunkHistoryUrl(item.url)) 
                     : [];
                 if (Array.isArray(parsed) && sanitized.length !== parsed.length) {
                     try { localStorage.setItem(key, JSON.stringify(sanitized)); } catch (_) {}
@@ -37,7 +38,7 @@ const useHistoryStore = create((set, get) => ({
     serializeCurrentProfileHistory: (profileId) => {
         try {
             const key = (!profileId || profileId === 'default') ? 'qbrowse_history' : `qbrowse_history_${profileId}`;
-            const cleanHistory = (get().history || []).filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor');
+            const cleanHistory = (get().history || []).filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor' && !isJunkHistoryUrl(item.url));
             localStorage.setItem(key, JSON.stringify(cleanHistory));
         } catch (e) {
             console.error('Failed to serialize profile history', e);
@@ -51,7 +52,7 @@ const useHistoryStore = create((set, get) => ({
             if (data) {
                 const parsed = JSON.parse(data);
                 const sanitized = Array.isArray(parsed) 
-                    ? parsed.filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor') 
+                    ? parsed.filter(item => item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor' && !isJunkHistoryUrl(item.url)) 
                     : [];
                 set({ history: sanitized });
             } else {
@@ -71,16 +72,30 @@ const useHistoryStore = create((set, get) => ({
         if (!url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('qbrowse://') || url.startsWith('file://')) return;
         if (url.includes('.onion')) return;
 
+        // Skip junk/empty URLs
+        if (isJunkHistoryUrl(url)) return;
+
         set(state => {
-            const cleanTitle = (title && title !== url) ? title : url;
-            const existingIndex = state.history.findIndex(item => item.url === url);
+            const cleanTitle = getIntelligentTitle(url, title);
+            const dedupeKey = getHistoryDedupeKey(url);
+
+            // Check if exact URL exists, OR if the most recent entry has the same deduplication key within 15 minutes
+            // (e.g. Google Maps panning/zooming around same place, searching same query, or video watch)
+            let existingIndex = state.history.findIndex(item => item.url === url);
+            if (existingIndex === -1 && state.history.length > 0) {
+                const first = state.history[0];
+                if (first && getHistoryDedupeKey(first.url) === dedupeKey && (Date.now() - (first.lastVisit || 0)) < 900000) {
+                    existingIndex = 0;
+                }
+            }
 
             let newHistory;
             if (existingIndex !== -1) {
                 const existing = state.history[existingIndex];
                 const updatedItem = {
                     ...existing,
-                    title: (cleanTitle !== url) ? cleanTitle : existing.title,
+                    url: url, // update to latest specific URL
+                    title: (cleanTitle && !cleanTitle.startsWith('http://') && !cleanTitle.startsWith('https://')) ? cleanTitle : existing.title,
                     lastVisit: Date.now(),
                     visits: (existing.visits || 1) + 1
                 };
@@ -109,14 +124,24 @@ const useHistoryStore = create((set, get) => ({
         if (space === 'ghost' || space === 'tor') return;
         const currentSpace = typeof window !== 'undefined' ? window.__tabStore?.getState()?.activeSpace : null;
         if (currentSpace === 'ghost' || currentSpace === 'tor') return;
-        if (!url || url.includes('.onion')) return;
+        if (!url || !title || url.includes('.onion')) return;
 
         set(state => {
             if (state.history.length === 0) return state;
-            const newHistory = [...state.history];
-            // If the latest entry matches the URL or is just missing a title (title === url)
-            if (newHistory[0].url === url || newHistory[0].title === newHistory[0].url) {
-                newHistory[0] = { ...newHistory[0], title };
+            let updated = false;
+            const targetDedupeKey = getHistoryDedupeKey(url);
+            const intelligentTitle = getIntelligentTitle(url, title);
+
+            const newHistory = state.history.map(item => {
+                if (item.url === url || (getHistoryDedupeKey(item.url) === targetDedupeKey && (Date.now() - (item.lastVisit || 0)) < 900000)) {
+                    if (!item.title || item.title === item.url || item.title.startsWith('http://') || item.title.startsWith('https://') || intelligentTitle) {
+                        updated = true;
+                        return { ...item, title: intelligentTitle || title };
+                    }
+                }
+                return item;
+            });
+            if (updated) {
                 try {
                     localStorage.setItem(getActiveHistoryKey(), JSON.stringify(newHistory));
                 } catch (e) {}
@@ -130,15 +155,15 @@ const useHistoryStore = create((set, get) => ({
         if (!Array.isArray(remoteHistory) || remoteHistory.length === 0) return;
         set(state => {
             const historyMap = new Map();
-            // Load current local history (filtering out any ghost/tor/.onion)
+            // Load current local history (filtering out any ghost/tor/.onion/junk)
             state.history.forEach(item => {
-                if (item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor') {
+                if (item && item.url && !item.url.includes('.onion') && item.space !== 'ghost' && item.space !== 'tor' && !isJunkHistoryUrl(item.url)) {
                     historyMap.set(item.url, { ...item });
                 }
             });
             // Merge remote items
             remoteHistory.forEach(remoteItem => {
-                if (!remoteItem || !remoteItem.url || remoteItem.url.includes('.onion') || remoteItem.space === 'ghost' || remoteItem.space === 'tor') return;
+                if (!remoteItem || !remoteItem.url || remoteItem.url.includes('.onion') || remoteItem.space === 'ghost' || remoteItem.space === 'tor' || isJunkHistoryUrl(remoteItem.url)) return;
                 const existing = historyMap.get(remoteItem.url);
                 if (existing) {
                     historyMap.set(remoteItem.url, {
@@ -148,10 +173,11 @@ const useHistoryStore = create((set, get) => ({
                         visits: Math.max(existing.visits || 1, remoteItem.visits || 1)
                     });
                 } else {
+                    const intelligentTitle = getIntelligentTitle(remoteItem.url, remoteItem.title);
                     historyMap.set(remoteItem.url, {
                         id: remoteItem.id || `cloud-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                         url: remoteItem.url,
-                        title: remoteItem.title || remoteItem.url,
+                        title: intelligentTitle || remoteItem.title || remoteItem.url,
                         lastVisit: remoteItem.lastVisit || Date.now(),
                         visits: remoteItem.visits || 1
                     });
@@ -167,6 +193,25 @@ const useHistoryStore = create((set, get) => ({
             } catch (e) {}
 
             return { history: merged };
+        });
+    },
+
+    deleteEntry: (url) => {
+        if (!url) return;
+        set(state => {
+            const filtered = state.history.filter(item => item && item.url !== url);
+            try {
+                localStorage.setItem(getActiveHistoryKey(), JSON.stringify(filtered));
+            } catch (e) {}
+
+            try {
+                const syncStore = typeof window !== 'undefined' ? window.__syncStore : null;
+                if (syncStore?.getState()?.user && typeof syncStore?.getState()?.syncDataToCloud === 'function') {
+                    syncStore.getState().syncDataToCloud('history', filtered);
+                }
+            } catch (e) {}
+
+            return { history: filtered };
         });
     },
 

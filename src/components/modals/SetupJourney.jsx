@@ -1455,7 +1455,13 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         )}
                                                     </div>
                                                     <div className="relative flex items-center">
-                                                        <Lock size={15} className="absolute left-3.5 text-white/40 pointer-events-none" />
+                                                        <Lock size={15} className={`absolute left-3.5 pointer-events-none transition-colors ${
+                                                            syncConfirmPassword.length > 0 && syncPassword !== syncConfirmPassword
+                                                                ? 'text-red-400'
+                                                                : syncConfirmPassword.length > 0 && syncPassword === syncConfirmPassword
+                                                                    ? 'text-emerald-400'
+                                                                    : 'text-white/40'
+                                                        }`} />
                                                         <input 
                                                             type={syncShowConfirmPass ? 'text' : 'password'}
                                                             required
@@ -1467,8 +1473,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                             placeholder="••••••••••••"
                                                             className={`w-full bg-black/40 border rounded-xl py-2.5 pl-10 pr-10 text-xs text-white placeholder-white/30 outline-none transition ${
                                                                 syncConfirmPassword.length > 0 && syncPassword !== syncConfirmPassword
-                                                                    ? 'border-red-500/50 focus:border-red-400'
-                                                                    : 'border-white/10 focus:border-accent'
+                                                                    ? 'border-red-500/60 bg-red-500/[0.06] focus:border-red-400 ring-1 ring-red-500/20'
+                                                                    : syncConfirmPassword.length > 0 && syncPassword === syncConfirmPassword
+                                                                        ? 'border-emerald-500/60 bg-emerald-500/[0.06] focus:border-emerald-400 ring-1 ring-emerald-500/20'
+                                                                        : 'border-white/10 focus:border-accent'
                                                             }`}
                                                         />
                                                         <button

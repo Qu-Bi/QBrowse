@@ -59,6 +59,7 @@ let fallbackBlocker = null;
 
 // Active engine instance
 let nativeEngine = null;
+let customNativeEngine = null; // Brave Rust DFA engine for custom domains & imported GitHub lists
 let engineMode = 'uninitialized'; // 'native-rust' | 'fallback-ghostery' | 'disabled'
 let activeRuleCount = 0;
 let lastCacheUpdate = 0;
@@ -71,6 +72,78 @@ let mainWindowRef = null;
 let pendingBlockedBatch = 0;
 let blockedBatchTimer = null;
 let lastBlockedUrl = '';
+
+function rebuildCustomNativeEngine(settings) {
+    if (!AdBlockClient) return;
+    const list = Array.isArray(settings?.adblockCustomBlockedDomains) ? settings.adblockCustomBlockedDomains : [];
+    if (list.length === 0) {
+        customNativeEngine = null;
+        return;
+    }
+    try {
+        const t0 = performance.now();
+        const filterSet = new AdBlockClient.FilterSet(true);
+        const rules = list.map(d => {
+            if (!d || typeof d !== 'string') return '';
+            const clean = d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+            return clean ? `||${clean}^` : '';
+        }).filter(Boolean).join('\n');
+
+        if (rules) {
+            filterSet.addFilters(rules);
+            customNativeEngine = new AdBlockClient.Engine(filterSet);
+            const t1 = performance.now();
+            console.log(`[AdblockEngine] Compiled ${list.length} custom domains into native Rust DFA engine (adblock-rs) in ${(t1 - t0).toFixed(2)}ms.`);
+        } else {
+            customNativeEngine = null;
+        }
+    } catch (e) {
+        console.warn('[AdblockEngine] Could not build custom native Rust engine:', e.message);
+        customNativeEngine = null;
+    }
+}
+
+let cachedCustomBlockedVersion = null;
+let cachedCustomBlockedSet = new Set();
+
+function getCustomBlockedSet(settings) {
+    const list = Array.isArray(settings?.adblockCustomBlockedDomains) ? settings.adblockCustomBlockedDomains : [];
+    if (list === cachedCustomBlockedVersion) {
+        return cachedCustomBlockedSet;
+    }
+    cachedCustomBlockedVersion = list;
+    const newSet = new Set();
+    for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        if (typeof item === 'string') {
+            const clean = item.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+            if (clean) newSet.add(clean);
+        }
+    }
+    cachedCustomBlockedSet = newSet;
+    return cachedCustomBlockedSet;
+}
+
+let cachedAllowlistVersion = null;
+let cachedAllowlistSet = new Set();
+
+function getAllowlistSet(settings) {
+    const list = Array.isArray(settings?.adblockAllowlist) ? settings.adblockAllowlist : [];
+    if (list === cachedAllowlistVersion) {
+        return cachedAllowlistSet;
+    }
+    cachedAllowlistVersion = list;
+    const newSet = new Set();
+    for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        if (typeof item === 'string') {
+            const clean = item.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+            if (clean) newSet.add(clean);
+        }
+    }
+    cachedAllowlistSet = newSet;
+    return cachedAllowlistSet;
+}
 
 function notifyBlocked(url) {
     pendingBlockedBatch++;
@@ -253,6 +326,7 @@ class AdblockEngine {
                         if (Date.now() - lastCacheUpdate > 7 * 24 * 60 * 60 * 1000) {
                             setTimeout(() => { this.updateFilters(false); }, 30000);
                         }
+                        rebuildCustomNativeEngine(settingsStore);
                         this.setupIpc();
                         return;
                     }
@@ -276,6 +350,7 @@ class AdblockEngine {
                     });
                 }, 2000);
 
+                rebuildCustomNativeEngine(settingsStore);
                 this.setupIpc();
                 return;
             } catch (err) {
@@ -298,7 +373,12 @@ class AdblockEngine {
             engineMode = 'disabled';
         }
 
+        rebuildCustomNativeEngine(settingsStore);
         this.setupIpc();
+    }
+
+    rebuildCustomRules(settings) {
+        rebuildCustomNativeEngine(settings || settingsStoreRef);
     }
 
     setActive(active) {
@@ -317,8 +397,57 @@ class AdblockEngine {
         return isAdblockActive;
     }
 
+    async fetchRemoteBlocklist(inputUrl) {
+        if (!inputUrl || typeof inputUrl !== 'string') {
+            return { success: false, error: 'Invalid URL provided' };
+        }
+        let targetUrl = inputUrl.trim();
+        try {
+            const parsed = new URL(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`);
+            if (parsed.hostname === 'github.com') {
+                const parts = parsed.pathname.split('/').filter(Boolean);
+                if (parts.length >= 4 && (parts[2] === 'blob' || parts[2] === 'raw')) {
+                    const user = parts[0];
+                    const repo = parts[1];
+                    const branch = parts[3];
+                    const rest = parts.slice(4).join('/');
+                    targetUrl = `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${rest}`;
+                }
+            } else if (parsed.hostname === 'gist.github.com') {
+                const parts = parsed.pathname.split('/').filter(Boolean);
+                if (parts.length >= 2 && !parsed.pathname.endsWith('/raw')) {
+                    targetUrl = `https://gist.githubusercontent.com/${parts[0]}/${parts[1]}/raw`;
+                }
+            } else {
+                targetUrl = parsed.toString();
+            }
+        } catch (err) {
+            return { success: false, error: 'Malformed URL: ' + err.message };
+        }
+
+        try {
+            console.log(`[AdblockEngine] Fetching remote blocklist from: ${targetUrl}`);
+            const text = await downloadFilterText(targetUrl);
+            if (!text || text.length === 0) {
+                return { success: false, error: 'Remote blocklist returned empty response' };
+            }
+            return {
+                success: true,
+                url: targetUrl,
+                bytes: Buffer.byteLength(text, 'utf8'),
+                text
+            };
+        } catch (err) {
+            console.warn(`[AdblockEngine] Failed to fetch remote blocklist from ${targetUrl}:`, err.message);
+            return { success: false, error: err.message };
+        }
+    }
+
     setupIpc() {
         if (!ipcMain) return;
+        if (this.ipcInitialized) return;
+        this.ipcInitialized = true;
+
         ipcMain.on('set-adblock', (event, active) => {
             this.setActive(active);
         });
@@ -334,6 +463,10 @@ class AdblockEngine {
                 ruleCount: activeRuleCount,
                 lastUpdate: lastCacheUpdate
             };
+        });
+
+        ipcMain.handle('fetch-remote-blocklist', async (event, url) => {
+            return await this.fetchRemoteBlocklist(url);
         });
     }
 
@@ -471,33 +604,69 @@ class AdblockEngine {
             return true;
         }
 
-        // 3. User Allowlist / Whitelist check
-        const allowlist = Array.isArray(currentSettings?.adblockAllowlist) ? currentSettings.adblockAllowlist : [];
-        if (allowlist.length > 0) {
+        // 3. User Allowlist / Whitelist check (Sub-microsecond Set lookup)
+        const allowSet = getAllowlistSet(currentSettings);
+        if (allowSet.size > 0) {
             let refHost = '';
             try { if (details.referrer) refHost = new URL(details.referrer).hostname.toLowerCase().replace(/^www\./, ''); } catch (_) {}
 
-            const isAllowed = allowlist.some(allowed => {
-                if (!allowed || typeof allowed !== 'string') return false;
-                const clean = allowed.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
-                return (reqHost && (reqHost === clean || reqHost.endsWith('.' + clean))) ||
-                       (refHost && (refHost === clean || refHost.endsWith('.' + clean)));
-            });
+            let isAllowed = false;
+            let checkHost = reqHost;
+            while (checkHost) {
+                if (allowSet.has(checkHost)) {
+                    isAllowed = true;
+                    break;
+                }
+                const dot = checkHost.indexOf('.');
+                if (dot === -1) break;
+                checkHost = checkHost.slice(dot + 1);
+            }
+
+            if (!isAllowed && refHost) {
+                let checkRef = refHost;
+                while (checkRef) {
+                    if (allowSet.has(checkRef)) {
+                        isAllowed = true;
+                        break;
+                    }
+                    const dot = checkRef.indexOf('.');
+                    if (dot === -1) break;
+                    checkRef = checkRef.slice(dot + 1);
+                }
+            }
 
             if (isAllowed) return false;
         }
 
-        // 4. User Custom Blocked Domains
-        const customBlocked = Array.isArray(currentSettings?.adblockCustomBlockedDomains) ? currentSettings.adblockCustomBlockedDomains : [];
-        if (customBlocked.length > 0 && reqHost) {
-            const isCustomMatched = customBlocked.some(d => {
-                if (!d || typeof d !== 'string') return false;
-                const clean = d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
-                return reqHost === clean || reqHost.endsWith('.' + clean);
-            });
-            if (isCustomMatched) {
-                notifyBlocked(url);
-                return true;
+        // 4. User Custom Blocked Domains & GitHub Lists (Native Rust DFA via Brave's adblock-rs)
+        if (customNativeEngine) {
+            try {
+                const resourceType = mapResourceType(details.resourceType);
+                const sourceUrl = details.referrer || (details.initiator ? details.initiator + '/' : '');
+                if (customNativeEngine.check(url, sourceUrl, resourceType)) {
+                    notifyBlocked(url);
+                    return true;
+                }
+            } catch (_) {}
+        } else {
+            // High-throughput O(1) Set lookup fallback
+            const customSet = getCustomBlockedSet(currentSettings);
+            if (customSet.size > 0 && reqHost) {
+                let checkHost = reqHost;
+                let isCustomMatched = false;
+                while (checkHost) {
+                    if (customSet.has(checkHost)) {
+                        isCustomMatched = true;
+                        break;
+                    }
+                    const dot = checkHost.indexOf('.');
+                    if (dot === -1) break;
+                    checkHost = checkHost.slice(dot + 1);
+                }
+                if (isCustomMatched) {
+                    notifyBlocked(url);
+                    return true;
+                }
             }
         }
 

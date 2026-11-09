@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { isVideoWallpaper } from '../../utils/wallpaperHelpers';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
@@ -1265,13 +1266,26 @@ export default function TabMap() {
 
             {/* Grounded Wallpaper Background */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-                <div
-                    className="absolute inset-0 bg-cover bg-center will-change-transform"
-                    style={{
-                        backgroundImage: `url('${activeWallpaper}')`,
-                        filter: 'saturate(1.04) contrast(1.02)'
-                    }}
-                />
+                {isVideoWallpaper(activeWallpaper) ? (
+                    <video
+                        src={activeWallpaper}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        onEnded={(e) => { e.currentTarget.currentTime = 0; e.currentTarget.play().catch(() => {}); }}
+                        className="absolute inset-0 w-full h-full object-cover will-change-transform"
+                        style={{ filter: 'saturate(1.04) contrast(1.02)' }}
+                    />
+                ) : (
+                    <div
+                        className="absolute inset-0 bg-cover bg-center will-change-transform"
+                        style={{
+                            backgroundImage: `url('${activeWallpaper}')`,
+                            filter: 'saturate(1.04) contrast(1.02)'
+                        }}
+                    />
+                )}
                 <div
                     className="absolute inset-0 pointer-events-none"
                     style={{
