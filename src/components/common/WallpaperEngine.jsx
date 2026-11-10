@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { isVideoWallpaper, isGifWallpaper, isLiveWallpaper } from '../../utils/wallpaperHelpers';
-import { fetchGifDuration } from '../../utils/gifParser';
+import { loadGifData } from '../../utils/gifParser';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
@@ -51,13 +51,12 @@ function WallpaperEngine() {
     const [dipPhase, setDipPhase] = useState('idle'); // 'idle' | 'out' | 'in'
     const [hasFrozenGif, setHasFrozenGif] = useState(false);
 
-    // GIF Dual-slot & timing state for seamless Cross-Dissolve and Dip looping
+    // GIF seamless transition state
+    const [gifData, setGifData] = useState(null); // { duration, rawBlob }
     const [activeGifSlot, setActiveGifSlot] = useState('A');
-    const activeGifSlotRef = useRef('A');
-    useEffect(() => { activeGifSlotRef.current = activeGifSlot; }, [activeGifSlot]);
-    const [gifCycleA, setGifCycleA] = useState(0);
-    const [gifCycleB, setGifCycleB] = useState(0);
-    const [gifDurationMs, setGifDurationMs] = useState(null);
+    const [gifSlotASrc, setGifSlotASrc] = useState(null);
+    const [gifSlotBSrc, setGifSlotBSrc] = useState(null);
+    const [gifDipOpacity, setGifDipOpacity] = useState(1);
 
     const playerRefA = useRef(null);
     const playerRefB = useRef(null);
@@ -67,11 +66,15 @@ function WallpaperEngine() {
     const dipTimerRef = useRef(null);
     const gifLoopTimerRef = useRef(null);
     const gifSubTimerRef = useRef(null);
-    const gifImgRef = useRef(null);
+    const gifSlotARef = useRef(null);
+    const gifSlotBRef = useRef(null);
+    const crossfadeCanvasRef = useRef(null);
     const freezeCanvasRef = useRef(null);
     const transitionGenRef = useRef(0);
+    const activeBlobUrlsRef = useRef(new Set());
 
     const crossfadeDuration = Math.max(0.4, Math.min(2.5, Number(wallpaperVideoCrossfadeDuration) || 1.2));
+    const gifHalfFadeSec = Math.min(crossfadeDuration * 0.5, Math.max(0.25, (gifData?.duration ? (gifData.duration / 1000) * 0.25 : 0.6)));
 
     // Track window focus/blur and visibility for power & GPU optimization
     useEffect(() => {
@@ -105,13 +108,14 @@ function WallpaperEngine() {
     }, []);
 
     // Calculate whether live media should be paused to preserve CPU, battery, and GPU
-    // Pauses when unfocused, in background, in Eco Mode, or when Settings/modals/Reader Mode are open
+    // Pauses when unfocused, in background, in Eco Mode, when reduced motion is enabled, or when Settings/modals/Reader Mode are open
     const shouldPauseLiveMedia = Boolean(
         !isDocumentVisible ||
         (!isWindowFocused && pauseWallpaperInBackground) ||
         (isEcoMode && pauseWallpaperInEcoMode) ||
         Boolean(activeModal) ||
-        Boolean(isReaderOpen)
+        Boolean(isReaderOpen) ||
+        isReducedMotion
     );
 
     // Cleanup on unmount
@@ -146,101 +150,275 @@ function WallpaperEngine() {
         isDippingRef.current = false;
         setDipPhase('idle');
         setActiveGifSlot('A');
+        setGifDipOpacity(1);
+        if (crossfadeCanvasRef.current) {
+            crossfadeCanvasRef.current.style.transition = 'none';
+            crossfadeCanvasRef.current.style.opacity = '0';
+        }
     }, [wallpaperVideoLoopMode, currentUrl]);
 
-    // Fetch and parse GIF duration on mount or URL change
+    // High-fidelity image frame render to canvas preserving cover aspect ratio
+    const drawCoverToCanvas = useCallback((img, canvas) => {
+        if (!img || !canvas) return false;
+        if (!img.complete || !img.naturalWidth || !img.naturalHeight) return false;
+
+        try {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            canvas.width = Math.round(w * (window.devicePixelRatio || 1));
+            canvas.height = Math.round(h * (window.devicePixelRatio || 1));
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return false;
+
+            const imgRatio = img.naturalWidth / img.naturalHeight;
+            const canvasRatio = canvas.width / canvas.height;
+            let dw, dh, dx, dy;
+
+            if (imgRatio > canvasRatio) {
+                dh = canvas.height;
+                dw = img.naturalWidth * (canvas.height / img.naturalHeight);
+                dx = (canvas.width - dw) / 2;
+                dy = 0;
+            } else {
+                dw = canvas.width;
+                dh = img.naturalHeight * (canvas.width / img.naturalWidth);
+                dx = 0;
+                dy = (canvas.height - dh) / 2;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, dx, dy, dw, dh);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }, []);
+
+    // High-fidelity GIF frame freeze to offscreen canvas
+    const captureGifFrame = useCallback(() => {
+        const activeImg = (wallpaperVideoLoopMode === 'crossfade' && activeGifSlot === 'B')
+            ? gifSlotBRef.current
+            : gifSlotARef.current;
+        const res = drawCoverToCanvas(activeImg, freezeCanvasRef.current);
+        if (res) setHasFrozenGif(true);
+        return res;
+    }, [activeGifSlot, drawCoverToCanvas, wallpaperVideoLoopMode]);
+
+    // GIF freezing control via offscreen frame capture to canvas
+    useEffect(() => {
+        if (!isGifWallpaper(currentUrl)) return;
+
+        if (shouldPauseLiveMedia) {
+            captureGifFrame();
+        } else {
+            setHasFrozenGif(false);
+        }
+    }, [shouldPauseLiveMedia, currentUrl, captureGifFrame]);
+
+    // Fetch and parse GIF duration and raw buffer
     useEffect(() => {
         if (!isGifWallpaper(currentUrl)) {
-            setGifDurationMs(null);
+            setGifData(null);
+            setGifSlotASrc(null);
+            setGifSlotBSrc(null);
+            setGifDipOpacity(1);
             return;
         }
+
+        const clean = currentUrl.split('?')[0].split('#')[0];
+        setGifSlotASrc(clean);
+        setGifSlotBSrc(null);
+        setGifDipOpacity(1);
+        setActiveGifSlot('A');
+
         let isCancelled = false;
-        fetchGifDuration(currentUrl).then(dur => {
-            if (!isCancelled && dur && dur > 400) {
-                setGifDurationMs(dur);
-            }
+
+        loadGifData(clean).then(data => {
+            if (isCancelled || !data) return;
+            setGifData(data);
         });
+
         return () => { isCancelled = true; };
     }, [currentUrl]);
 
-    // GIF seamless loop transition manager (Cross-Dissolve or Ambient Dip)
+    // GIF seamless loop transition manager (Cross-Dissolve, Ambient Dip, or Instant Cut)
     useEffect(() => {
-        if (!isGifWallpaper(currentUrl) || shouldPauseLiveMedia || isReducedMotion) {
+        if (!isGifWallpaper(currentUrl) || !gifData || shouldPauseLiveMedia || isReducedMotion) {
             if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
             if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
+            setGifDipOpacity(1);
+            if (crossfadeCanvasRef.current) {
+                crossfadeCanvasRef.current.style.transition = 'none';
+                crossfadeCanvasRef.current.style.opacity = '0';
+            }
             return;
         }
 
         if (wallpaperVideoLoopMode === 'cut') {
+            if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
+            if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
+            setGifDipOpacity(1);
+            if (crossfadeCanvasRef.current) {
+                crossfadeCanvasRef.current.style.transition = 'none';
+                crossfadeCanvasRef.current.style.opacity = '0';
+            }
             return;
         }
 
-        const effectiveDur = gifDurationMs || 4990;
-        const effectiveFadeMs = Math.min(crossfadeDuration * 1000, Math.max(300, effectiveDur * 0.4));
-        const runMs = Math.max(100, effectiveDur - effectiveFadeMs);
-        let isActive = true;
+        const duration = gifData.duration;
+        let isCancelled = false;
 
-        const scheduleGifCrossfade = () => {
-            if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-            const targetSlot = activeGifSlotRef.current === 'A' ? 'B' : 'A';
-            const prepDelay = Math.max(0, runMs - 80);
-
-            gifLoopTimerRef.current = setTimeout(() => {
-                if (!isActive) return;
-                if (targetSlot === 'B') {
-                    setGifCycleB(c => c + 1);
-                } else {
-                    setGifCycleA(c => c + 1);
-                }
-
-                if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-                gifSubTimerRef.current = setTimeout(() => {
-                    if (!isActive) return;
-                    setActiveGifSlot(targetSlot);
-                    scheduleGifCrossfade();
-                }, 80);
-            }, prepDelay);
+        const createBlobUrl = () => {
+            const url = URL.createObjectURL(gifData.rawBlob);
+            activeBlobUrlsRef.current.add(url);
+            return url;
         };
 
-        const scheduleGifDip = () => {
-            if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-            const halfFadeMs = effectiveFadeMs * 0.5;
+        const revokeBlobUrl = (url) => {
+            if (url && activeBlobUrlsRef.current.has(url)) {
+                URL.revokeObjectURL(url);
+                activeBlobUrlsRef.current.delete(url);
+            }
+        };
 
-            gifLoopTimerRef.current = setTimeout(() => {
-                if (!isActive) return;
-                setDipPhase('out');
+        if (wallpaperVideoLoopMode === 'dip') {
+            const halfFadeSec = Math.min(crossfadeDuration * 0.5, Math.max(0.25, (duration / 1000) * 0.25));
+            const halfFadeMs = Math.round(halfFadeSec * 1000);
 
-                if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-                gifSubTimerRef.current = setTimeout(() => {
-                    if (!isActive) return;
-                    setGifCycleA(c => c + 1);
+            setGifDipOpacity(1);
+
+            let cycle = 1;
+            const cycleStart = performance.now();
+
+            const scheduleDip = () => {
+                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
+                const targetFadeDownTime = cycleStart + (cycle * duration) - halfFadeMs;
+                const delay = Math.max(10, targetFadeDownTime - performance.now());
+
+                gifLoopTimerRef.current = setTimeout(() => {
+                    if (isCancelled) return;
+
+                    // 1. Smoothly fade down to 0 over halfFadeSec
+                    setGifDipOpacity(0);
+
+                    // 2. Exactly at loop time (when opacity is 0 and GIF loops in dark):
+                    if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
+                    const targetLoopTime = cycleStart + (cycle * duration);
+                    const fadeUpDelay = Math.max(10, targetLoopTime - performance.now());
 
                     gifSubTimerRef.current = setTimeout(() => {
-                        if (!isActive) return;
-                        setDipPhase('in');
+                        if (isCancelled) return;
 
-                        gifSubTimerRef.current = setTimeout(() => {
-                            if (!isActive) return;
-                            setDipPhase('idle');
-                            scheduleGifDip();
-                        }, Math.round(halfFadeMs) + 60);
-                    }, 50);
-                }, Math.round(halfFadeMs));
-            }, runMs);
-        };
+                        // 3. Smoothly fade back up to 1
+                        setGifDipOpacity(1);
 
-        if (wallpaperVideoLoopMode === 'crossfade') {
-            scheduleGifCrossfade();
-        } else if (wallpaperVideoLoopMode === 'dip') {
-            scheduleGifDip();
+                        // 4. Advance to next cycle
+                        cycle++;
+                        scheduleDip();
+                    }, fadeUpDelay);
+                }, delay);
+            };
+
+            scheduleDip();
+
+            return () => {
+                isCancelled = true;
+                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
+                if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
+                setGifDipOpacity(1);
+            };
         }
 
-        return () => {
-            isActive = false;
-            if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-            if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-        };
-    }, [currentUrl, gifDurationMs, wallpaperVideoLoopMode, crossfadeDuration, shouldPauseLiveMedia, isReducedMotion]);
+        if (wallpaperVideoLoopMode === 'crossfade') {
+            const effectiveFadeSec = Math.min(crossfadeDuration, Math.max(0.3, (duration / 1000) * 0.45));
+            const fadeMs = Math.round(effectiveFadeSec * 1000);
+            const leadTime = Math.max(100, duration - fadeMs);
+
+            let urlA = createBlobUrl();
+            let urlB = null;
+
+            setGifSlotASrc(urlA);
+            setGifSlotBSrc(null);
+            setActiveGifSlot('A');
+
+            let loopStartTime = performance.now();
+
+            const scheduleCrossfade = (slot) => {
+                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
+                const targetTime = loopStartTime + leadTime;
+                const delay = Math.max(20, targetTime - performance.now());
+
+                gifLoopTimerRef.current = setTimeout(() => {
+                    if (isCancelled) return;
+
+                    const activeImg = slot === 'A' ? gifSlotARef.current : gifSlotBRef.current;
+                    const canvas = crossfadeCanvasRef.current;
+
+                    // Step 1: Capture the exact outgoing frame onto canvas
+                    const drawn = drawCoverToCanvas(activeImg, canvas);
+
+                    // Step 2: Show canvas at opacity 1 instantly with no transition
+                    if (canvas && drawn) {
+                        canvas.style.transition = 'none';
+                        canvas.style.opacity = '1';
+                        void canvas.offsetWidth; // Force layout reflow
+                    }
+
+                    // Step 3: Mount next slot starting from frame 0
+                    const nextSlot = slot === 'A' ? 'B' : 'A';
+                    const nextUrl = createBlobUrl();
+
+                    if (nextSlot === 'B') {
+                        urlB = nextUrl;
+                        setGifSlotBSrc(nextUrl);
+                    } else {
+                        urlA = nextUrl;
+                        setGifSlotASrc(nextUrl);
+                    }
+                    setActiveGifSlot(nextSlot);
+
+                    // Step 4: In the very next frame, fade canvas from 1 to 0 over effectiveFadeSec
+                    requestAnimationFrame(() => {
+                        if (isCancelled) return;
+                        if (canvas && drawn) {
+                            canvas.style.transition = isReducedMotion
+                                ? 'none'
+                                : `opacity ${effectiveFadeSec}s cubic-bezier(0.4, 0, 0.2, 1)`;
+                            canvas.style.opacity = '0';
+                        }
+                    });
+
+                    // Step 5: Once fade completes, clean up the old URL
+                    const outgoingUrl = nextSlot === 'B' ? urlA : urlB;
+                    if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
+                    gifSubTimerRef.current = setTimeout(() => {
+                        if (isCancelled) return;
+                        revokeBlobUrl(outgoingUrl);
+                    }, fadeMs + 100);
+
+                    // Step 6: Schedule next crossfade from the new slot
+                    loopStartTime = performance.now();
+                    scheduleCrossfade(nextSlot);
+                }, delay);
+            };
+
+            scheduleCrossfade('A');
+
+            return () => {
+                isCancelled = true;
+                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
+                if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
+                for (const u of activeBlobUrlsRef.current) {
+                    URL.revokeObjectURL(u);
+                }
+                activeBlobUrlsRef.current.clear();
+                if (crossfadeCanvasRef.current) {
+                    crossfadeCanvasRef.current.style.transition = 'none';
+                    crossfadeCanvasRef.current.style.opacity = '0';
+                }
+            };
+        }
+    }, [currentUrl, gifData, wallpaperVideoLoopMode, crossfadeDuration, shouldPauseLiveMedia, isReducedMotion, drawCoverToCanvas]);
 
     // Wallpaper transition management - strictly prevents layer stacking
     useEffect(() => {
@@ -465,58 +643,6 @@ function WallpaperEngine() {
         }
     }, [activeVideoSlot, crossfadeDuration, wallpaperVideoLoopMode]);
 
-    // High-fidelity GIF frame freeze to offscreen canvas
-    const captureGifFrame = useCallback(() => {
-        const img = gifImgRef.current;
-        const canvas = freezeCanvasRef.current;
-        if (!img || !canvas) return false;
-        if (!img.complete || !img.naturalWidth || !img.naturalHeight) return false;
-
-        try {
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return false;
-
-            // Compute exact object-cover dimensions preserving aspect ratio
-            const imgRatio = img.naturalWidth / img.naturalHeight;
-            const canvasRatio = w / h;
-            let dw, dh, dx, dy;
-
-            if (imgRatio > canvasRatio) {
-                dh = h;
-                dw = img.naturalWidth * (h / img.naturalHeight);
-                dx = (w - dw) / 2;
-                dy = 0;
-            } else {
-                dw = w;
-                dh = img.naturalHeight * (w / img.naturalWidth);
-                dx = 0;
-                dy = (h - dh) / 2;
-            }
-
-            ctx.clearRect(0, 0, w, h);
-            ctx.drawImage(img, dx, dy, dw, dh);
-            setHasFrozenGif(true);
-            return true;
-        } catch (_) {
-            return false;
-        }
-    }, []);
-
-    // GIF freezing control via offscreen frame capture to canvas
-    useEffect(() => {
-        if (!isGifWallpaper(currentUrl)) return;
-
-        if (shouldPauseLiveMedia) {
-            captureGifFrame();
-        } else {
-            setHasFrozenGif(false);
-        }
-    }, [shouldPauseLiveMedia, currentUrl, captureGifFrame]);
-
     const isCurrentVideo = isVideoWallpaper(currentUrl);
     const isCurrentGif = isGifWallpaper(currentUrl);
     const cleanUrl = currentUrl ? currentUrl.split('?')[0].split('#')[0] : '';
@@ -619,12 +745,11 @@ function WallpaperEngine() {
             ) : isCurrentGif ? (
                 /* Animated GIF Wallpaper with Seamless Loop Transitions (Cross-Dissolve, Ambient Dip, or Instant Cut) */
                 wallpaperVideoLoopMode === 'crossfade' ? (
-                    /* Dual-slot A/B Roll for Seamless GIF Cross-Dissolve */
                     <>
                         <img
-                            ref={activeGifSlot === 'A' ? gifImgRef : null}
+                            ref={gifSlotARef}
                             key="wallpaper-gif-slot-A"
-                            src={`${cleanUrl}?slot=A&v=${gifCycleA}`}
+                            src={gifSlotASrc || cleanUrl}
                             alt=""
                             loading="eager"
                             onLoad={() => {
@@ -639,13 +764,13 @@ function WallpaperEngine() {
                                 opacity: (shouldPauseLiveMedia && hasFrozenGif)
                                     ? 0
                                     : (activeGifSlot === 'A' ? 1 : 0),
-                                transition: isReducedMotion ? 'none' : `opacity ${crossfadeDuration}s cubic-bezier(0.4, 0, 0.2, 1)`
+                                transition: 'none'
                             }}
                         />
                         <img
-                            ref={activeGifSlot === 'B' ? gifImgRef : null}
+                            ref={gifSlotBRef}
                             key="wallpaper-gif-slot-B"
-                            src={`${cleanUrl}?slot=B&v=${gifCycleB}`}
+                            src={gifSlotBSrc || cleanUrl}
                             alt=""
                             loading="eager"
                             onLoad={() => {
@@ -660,7 +785,17 @@ function WallpaperEngine() {
                                 opacity: (shouldPauseLiveMedia && hasFrozenGif)
                                     ? 0
                                     : (activeGifSlot === 'B' ? 1 : 0),
-                                transition: isReducedMotion ? 'none' : `opacity ${crossfadeDuration}s cubic-bezier(0.4, 0, 0.2, 1)`
+                                transition: 'none'
+                            }}
+                        />
+                        {/* Hardware-accelerated Crossfade Frame Capture Canvas */}
+                        <canvas
+                            ref={crossfadeCanvasRef}
+                            className="absolute inset-0 w-full h-full object-cover pointer-events-none will-change-transform"
+                            style={{
+                                filter: visualFilter,
+                                transform: visualTransform,
+                                opacity: 0
                             }}
                         />
                         {/* Frozen Frame Canvas when GIF is paused in background or eco mode */}
@@ -676,12 +811,12 @@ function WallpaperEngine() {
                         />
                     </>
                 ) : (
-                    /* Single Slot for Ambient Dip or Instant Cut */
+                    /* Ambient Dip or Instant Cut mode */
                     <>
                         <img
-                            ref={gifImgRef}
+                            ref={gifSlotARef}
                             key="wallpaper-gif-single"
-                            src={wallpaperVideoLoopMode === 'dip' ? `${cleanUrl}?slot=single&v=${gifCycleA}` : cleanUrl}
+                            src={cleanUrl}
                             alt=""
                             loading="eager"
                             onLoad={() => {
@@ -689,20 +824,18 @@ function WallpaperEngine() {
                                     captureGifFrame();
                                 }
                             }}
-                            className={`absolute inset-0 w-full h-full object-cover will-change-transform ${
-                                isReducedMotion ? '' : 'animate-wallpaper-fade'
-                            }`}
+                            className="absolute inset-0 w-full h-full object-cover will-change-transform"
                             style={{
                                 filter: visualFilter,
                                 transform: visualTransform,
                                 opacity: (shouldPauseLiveMedia && hasFrozenGif)
                                     ? 0
-                                    : (wallpaperVideoLoopMode === 'dip' && dipPhase === 'out' ? 0 : 1),
+                                    : (wallpaperVideoLoopMode === 'dip' ? gifDipOpacity : 1),
                                 transition: isReducedMotion
                                     ? 'none'
-                                    : wallpaperVideoLoopMode === 'dip'
-                                        ? `opacity ${crossfadeDuration * 0.5}s cubic-bezier(0.4, 0, 0.2, 1)`
-                                        : 'none'
+                                    : (wallpaperVideoLoopMode === 'dip'
+                                        ? `opacity ${gifHalfFadeSec}s cubic-bezier(0.4, 0, 0.2, 1)`
+                                        : 'none')
                             }}
                         />
                         {/* Frozen Frame Canvas when GIF is paused in background or eco mode */}

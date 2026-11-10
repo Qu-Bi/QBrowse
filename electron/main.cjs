@@ -1530,17 +1530,55 @@ const browserWindows = new Set();
 const windowAnimationState = new WeakMap();
 const normalBoundsMap = new WeakMap();
 
+let _cachedWindowsReducedMotion = false;
+let _lastWindowsReducedMotionCheck = 0;
+
 function checkWindowsReducedMotion() {
     try {
-        return !!nativeTheme.prefersReducedMotion;
-    } catch (_) {
-        return false;
+        if (nativeTheme && typeof nativeTheme.prefersReducedMotion === 'boolean') {
+            return nativeTheme.prefersReducedMotion;
+        }
+    } catch (_) {}
+
+    if (process.platform === 'win32') {
+        const now = Date.now();
+        if (now - _lastWindowsReducedMotionCheck < 1500) {
+            return _cachedWindowsReducedMotion;
+        }
+        _lastWindowsReducedMotionCheck = now;
+
+        try {
+            const { execSync } = require('child_process');
+            // Query UserPreferencesMask in HKCU\Control Panel\Desktop
+            // Bit 2 (0x04) of byte 0 corresponds to SPI_GETCLIENTAREAANIMATION (Windows Accessibility Animation Effects)
+            const maskOut = execSync('reg.exe query "HKCU\\Control Panel\\Desktop" /v UserPreferencesMask', {
+                encoding: 'utf8',
+                timeout: 500,
+                stdio: ['ignore', 'pipe', 'ignore'],
+                windowsHide: true
+            });
+            const match = maskOut.match(/UserPreferencesMask\s+REG_BINARY\s+([0-9a-fA-F]{2})/i);
+            if (match && match[1]) {
+                const firstByte = parseInt(match[1], 16);
+                // If bit 0x04 is 0, animations are turned off (reduced motion = true)
+                const isClientAreaAnimationDisabled = (firstByte & 0x04) === 0;
+                _cachedWindowsReducedMotion = isClientAreaAnimationDisabled;
+                return isClientAreaAnimationDisabled;
+            }
+
+            _cachedWindowsReducedMotion = false;
+            return false;
+        } catch (_) {
+            return _cachedWindowsReducedMotion;
+        }
     }
+
+    return false;
 }
 
 function getAnimationConfig() {
     try {
-        if (checkWindowsReducedMotion()) {
+        if (checkWindowsReducedMotion() || settingsStore?.a11yReducedMotion) {
             return { enabled: false, duration: 0, interval: 16 };
         }
         const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
@@ -6188,6 +6226,9 @@ ipcMain.handle('save-setting', (event, data) => {
                     liveSmartDarkState.darkExclusions = v;
                     shouldBroadcastSmartDark = true;
                 }
+                if (k === 'a11yReducedMotion') {
+                    settingsStore.a11yReducedMotion = Boolean(v);
+                }
             }
         });
         scheduleSettingsDiskFlush();
@@ -6211,6 +6252,9 @@ ipcMain.handle('save-setting', (event, data) => {
         }
         if (rawKey === 'darkExclusions' && Array.isArray(rawValue)) {
             liveSmartDarkState.darkExclusions = rawValue;
+        }
+        if (rawKey === 'a11yReducedMotion') {
+            settingsStore.a11yReducedMotion = Boolean(rawValue);
         }
         scheduleSettingsDiskFlush();
         if (rawKey === 'isForceDark' || rawKey === 'darkExclusions') {
@@ -7083,6 +7127,25 @@ ipcMain.handle('system-get-reduced-motion', () => {
     }
 });
 
+let _lastBroadcastedReducedMotion = null;
+function broadcastReducedMotionIfChanged() {
+    try {
+        const currentMotion = checkWindowsReducedMotion();
+        if (currentMotion !== _lastBroadcastedReducedMotion) {
+            _lastBroadcastedReducedMotion = currentMotion;
+            for (const win of browserWindows) {
+                if (win && !win.isDestroyed()) {
+                    win.webContents.send('system-reduced-motion-changed', currentMotion);
+                }
+            }
+        }
+    } catch (_) {}
+}
+
+if (process.platform === 'win32') {
+    setInterval(broadcastReducedMotionIfChanged, 2500);
+}
+
 try {
     nativeTheme.on('updated', () => {
         try {
@@ -7319,25 +7382,67 @@ function parseGifBufferDuration(bytes) {
     return (totalDurationMs > 0 && frameCount > 1) ? totalDurationMs : null;
 }
 
+async function getWallpaperBuffer(wallpaperUrl) {
+    if (!wallpaperUrl || typeof wallpaperUrl !== 'string') return null;
+    let fileName = '';
+    try {
+        const urlObj = new URL(wallpaperUrl);
+        const raw = urlObj.pathname.replace(/^\/(?:app\/|local\/)?/, '');
+        fileName = path.basename(decodeURIComponent(raw));
+    } catch {
+        const raw = wallpaperUrl.replace(/^qbrowse-media:\/\/(?:app\/|local\/)?/, '').split('?')[0].split('#')[0];
+        fileName = path.basename(decodeURIComponent(raw));
+    }
+    const backgroundsDir = path.join(app.getPath('userData'), 'backgrounds');
+    if (fileName) {
+        const fullPath = path.join(backgroundsDir, fileName);
+        if (fsSync.existsSync(fullPath)) {
+            return await fs.readFile(fullPath);
+        }
+    }
+    // Also check direct local file
+    try {
+        let localPath = wallpaperUrl;
+        if (wallpaperUrl.startsWith('file://')) {
+            localPath = fileURLToPath(wallpaperUrl);
+        }
+        if (fsSync.existsSync(localPath) && fsSync.statSync(localPath).isFile()) {
+            return await fs.readFile(localPath);
+        }
+    } catch (_) {}
+    // If http/https URL, fetch buffer
+    if (wallpaperUrl.startsWith('http://') || wallpaperUrl.startsWith('https://')) {
+        try {
+            const resp = await net.fetch(wallpaperUrl);
+            if (resp.ok) {
+                return Buffer.from(await resp.arrayBuffer());
+            }
+        } catch (_) {}
+    }
+    return null;
+}
+
 ipcMain.handle('wallpaper-get-gif-duration', async (event, wallpaperUrl) => {
     try {
-        if (!wallpaperUrl || typeof wallpaperUrl !== 'string') return null;
-        let fileName = '';
-        try {
-            const urlObj = new URL(wallpaperUrl);
-            const raw = urlObj.pathname.replace(/^\/(?:app\/|local\/)?/, '');
-            fileName = path.basename(decodeURIComponent(raw));
-        } catch {
-            const raw = wallpaperUrl.replace(/^qbrowse-media:\/\/(?:app\/|local\/)?/, '').split('?')[0].split('#')[0];
-            fileName = path.basename(decodeURIComponent(raw));
-        }
-        if (!fileName) return null;
-        const fullPath = path.join(app.getPath('userData'), 'backgrounds', fileName);
-        if (!fsSync.existsSync(fullPath)) return null;
-        const buf = await fs.readFile(fullPath);
-        return parseGifBufferDuration(buf);
+        const buf = await getWallpaperBuffer(wallpaperUrl);
+        return buf ? parseGifBufferDuration(buf) : null;
     } catch {
         return null;
+    }
+});
+
+ipcMain.handle('wallpaper-get-gif-data', async (event, wallpaperUrl) => {
+    try {
+        const buf = await getWallpaperBuffer(wallpaperUrl);
+        if (!buf) return { success: false, error: 'Could not load wallpaper buffer' };
+        const duration = parseGifBufferDuration(buf);
+        return {
+            success: true,
+            duration,
+            buffer: new Uint8Array(buf)
+        };
+    } catch (err) {
+        return { success: false, error: err.message };
     }
 });
 

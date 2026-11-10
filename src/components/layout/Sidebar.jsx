@@ -60,6 +60,16 @@ export default function Sidebar() {
     const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
     const tabPresentation = useUIStore(state => state.settings?.tabPresentation || 'pills');
     const windowControlsStyle = useUIStore(state => state.settings?.windowControlsStyle || 'mac');
+    const windowControlsOrder = useUIStore(state => state.settings?.windowControlsOrder || 'auto');
+
+    // Natural corner-aware window controls layout:
+    // - 'close-first': [Close, Minimize, Maximize] (natural when controls are docked on the left corner)
+    // - 'minimize-first': [Minimize, Maximize, Close] (natural when controls are docked on the right corner)
+    const effectiveControlsOrder = (windowControlsOrder === 'close-first' || windowControlsOrder === 'left')
+        ? 'close-first'
+        : (windowControlsOrder === 'minimize-first' || windowControlsOrder === 'right')
+        ? 'minimize-first'
+        : (sidebarPosition === 'right' ? 'minimize-first' : 'close-first');
     const isHomeActive = useUIStore(state => !state.currentUrl || state.currentUrl === 'about:blank');
     const setHoverPreview = useUIStore(state => state.setHoverPreview);
     const showToast = useUIStore(state => state.showToast);
@@ -841,98 +851,143 @@ export default function Sidebar() {
                     }
                 }}
             >
-                {windowControlsStyle === 'windows' ? (
-                    <div className="flex items-center gap-0.5 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
+                {(() => {
+                    const isCloseFirst = effectiveControlsOrder === 'close-first';
+
+                    if (windowControlsStyle === 'windows') {
+                        const btnClose = (
+                            <button 
+                                key="win-close"
+                                onClick={() => window.electronAPI?.close?.()} 
+                                className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer hover:bg-red-500 hover:text-white ${
+                                    isBright ? 'text-zinc-600' : 'text-white/70'
+                                }`} 
+                                title="Close"
+                            >
+                                <X size={12} strokeWidth={2} />
+                            </button>
+                        );
+                        const btnMin = (
+                            <button 
+                                key="win-min"
+                                onClick={() => window.electronAPI?.minimize?.()} 
+                                className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
+                                    isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
+                                }`} 
+                                title="Minimize"
+                            >
+                                <Minus size={11} strokeWidth={2} />
+                            </button>
+                        );
+                        const btnMax = (
+                            <button 
+                                key="win-max"
+                                onClick={() => window.electronAPI?.maximize?.()} 
+                                className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
+                                    isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
+                                }`} 
+                                title="Maximize"
+                            >
+                                <Square size={10} strokeWidth={1.8} />
+                            </button>
+                        );
+
+                        return (
+                            <div className="flex items-center gap-0.5 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
+                                {isCloseFirst ? [btnClose, btnMin, btnMax] : [btnMin, btnMax, btnClose]}
+                            </div>
+                        );
+                    }
+
+                    if (windowControlsStyle === 'minimal') {
+                        const btnClose = (
+                            <button 
+                                key="min-close"
+                                onClick={() => window.electronAPI?.close?.()} 
+                                className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
+                                    isBright 
+                                        ? 'bg-black/10 border-black/15 hover:bg-red-500/20 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.4)]' 
+                                        : 'bg-white/15 border-white/20 hover:bg-red-500/30 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+                                }`} 
+                                title="Close"
+                            >
+                                <X size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-red-400 transition-opacity duration-150" />
+                            </button>
+                        );
+                        const btnMin = (
+                            <button 
+                                key="min-min"
+                                onClick={() => window.electronAPI?.minimize?.()} 
+                                className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
+                                    isBright 
+                                        ? 'bg-black/10 border-black/15 hover:bg-amber-500/20 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.4)]' 
+                                        : 'bg-white/15 border-white/20 hover:bg-amber-500/30 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.5)]'
+                                }`} 
+                                title="Minimize"
+                            >
+                                <Minus size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-amber-300 transition-opacity duration-150" />
+                            </button>
+                        );
+                        const btnMax = (
+                            <button 
+                                key="min-max"
+                                onClick={() => window.electronAPI?.maximize?.()} 
+                                className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
+                                    isBright 
+                                        ? 'bg-black/10 border-black/15 hover:bg-emerald-500/20 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.4)]' 
+                                        : 'bg-white/15 border-white/20 hover:bg-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.5)]'
+                                }`} 
+                                title="Maximize"
+                            >
+                                <Maximize2 size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-emerald-300 transition-opacity duration-150" />
+                            </button>
+                        );
+
+                        return (
+                            <div className="flex items-center gap-2 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
+                                {isCloseFirst ? [btnClose, btnMin, btnMax] : [btnMin, btnMax, btnClose]}
+                            </div>
+                        );
+                    }
+
+                    // macOS Window Controls (Default)
+                    const btnClose = (
                         <button 
-                            onClick={() => window.electronAPI?.minimize?.()} 
-                            className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
-                                isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
-                            }`} 
-                            title="Minimize"
-                        >
-                            <Minus size={11} strokeWidth={2} />
-                        </button>
-                        <button 
-                            onClick={() => window.electronAPI?.maximize?.()} 
-                            className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
-                                isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
-                            }`} 
-                            title="Maximize"
-                        >
-                            <Square size={10} strokeWidth={1.8} />
-                        </button>
-                        <button 
-                            onClick={() => window.electronAPI?.close?.()} 
-                            className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer hover:bg-red-500 hover:text-white ${
-                                isBright ? 'text-zinc-600' : 'text-white/70'
-                            }`} 
-                            title="Close"
-                        >
-                            <X size={12} strokeWidth={2} />
-                        </button>
-                    </div>
-                ) : windowControlsStyle === 'minimal' ? (
-                    <div className="flex items-center gap-2 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
-                        <button 
-                            onClick={() => window.electronAPI?.close?.()} 
-                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
-                                isBright 
-                                    ? 'bg-black/10 border-black/15 hover:bg-red-500/20 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.4)]' 
-                                    : 'bg-white/15 border-white/20 hover:bg-red-500/30 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.5)]'
-                            }`} 
-                            title="Close"
-                        >
-                            <X size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-red-400 transition-opacity duration-150" />
-                        </button>
-                        <button 
-                            onClick={() => window.electronAPI?.minimize?.()} 
-                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
-                                isBright 
-                                    ? 'bg-black/10 border-black/15 hover:bg-amber-500/20 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.4)]' 
-                                    : 'bg-white/15 border-white/20 hover:bg-amber-500/30 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.5)]'
-                            }`} 
-                            title="Minimize"
-                        >
-                            <Minus size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-amber-300 transition-opacity duration-150" />
-                        </button>
-                        <button 
-                            onClick={() => window.electronAPI?.maximize?.()} 
-                            className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} border transition-all duration-200 hover:scale-110 active:scale-90 flex items-center justify-center group/btn cursor-pointer ${
-                                isBright 
-                                    ? 'bg-black/10 border-black/15 hover:bg-emerald-500/20 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.4)]' 
-                                    : 'bg-white/15 border-white/20 hover:bg-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.5)]'
-                            }`} 
-                            title="Maximize"
-                        >
-                            <Maximize2 size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-emerald-300 transition-opacity duration-150" />
-                        </button>
-                    </div>
-                ) : (
-                    /* macOS Window Controls (Default) */
-                    <div className="flex gap-2 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
-                        <button 
+                            key="mac-close"
                             onClick={() => window.electronAPI?.close?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-red-500/80 hover:bg-red-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(239,68,68,0.5)] flex items-center justify-center group/btn cursor-pointer`}
                             title="Close"
                         >
                             <X size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
                         </button>
+                    );
+                    const btnMin = (
                         <button 
+                            key="mac-min"
                             onClick={() => window.electronAPI?.minimize?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-yellow-500/80 hover:bg-yellow-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(234,179,8,0.5)] flex items-center justify-center group/btn cursor-pointer`}
                             title="Minimize"
                         >
                             <Minus size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
                         </button>
+                    );
+                    const btnMax = (
                         <button 
+                            key="mac-max"
                             onClick={() => window.electronAPI?.maximize?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-green-500/80 hover:bg-green-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(34,197,94,0.5)] flex items-center justify-center group/btn cursor-pointer`}
                             title="Maximize"
                         >
                             <Maximize2 size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
                         </button>
-                    </div>
-                )}
+                    );
+
+                    return (
+                        <div className="flex gap-2 flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
+                            {isCloseFirst ? [btnClose, btnMin, btnMax] : [btnMin, btnMax, btnClose]}
+                        </div>
+                    );
+                })()}
                 <div className="hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
                     <button 
                         onClick={() => togglePopover('user')} 

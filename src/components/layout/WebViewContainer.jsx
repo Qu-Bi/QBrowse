@@ -1449,6 +1449,15 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
         // Spatial scale spring animation: momentarily counter-scale to previous visual size,
         // then smoothly spring to 1.0 over 180ms (cubic-bezier(0.22, 1, 0.36, 1))
+        const isReduced = Boolean(a11ySettings?.a11yReducedMotion || isSystemReducedMotion);
+        if (isReduced) {
+            if (zoomAnimTimerRef.current) clearTimeout(zoomAnimTimerRef.current);
+            wv.style.transition = 'none';
+            wv.style.transform = '';
+            wv.style.willChange = '';
+            return;
+        }
+
         if (Math.abs(prevFactor - targetFactor) > 0.005) {
             if (zoomAnimTimerRef.current) clearTimeout(zoomAnimTimerRef.current);
 

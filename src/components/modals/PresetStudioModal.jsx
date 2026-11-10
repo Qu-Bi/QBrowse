@@ -6,10 +6,11 @@ import {
     PanelRight, PanelBottom, Code, Terminal, Zap, Cpu, Bookmark, 
     Heart, Globe, Smartphone, Compass, Eye, Shield, Lock, Search,
     GripVertical, GripHorizontal, ChevronRight, RotateCcw,
-    Minus, Square
+    Minus, Square, Type
 } from 'lucide-react';
 import useUIStore, { hexToRgbString } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import CustomFontManager from '../common/CustomFontManager';
 import { 
     EXPERIENCE_PRESETS, 
     applyExperiencePreset, 
@@ -139,6 +140,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             frameCurvature: settings?.frameCurvature || 'default',
             tabPresentation: settings?.tabPresentation || 'pills',
             windowControlsStyle: settings?.windowControlsStyle || 'mac',
+            windowControlsOrder: settings?.windowControlsOrder || 'auto',
             theme: currentTheme || 'dark',
             accentColor: initHex,
             accentRgb: hexToRgbString(initHex),
@@ -355,6 +357,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             frameCurvature: draft.frameCurvature,
             tabPresentation: draft.tabPresentation,
             windowControlsStyle: draft.windowControlsStyle,
+            windowControlsOrder: draft.windowControlsOrder,
             uiScale: draft.uiScale
         };
 
@@ -387,6 +390,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             frameCurvature: s.frameCurvature || 'default',
             tabPresentation: s.tabPresentation || 'pills',
             windowControlsStyle: s.windowControlsStyle || 'mac',
+            windowControlsOrder: s.windowControlsOrder || 'auto',
             theme: currentTheme || 'dark',
             accentColor: hex,
             accentRgb: hexToRgbString(hex),
@@ -406,6 +410,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             frameCurvature: preset.frameCurvature || 'default',
             tabPresentation: preset.tabPresentation || 'pills',
             windowControlsStyle: preset.windowControlsStyle || 'mac',
+            windowControlsOrder: preset.windowControlsOrder || 'auto',
             theme: preset.theme || 'dark',
             accentColor: hex,
             accentRgb: preset.accentRgb || hexToRgbString(hex),
@@ -466,7 +471,15 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             frameCurvature: draft.frameCurvature,
             tabPresentation: draft.tabPresentation,
             windowControlsStyle: draft.windowControlsStyle,
+            windowControlsOrder: draft.windowControlsOrder,
             uiScale: draft.uiScale,
+            appFontType: settings?.appFontType || 'default',
+            appFontFamily: settings?.appFontFamily || 'default',
+            appFontGoogleFamily: settings?.appFontGoogleFamily || '',
+            appFontCustomName: settings?.appFontCustomName || '',
+            appFontLetterSpacing: settings?.appFontLetterSpacing || 'normal',
+            appFontSizeScale: settings?.appFontSizeScale ?? 100,
+            appFontWeightShift: settings?.appFontWeightShift || 'normal',
             layoutTag,
             layoutSummary,
             highlights: [
@@ -509,7 +522,15 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             frameCurvature: draft.frameCurvature,
             tabPresentation: draft.tabPresentation,
             windowControlsStyle: draft.windowControlsStyle,
+            windowControlsOrder: draft.windowControlsOrder,
             uiScale: draft.uiScale,
+            appFontType: settings?.appFontType || 'default',
+            appFontFamily: settings?.appFontFamily || 'default',
+            appFontGoogleFamily: settings?.appFontGoogleFamily || '',
+            appFontCustomName: settings?.appFontCustomName || '',
+            appFontLetterSpacing: settings?.appFontLetterSpacing || 'normal',
+            appFontSizeScale: settings?.appFontSizeScale ?? 100,
+            appFontWeightShift: settings?.appFontWeightShift || 'normal',
             layoutTag,
             layoutSummary,
             spacesSummary: 'Personal · Work',
@@ -632,45 +653,65 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         </div>
                     </div>
 
-                    {/* Mode Navigation Tabs */}
+                    {/* Mode Navigation Tabs: 3 Tabs on a Single-Row Pill */}
                     <div className="flex items-center gap-2">
-                        <div className={`relative p-1 rounded-full border grid grid-cols-2 items-center select-none w-72 backdrop-blur-xl ${
+                        <div className={`relative p-1 rounded-full border grid grid-cols-3 items-center select-none w-80 sm:w-96 backdrop-blur-xl ${
                             isSystemBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/5'
                         }`}>
                             {/* Animated Morphing Pill Indicator */}
                             <div 
-                                className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none shadow-sm ${
+                                className={`absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-full transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none shadow-sm ${
                                     isSystemBright 
                                         ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-black/[0.08]' 
                                         : 'bg-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)] border border-white/10'
                                 }`}
-                                style={{ transform: activeTab === 'library' ? 'translateX(100%)' : 'translateX(0)' }} 
+                                style={{ 
+                                    transform: activeTab === 'typography' 
+                                        ? 'translateX(100%)' 
+                                        : activeTab === 'library' 
+                                            ? 'translateX(200%)' 
+                                            : 'translateX(0)' 
+                                }} 
                             />
 
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('studio')}
-                                className={`relative z-10 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
+                                className={`relative z-10 px-2.5 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
                                     activeTab === 'studio'
                                         ? (isSystemBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
                                 }`}
                             >
-                                <Layout size={13} />
-                                <span>Visual Canvas</span>
+                                <Layout size={13} className="shrink-0" />
+                                <span className="whitespace-nowrap truncate">Canvas</span>
                             </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('typography')}
+                                className={`relative z-10 px-2.5 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
+                                    activeTab === 'typography'
+                                        ? (isSystemBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                        : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
+                                }`}
+                            >
+                                <Type size={13} className="shrink-0" />
+                                <span className="whitespace-nowrap truncate">Typography</span>
+                            </button>
+
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('library')}
-                                className={`relative z-10 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
+                                className={`relative z-10 px-2.5 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
                                     activeTab === 'library'
                                         ? (isSystemBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
                                 }`}
                             >
-                                <Bookmark size={13} />
-                                <span>Preset Library</span>
-                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono transition-colors ${
+                                <Bookmark size={13} className="shrink-0" />
+                                <span className="whitespace-nowrap truncate">Presets</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono transition-colors shrink-0 ${
                                     activeTab === 'library' 
                                         ? (isSystemBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') 
                                         : (isSystemBright ? 'bg-black/5 text-zinc-500' : 'bg-white/5 text-zinc-400')
@@ -1063,6 +1104,21 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     />
                                 </div>
 
+                                {/* 4b. WINDOW CONTROLS LAYOUT */}
+                                <div>
+                                    <label className="text-xs font-semibold block mb-1.5">Window Controls Layout</label>
+                                    <StudioSlidingPillSwitcher
+                                        options={[
+                                            { id: 'auto', label: 'Smart Corner' },
+                                            { id: 'close-first', label: 'Close First' },
+                                            { id: 'minimize-first', label: 'Minimize First' }
+                                        ]}
+                                        value={draft.windowControlsOrder || 'auto'}
+                                        onChange={(val) => updateDraft('windowControlsOrder', val)}
+                                        isBright={isSystemBright}
+                                    />
+                                </div>
+
                                 {/* 5. THEME & UI SCALE */}
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
@@ -1248,6 +1304,11 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             </div>
                         </div>
 
+                    </div>
+                ) : activeTab === 'typography' ? (
+                    /* TYPOGRAPHY MANAGER TAB */
+                    <div className="flex-1 p-5 md:p-6 overflow-y-auto max-w-5xl mx-auto w-full">
+                        <CustomFontManager isStudio={true} />
                     </div>
                 ) : (
                     /* PRESET LIBRARY VIEW */
@@ -1565,6 +1626,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 // Subcomponent: Miniature Navigation Bar in Canvas
 function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright }) {
     const isTop = draft.topBarPosition === 'top';
+    const isRight = draft.sidebarPosition === 'right';
     const isSquare = draft.frameCurvature === 'square' || draft.frameCurvature === 'sharp';
 
     return (
@@ -1573,6 +1635,8 @@ function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright }) {
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             className={`w-full h-8 px-2.5 ${isSquare ? 'rounded-none' : 'rounded-xl'} border shadow-sm flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing group select-none transition-all duration-300 ${
+                isRight ? 'flex-row-reverse' : 'flex-row'
+            } ${
                 isBright
                     ? 'bg-black/[0.03] border-black/10 text-zinc-800'
                     : 'bg-white/[0.04] border-white/10 text-white'
@@ -1581,24 +1645,43 @@ function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright }) {
         >
             {/* Window Controls Style */}
             <div className="flex items-center gap-1.5 shrink-0">
-                {draft.windowControlsStyle === 'windows' ? (
-                    <div className={`flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                        <Minus size={9} strokeWidth={2.5} />
-                        <Square size={8} strokeWidth={2} />
-                        <X size={9} strokeWidth={2.5} />
-                    </div>
-                ) : draft.windowControlsStyle === 'minimal' ? (
-                    <div className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${isBright ? 'bg-zinc-400' : 'bg-white/30'}`} />
-                        <div className={`w-2 h-2 rounded-full ${isBright ? 'bg-zinc-300' : 'bg-white/15'}`} />
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] border border-[#e0443e]/50 shadow-[0_0.5px_2px_rgba(255,95,86,0.3)]" />
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] border border-[#dea123]/50 shadow-[0_0.5px_2px_rgba(255,189,46,0.3)]" />
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f] border border-[#1aab29]/50 shadow-[0_0.5px_2px_rgba(39,201,63,0.3)]" />
-                    </div>
-                )}
+                {(() => {
+                    const isRight = draft.sidebarPosition === 'right';
+                    const isCloseFirst = (draft.windowControlsOrder === 'close-first') 
+                        ? true 
+                        : (draft.windowControlsOrder === 'minimize-first') 
+                        ? false 
+                        : !isRight;
+
+                    if (draft.windowControlsStyle === 'windows') {
+                        const min = <Minus size={9} strokeWidth={2.5} key="min" />;
+                        const max = <Square size={8} strokeWidth={2} key="max" />;
+                        const cls = <X size={9} strokeWidth={2.5} key="cls" />;
+                        return (
+                            <div className={`flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                                {isCloseFirst ? [cls, min, max] : [min, max, cls]}
+                            </div>
+                        );
+                    }
+                    if (draft.windowControlsStyle === 'minimal') {
+                        const min = <div key="min" className={`w-2 h-2 rounded-full ${isBright ? 'bg-amber-400/60' : 'bg-amber-400/50'}`} />;
+                        const max = <div key="max" className={`w-2 h-2 rounded-full ${isBright ? 'bg-emerald-400/60' : 'bg-emerald-400/50'}`} />;
+                        const cls = <div key="cls" className={`w-2 h-2 rounded-full ${isBright ? 'bg-red-400/60' : 'bg-red-400/50'}`} />;
+                        return (
+                            <div className="flex items-center gap-1.5">
+                                {isCloseFirst ? [cls, min, max] : [min, max, cls]}
+                            </div>
+                        );
+                    }
+                    const min = <div key="min" className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] border border-[#dea123]/50 shadow-[0_0.5px_2px_rgba(255,189,46,0.3)]" />;
+                    const max = <div key="max" className="w-2.5 h-2.5 rounded-full bg-[#27c93f] border border-[#1aab29]/50 shadow-[0_0.5px_2px_rgba(39,201,63,0.3)]" />;
+                    const cls = <div key="cls" className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] border border-[#e0443e]/50 shadow-[0_0.5px_2px_rgba(255,95,86,0.3)]" />;
+                    return (
+                        <div className="flex items-center gap-1.5">
+                            {isCloseFirst ? [cls, min, max] : [min, max, cls]}
+                        </div>
+                    );
+                })()}
             </div>
 
             {/* Omnibox Preview */}

@@ -399,12 +399,12 @@ export default function MainFrame() {
         const isZenDropdownOpen = Boolean(zenDropdownOpenBySpace[spaceName]);
 
         return (
-            <div className="absolute inset-0 flex flex-col items-center justify-center overflow-visible animate-pop-in z-10 w-full h-full">
+            <div className={`absolute inset-0 flex flex-col items-center justify-center overflow-visible z-10 w-full h-full ${isReducedMotion ? 'transition-none' : 'animate-pop-in'}`}>
                 <div 
-                    className="relative z-10 flex flex-col items-center transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] origin-center w-full mt-[-10vh]"
+                    className={`relative z-10 flex flex-col items-center origin-center w-full mt-[-10vh] ${isReducedMotion ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
                     style={{ transform: `translateY(${isZenDropdownOpen ? '-10vh' : '0px'}) scale(${zoomLevel / 100})` }}
                 >
-                    <div className={`flex flex-col items-center px-4 w-full text-center transition-[margin] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                    <div className={`flex flex-col items-center px-4 w-full text-center ${isReducedMotion ? 'transition-none' : 'transition-[margin] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'} ${
                         isZenDropdownOpen ? 'mb-6 md:mb-8' : 'mb-10 md:mb-14'
                     }`}>
                         <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isSpaceTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')}`}>{dateString}</span>

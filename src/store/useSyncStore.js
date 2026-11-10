@@ -130,12 +130,184 @@ async function encryptData(payloadObj, passphrase) {
     }
 }
 
+// Robust extractor for encrypted backup payloads across all schema variations and legacy versions
+export function extractEncryptedPayload(candidate) {
+    if (!candidate) return null;
+
+    // 1. If candidate is a JSON string, attempt parsing
+    if (typeof candidate === 'string') {
+        const trimmed = candidate.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+            try {
+                const parsed = JSON.parse(trimmed);
+                return extractEncryptedPayload(parsed);
+            } catch (_) {}
+        }
+        return null;
+    }
+
+    if (typeof candidate !== 'object') return null;
+
+    // 2. Direct encrypted object check: candidate has salt, iv, and cipher (or variations)
+    const salt = candidate.salt || candidate.s;
+    const iv = candidate.iv || candidate.initializationVector;
+    const cipher = candidate.cipher || candidate.ciphertext || candidate.data || candidate.encryptedContent;
+    if (salt && iv && cipher && typeof salt === 'string') {
+        const ivStr = typeof iv === 'string' ? iv : (iv instanceof Uint8Array ? Array.from(iv, b => b.toString(16).padStart(2, '0')).join('') : null);
+        const cipherStr = typeof cipher === 'string' ? cipher : (cipher instanceof Uint8Array ? Array.from(cipher, b => b.toString(16).padStart(2, '0')).join('') : null);
+        if (ivStr && cipherStr) {
+            return { salt, iv: ivStr, cipher: cipherStr };
+        }
+    }
+
+    // 3. Inspect nested candidate properties in order of common usage
+    const candidateKeys = [
+        'encrypted',
+        'encryptedData',
+        'encryptedPayload',
+        'payload',
+        'backupData',
+        'data',
+        'ciphertext',
+        'cipher',
+        'content',
+        'backup',
+        'blob'
+    ];
+
+    for (const key of candidateKeys) {
+        if (candidate[key] && candidate[key] !== candidate) {
+            const extracted = extractEncryptedPayload(candidate[key]);
+            if (extracted) return extracted;
+        }
+    }
+
+    return null;
+}
+
+// Lightweight IndexedDB helper for resilient offline backup cache
+function openBackupDB() {
+    return new Promise((resolve, reject) => {
+        if (typeof window === 'undefined' || !window.indexedDB) {
+            return reject(new Error("IndexedDB unavailable"));
+        }
+        const req = window.indexedDB.open('qbrowse_backups_db', 1);
+        req.onupgradeneeded = (e) => {
+            const idb = e.target.result;
+            if (!idb.objectStoreNames.contains('backups')) {
+                idb.createObjectStore('backups', { keyPath: 'id' });
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error("IndexedDB open error"));
+    });
+}
+
+async function saveIndexedDBBackup(backupRecord) {
+    if (!backupRecord || !backupRecord.id) return;
+    try {
+        const idb = await openBackupDB();
+        const tx = idb.transaction('backups', 'readwrite');
+        const store = tx.objectStore('backups');
+        store.put(backupRecord);
+        await new Promise((resolve) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        });
+    } catch (_) {}
+}
+
+async function getIndexedDBBackup(targetId, targetCreatedAt) {
+    try {
+        const idb = await openBackupDB();
+        const tx = idb.transaction('backups', 'readonly');
+        const store = tx.objectStore('backups');
+        if (targetId) {
+            const req = store.get(targetId);
+            const res = await new Promise((resolve) => {
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            });
+            if (res) return res;
+        }
+        const allReq = store.getAll();
+        const all = await new Promise((resolve) => {
+            allReq.onsuccess = () => resolve(allReq.result || []);
+            allReq.onerror = () => resolve([]);
+        });
+        return all.find(b => 
+            (targetId && b.id === targetId) || 
+            (targetCreatedAt && b.createdAt === targetCreatedAt)
+        ) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+async function getAllIndexedDBBackups() {
+    try {
+        const idb = await openBackupDB();
+        const tx = idb.transaction('backups', 'readonly');
+        const store = tx.objectStore('backups');
+        const allReq = store.getAll();
+        return await new Promise((resolve) => {
+            allReq.onsuccess = () => resolve(allReq.result || []);
+            allReq.onerror = () => resolve([]);
+        });
+    } catch (_) {
+        return [];
+    }
+}
+
+async function deleteIndexedDBBackup(backupId) {
+    if (!backupId) return;
+    try {
+        const idb = await openBackupDB();
+        const tx = idb.transaction('backups', 'readwrite');
+        const store = tx.objectStore('backups');
+        store.delete(backupId);
+        await new Promise((resolve) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        });
+    } catch (_) {}
+}
+
 async function decryptData(encryptedObj, passphrase) {
     try {
-        const { salt, iv, cipher } = encryptedObj;
+        if (!encryptedObj || !passphrase) {
+            throw new Error("Missing encrypted data or encryption passphrase");
+        }
+
+        let payload = encryptedObj;
+        if (typeof payload === 'string') {
+            try {
+                payload = JSON.parse(payload);
+            } catch (_) {}
+        }
+
+        const normalized = extractEncryptedPayload(payload) || payload;
+        const salt = normalized.salt || normalized.s;
+        const iv = normalized.iv || normalized.initializationVector;
+        const cipher = normalized.cipher || normalized.ciphertext || normalized.data || normalized.encryptedContent;
+
+        if (!salt || !iv || !cipher) {
+            throw new Error("Malformed encrypted payload structure");
+        }
+
         const key = await deriveKey(passphrase, salt);
-        const ivArray = new Uint8Array(iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-        const cipherArray = new Uint8Array(cipher.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+
+        const ivArray = (iv instanceof Uint8Array) 
+            ? iv 
+            : new Uint8Array(iv.match(/.{1,2}/g)?.map(b => parseInt(b, 16)) || []);
+        const cipherArray = (cipher instanceof Uint8Array)
+            ? cipher
+            : new Uint8Array(cipher.match(/.{1,2}/g)?.map(b => parseInt(b, 16)) || []);
+
+        if (ivArray.length === 0 || cipherArray.length === 0) {
+            throw new Error("Invalid IV or Cipher length in backup data");
+        }
+
         const decryptedBytes = await window.crypto.subtle.decrypt(
             { name: 'AES-GCM', iv: ivArray },
             key,
@@ -145,6 +317,9 @@ async function decryptData(encryptedObj, passphrase) {
         return JSON.parse(decoder.decode(decryptedBytes));
     } catch(e) {
         console.warn("[Decryption Error] Passphrase mismatch or corrupted payload", e);
+        if (e.message?.includes("Malformed") || e.message?.includes("Invalid IV")) {
+            throw e;
+        }
         throw new Error("Invalid Master Encryption Password or corrupted cloud data");
     }
 }
@@ -178,8 +353,9 @@ function formatAuthError(error) {
     return message.replace(/^Firebase:\s*/, '');
 }
 
-// Self-healing migration to keep Firestore root document strictly below the 1MB (1,048,576 bytes) limit.
-// Moves any heavy backup payloads to the subcollection 'users/{uid}/backups/{id}' and purges them from the root document.
+// Self-healing migration to keep Firestore root document safe and strictly below 1MB.
+// Only runs if the root document is genuinely approaching the limit (> 700KB).
+// Safely preserves full backups and verifies subcollection capability before pruning.
 async function healBloatedRootDocument(userId) {
     if (!userId) return;
     try {
@@ -188,23 +364,43 @@ async function healBloatedRootDocument(userId) {
         if (!userSnap.exists()) return;
 
         const data = userSnap.data();
-        let needsPurge = false;
+        const approxDocBytes = JSON.stringify(data).length;
 
-        // 1. Detect if manual_backups array has bulky encrypted payloads
-        if (Array.isArray(data.manual_backups) && data.manual_backups.some(b => b && b.encrypted)) {
-            needsPurge = true;
-        }
+        // If the document is safely below 700KB (Firestore limit is 1MB), root document is completely healthy
+        if (approxDocBytes < 700000) return;
 
-        if (!needsPurge) return;
+        console.log(`[Sync] Heavy root document detected (~${Math.round(approxDocBytes / 1024)}KB). Running safe backup pruning...`);
 
-        console.log("[Sync] Bloated root document detected (>1MB potential). Migrating backups to subcollection and cleaning root document...");
-
-        // 2. Migrate each full backup payload to the subcollection so the user never loses their backups
+        // Cache all local backups to IndexedDB and localStorage before modifying anything
         if (Array.isArray(data.manual_backups)) {
             for (const b of data.manual_backups) {
-                if (b && b.id && b.encrypted) {
+                if (b && b.id) {
+                    const enc = extractEncryptedPayload(b);
+                    if (enc) {
+                        saveIndexedDBBackup({ ...b, encrypted: enc }).catch(() => {});
+                    }
+                }
+            }
+        }
+
+        // Test if subcollection write is permitted
+        let canWriteSubcollection = false;
+        try {
+            const probeId = '_probe_' + Date.now();
+            await setDoc(doc(db, 'users', userId, 'backups', probeId), { probe: true });
+            await deleteDoc(doc(db, 'users', userId, 'backups', probeId));
+            canWriteSubcollection = true;
+        } catch (_) {
+            canWriteSubcollection = false;
+        }
+
+        // If subcollection write works, copy all backups there
+        if (canWriteSubcollection && Array.isArray(data.manual_backups)) {
+            for (const b of data.manual_backups) {
+                const enc = extractEncryptedPayload(b);
+                if (b && b.id && enc) {
                     try {
-                        await setDoc(doc(db, 'users', userId, 'backups', b.id), b);
+                        await setDoc(doc(db, 'users', userId, 'backups', b.id), { ...b, encrypted: enc });
                     } catch(subErr) {
                         console.warn("[Sync] Backup migration subcollection notice:", subErr);
                     }
@@ -212,34 +408,31 @@ async function healBloatedRootDocument(userId) {
             }
         }
 
-        // 3. Create clean metadata-only array (no encrypted string)
-        const cleanedMetadataBackups = Array.isArray(data.manual_backups)
-            ? data.manual_backups.map(b => ({
-                id: b.id,
-                label: b.label || 'Manual Backup',
-                createdAt: b.createdAt || new Date().toISOString(),
-                stats: b.stats || {}
-            })).slice(0, 5)
+        // Clean metadata for root doc: ALWAYS preserve the newest backup with its full encrypted payload!
+        // Only strip encrypted payload from older backups (idx >= 1) if subcollection is working or size is critical
+        const cleanedBackups = Array.isArray(data.manual_backups)
+            ? data.manual_backups.map((b, idx) => {
+                const enc = extractEncryptedPayload(b);
+                if (idx === 0 && enc) {
+                    return { ...b, encrypted: enc };
+                }
+                if (!canWriteSubcollection && enc && idx < 2) {
+                    return { ...b, encrypted: enc };
+                }
+                return {
+                    id: b.id,
+                    label: b.label || 'Manual Backup',
+                    createdAt: b.createdAt || new Date().toISOString(),
+                    stats: b.stats || {}
+                };
+            }).slice(0, 5)
             : [];
 
-        // 4. Purge the bloated manual_backups field directly using deleteField()
         try {
-            await updateDoc(rootRef, { manual_backups: deleteField() });
-            console.log("[Sync] Successfully purged legacy oversized manual_backups from root document.");
-        } catch(delErr) {
-            console.warn("[Sync] updateDoc deleteField notice (trying full setDoc overwrite):", delErr);
-            const cleanDoc = { ...data, manual_backups: cleanedMetadataBackups };
-            try {
-                await setDoc(rootRef, cleanDoc);
-            } catch(e) {}
-        }
-
-        // 5. Update root doc with clean metadata only
-        try {
-            await setDoc(rootRef, { manual_backups: cleanedMetadataBackups }, { merge: true });
+            await setDoc(rootRef, { manual_backups: cleanedBackups }, { merge: true });
         } catch(e) {}
 
-        console.log("[Sync] Root document healed successfully! Size is now ~50KB.");
+        console.log("[Sync] Root document safe pruning completed successfully.");
     } catch(err) {
         console.warn("[Sync] healBloatedRootDocument notice:", err);
     }
@@ -514,6 +707,8 @@ const useSyncStore = create((set, get) => ({
     cloudBackups: [],
     isLoadingBackups: false,
     isCreatingBackup: false,
+    isRestoringBackup: false,
+    restoringBackupId: null,
 
     // Cross-Device Cloud Tabs Sync
     deviceId: getOrCreateDeviceId(),
@@ -1296,57 +1491,90 @@ const useSyncStore = create((set, get) => ({
                 stats: fullBackupRecord.stats
             };
 
-            // 4. Save full backup to local storage as an immediate offline backup safeguard
+            // 4. Save full backup to local storage & IndexedDB as an immediate offline safeguard
             try {
                 const localBackups = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
-                const nextLocal = [fullBackupRecord, ...localBackups.filter(b => b.id !== backupId)].slice(0, 5);
+                const nextLocal = [fullBackupRecord, ...localBackups.filter(b => b.id !== backupId)].slice(0, 8);
                 localStorage.setItem('qbrowse_local_backups', JSON.stringify(nextLocal));
-            } catch(_) {}
-
-            // 5. Save full encrypted backup to backups subcollection (each doc has its own 1MB limit!)
-            let cloudSaved = false;
-            try {
-                await setDoc(doc(db, 'users', user.uid, 'backups', backupId), fullBackupRecord);
-                cloudSaved = true;
-            } catch(subErr) {
-                console.warn("[Sync] Subcollection backup write notice:", subErr);
+            } catch(lsErr) {
+                console.warn("[Sync] localStorage backup write notice:", lsErr);
             }
-
-            // 6. Save ONLY lightweight metadata to user's root document (keeps root doc < 60KB!)
-            const rootRef = doc(db, 'users', user.uid);
-            let existingMetadata = [];
             try {
-                const userSnap = await getDoc(rootRef);
-                if (userSnap.exists() && Array.isArray(userSnap.data().manual_backups)) {
-                    // Strip any legacy encrypted field from existing backups
-                    existingMetadata = userSnap.data().manual_backups.map(b => ({
-                        id: b.id,
-                        label: b.label,
-                        createdAt: b.createdAt,
-                        stats: b.stats || {}
-                    }));
-                }
-            } catch(e) {}
+                localStorage.setItem(`qbrowse_backup_${backupId}`, JSON.stringify(fullBackupRecord));
+            } catch (_) {}
+            saveIndexedDBBackup(fullBackupRecord).catch(() => {});
 
-            const updatedBackupsMeta = [backupMetadata, ...existingMetadata.filter(b => b.id !== backupId)].slice(0, 5);
-
-            try {
-                await setDoc(rootRef, { manual_backups: updatedBackupsMeta }, { merge: true });
-                cloudSaved = true;
-            } catch(rootErr) {
-                console.warn("[Sync] Root doc metadata save notice, attempting self-heal:", rootErr);
+            // 5. Save full encrypted backup to backups subcollection
+            let subcollectionSaved = false;
+            if (user) {
                 try {
-                    await updateDoc(rootRef, { manual_backups: deleteField() });
-                    await setDoc(rootRef, { manual_backups: updatedBackupsMeta }, { merge: true });
-                    cloudSaved = true;
-                } catch(healErr) {
-                    console.warn("[Sync] Root doc heal during backup notice:", healErr);
+                    await setDoc(doc(db, 'users', user.uid, 'backups', backupId), fullBackupRecord);
+                    subcollectionSaved = true;
+                } catch(subErr) {
+                    console.warn("[Sync] Subcollection backup write notice (falling back to root doc payload):", subErr);
                 }
             }
+
+            // 6. Save to user's root document (ensuring at least the newest 2 backups retain full encrypted payloads)
+            let rootSaved = false;
+            if (user) {
+                const rootRef = doc(db, 'users', user.uid);
+                let existingBackups = [];
+                try {
+                    const userSnap = await getDoc(rootRef);
+                    if (userSnap.exists()) {
+                        const rootData = userSnap.data() || {};
+                        if (Array.isArray(rootData.manual_backups)) {
+                            existingBackups = rootData.manual_backups;
+                        }
+                    }
+                } catch(e) {}
+
+                const allMerged = [
+                    fullBackupRecord,
+                    ...existingBackups.filter(b => b && b.id !== backupId)
+                ].slice(0, 5);
+
+                const updatedForRoot = allMerged.map((b, idx) => {
+                    const enc = extractEncryptedPayload(b);
+                    // Keep encrypted payload for top 2 backups, or all if subcollection wasn't saved
+                    if (enc && (!subcollectionSaved || idx < 2)) {
+                        return {
+                            id: b.id,
+                            label: b.label || 'Snapshot',
+                            createdAt: b.createdAt || new Date().toISOString(),
+                            stats: b.stats || {},
+                            encrypted: enc
+                        };
+                    }
+                    return {
+                        id: b.id,
+                        label: b.label || 'Snapshot',
+                        createdAt: b.createdAt || new Date().toISOString(),
+                        stats: b.stats || {}
+                    };
+                });
+
+                try {
+                    await setDoc(rootRef, { manual_backups: updatedForRoot }, { merge: true });
+                    rootSaved = true;
+                } catch(rootErr) {
+                    console.warn("[Sync] Root doc backup save notice, attempting self-heal:", rootErr);
+                    try {
+                        await updateDoc(rootRef, { manual_backups: deleteField() });
+                        await setDoc(rootRef, { manual_backups: updatedForRoot }, { merge: true });
+                        rootSaved = true;
+                    } catch(healErr) {
+                        console.warn("[Sync] Root doc heal during backup notice:", healErr);
+                    }
+                }
+            }
+
+            const cloudSaved = subcollectionSaved || rootSaved;
 
             // In local Zustand state, keep fullBackupRecord available for instant restore
             const currentList = get().cloudBackups || [];
-            const nextCloudList = [fullBackupRecord, ...currentList.filter(b => b.id !== backupId)].slice(0, 5);
+            const nextCloudList = [fullBackupRecord, ...currentList.filter(b => b.id !== backupId)].slice(0, 8);
 
             set(state => ({
                 isCreatingBackup: false,
@@ -1355,10 +1583,10 @@ const useSyncStore = create((set, get) => ({
             }));
 
             if (cloudSaved) {
-                useUIStore.getState().showToast(`Cloud Backup "${payload.label}" pushed successfully!`);
+                useUIStore.getState().showToast(`Cloud Snapshot "${payload.label}" pushed successfully!`);
                 return true;
             } else {
-                useUIStore.getState().showToast(`Backup saved to local storage (cloud sync offline).`);
+                useUIStore.getState().showToast(`Snapshot saved to local storage (cloud sync offline).`);
                 return true;
             }
         } catch(e) {
@@ -1386,41 +1614,100 @@ const useSyncStore = create((set, get) => ({
                     const subSnap = await getDocs(collection(db, 'users', user.uid, 'backups'));
                     subSnap.forEach(d => {
                         if (d.exists()) {
-                            backups.push(d.data());
+                            const dData = d.data() || {};
+                            const enc = extractEncryptedPayload(dData);
+                            backups.push({
+                                id: d.id,
+                                ...dData,
+                                ...(enc ? { encrypted: enc } : {})
+                            });
                         }
                     });
-                } catch(e) {}
+                } catch(e) {
+                    console.warn("[Sync] Subcollection fetch notice:", e);
+                }
 
-                // 2. Fetch metadata from root document and merge any missing
+                // 2. Fetch metadata & inline backups from root document and merge
                 const rootRef = doc(db, 'users', user.uid);
                 try {
                     const userSnap = await getDoc(rootRef);
-                    if (userSnap.exists() && Array.isArray(userSnap.data().manual_backups)) {
-                        for (const r of userSnap.data().manual_backups) {
-                            if (!backups.some(b => b.id === r.id)) {
-                                backups.push(r);
+                    if (userSnap.exists()) {
+                        const rootData = userSnap.data() || {};
+                        const rootList = Array.isArray(rootData.manual_backups) ? rootData.manual_backups : (Array.isArray(rootData.backups) ? rootData.backups : []);
+                        for (const r of rootList) {
+                            if (!r) continue;
+                            const existingIdx = backups.findIndex(b => b.id === r.id);
+                            const enc = extractEncryptedPayload(r);
+                            if (existingIdx >= 0) {
+                                if (enc && !extractEncryptedPayload(backups[existingIdx])) {
+                                    backups[existingIdx].encrypted = enc;
+                                }
+                            } else {
+                                backups.push({
+                                    id: r.id || `bk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                                    ...r,
+                                    ...(enc ? { encrypted: enc } : {})
+                                });
                             }
                         }
                     }
-                } catch(e) {}
+                } catch(e) {
+                    console.warn("[Sync] Root doc backups fetch notice:", e);
+                }
             }
 
-            // 3. Merge local offline backups
+            // 3. Merge local offline backups (localStorage & IndexedDB)
             try {
                 const localB = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
                 if (Array.isArray(localB)) {
                     for (const lb of localB) {
-                        const existingIdx = backups.findIndex(b => b.id === lb.id);
+                        if (!lb) continue;
+                        const enc = extractEncryptedPayload(lb);
+                        const existingIdx = backups.findIndex(b => b.id === lb.id || (b.createdAt && b.createdAt === lb.createdAt));
                         if (existingIdx >= 0) {
-                            if (!backups[existingIdx].encrypted && lb.encrypted) {
-                                backups[existingIdx].encrypted = lb.encrypted;
+                            if (enc && !extractEncryptedPayload(backups[existingIdx])) {
+                                backups[existingIdx].encrypted = enc;
+                                // Auto-heal backfill: if cloud copy was stripped, re-upload to cloud!
+                                if (user) {
+                                    try {
+                                        setDoc(doc(db, 'users', user.uid, 'backups', backups[existingIdx].id), {
+                                            ...backups[existingIdx],
+                                            encrypted: enc
+                                        }).catch(() => {});
+                                    } catch (_) {}
+                                }
                             }
                         } else {
-                            backups.push(lb);
+                            backups.push({
+                                ...lb,
+                                ...(enc ? { encrypted: enc } : {})
+                            });
                         }
                     }
                 }
             } catch(e) {}
+
+            // Check IndexedDB
+            try {
+                const idbBackups = await getAllIndexedDBBackups();
+                if (Array.isArray(idbBackups)) {
+                    for (const ib of idbBackups) {
+                        if (!ib) continue;
+                        const enc = extractEncryptedPayload(ib);
+                        const existingIdx = backups.findIndex(b => b.id === ib.id || (b.createdAt && b.createdAt === ib.createdAt));
+                        if (existingIdx >= 0) {
+                            if (enc && !extractEncryptedPayload(backups[existingIdx])) {
+                                backups[existingIdx].encrypted = enc;
+                            }
+                        } else {
+                            backups.push({
+                                ...ib,
+                                ...(enc ? { encrypted: enc } : {})
+                            });
+                        }
+                    }
+                }
+            } catch (_) {}
 
             backups.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
             set({ cloudBackups: backups, isLoadingBackups: false });
@@ -1433,92 +1720,344 @@ const useSyncStore = create((set, get) => ({
     // Restore from a selected manual cloud backup
     restoreCloudBackup: async (backupItem) => {
         const { user, masterPassword } = get();
-        if (!backupItem || !backupItem.id) return false;
-        if (!masterPassword) {
-            useUIStore.getState().showToast("Enter encryption key to restore backup");
+        if (!backupItem) return false;
+        set({ isRestoringBackup: true, restoringBackupId: backupItem.id || 'current' });
+
+        let passToUse = masterPassword;
+        if (!passToUse) {
+            try { passToUse = await loadWrappedPassphrase(); } catch (_) {}
+        }
+        if (!passToUse) {
+            try { passToUse = useVaultStore.getState().masterPassword; } catch (_) {}
+        }
+        if (!passToUse && !user) {
+            passToUse = 'qbrowse_local';
+        }
+
+        if (!passToUse) {
+            set({ isRestoringBackup: false, restoringBackupId: null });
+            useUIStore.getState().showToast("Enter encryption key in Account Security to restore snapshot");
             return false;
         }
 
-        try {
-            let encryptedPayload = backupItem.encrypted;
+        if (!masterPassword && passToUse) {
+            set({ masterPassword: passToUse });
+        }
 
-            // If backupItem in UI only has metadata (no encrypted payload), fetch it from subcollection
-            if (!encryptedPayload && user) {
-                try {
-                    const subDoc = await getDoc(doc(db, 'users', user.uid, 'backups', backupItem.id));
-                    if (subDoc.exists() && subDoc.data().encrypted) {
-                        encryptedPayload = subDoc.data().encrypted;
-                    }
-                } catch(e) {}
+        const targetId = backupItem.id;
+        const targetCreatedAt = backupItem.createdAt;
+        const targetLabel = backupItem.label || backupItem.name;
+
+        try {
+            let encryptedPayload = extractEncryptedPayload(backupItem);
+
+            // Step 1: In-memory cloudBackups
+            if (!encryptedPayload) {
+                const memoryBackups = get().cloudBackups || [];
+                const memoryMatch = memoryBackups.find(b =>
+                    (targetId && b.id === targetId) ||
+                    (targetCreatedAt && b.createdAt === targetCreatedAt) ||
+                    (targetLabel && b.label === targetLabel)
+                );
+                if (memoryMatch) {
+                    encryptedPayload = extractEncryptedPayload(memoryMatch);
+                }
             }
 
-            // Fallback to local storage if not in subcollection
+            // Step 2: Firestore Subcollection direct doc ID
+            if (!encryptedPayload && user && targetId) {
+                try {
+                    const subDoc = await getDoc(doc(db, 'users', user.uid, 'backups', targetId));
+                    if (subDoc.exists()) {
+                        encryptedPayload = extractEncryptedPayload(subDoc.data());
+                    }
+                } catch(subErr) {
+                    console.warn("[Sync] Subcollection getDoc notice:", subErr);
+                }
+            }
+
+            // Step 3: Scan Firestore Subcollection docs
+            if (!encryptedPayload && user) {
+                try {
+                    const subSnap = await getDocs(collection(db, 'users', user.uid, 'backups'));
+                    subSnap.forEach(d => {
+                        if (encryptedPayload || !d.exists()) return;
+                        const dData = d.data() || {};
+                        if (
+                            d.id === targetId ||
+                            dData.id === targetId ||
+                            (targetCreatedAt && dData.createdAt === targetCreatedAt) ||
+                            (targetLabel && dData.label === targetLabel)
+                        ) {
+                            const found = extractEncryptedPayload(dData) || extractEncryptedPayload({ ...dData, id: d.id });
+                            if (found) encryptedPayload = found;
+                        }
+                    });
+                } catch(allSubErr) {
+                    console.warn("[Sync] Subcollection scan notice:", allSubErr);
+                }
+            }
+
+            // Step 4: Check Firestore Root Document
+            if (!encryptedPayload && user) {
+                try {
+                    const rootDoc = await getDoc(doc(db, 'users', user.uid));
+                    if (rootDoc.exists()) {
+                        const rData = rootDoc.data() || {};
+                        const candidateLists = [
+                            rData.manual_backups,
+                            rData.backups,
+                            rData.snapshots,
+                            rData.cloudBackups
+                        ].filter(Array.isArray);
+
+                        for (const list of candidateLists) {
+                            if (encryptedPayload) break;
+                            for (const item of list) {
+                                if (!item) continue;
+                                if (
+                                    (targetId && item.id === targetId) ||
+                                    (targetCreatedAt && item.createdAt === targetCreatedAt) ||
+                                    (targetLabel && item.label === targetLabel)
+                                ) {
+                                    const found = extractEncryptedPayload(item);
+                                    if (found) {
+                                        encryptedPayload = found;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!encryptedPayload) {
+                            encryptedPayload = extractEncryptedPayload(rData.latestBackup) ||
+                                               extractEncryptedPayload(rData.backupPayload) ||
+                                               extractEncryptedPayload(rData.backup);
+                        }
+                    }
+                } catch(rootErr) {
+                    console.warn("[Sync] Root doc backup search notice:", rootErr);
+                }
+            }
+
+            // Step 5: Check Local Storage
+            if (!encryptedPayload) {
+                const localKeys = [
+                    'qbrowse_local_backups',
+                    'qbrowse_backups',
+                    'qbrowse_manual_backups',
+                    'qbrowse_snapshots'
+                ];
+
+                for (const key of localKeys) {
+                    if (encryptedPayload) break;
+                    try {
+                        const raw = localStorage.getItem(key);
+                        if (!raw) continue;
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            for (const item of parsed) {
+                                if (!item) continue;
+                                if (
+                                    (targetId && item.id === targetId) ||
+                                    (targetCreatedAt && item.createdAt === targetCreatedAt) ||
+                                    (targetLabel && item.label === targetLabel)
+                                ) {
+                                    const found = extractEncryptedPayload(item);
+                                    if (found) {
+                                        encryptedPayload = found;
+                                        break;
+                                    }
+                                }
+                            }
+                        } else if (typeof parsed === 'object') {
+                            const found = extractEncryptedPayload(parsed);
+                            if (found) encryptedPayload = found;
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            // Step 6: Check individual localStorage backup keys
+            if (!encryptedPayload && targetId) {
+                try {
+                    const individualKeys = [
+                        `qbrowse_backup_${targetId}`,
+                        `qbrowse_snapshot_${targetId}`,
+                        `qbrowse_backup_${targetId.replace(/^bk_/, '')}`
+                    ];
+                    for (const ik of individualKeys) {
+                        const raw = localStorage.getItem(ik);
+                        if (raw) {
+                            const found = extractEncryptedPayload(JSON.parse(raw));
+                            if (found) {
+                                encryptedPayload = found;
+                                break;
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            // Step 7: Check IndexedDB offline backup store
             if (!encryptedPayload) {
                 try {
-                    const localB = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
-                    const match = localB.find(b => b.id === backupItem.id);
-                    if (match?.encrypted) encryptedPayload = match.encrypted;
-                } catch(e) {}
+                    const idbPayload = await getIndexedDBBackup(targetId, targetCreatedAt);
+                    if (idbPayload) {
+                        encryptedPayload = extractEncryptedPayload(idbPayload);
+                    }
+                } catch (_) {}
+            }
+
+            // Step 8: Single local backup fallback
+            if (!encryptedPayload) {
+                try {
+                    const raw = localStorage.getItem('qbrowse_local_backups');
+                    if (raw) {
+                        const list = JSON.parse(raw);
+                        if (Array.isArray(list) && list.length === 1) {
+                            encryptedPayload = extractEncryptedPayload(list[0]);
+                        }
+                    }
+                } catch (_) {}
             }
 
             if (!encryptedPayload) {
                 throw new Error("Backup encrypted data not found in cloud or local cache");
             }
 
-            const decrypted = await decryptData(encryptedPayload, masterPassword);
+            // Decrypt backup payload with master key
+            const decrypted = await decryptData(encryptedPayload, passToUse);
             if (!decrypted) throw new Error("Could not decrypt backup payload");
 
+            // Cache the retrieved encrypted payload back into memory and localStorage for immediate subsequent restores
+            if (targetId) {
+                try {
+                    const currentCloud = get().cloudBackups || [];
+                    const updatedCloud = currentCloud.map(b => (b.id === targetId ? { ...b, encrypted: encryptedPayload } : b));
+                    set({ cloudBackups: updatedCloud });
+
+                    const localB = JSON.parse(localStorage.getItem('qbrowse_local_backups') || '[]');
+                    const updatedLocal = localB.map(b => (b.id === targetId ? { ...b, encrypted: encryptedPayload } : b));
+                    if (!updatedLocal.some(b => b.id === targetId)) {
+                        updatedLocal.unshift({
+                            id: targetId,
+                            label: targetLabel || 'Snapshot',
+                            createdAt: targetCreatedAt || new Date().toISOString(),
+                            encrypted: encryptedPayload
+                        });
+                    }
+                    localStorage.setItem('qbrowse_local_backups', JSON.stringify(updatedLocal.slice(0, 8)));
+                    saveIndexedDBBackup({
+                        id: targetId,
+                        label: targetLabel || 'Snapshot',
+                        createdAt: targetCreatedAt || new Date().toISOString(),
+                        encrypted: encryptedPayload
+                    }).catch(() => {});
+                } catch (_) {}
+            }
+
+            // Normalize payload root across schema versions (e.g. 1.2.x, 1.3.x, wrapped payload)
+            const payloadRoot = decrypted.payload || decrypted.data || decrypted;
+            const targetSettings = payloadRoot.settings || payloadRoot.uiSettings || payloadRoot.preferences;
+            const targetVault = payloadRoot.vault || payloadRoot.passwords;
+            const targetTabs = payloadRoot.tabs;
+            const targetCustomSpaces = payloadRoot.customSpaces || payloadRoot.tabs?.customSpaces;
+            const targetHistory = payloadRoot.history || payloadRoot.historyEntries;
+            const targetPinned = payloadRoot.pinnedTabs || payloadRoot.pinned || payloadRoot.pinnedApps || payloadRoot.tabs?.pinnedTabs;
+
             // 1. Restore Settings & Presets
-            if (decrypted.settings) {
-                Object.keys(decrypted.settings).forEach(k => {
-                    if (k.startsWith('_sync')) return;
-                    useUIStore.getState().setSettingValue(k, decrypted.settings[k]);
+            if (targetSettings && typeof targetSettings === 'object') {
+                const uiStore = useUIStore.getState();
+                Object.keys(targetSettings).forEach(k => {
+                    if (k.startsWith('_sync') || k === 'syncedCloudSettings') return;
+                    if (targetSettings[k] !== undefined) {
+                        uiStore.setSettingValue(k, targetSettings[k]);
+                    }
                 });
-                applySyncedUIPresetsAndTheme(decrypted.settings);
+                applySyncedUIPresetsAndTheme(targetSettings);
+                try {
+                    localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+                } catch (_) {}
             }
 
             // 2. Restore Vault Passwords
-            if (Array.isArray(decrypted.vault) && decrypted.vault.length > 0) {
-                await get().mergeRemoteVault(decrypted.vault, masterPassword);
+            if (Array.isArray(targetVault) && targetVault.length > 0) {
+                await get().mergeRemoteVault(targetVault, passToUse);
             }
 
-            // 3. Restore Tabs
-            if (decrypted.tabs) {
-                const cleanRemoteTabs = {
-                    privateTabs: (decrypted.tabs.privateTabs || []).filter(isValidSyncTab),
-                    workTabs: (decrypted.tabs.workTabs || []).filter(isValidSyncTab),
-                    customSpaceTabs: decrypted.tabs.customSpaceTabs || {}
-                };
-                useTabStore.getState().setCloudTabs(cleanRemoteTabs);
-                if (cleanRemoteTabs.privateTabs.length > 0) {
-                    useTabStore.getState().setPrivateTabs(cleanRemoteTabs.privateTabs);
+            // 3. Restore Custom Spaces
+            if (Array.isArray(targetCustomSpaces) && targetCustomSpaces.length > 0) {
+                const tabStore = useTabStore.getState();
+                if (typeof tabStore.setCustomSpaces === 'function') {
+                    tabStore.setCustomSpaces(targetCustomSpaces);
                 }
-                if (cleanRemoteTabs.workTabs.length > 0) {
-                    useTabStore.getState().setWorkTabs(cleanRemoteTabs.workTabs);
+            }
+
+            // 4. Restore Tabs (handles both structured object and legacy flat array)
+            if (targetTabs) {
+                const tabStore = useTabStore.getState();
+                let cleanPrivate = [];
+                let cleanWork = [];
+                let cleanCustom = {};
+
+                if (Array.isArray(targetTabs)) {
+                    targetTabs.filter(isValidSyncTab).forEach(t => {
+                        if (t.spaceId === 'work') cleanWork.push(t);
+                        else if (t.spaceId && t.spaceId !== 'personal' && t.spaceId !== 'private') {
+                            if (!cleanCustom[t.spaceId]) cleanCustom[t.spaceId] = [];
+                            cleanCustom[t.spaceId].push(t);
+                        } else {
+                            cleanPrivate.push(t);
+                        }
+                    });
+                } else if (typeof targetTabs === 'object') {
+                    cleanPrivate = (targetTabs.privateTabs || []).filter(isValidSyncTab);
+                    cleanWork = (targetTabs.workTabs || []).filter(isValidSyncTab);
+                    cleanCustom = targetTabs.customSpaceTabs || {};
                 }
-                if (decrypted.tabs.customSpaceTabs && typeof decrypted.tabs.customSpaceTabs === 'object') {
-                    Object.entries(decrypted.tabs.customSpaceTabs).forEach(([sId, list]) => {
-                        if (Array.isArray(list) && list.length > 0 && typeof useTabStore.getState().setTabsForSpace === 'function') {
-                            useTabStore.getState().setTabsForSpace(sId, list.filter(isValidSyncTab));
+
+                tabStore.setCloudTabs({
+                    privateTabs: cleanPrivate,
+                    workTabs: cleanWork,
+                    customSpaceTabs: cleanCustom
+                });
+
+                if (cleanPrivate.length > 0) {
+                    tabStore.setPrivateTabs(cleanPrivate);
+                }
+                if (cleanWork.length > 0) {
+                    tabStore.setWorkTabs(cleanWork);
+                }
+                if (cleanCustom && typeof cleanCustom === 'object') {
+                    Object.entries(cleanCustom).forEach(([sId, list]) => {
+                        if (Array.isArray(list) && list.length > 0 && typeof tabStore.setTabsForSpace === 'function') {
+                            tabStore.setTabsForSpace(sId, list.filter(isValidSyncTab));
                         }
                     });
                 }
             }
 
-            // 4. Restore History
-            if (Array.isArray(decrypted.history)) {
-                useHistoryStore.getState().mergeRemoteHistory(decrypted.history);
+            // 5. Restore History
+            if (Array.isArray(targetHistory) && targetHistory.length > 0) {
+                useHistoryStore.getState().mergeRemoteHistory(targetHistory);
             }
 
-            // 5. Restore Pinned Tabs
-            if (Array.isArray(decrypted.pinnedTabs)) {
-                useTabStore.getState().setPinnedTabs(decrypted.pinnedTabs);
+            // 6. Restore Pinned Tabs
+            if (Array.isArray(targetPinned) && targetPinned.length > 0) {
+                useTabStore.getState().setPinnedTabs(targetPinned);
             }
 
-            useUIStore.getState().showToast(`Successfully restored "${backupItem.label}"!`);
+            // Trigger debounced cloud sync to broadcast the restored state
+            get().triggerDebouncedSync(1500);
+
+            const displayLabel = backupItem.label || backupItem.name || 'Snapshot';
+            useUIStore.getState().showToast(`Successfully restored "${displayLabel}"!`);
+            set({ isRestoringBackup: false, restoringBackupId: null });
             return true;
         } catch(e) {
             console.error("[Sync] restoreCloudBackup error:", e);
+            set({ isRestoringBackup: false, restoringBackupId: null });
             useUIStore.getState().showToast(`Restore failed: ${e.message}`);
             return false;
         }
@@ -1538,16 +2077,30 @@ const useSyncStore = create((set, get) => ({
                 localStorage.setItem('qbrowse_local_backups', JSON.stringify(nextLocal));
             } catch(e) {}
 
+            try {
+                localStorage.removeItem(`qbrowse_backup_${backupId}`);
+            } catch (_) {}
+
+            try {
+                await deleteIndexedDBBackup(backupId);
+            } catch (_) {}
+
             if (user) {
                 try {
                     const rootRef = doc(db, 'users', user.uid);
-                    const metaOnly = nextBackups.map(b => ({
-                        id: b.id,
-                        label: b.label,
-                        createdAt: b.createdAt,
-                        stats: b.stats || {}
-                    }));
-                    await setDoc(rootRef, { manual_backups: metaOnly }, { merge: true });
+                    const remainingRoot = nextBackups.slice(0, 5).map((b, idx) => {
+                        const enc = extractEncryptedPayload(b);
+                        if (enc && idx < 2) {
+                            return { ...b, encrypted: enc };
+                        }
+                        return {
+                            id: b.id,
+                            label: b.label || 'Snapshot',
+                            createdAt: b.createdAt,
+                            stats: b.stats || {}
+                        };
+                    });
+                    await setDoc(rootRef, { manual_backups: remainingRoot }, { merge: true });
                 } catch(e) {}
 
                 try {
@@ -1690,41 +2243,111 @@ const useSyncStore = create((set, get) => ({
     // Offline / Local File Backup Import
     importLocalBackup: async (fileJsonStr, passphrase) => {
         const { masterPassword } = get();
-        const passToUse = passphrase || masterPassword || 'qbrowse_local';
+        let passToUse = passphrase || masterPassword;
+        if (!passToUse) {
+            try { passToUse = await loadWrappedPassphrase(); } catch (_) {}
+        }
+        if (!passToUse) {
+            try { passToUse = useVaultStore.getState().masterPassword; } catch (_) {}
+        }
+        if (!passToUse) passToUse = 'qbrowse_local';
+
         try {
-            const encryptedObj = JSON.parse(fileJsonStr);
-            const data = await decryptData(encryptedObj, passToUse);
+            const parsedObj = JSON.parse(fileJsonStr);
+            const encryptedPayload = extractEncryptedPayload(parsedObj) || parsedObj;
+            const data = await decryptData(encryptedPayload, passToUse);
             if (!data) throw new Error("Invalid format");
 
-            if (data.settings) {
-                Object.keys(data.settings).forEach(k => {
-                    if (k.startsWith('_sync')) return;
-                    useUIStore.getState().setSettingValue(k, data.settings[k]);
+            const payloadRoot = data.payload || data.data || data;
+            const targetSettings = payloadRoot.settings || payloadRoot.uiSettings || payloadRoot.preferences;
+            const targetVault = payloadRoot.vault || payloadRoot.passwords;
+            const targetTabs = payloadRoot.tabs;
+            const targetCustomSpaces = payloadRoot.customSpaces || payloadRoot.tabs?.customSpaces;
+            const targetHistory = payloadRoot.history || payloadRoot.historyEntries;
+            const targetPinned = payloadRoot.pinnedTabs || payloadRoot.pinned || payloadRoot.pinnedApps || payloadRoot.tabs?.pinnedTabs;
+
+            if (targetSettings && typeof targetSettings === 'object') {
+                const uiStore = useUIStore.getState();
+                Object.keys(targetSettings).forEach(k => {
+                    if (k.startsWith('_sync') || k === 'syncedCloudSettings') return;
+                    if (targetSettings[k] !== undefined) {
+                        uiStore.setSettingValue(k, targetSettings[k]);
+                    }
                 });
-                applySyncedUIPresetsAndTheme(data.settings);
+                applySyncedUIPresetsAndTheme(targetSettings);
+                try {
+                    localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+                } catch (_) {}
             }
-            if (Array.isArray(data.vault)) {
-                await get().mergeRemoteVault(data.vault, passToUse);
+
+            if (Array.isArray(targetVault) && targetVault.length > 0) {
+                await get().mergeRemoteVault(targetVault, passToUse);
             }
-            if (data.tabs) {
-                const cleanTabs = {
-                    privateTabs: (data.tabs.privateTabs || []).filter(isValidSyncTab),
-                    workTabs: (data.tabs.workTabs || []).filter(isValidSyncTab),
-                    customSpaceTabs: data.tabs.customSpaceTabs || {}
-                };
-                useTabStore.getState().setCloudTabs(cleanTabs);
+
+            if (Array.isArray(targetCustomSpaces) && targetCustomSpaces.length > 0) {
+                const tabStore = useTabStore.getState();
+                if (typeof tabStore.setCustomSpaces === 'function') {
+                    tabStore.setCustomSpaces(targetCustomSpaces);
+                }
             }
-            if (Array.isArray(data.history)) {
-                useHistoryStore.getState().mergeRemoteHistory(data.history);
+
+            if (targetTabs) {
+                const tabStore = useTabStore.getState();
+                let cleanPrivate = [];
+                let cleanWork = [];
+                let cleanCustom = {};
+
+                if (Array.isArray(targetTabs)) {
+                    targetTabs.filter(isValidSyncTab).forEach(t => {
+                        if (t.spaceId === 'work') cleanWork.push(t);
+                        else if (t.spaceId && t.spaceId !== 'personal' && t.spaceId !== 'private') {
+                            if (!cleanCustom[t.spaceId]) cleanCustom[t.spaceId] = [];
+                            cleanCustom[t.spaceId].push(t);
+                        } else {
+                            cleanPrivate.push(t);
+                        }
+                    });
+                } else if (typeof targetTabs === 'object') {
+                    cleanPrivate = (targetTabs.privateTabs || []).filter(isValidSyncTab);
+                    cleanWork = (targetTabs.workTabs || []).filter(isValidSyncTab);
+                    cleanCustom = targetTabs.customSpaceTabs || {};
+                }
+
+                tabStore.setCloudTabs({
+                    privateTabs: cleanPrivate,
+                    workTabs: cleanWork,
+                    customSpaceTabs: cleanCustom
+                });
+
+                if (cleanPrivate.length > 0) {
+                    tabStore.setPrivateTabs(cleanPrivate);
+                }
+                if (cleanWork.length > 0) {
+                    tabStore.setWorkTabs(cleanWork);
+                }
+                if (cleanCustom && typeof cleanCustom === 'object') {
+                    Object.entries(cleanCustom).forEach(([sId, list]) => {
+                        if (Array.isArray(list) && list.length > 0 && typeof tabStore.setTabsForSpace === 'function') {
+                            tabStore.setTabsForSpace(sId, list.filter(isValidSyncTab));
+                        }
+                    });
+                }
             }
-            if (Array.isArray(data.pinnedTabs)) {
-                useTabStore.getState().setPinnedTabs(data.pinnedTabs);
+
+            if (Array.isArray(targetHistory) && targetHistory.length > 0) {
+                useHistoryStore.getState().mergeRemoteHistory(targetHistory);
             }
+
+            if (Array.isArray(targetPinned) && targetPinned.length > 0) {
+                useTabStore.getState().setPinnedTabs(targetPinned);
+            }
+
             useUIStore.getState().showToast("Backup imported successfully!");
+            get().triggerDebouncedSync(1500);
             return true;
         } catch(e) {
             console.error("Import backup error:", e);
-            useUIStore.getState().showToast("Import failed: check password");
+            useUIStore.getState().showToast("Import failed: check password or file format");
             return false;
         }
     },
@@ -1753,8 +2376,17 @@ const useSyncStore = create((set, get) => ({
                     const currentBackups = get().cloudBackups || [];
                     const merged = data.manual_backups.map(mb => {
                         const existing = currentBackups.find(b => b.id === mb.id);
-                        return (existing?.encrypted) ? { ...mb, encrypted: existing.encrypted } : mb;
+                        const existingEnc = existing ? extractEncryptedPayload(existing) : null;
+                        const mbEnc = extractEncryptedPayload(mb);
+                        const resolvedEnc = mbEnc || existingEnc;
+                        return resolvedEnc ? { ...mb, encrypted: resolvedEnc } : mb;
                     });
+                    for (const cb of currentBackups) {
+                        if (!merged.some(m => m.id === cb.id)) {
+                            merged.push(cb);
+                        }
+                    }
+                    merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
                     set({ cloudBackups: merged });
                 }
 

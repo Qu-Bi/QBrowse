@@ -27,7 +27,7 @@ export default function PresetLayoutWireframe({ preset, isSelected, isBright, co
         >
             {/* Window Header / Top Bar (if top layout) */}
             {isTopBar ? (
-                <div className={`flex items-center gap-1.5 px-1 py-0.5 border-b mb-1 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
+                <div className={`flex items-center gap-1.5 px-1 py-0.5 border-b mb-1 ${!isLeftSidebar ? 'flex-row-reverse' : 'flex-row'} ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
                     <div className="flex gap-1 shrink-0 opacity-40">
                         <span className="w-1.5 h-1.5 rounded-full bg-current" />
                         <span className="w-1.5 h-1.5 rounded-full bg-current" />
@@ -50,7 +50,7 @@ export default function PresetLayoutWireframe({ preset, isSelected, isBright, co
                 </div>
             ) : (
                 /* Compact window controls header when top bar is at bottom */
-                <div className={`flex items-center px-1 py-0.5 border-b mb-1 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
+                <div className={`flex items-center px-1 py-0.5 border-b mb-1 ${!isLeftSidebar ? 'flex-row-reverse' : 'flex-row'} ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
                     <div className="flex gap-1 shrink-0 opacity-40">
                         <span className="w-1.5 h-1.5 rounded-full bg-current" />
                         <span className="w-1.5 h-1.5 rounded-full bg-current" />

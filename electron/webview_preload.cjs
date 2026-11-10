@@ -2187,11 +2187,14 @@ function applyWebviewA11yStyles(config) {
     if (isMotionReduced) {
         css += `
             *, *::before, *::after {
-                animation-duration: 0.001ms !important;
+                animation: none !important;
+                animation-duration: 0s !important;
                 animation-delay: 0s !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.001ms !important;
+                animation-iteration-count: 0 !important;
+                transition: none !important;
+                transition-duration: 0s !important;
                 transition-delay: 0s !important;
+                transition-property: none !important;
                 scroll-behavior: auto !important;
             }
             .qbrowse-highlight-pulse {

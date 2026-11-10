@@ -518,6 +518,12 @@ export default function TabMap() {
     // ==========================================
     const animateCameraTo = useCallback((targetPan, targetZoom, duration = 380) => {
         if (cameraAnimRef.current) cancelAnimationFrame(cameraAnimRef.current);
+        if (isReducedMotion) {
+            setPan(targetPan);
+            setZoom(targetZoom);
+            cameraAnimRef.current = null;
+            return;
+        }
         const startPan = { ...pan };
         const startZoom = zoom;
         const startTime = performance.now();

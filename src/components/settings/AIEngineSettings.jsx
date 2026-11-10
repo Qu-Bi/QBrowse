@@ -158,7 +158,7 @@ export default function AIEngineSettings() {
                                     {isUpdatingEngine || status === 'downloading_engine' ? 'Updating...' : 'Sync Engine (b11796)'}
                                 </button>
                             </div>
-                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>High-speed, zero-knowledge local LLM runner with native Gemma 4 & Llama 3.2 GGUF support.</p>
+                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>High-speed, zero-knowledge local LLM runner with native Gemma 4, Qwen 3.5 &amp; Bielik 11B GGUF support.</p>
                         </div>
                     </div>
 
@@ -430,7 +430,7 @@ export default function AIEngineSettings() {
                 <div className="flex items-center justify-between">
                     <div>
                         <div className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>Parse PDF as Image</div>
-                        <div className={`text-[10px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>When dropping PDFs into chat, parse pages as images instead of extracting raw text. Best for Gemma 4 Vision models to "see" charts and layouts.</div>
+                        <div className={`text-[10px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>When dropping PDFs into chat, parse pages as images instead of extracting raw text. Best for Gemma 4 &amp; Qwen 3.5 Vision models to "see" charts and layouts.</div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                         <input 

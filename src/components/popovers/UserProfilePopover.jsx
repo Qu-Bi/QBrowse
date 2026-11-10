@@ -80,7 +80,8 @@ export default function UserProfilePopover({ isClosing }) {
         cloudBackups, isLoadingBackups, isCreatingBackup,
         pushManualBackup, restoreCloudBackup, deleteCloudBackup,
         exportLocalBackup, importLocalBackup,
-        autoSyncEnabled, toggleAutoSync
+        autoSyncEnabled, toggleAutoSync,
+        isRestoringBackup, restoringBackupId
     } = useSyncStore();
 
     const { 
@@ -865,8 +866,8 @@ export default function UserProfilePopover({ isClosing }) {
                                 </div>
                             ) : (
                                 <div className="space-y-1.5 max-h-[38vh] overflow-y-auto hide-scroll">
-                                    {cloudBackups.map((bk) => (
-                                        <div key={bk.id} className={`p-2.5 ${isBright ? 'bg-black/[0.02] border-black/[0.04]' : 'bg-white/[0.02] border-white/[0.04]'} border rounded-xl transition space-y-1`}>
+                                    {cloudBackups.map((bk, bkIdx) => (
+                                        <div key={bk.id || bk.createdAt || bkIdx} className={`p-2.5 ${isBright ? 'bg-black/[0.02] border-black/[0.04]' : 'bg-white/[0.02] border-white/[0.04]'} border rounded-xl transition space-y-1`}>
                                             <div className="flex items-center justify-between">
                                                 <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'} truncate flex-1 pr-2`}>
                                                     {bk.label || 'Snapshot'}
@@ -884,14 +885,24 @@ export default function UserProfilePopover({ isClosing }) {
                                             )}
                                             <div className={`flex gap-1.5 pt-1.5 border-t ${isBright ? 'border-black/[0.04]' : 'border-white/[0.04]'}`}>
                                                 <button
+                                                    disabled={isRestoringBackup}
                                                     onClick={() => restoreCloudBackup(bk)}
-                                                    className="flex-1 py-1 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-full text-[10px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                                                    className="flex-1 py-1 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-full text-[10px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                                                 >
-                                                    <DownloadCloud size={10} /> Restore
+                                                    {restoringBackupId === bk.id ? (
+                                                        <>
+                                                            <RefreshCw size={10} className="animate-spin" /> Restoring...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <DownloadCloud size={10} /> Restore
+                                                        </>
+                                                    )}
                                                 </button>
                                                 <button
+                                                    disabled={isRestoringBackup}
                                                     onClick={() => deleteCloudBackup(bk.id)}
-                                                    className="p-1 rounded-full text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition cursor-pointer"
+                                                    className="p-1 rounded-full text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition cursor-pointer disabled:opacity-40"
                                                     title="Delete"
                                                 >
                                                     <Trash2 size={11} />

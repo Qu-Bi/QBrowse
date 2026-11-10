@@ -68,13 +68,35 @@
   --accent-20: rgba(212, 188, 148, 0.2);
   --accent-30: rgba(212, 188, 148, 0.3);
   --accent-40: rgba(212, 188, 148, 0.4);
+
+  /* QBrowse App-Wide Typography Variables */
+  --app-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --app-letter-spacing: 0em;
+  --app-font-scale: 1;
+  --app-font-weight-shift: 400;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  letter-spacing: var(--app-letter-spacing, 0em);
   overflow: hidden;
+}
+
+button, input, select, textarea {
+  font-family: var(--app-font-family, inherit);
+  letter-spacing: var(--app-letter-spacing, inherit);
+}
+
+.font-sans {
+  font-family: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif) !important;
+}
+
+/* Strict Monospace Preservation */
+.font-mono, code, pre, kbd, .font-mono * {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  letter-spacing: normal !important;
 }
 
 @layer utilities {
@@ -476,6 +498,19 @@ body {
 
 .drag-region {
   -webkit-app-region: drag;
+}
+
+.no-drag,
+[data-no-drag],
+#settings-modal,
+#settings-modal *,
+#cookies-modal,
+#cookies-modal *,
+#history-modal,
+#history-modal *,
+#resource-manager-modal,
+#resource-manager-modal * {
+  -webkit-app-region: no-drag !important;
 }
 
 @keyframes floatGentle {
@@ -917,6 +952,160 @@ aside#qbrowse-sidebar.is-hidden {
 }
 
 /* =========================================================
+   Cinematic Language Warp Reality Shift (Super Epic 3D Portal)
+   ========================================================= */
+
+@keyframes langSingularityFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  20% {
+    opacity: 0.85;
+    transform: scale(1.0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes langSuperShockwave {
+  0% {
+    transform: scale(0.05);
+    opacity: 1;
+    filter: blur(0px);
+  }
+  50% {
+    opacity: 0.65;
+    filter: blur(2px);
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+
+@keyframes langSecondaryShockwave {
+  0% {
+    transform: scale(0.05) rotate(0deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(3.2) rotate(45deg);
+    opacity: 0;
+  }
+}
+
+@keyframes langSuperPortal {
+  0% {
+    transform: perspective(1200px) translateZ(120px) rotateX(16deg) scale(0.72);
+    opacity: 0;
+    filter: blur(10px) brightness(1.8);
+  }
+  25% {
+    opacity: 1;
+    filter: blur(0px) brightness(1.2);
+  }
+  75% {
+    transform: perspective(1200px) translateZ(0px) rotateX(0deg) scale(1.0);
+    filter: brightness(1);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(1200px) translateZ(-40px) scale(0.97);
+    opacity: 1;
+  }
+}
+
+@keyframes langGlyphFlight {
+  0% {
+    transform: translate(0, 0) scale(0.4) rotate(0deg);
+    opacity: 0;
+    filter: blur(4px);
+  }
+  25% {
+    opacity: 0.9;
+    filter: blur(0px);
+  }
+  100% {
+    transform: var(--flight-vector) scale(1.6) rotate(var(--flight-rot, 25deg));
+    opacity: 0;
+    filter: blur(3px);
+  }
+}
+
+@keyframes langHoloScan {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.8;
+  }
+  70% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(220%);
+    opacity: 0;
+  }
+}
+
+.animate-lang-flash {
+  animation: langSingularityFlash 0.6s ease-out forwards;
+}
+
+.animate-lang-shockwave {
+  animation: langSuperShockwave 1.8s cubic-bezier(0.12, 0.9, 0.25, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-lang-shockwave-2 {
+  animation: langSecondaryShockwave 2.2s cubic-bezier(0.1, 0.8, 0.25, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-lang-portal {
+  animation: langSuperPortal 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity, filter;
+}
+
+.animate-lang-glyph {
+  animation: langGlyphFlight 1.9s cubic-bezier(0.15, 0.85, 0.35, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-lang-holoscan {
+  animation: langHoloScan 1.1s ease-in-out infinite;
+}
+
+/* Zero-Gravity Celestial Orbital Drift for Floating Polyglot Flags */
+@keyframes zeroGravityFloat {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(var(--drift-x, 8px), var(--drift-y, -12px)) rotate(var(--drift-r, 2deg));
+  }
+  50% {
+    transform: translate(calc(var(--drift-x, 8px) * -0.6), calc(var(--drift-y, -12px) * 0.8)) rotate(calc(var(--drift-r, 2deg) * -0.8));
+  }
+  75% {
+    transform: translate(calc(var(--drift-x, 8px) * 0.4), calc(var(--drift-y, -12px) * -0.5)) rotate(calc(var(--drift-r, 2deg) * 0.5));
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+.animate-zero-gravity {
+  animation: zeroGravityFloat var(--orbit-dur, 6s) ease-in-out infinite;
+  will-change: transform;
+}
+
+/* =========================================================
    Apple visionOS & macOS Sonoma Liquid Glass Architecture
    True optical refraction, 190% vibrancy saturation, and specular rim reflection
    ========================================================= */
@@ -1313,11 +1502,14 @@ html.a11y-reduced-motion,
 html.a11y-reduced-motion *,
 html.a11y-reduced-motion *::before,
 html.a11y-reduced-motion *::after {
-  animation-duration: 0.001ms !important;
+  animation: none !important;
+  animation-duration: 0s !important;
   animation-delay: 0s !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
+  animation-iteration-count: 0 !important;
+  transition: none !important;
+  transition-duration: 0s !important;
   transition-delay: 0s !important;
+  transition-property: none !important;
   scroll-behavior: auto !important;
 }
 
@@ -1326,16 +1518,21 @@ html.a11y-reduced-motion *::after {
   html *,
   html *::before,
   html *::after {
-    animation-duration: 0.001ms !important;
+    animation: none !important;
+    animation-duration: 0s !important;
     animation-delay: 0s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    animation-iteration-count: 0 !important;
+    transition: none !important;
+    transition-duration: 0s !important;
     transition-delay: 0s !important;
+    transition-property: none !important;
     scroll-behavior: auto !important;
   }
 }
 
 /* Explicit high-specificity override for all modal dialogs, popovers, drawers, sheets, and menus */
+html.a11y-reduced-motion [class*="animate-"],
+html.a11y-reduced-motion [class*="transition-"],
 html.a11y-reduced-motion .animate-modal-dialog,
 html.a11y-reduced-motion .animate-modal-dialog-out,
 html.a11y-reduced-motion .animate-modal-spring,
@@ -1348,6 +1545,7 @@ html.a11y-reduced-motion .animate-settings-sheet,
 html.a11y-reduced-motion .animate-settings-sheet-out,
 html.a11y-reduced-motion .animate-pop-in,
 html.a11y-reduced-motion .animate-pop-out,
+html.a11y-reduced-motion .animate-fade-in,
 html.a11y-reduced-motion .animate-slide-down-fade,
 html.a11y-reduced-motion .animate-slide-up-fade-out,
 html.a11y-reduced-motion .animate-slide-in-right,
@@ -1364,6 +1562,8 @@ html.a11y-reduced-motion .animate-row-collapse,
 html.a11y-reduced-motion .animate-tile-in,
 html.a11y-reduced-motion .animate-wallpaper-fade,
 html.a11y-reduced-motion .animate-pin-in,
+html.a11y-reduced-motion .animate-lang-shockwave,
+html.a11y-reduced-motion .animate-lang-portal,
 html.a11y-reduced-motion .theme-transition-curtain,
 html.a11y-reduced-motion .animate-tabmap-backdrop,
 html.a11y-reduced-motion .animate-tabmap-backdrop-out,
@@ -1377,14 +1577,19 @@ html.a11y-reduced-motion .tabmap-backdrop-exit,
 html.a11y-reduced-motion .tabmap-canvas-enter,
 html.a11y-reduced-motion .tabmap-canvas-exit,
 html.a11y-reduced-motion .tabmap-card-pop,
+html.a11y-reduced-motion .tabmap-zone-spring,
+html.a11y-reduced-motion .tabmap-node-spring,
 html.a11y-reduced-motion .liquid-tab,
 html.a11y-reduced-motion .sidebar-item,
 html.a11y-reduced-motion .sidebar-item-active {
-  animation-duration: 0.001ms !important;
+  animation: none !important;
+  animation-duration: 0s !important;
   animation-delay: 0s !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
+  animation-iteration-count: 0 !important;
+  transition: none !important;
+  transition-duration: 0s !important;
   transition-delay: 0s !important;
+  transition-property: none !important;
 }
 
 /* Completely halt continuous looping animations (infinite pulses, spins, pings, bounces, floats) */
@@ -1410,6 +1615,8 @@ html.a11y-reduced-motion .theme-transition-curtain {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [class*="animate-"],
+  [class*="transition-"],
   .animate-modal-dialog,
   .animate-modal-dialog-out,
   .animate-modal-spring,
@@ -1422,6 +1629,7 @@ html.a11y-reduced-motion .theme-transition-curtain {
   .animate-settings-sheet-out,
   .animate-pop-in,
   .animate-pop-out,
+  .animate-fade-in,
   .animate-slide-down-fade,
   .animate-slide-up-fade-out,
   .animate-slide-in-right,
@@ -1450,14 +1658,19 @@ html.a11y-reduced-motion .theme-transition-curtain {
   .tabmap-canvas-enter,
   .tabmap-canvas-exit,
   .tabmap-card-pop,
+  .tabmap-zone-spring,
+  .tabmap-node-spring,
   .liquid-tab,
   .sidebar-item,
   .sidebar-item-active {
-    animation-duration: 0.001ms !important;
+    animation: none !important;
+    animation-duration: 0s !important;
     animation-delay: 0s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    animation-iteration-count: 0 !important;
+    transition: none !important;
+    transition-duration: 0s !important;
     transition-delay: 0s !important;
+    transition-property: none !important;
   }
 
   .animate-spin,

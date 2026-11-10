@@ -521,8 +521,8 @@ export default function ToolHub() {
                     toolHubPosition === 'left' ? 'left-2 md:left-3' : 'right-2 md:right-3'
                 } w-96 md:w-[460px] ${
                 isBright 
-                    ? 'bg-white/90 backdrop-blur-3xl border border-black/[0.08] text-zinc-900 shadow-[0_30px_90px_-10px_rgba(0,0,0,0.18),0_12px_35px_-5px_rgba(0,0,0,0.08),inset_0_1px_2px_0_rgba(255,255,255,0.9)] ring-1 ring-black/[0.05]' 
-                    : 'bg-[#0c0d14]/94 backdrop-blur-3xl border border-white/[0.08] text-white shadow-[0_35px_100px_-15px_rgba(0,0,0,0.95),0_15px_45px_-5px_rgba(0,0,0,0.75),0_2px_10px_rgba(0,0,0,0.6),inset_0_1px_1px_0_rgba(255,255,255,0.15)] ring-1 ring-white/[0.06]'
+                    ? 'bg-white/92 backdrop-blur-3xl border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_-10px_rgba(0,0,0,0.12),0_8px_25px_-5px_rgba(0,0,0,0.06)]' 
+                    : 'bg-[#0c0d14]/94 backdrop-blur-3xl border border-white/[0.08] text-white shadow-[0_25px_70px_-15px_rgba(0,0,0,0.85),0_10px_35px_-5px_rgba(0,0,0,0.6)]'
             } rounded-3xl flex flex-col overflow-hidden z-[45000] transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                 isRightPanelOpen 
                     ? 'opacity-100 pointer-events-auto' 

@@ -10,7 +10,7 @@ import {
     Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch,
     ArrowLeftRight, ListOrdered, User, Briefcase, Code, Bookmark, Coffee, Folder,
     Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical, Copy,
-    Layout, Sidebar
+    Layout, Sidebar, Languages
 } from 'lucide-react';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
 import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
@@ -60,8 +60,11 @@ import { getAllBangs } from '../../utils/searchBangs';
 import { DOH_PROVIDERS, DNS_MODES, formatCustomDohUrl, isValidDohUrl } from '../../utils/dnsProviders';
 import { PRESET_SEARCH_ENGINES, getAllSearchEngines, isValidSearchUrlTemplate } from '../../utils/searchEngines';
 import CustomSelect from '../common/CustomSelect';
+import CustomFontManager from '../common/CustomFontManager';
 import { getLiquidGlassMenuClasses, getLiquidGlassInlineStyle } from '../common/ContextMenuProvider';
 import qbrowseLogo from '../../assets/icon.png';
+import LanguageSettings from '../settings/LanguageSettings';
+import { useTranslation } from '../../i18n/index';
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
 const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
@@ -93,13 +96,17 @@ const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
                                 : 'text-zinc-200 group-hover:text-white'
                         }`}>{title}</p>
                         {badge && (
-                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                                isBright
-                                    ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
-                                    : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                            }`}>
-                                {badge}
-                            </span>
+                            React.isValidElement(badge) ? (
+                                badge
+                            ) : (
+                                <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full border tracking-normal select-none ${
+                                    isBright
+                                        ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                                        : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                }`}>
+                                    {badge}
+                                </span>
+                            )
                         )}
                     </div>
                     {description && <div className={`text-[11px] mt-0.5 leading-snug ${
@@ -282,6 +289,7 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
 };
 
 const SettingsModalContent = () => {
+    const { t } = useTranslation();
     const [isContentReady, setIsContentReady] = useState(false);
 
     useEffect(() => {
@@ -437,6 +445,7 @@ const SettingsModalContent = () => {
     const [draggedSpaceIdx, setDraggedSpaceIdx] = useState(null);
     const [dragOverSpaceIdx, setDragOverSpaceIdx] = useState(null);
     const [activePresetId, setActivePresetId] = useState(getSavedPresetId);
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
 
     // FLIP animation refs for smooth workspace reordering (up/down arrows & drag-and-drop)
     const spaceItemRefs = useRef({});
@@ -467,7 +476,7 @@ const SettingsModalContent = () => {
             const prevTop = prevOffsets[sp.id];
             const newTop = newOffsets[sp.id];
 
-            if (el && prevTop !== undefined && newTop !== undefined && prevTop !== newTop) {
+            if (el && prevTop !== undefined && newTop !== undefined && prevTop !== newTop && !settings?.a11yReducedMotion && !isSystemReducedMotion) {
                 const deltaY = prevTop - newTop;
 
                 if (spaceAnimTimersRef.current[sp.id]) {
@@ -512,6 +521,7 @@ const SettingsModalContent = () => {
 
     const [allPermissions, setAllPermissions] = useState({});
     const [searchFilter, setSearchFilter] = useState('');
+    const searchInputRef = useRef(null);
     const [bangFilter, setBangFilter] = useState('');
     const [isAddingBang, setIsAddingBang] = useState(false);
     const [newBangPrefix, setNewBangPrefix] = useState('');
@@ -1067,41 +1077,146 @@ const SettingsModalContent = () => {
         setDeletingSpace(null);
     };
 
-    const handleResetAllSettings = () => {
-        localStorage.removeItem('qbrowse_settings');
-        localStorage.removeItem('qbrowse_theme');
-        localStorage.removeItem('qbrowse_isForceDark');
-        localStorage.removeItem('qbrowse_dark_exclusions');
-        localStorage.removeItem('qbrowse_settings_updated_at');
-        useUIStore.getState().resetAllSettings?.();
-        setTheme('dark');
-        setIsForceDark(false);
-        setIsGlassEnabled(true);
-        setIsSwipeEnabled(true);
-        setAccentColor('#d4bc94');
-        showToast('All QBrowse settings restored to factory defaults');
+    const handleResetAllSettings = async () => {
+        try {
+            await useUIStore.getState().resetAllToFactoryDefaults?.();
+            setActivePresetId('balanced');
+            setCustomDnsUrl('');
+            setLocalDarkExclusions('');
+            setAdblockAllowlistInput('');
+            setAdblockBlocklistInput('');
+            setWallpaperUrlInput('');
+            setShowResetConfirm(false);
+            showToast('All QBrowse settings restored to factory defaults');
+        } catch (err) {
+            console.error('Failed to reset settings to defaults:', err);
+            showToast('Reset failed: ' + (err?.message || 'Unknown error'));
+        }
     };
 
     const navTabs = [
-        { id: 'appearance', label: 'Appearance & Themes', icon: Palette, color: 'text-purple-400', category: 'Preferences' },
-        { id: 'layout', label: 'Layout & Chrome', icon: Layout, color: 'text-amber-400', category: 'Preferences' },
-        { id: 'spaces', label: 'Workspaces', icon: Layers, color: 'text-indigo-400', category: 'Preferences' },
-        { id: 'accessibility', label: 'Accessibility', icon: Eye, color: 'text-amber-400', category: 'Preferences' },
-        { id: 'privacy', label: 'Privacy & Security', icon: Shield, color: 'text-emerald-400', category: 'Preferences' },
-        { id: 'cookies', label: 'Cookies & Permissions', icon: Cookie, color: 'text-amber-400', category: 'Preferences' },
-        { id: 'search', label: 'Search & Omnibox', icon: Search, color: 'text-sky-400', category: 'Preferences' },
-        { id: 'downloads', label: 'Downloads & Media', icon: Download, color: 'text-blue-400', category: 'Preferences' },
-        { id: 'workmode', label: 'Work Mode & GitHub', icon: GitPullRequest, color: 'text-emerald-400', category: 'Preferences' },
-        { id: 'ai', label: 'AI & llama.cpp Engine', icon: Sparkles, color: 'text-violet-400', category: 'Advanced' },
-        { id: 'engine', label: 'Engine & Performance', icon: Cpu, color: 'text-rose-400', category: 'Advanced' },
-        { id: 'adblock', label: 'Shields & AdBlock', icon: Shield, color: 'text-emerald-400', category: 'Advanced' },
-        { id: 'about', label: 'About & System Info', icon: Info, color: 'text-cyan-400', category: 'System' }
+        { 
+            id: 'appearance', 
+            label: t('settings.tabs.appearance', null, 'Appearance & Themes'), 
+            icon: Palette, 
+            color: 'text-purple-400', 
+            category: 'Preferences',
+            keywords: ['theme', 'dark mode', 'smart dark', 'light', 'wallpaper', 'live wallpaper', 'gif', 'video loop', 'presets', 'preset studio', 'accent color', 'glass', 'blur', 'translucency', 'colors', 'curvature', 'font', 'typography', 'custom font', 'google font', 'system font', 'font scale', 'letter spacing', 'text size', 'typeface'] 
+        },
+        { 
+            id: 'layout', 
+            label: t('settings.tabs.layout', null, 'Layout & Chrome'), 
+            icon: Layout, 
+            color: 'text-amber-400', 
+            category: 'Preferences',
+            keywords: ['sidebar', 'top bar', 'bottom bar', 'omnibox', 'window controls', 'close minimize maximize', 'tabs', 'tab layout', 'density', 'pills', 'cards', 'ui scale', 'compact', 'toolhub'] 
+        },
+        { 
+            id: 'spaces', 
+            label: t('settings.tabs.spaces', null, 'Workspaces'), 
+            icon: Layers, 
+            color: 'text-indigo-400', 
+            category: 'Preferences',
+            keywords: ['workspace', 'spaces', 'personal', 'work', 'swipe', 'switch', 'reorder', 'custom spaces', 'space tabs'] 
+        },
+        { 
+            id: 'language', 
+            label: t('settings.tabs.language', null, 'Language & Region'), 
+            icon: Languages, 
+            color: 'text-sky-400', 
+            category: 'Preferences',
+            keywords: ['language', 'translation', 'locale', 'region', 'polish', 'french', 'german', 'spanish', 'portuguese', 'chinese', 'japanese', 'russian', 'italian', 'ukrainian', 'korean', 'język', 'idioma', 'sprache', 'langue', 'lingua', 'язык', '语言', '言語', '언어'] 
+        },
+        { 
+            id: 'accessibility', 
+            label: t('settings.tabs.accessibility', null, 'Accessibility'), 
+            icon: Eye, 
+            color: 'text-amber-400', 
+            category: 'Preferences',
+            keywords: ['reduced motion', 'motion', 'animations', 'disable animations', 'windows sync', 'dyslexia font', 'high contrast', 'focus rings', 'font size', 'zoom', 'caret browsing', 'autoplay', 'captions', 'mono audio', 'vestibular'] 
+        },
+        { 
+            id: 'privacy', 
+            label: t('settings.tabs.privacy', null, 'Privacy & Security'), 
+            icon: Shield, 
+            color: 'text-emerald-400', 
+            category: 'Preferences',
+            keywords: ['tor', 'onion', 'ghost', 'incognito', 'doh', 'dns over https', 'history', 'cache', 'clear browsing data', 'vault', 'passwords', 'autofill', 'https', 'telemetry', 'webrtc', 'leak'] 
+        },
+        { 
+            id: 'cookies', 
+            label: t('settings.tabs.cookies', null, 'Cookies & Permissions'), 
+            icon: Cookie, 
+            color: 'text-amber-400', 
+            category: 'Preferences',
+            keywords: ['cookies', 'permissions', 'camera', 'microphone', 'geolocation', 'location', 'notifications', 'popups', 'storage', 'data', 'site data'] 
+        },
+        { 
+            id: 'search', 
+            label: t('settings.tabs.search', null, 'Search & Omnibox'), 
+            icon: Search, 
+            color: 'text-sky-400', 
+            category: 'Preferences',
+            keywords: ['search engine', 'google', 'duckduckgo', 'bing', 'brave', 'ecosia', 'custom search', 'bangs', 'shortcuts', 'omnibox', 'suggestions', 'autocomplete', 'weather', 'calculator'] 
+        },
+        { 
+            id: 'downloads', 
+            label: t('settings.tabs.downloads', null, 'Downloads & Media'), 
+            icon: Download, 
+            color: 'text-blue-400', 
+            category: 'Preferences',
+            keywords: ['downloads', 'download folder', 'ask where to save', 'media player', 'audio', 'video', 'pdf', 'files', 'shelf'] 
+        },
+        { 
+            id: 'workmode', 
+            label: t('settings.tabs.workmode', null, 'Work Mode & GitHub'), 
+            icon: GitPullRequest, 
+            color: 'text-emerald-400', 
+            category: 'Preferences',
+            keywords: ['github', 'pull requests', 'prs', 'issues', 'notifications', 'token', 'pat', 'git', 'work', 'developer'] 
+        },
+        { 
+            id: 'ai', 
+            label: t('settings.tabs.ai', null, 'AI & llama.cpp Engine'), 
+            icon: Sparkles, 
+            color: 'text-violet-400', 
+            category: 'Advanced',
+            keywords: ['ai', 'gemma', 'llama', 'model', 'local ai', 'chat', 'summarize', 'reader', 'llm', 'gpu layers', 'threads', 'context length'] 
+        },
+        { 
+            id: 'engine', 
+            label: t('settings.tabs.engine', null, 'Engine & Performance'), 
+            icon: Cpu, 
+            color: 'text-rose-400', 
+            category: 'Advanced',
+            keywords: ['gpu', 'hardware acceleration', 'performance', 'eco mode', 'ultra mode', 'memory', 'ram', 'tab suspension', 'bfcache', 'instant cache', 'battery', 'cpu', 'power'] 
+        },
+        { 
+            id: 'adblock', 
+            label: t('settings.tabs.adblock', null, 'Shields & AdBlock'), 
+            icon: Shield, 
+            color: 'text-emerald-400', 
+            category: 'Advanced',
+            keywords: ['adblock', 'shields', 'trackers', 'ads', 'blocker', 'easylist', 'ublock', 'custom blocklist', 'rules', 'whitelisted domains', 'anti-adblock', 'dnr'] 
+        },
+        { 
+            id: 'about', 
+            label: t('settings.tabs.about', null, 'About & System Info'), 
+            icon: Info, 
+            color: 'text-cyan-400', 
+            category: 'System',
+            keywords: ['version', 'update', 'check for updates', 'changelog', 'default browser', 'license', 'credits', 'system info', 'diagnostics', 'hardware profile'] 
+        }
     ];
 
-    const filteredNavTabs = navTabs.filter(t => 
-        t.label.toLowerCase().includes(searchFilter.toLowerCase()) || 
-        t.category.toLowerCase().includes(searchFilter.toLowerCase())
-    );
+    const trimmedQuery = (searchFilter || '').trim().toLowerCase();
+    const filteredNavTabs = trimmedQuery
+        ? navTabs.filter(t => 
+            t.label.toLowerCase().includes(trimmedQuery) || 
+            t.category.toLowerCase().includes(trimmedQuery) ||
+            (Array.isArray(t.keywords) && t.keywords.some(kw => kw.toLowerCase().includes(trimmedQuery)))
+          )
+        : navTabs;
 
     const isClosingThis = isModalClosing && useUIStore.getState().closingModal === 'settings';
     if (activeModal !== 'settings' && !isClosingThis) return null;
@@ -1116,7 +1231,8 @@ const SettingsModalContent = () => {
             />
             <div 
                 id="settings-modal"
-                className={`fixed inset-0 z-[200] flex font-sans w-full h-full overflow-hidden ${
+                style={{ WebkitAppRegion: 'no-drag' }}
+                className={`fixed inset-0 z-[200] flex font-sans w-full h-full overflow-hidden no-drag select-text ${
                     isBright 
                         ? 'bg-[#f4f5f8] text-zinc-900' 
                         : 'bg-[#090a0f] text-white'
@@ -1124,11 +1240,11 @@ const SettingsModalContent = () => {
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
             >
             {/* LEFT NAVIGATION SIDEBAR */}
-            <div className={`w-64 border-r flex flex-col flex-shrink-0 h-full ${
+            <div className={`w-64 border-r flex flex-col flex-shrink-0 h-full no-drag ${
                 isBright 
                     ? 'bg-black/[0.02] border-black/10' 
                     : 'bg-white/[0.015] border-white/[0.06]'
-            }`}>
+            }`} style={{ WebkitAppRegion: 'no-drag' }}>
                 <div className="p-4 pb-2 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
                         <h2 className={`text-sm font-semibold tracking-tight flex items-center gap-2 ${
@@ -1148,21 +1264,49 @@ const SettingsModalContent = () => {
                     </div>
 
                     {/* Live Search Input */}
-                    <div className="relative">
-                        <Search size={12} className={`absolute left-2.5 top-2 ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`} />
+                    <div 
+                        className="relative flex items-center cursor-text group"
+                        onClick={() => searchInputRef.current?.focus()}
+                        style={{ WebkitAppRegion: 'no-drag' }}
+                    >
+                        <Search 
+                            size={12} 
+                            className={`absolute left-2.5 pointer-events-none transition-colors ${
+                                isBright ? 'text-zinc-400 group-focus-within:text-accent' : 'text-zinc-500 group-focus-within:text-accent'
+                            }`} 
+                        />
                         <input
+                            ref={searchInputRef}
                             type="text"
+                            id="settings-search-input"
                             value={searchFilter}
                             onChange={(e) => setSearchFilter(e.target.value)}
-                            placeholder="Search settings..."
-                            className={`w-full rounded-lg py-1 pl-7 pr-2.5 text-xs outline-none focus:border-accent/40 transition-colors font-mono border ${
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && filteredNavTabs.length > 0) {
+                                    setSettingsTab(filteredNavTabs[0].id);
+                                }
+                            }}
+                            placeholder={t('settings.searchPlaceholder', null, 'Search settings...')}
+                            style={{ WebkitAppRegion: 'no-drag' }}
+                            className={`w-full h-8 rounded-lg pl-7 pr-7 text-xs outline-none focus:border-accent/40 transition-colors font-mono border select-text cursor-text ${
                                 isBright 
-                                    ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' 
-                                    : 'bg-white/[0.03] border-white/[0.06] text-white placeholder-zinc-500'
+                                    ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400 focus:bg-white' 
+                                    : 'bg-white/[0.03] border-white/[0.06] text-white placeholder-zinc-500 focus:bg-black/40'
                             }`}
                         />
                         {searchFilter && (
-                            <button onClick={() => setSearchFilter('')} className={`absolute right-2 top-1.5 ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-zinc-400 hover:text-white'}`}>
+                            <button 
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSearchFilter('');
+                                    searchInputRef.current?.focus();
+                                }} 
+                                className={`absolute right-2 top-1.5 p-0.5 rounded transition cursor-pointer ${
+                                    isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-zinc-400 hover:text-white'
+                                }`}
+                                title={t('settings.clearSearch', null, 'Clear search')}
+                            >
                                 <X size={11} />
                             </button>
                         )}
@@ -1170,40 +1314,94 @@ const SettingsModalContent = () => {
                 </div>
 
                 <div className="flex-1 p-2 flex flex-col gap-0.5 overflow-y-auto hide-scroll">
-                    {filteredNavTabs.map((tab) => {
-                        const Icon = tab.icon;
-                        const isActive = settingsTab === tab.id || (tab.id === 'engine' && settingsTab === 'performance');
-                        return (
-                            <button 
-                                key={tab.id}
-                                onClick={() => setSettingsTab(tab.id)} 
-                                className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer text-left group active:scale-[0.98] ${
-                                    isActive 
-                                        ? (isBright ? 'bg-accent/20 text-zinc-950 font-semibold shadow-sm translate-x-1 border border-accent/40' : 'bg-accent/15 text-white font-medium shadow-sm translate-x-1 border border-accent/30') 
-                                        : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900 border border-transparent hover:translate-x-0.5' : 'hover:bg-white/[0.04] text-zinc-400 hover:text-zinc-200 border border-transparent hover:translate-x-0.5')
-                                }`}
+                    {filteredNavTabs.length === 0 ? (
+                        <div className="p-4 text-center select-none flex flex-col items-center gap-2 text-zinc-500">
+                            <span className="text-xs">{t('settings.noResults', null, 'No settings found matching')} &quot;{searchFilter}&quot;</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSearchFilter('');
+                                    searchInputRef.current?.focus();
+                                }}
+                                className="text-[11px] font-semibold text-accent hover:underline cursor-pointer"
                             >
-                                {isActive && (
-                                    <div className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-accent animate-pop-in" />
-                                )}
-                                <Icon size={14} className={`transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-accent scale-105' : (isBright ? 'text-zinc-500' : (tab.color || 'text-zinc-400'))}`} /> 
-                                <span className="text-xs">{tab.label}</span>
+                                {t('settings.clearSearch', null, 'Clear Search')}
                             </button>
-                        );
-                    })}
+                        </div>
+                    ) : (
+                        filteredNavTabs.map((tab) => {
+                            const Icon = tab.icon;
+                            const isActive = settingsTab === tab.id || (tab.id === 'engine' && settingsTab === 'performance');
+                            return (
+                                <button 
+                                    key={tab.id}
+                                    onClick={() => setSettingsTab(tab.id)} 
+                                    className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer text-left group active:scale-[0.98] ${
+                                        isActive 
+                                            ? (isBright ? 'bg-accent/20 text-zinc-950 font-semibold shadow-sm translate-x-1 border border-accent/40' : 'bg-accent/15 text-white font-medium shadow-sm translate-x-1 border border-accent/30') 
+                                            : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900 border border-transparent hover:translate-x-0.5' : 'hover:bg-white/[0.04] text-zinc-400 hover:text-zinc-200 border border-transparent hover:translate-x-0.5')
+                                    }`}
+                                >
+                                    {isActive && (
+                                        <div className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-accent animate-pop-in" />
+                                    )}
+                                    <Icon size={14} className={`transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-accent scale-105' : (isBright ? 'text-zinc-500' : (tab.color || 'text-zinc-400'))}`} /> 
+                                    <span className="text-xs">{tab.label}</span>
+                                </button>
+                            );
+                        })
+                    )}
                 </div>
 
                 <div className={`p-3 border-t ${isBright ? 'border-black/10' : 'border-white/[0.06]'}`}>
-                    <button 
-                        onClick={handleResetAllSettings}
-                        className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-[11px] font-medium transition cursor-pointer border ${
-                            isBright 
-                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200' 
-                                : 'bg-red-500/10 hover:bg-red-500/15 text-red-400 border-red-500/20'
-                        }`}
-                    >
-                        <RotateCcw size={12} /> Reset Defaults
-                    </button>
+                    {showResetConfirm ? (
+                        <div className={`p-2.5 rounded-xl border animate-pop-in flex flex-col gap-2 ${
+                            isBright ? 'bg-rose-50/90 border-rose-200' : 'bg-red-950/30 border-red-500/30'
+                        }`}>
+                            <div className="flex items-center gap-1.5 text-red-400">
+                                <AlertTriangle size={13} className="flex-shrink-0 text-red-500" />
+                                <span className={`text-[11px] font-semibold ${isBright ? 'text-rose-900' : 'text-red-200'}`}>
+                                    Reset all settings?
+                                </span>
+                            </div>
+                            <p className={`text-[10px] leading-tight ${isBright ? 'text-rose-700/80' : 'text-red-300/70'}`}>
+                                Restores Balanced preset, dark theme, and clears customized layouts &amp; shields.
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowResetConfirm(false)}
+                                    className={`flex-1 py-1 rounded-lg text-[10px] font-medium border cursor-pointer transition ${
+                                        isBright 
+                                            ? 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50' 
+                                            : 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10'
+                                    }`}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleResetAllSettings}
+                                    className="flex-1 py-1 rounded-lg text-[10px] font-bold bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-xs transition"
+                                >
+                                    Reset All
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <button 
+                            type="button"
+                            onClick={() => setShowResetConfirm(true)}
+                            className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-[11px] font-medium transition cursor-pointer border ${
+                                isBright 
+                                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200' 
+                                    : 'bg-red-500/10 hover:bg-red-500/15 text-red-400 border-red-500/20'
+                            }`}
+                            title="Reset all QBrowse settings to factory defaults"
+                        >
+                            <RotateCcw size={12} /> Reset Defaults
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -1839,6 +2037,9 @@ const SettingsModalContent = () => {
                                         )}
                                     </div>
 
+                                    {/* App Typography & Custom Font System */}
+                                    <CustomFontManager />
+
                                     {/* Glass & Motion Physics */}
                                     <div className="space-y-3">
                                         <SectionHeader 
@@ -2219,6 +2420,51 @@ const SettingsModalContent = () => {
                                                             key={s.id}
                                                             type="button"
                                                             onClick={() => setSettingValue("windowControlsStyle", s.id)}
+                                                            className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
+                                                                isSelected
+                                                                    ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
+                                                                    : (isBright ? "text-zinc-600 hover:text-zinc-950" : "text-white/60 hover:text-white")
+                                                            }`}
+                                                        >
+                                                            <span>{s.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </SettingCard>
+
+                                        {/* 5. Window Controls Button Order */}
+                                        <SettingCard 
+                                            icon={SlidersHorizontal} 
+                                            title="Window Controls Layout" 
+                                            description="Smart Corner keeps Close at the outer screen edge. Or lock Close first (macOS) vs Minimize first (Windows)."
+                                        >
+                                            <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
+                                                isBright 
+                                                    ? "bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]" 
+                                                    : "bg-black/40 border-white/[0.08] shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)]"
+                                            }`}>
+                                                <div 
+                                                    className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-full bg-accent transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] shadow-[0_2px_10px_rgba(212,188,148,0.25)] pointer-events-none"
+                                                    style={{
+                                                        transform: (settings.windowControlsOrder || "auto") === "close-first" 
+                                                            ? "translateX(100%)" 
+                                                            : (settings.windowControlsOrder || "auto") === "minimize-first" 
+                                                            ? "translateX(200%)" 
+                                                            : "translateX(0%)"
+                                                    }}
+                                                />
+                                                {[
+                                                    { id: "auto", label: "Smart Corner" },
+                                                    { id: "close-first", label: "Close First" },
+                                                    { id: "minimize-first", label: "Minimize First" }
+                                                ].map(s => {
+                                                    const isSelected = (settings.windowControlsOrder || "auto") === s.id;
+                                                    return (
+                                                        <button
+                                                            key={s.id}
+                                                            type="button"
+                                                            onClick={() => setSettingValue("windowControlsOrder", s.id)}
                                                             className={`relative z-10 flex-1 min-w-[78px] py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer text-center select-none active:scale-95 flex items-center justify-center gap-1.5 ${
                                                                 isSelected
                                                                     ? (isBright ? "text-zinc-950 font-bold" : "text-black font-bold")
@@ -2909,6 +3155,11 @@ const SettingsModalContent = () => {
                         );
                     })()}
 
+                    {/* TAB: LANGUAGE & REGION */}
+                    {settingsTab === 'language' && (
+                        <LanguageSettings />
+                    )}
+
                     {/* TAB: ACCESSIBILITY (EU European Accessibility Act / EN 301 549 & WCAG 2.1 AA) */}
                     {settingsTab === 'accessibility' && (
                         <div className="animate-tab-fade space-y-6">
@@ -3127,11 +3378,12 @@ const SettingsModalContent = () => {
                                     <SettingCard 
                                         icon={Zap} 
                                         title="Force Reduced Motion" 
-                                        badge={isSystemReducedMotion ? "Windows Animations: Off" : null}
                                         description={
-                                            isSystemReducedMotion
-                                                ? "Windows Accessibility animations are currently turned off. Browser transitions, Tab Map 3D tilt, and web animations are automatically suppressed."
-                                                : "Disables browser chrome transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with Windows Animation Effects."
+                                            settings?.a11yReducedMotion
+                                                ? "Reduced motion is manually forced on. Browser chrome transitions, Tab Map 3D tilt, and web animations are suppressed."
+                                                : isSystemReducedMotion
+                                                    ? "Windows Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match Windows."
+                                                    : "Disables browser chrome transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with Windows Animation Effects."
                                         }
                                     >
                                         <SettingToggle 

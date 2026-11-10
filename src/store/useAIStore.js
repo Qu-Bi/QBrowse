@@ -26,12 +26,22 @@ export const MODEL_PRESETS = [
         description: 'High reasoning Google Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
     },
     {
-        id: 'llama-3.2-3b',
-        name: 'Llama 3.2 3B Instruct (Q4_K_M)',
-        size: '2.02 GB',
-        url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-        filename: 'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-        description: 'Ultra-fast, lightweight Meta Llama 3.2 3B model with universal compatibility and reasoning.'
+        id: 'qwen-3.5-4b',
+        name: 'Qwen 3.5 4B Instruct (Q4_K_M)',
+        size: '2.74 GB (Model) + 670 MB (Vision)',
+        url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
+        filename: 'Qwen3.5-4B-Q4_K_M.gguf',
+        mmprojUrl: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/mmproj-F16.gguf',
+        mmprojFilename: 'mmproj-qwen-3.5-4b-f16.gguf',
+        description: 'Alibaba Qwen 3.5 4B model with multimodal vision support, reasoning, code generation, and multilingual understanding.'
+    },
+    {
+        id: 'bielik-11b-v3.1',
+        name: 'Bielik 11B v3.1 Instruct (Q4_K_M)',
+        size: '6.72 GB',
+        url: 'https://huggingface.co/speakleash/Bielik-11B-v3.1-Instruct-GGUF/resolve/main/Bielik-11B-v3.1-Instruct.Q4_K_M.gguf',
+        filename: 'Bielik-11B-v3.1-Instruct.Q4_K_M.gguf',
+        description: 'Flagship Polish & European multilingual 11B model by SpeakLeash with deep Polish nuance, instruction following, and reasoning.'
     }
 ];
 
@@ -39,7 +49,11 @@ const useAIStore = create((set, get) => ({
     // Server State
     isRunning: false,
     status: 'stopped', // 'stopped' | 'starting' | 'running' | 'error' | 'downloading'
-    activeModelId: localStorage.getItem('qbrowse_ai_model') || 'gemma-4-e2b',
+    activeModelId: (() => {
+        const saved = localStorage.getItem('qbrowse_ai_model');
+        if (saved === 'llama-3.2-3b') return 'gemma-4-e2b';
+        return saved || 'gemma-4-e2b';
+    })(),
     customModelPath: localStorage.getItem('qbrowse_ai_custom_path') || '',
     customMmprojPath: localStorage.getItem('qbrowse_ai_custom_mmproj') || '',
     logs: [],

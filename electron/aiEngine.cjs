@@ -55,12 +55,22 @@ const MODEL_PRESETS = [
         description: 'High reasoning Google Gemma 4 E4B model with full Multimodal Vision support for complex analysis.'
     },
     {
-        id: 'llama-3.2-3b',
-        name: 'Llama 3.2 3B Instruct (Q4_K_M)',
-        size: '2.02 GB',
-        url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-        filename: 'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-        description: 'Ultra-fast, lightweight Meta Llama 3.2 3B model with universal compatibility and reasoning.'
+        id: 'qwen-3.5-4b',
+        name: 'Qwen 3.5 4B Instruct (Q4_K_M)',
+        size: '2.74 GB (Model) + 670 MB (Vision)',
+        url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
+        filename: 'Qwen3.5-4B-Q4_K_M.gguf',
+        mmprojUrl: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/mmproj-F16.gguf',
+        mmprojFilename: 'mmproj-qwen-3.5-4b-f16.gguf',
+        description: 'Alibaba Qwen 3.5 4B model with multimodal vision support, reasoning, code generation, and multilingual understanding.'
+    },
+    {
+        id: 'bielik-11b-v3.1',
+        name: 'Bielik 11B v3.1 Instruct (Q4_K_M)',
+        size: '6.72 GB',
+        url: 'https://huggingface.co/speakleash/Bielik-11B-v3.1-Instruct-GGUF/resolve/main/Bielik-11B-v3.1-Instruct.Q4_K_M.gguf',
+        filename: 'Bielik-11B-v3.1-Instruct.Q4_K_M.gguf',
+        description: 'Flagship Polish & European multilingual 11B model by SpeakLeash with deep Polish nuance, instruction following, and reasoning.'
     }
 ];
 
@@ -597,6 +607,7 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                     const fn = m.filename.toLowerCase();
                     if (modelBase.includes('e4b') && fn.includes('e4b')) return true;
                     if (modelBase.includes('e2b') && fn.includes('e2b')) return true;
+                    if (modelBase.includes('qwen') && fn.includes('qwen')) return true;
                     return false;
                 });
                 if (matchedProj) {
@@ -613,7 +624,8 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 const projBase = path.basename(mmprojTarget).toLowerCase();
                 const isCompatible = (modelBase.includes('e4b') && projBase.includes('e4b')) ||
                                      (modelBase.includes('e2b') && projBase.includes('e2b')) ||
-                                     (!modelBase.includes('e4b') && !modelBase.includes('e2b'));
+                                     (modelBase.includes('qwen') && projBase.includes('qwen')) ||
+                                     (!modelBase.includes('e4b') && !modelBase.includes('e2b') && !modelBase.includes('qwen') && !modelBase.includes('bielik') && !projBase.includes('e4b') && !projBase.includes('e2b') && !projBase.includes('qwen'));
 
                 if (isCompatible && fs.existsSync(mmprojFullPath)) {
                     args.push('--mmproj', mmprojFullPath);

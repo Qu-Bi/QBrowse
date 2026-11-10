@@ -4,7 +4,7 @@ import {
     Download, Compass, Lock, User, Sparkles, Layers,
     CheckCircle2, FolderInput, FileCode, Sliders, ChevronRight,
     KeyRound, UploadCloud, Shield, RefreshCw, Mail, Eye, EyeOff,
-    AlertCircle, UserCheck, Code, Feather
+    AlertCircle, UserCheck, Code, Feather, Languages
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -14,6 +14,9 @@ import { parseVaultContent } from '../../utils/vaultImporter';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
 import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
 import qbrowseLogo from '../../assets/icon.png';
+import { useTranslation, SUPPORTED_LANGUAGES, getSystemLanguage } from '../../i18n/index';
+import LanguageFlag from '../common/LanguageFlag';
+import ZeroGravityLanguageOrbit from '../common/ZeroGravityLanguageOrbit';
 
 // Apple/Tesla-style synthesized unlock chime using Web Audio API
 const playUnlockChime = () => {
@@ -72,6 +75,14 @@ const getLiquidGlassStyle = (isBright, opacityDark = 0.40, opacityLight = 0.70) 
 });
 
 export default function SetupJourney({ onFinish, onStartTour }) {
+    const { 
+        t, 
+        currentLanguage, 
+        resolvedLanguage, 
+        isAuto, 
+        setLanguage 
+    } = useTranslation();
+
     const { 
         theme, setTheme, setAccentColor, accentColor, 
         showToast, isAdblockActive, setIsAdblockActive 
@@ -367,7 +378,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     }, []);
 
     useEffect(() => {
-        if (currentStep === 3) {
+        if (currentStep === 4) {
             checkDefaultStatus(true);
 
             const handleFocus = () => {
@@ -456,6 +467,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     };
 
     const steps = [
+        { label: 'Language', desc: 'Interface Locale' },
         { label: 'Presets & Style', desc: 'Experience & Style' },
         { label: 'Import', desc: 'Bookmarks & Passwords' },
         { label: 'Privacy', desc: 'Shields & Tor' },
@@ -531,30 +543,42 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         isBright ? 'text-zinc-500 hover:text-zinc-900 border-black/5 hover:bg-black/5' : 'text-white/40 hover:text-white/80 border-white/5 hover:bg-white/5'
                     }`}
                 >
-                    Skip Setup
+                    {t('setup.skip', null, 'Skip Setup')}
                 </button>
             </header>
 
             {/* Main Stage Content */}
             <main className="relative z-10 flex-1 flex items-center justify-center p-6 md:p-12 overflow-y-auto">
-                <div className={`${currentStep === 0 ? 'max-w-4xl' : 'max-w-2xl'} w-full transition-[max-width] duration-300`}>
-                    {/* SLIDE 0: EXPERIENCE PRESETS & APPEARANCE */}
+                <div className={`${(currentStep === 0 || currentStep === 1) ? 'max-w-4xl' : 'max-w-2xl'} w-full transition-[max-width] duration-300`}>
+                    {/* SLIDE 0: ZERO-GRAVITY COSMIC LANGUAGE SELECTION */}
                     {currentStep === 0 && (
+                        <div className={`${stepAnimClass} w-full`}>
+                            <ZeroGravityLanguageOrbit 
+                                variant="fullscreen" 
+                                onSelect={() => {
+                                    setTimeout(() => goToStep(1), 2200);
+                                }} 
+                            />
+                        </div>
+                    )}
+
+                    {/* SLIDE 1: EXPERIENCE PRESETS & APPEARANCE */}
+                    {currentStep === 1 && (
                         <div className={`${stepAnimClass} space-y-6 text-left`}>
                             <div className="flex items-end justify-between flex-wrap gap-4">
                                 <div>
                                     <span className="text-[11px] font-bold uppercase tracking-wider text-accent">
-                                        Welcome to QBrowse
+                                        {t('setup.welcomeTitle', null, 'Welcome to QBrowse')}
                                     </span>
                                     <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight mt-1 ${
                                         isBright ? 'text-zinc-900' : 'text-white'
                                     }`}>
-                                        Choose your setup
+                                        {t('setup.welcomeSubtitle', null, 'Choose your setup')}
                                     </h2>
                                     <p className={`text-xs md:text-sm mt-1.5 leading-relaxed ${
                                         isBright ? 'text-zinc-500' : 'text-white/60'
                                     }`}>
-                                        Select a tailored layout to get started. You can customize every panel at any time.
+                                        {t('language.subtitle', null, 'Select a tailored layout to get started. You can customize every panel at any time.')}
                                     </p>
                                 </div>
                                 <button
@@ -755,8 +779,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         </div>
                     )}
 
-                    {/* SLIDE 1: DATA MIGRATION */}
-                    {currentStep === 1 && (
+                    {/* SLIDE 2: DATA MIGRATION */}
+                    {currentStep === 2 && (
                         <div className={`${stepAnimClass} space-y-6`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 2 of 5</span>
@@ -973,8 +997,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         </div>
                     )}
 
-                    {/* SLIDE 2: PRIVACY & TOR SHIELD */}
-                    {currentStep === 2 && (
+                    {/* SLIDE 3: PRIVACY & TOR SHIELD */}
+                    {currentStep === 3 && (
                         <div className={`${stepAnimClass} space-y-8`}>
                             <div className="flex items-start justify-between gap-4 flex-wrap">
                                 <div>
@@ -1040,8 +1064,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         </div>
                     )}
 
-                    {/* SLIDE 3: DEFAULT BROWSER */}
-                    {currentStep === 3 && (
+                    {/* SLIDE 4: DEFAULT BROWSER */}
+                    {currentStep === 4 && (
                         <div className={`${stepAnimClass} space-y-8`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 4 of 5</span>
@@ -1117,8 +1141,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         </div>
                     )}
 
-                    {/* SLIDE 4: PROFILE & CLOUD SYNC */}
-                    {currentStep === 4 && (
+                    {/* SLIDE 5: PROFILE & CLOUD SYNC */}
+                    {currentStep === 5 && (
                         <div className={`${stepAnimClass} space-y-6`}>
                             <div>
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 5 of 5 • Profile & Cloud Sync</span>
@@ -1642,7 +1666,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-white/60 hover:text-white hover:bg-white/5'
                     }`}
                 >
-                    Back
+                    {t('common.back', null, 'Back')}
                 </button>
 
                 <div className="flex items-center gap-3">
@@ -1653,7 +1677,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 isCompact ? 'px-5 py-2' : 'px-6 py-2.5'
                             } bg-accent hover:brightness-105 active:scale-95 text-zinc-950 font-bold text-xs rounded-xl transition shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer`}
                         >
-                            <span>Continue</span>
+                            <span>{t('setup.next', null, 'Continue')}</span>
                             <ArrowRight size={14} />
                         </button>
                     ) : (
@@ -1663,7 +1687,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 isCompact ? 'px-5 py-2' : 'px-6 py-2.5'
                             } bg-accent hover:brightness-105 active:scale-95 text-zinc-950 font-bold text-xs rounded-xl transition shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer`}
                         >
-                            <span>{profileMode === 'sync' && !syncUser ? 'Skip Sync & Complete' : 'Complete Setup & Launch'}</span>
+                            <span>{profileMode === 'sync' && !syncUser ? 'Skip Sync & Complete' : t('setup.finish', null, 'Complete Setup & Launch')}</span>
                             <ArrowRight size={14} />
                         </button>
                     )}

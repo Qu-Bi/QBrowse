@@ -9,6 +9,7 @@ import {
     setSavedPresetId 
 } from '../utils/experiencePresets.js';
 import { getNextZoomStep, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM } from '../utils/zoomSteps.js';
+import { applyAppFont } from '../utils/appFontManager.js';
 
 export const hexToRgbString = (hex) => {
     if (!hex || typeof hex !== 'string') return '212, 188, 148';
@@ -88,6 +89,7 @@ const defaultSettings = {
     frameCurvature: 'default', // 'default' | 'cohesive' | 'square'
     tabPresentation: 'pills', // 'pills' | 'compact' | 'cards'
     windowControlsStyle: 'mac', // 'mac' | 'windows' | 'minimal'
+    windowControlsOrder: 'auto', // 'auto' | 'close-first' | 'minimize-first'
     httpsOnly: true,
     isolation: false,
     webrtc: true,
@@ -178,6 +180,20 @@ const defaultSettings = {
         { id: 'personal', name: 'Personal', icon: 'User', showGitHub: false, isBuiltIn: true },
         { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false },
     ],
+
+    // App Typography & Custom Font System
+    appFontType: 'default', // 'default' | 'preset' | 'google' | 'system' | 'file'
+    appFontFamily: 'default', // preset id or CSS family
+    appFontGoogleFamily: '', // Google font name
+    appFontCustomName: '', // Local system font name
+    appFontLetterSpacing: 'normal', // 'tight' | 'normal' | 'relaxed' | 'wide'
+    appFontSizeScale: 100, // 85 - 120 %
+    appFontWeightShift: 'normal', // 'normal' | 'medium' | 'semibold'
+    appFontFileData: null, // Base64 data URL for uploaded font
+    appFontFileName: '', // Original uploaded font file name
+
+    // Internationalization & Language
+    appLanguage: 'auto', // 'auto' | 'en' | 'pl' | 'fr' | 'de' | 'es' | 'pt' | 'zh' | 'ja' | 'ru' | 'it' | 'uk' | 'ko'
 };
 
 const loadSettings = () => {
@@ -224,10 +240,23 @@ const loadSettings = () => {
             if (!parsed.windowControlsStyle) {
                 parsed.windowControlsStyle = 'mac';
             }
+            if (!parsed.windowControlsOrder) {
+                parsed.windowControlsOrder = 'auto';
+            }
             if (!Array.isArray(parsed.customSpaces) || parsed.customSpaces.length === 0) {
                 parsed.customSpaces = defaultSettings.customSpaces;
             }
-            return { ...defaultSettings, ...parsed };
+            if (!parsed.appFontType) parsed.appFontType = 'default';
+            if (!parsed.appFontFamily) parsed.appFontFamily = 'default';
+            if (!parsed.appFontLetterSpacing) parsed.appFontLetterSpacing = 'normal';
+            if (typeof parsed.appFontSizeScale !== 'number') parsed.appFontSizeScale = 100;
+            if (!parsed.appFontWeightShift) parsed.appFontWeightShift = 'normal';
+            if (!parsed.appLanguage) parsed.appLanguage = 'auto';
+            const merged = { ...defaultSettings, ...parsed };
+            try {
+                applyAppFont(merged);
+            } catch (_) {}
+            return merged;
         }
     } catch(e) {}
     return defaultSettings;
@@ -354,18 +383,24 @@ const useUIStore = create((set, get) => ({
       }
     }
 
-    // 2. Electron Main Process NativeTheme Sync (OS Level)
+    // 2. Electron Main Process NativeTheme Sync (OS Level & Registry Check)
     const refreshReducedMotionFromMain = () => {
-      if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-        const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-        set({ isSystemReducedMotion: motionQuery.matches });
-      }
+      const mediaQueryMatches = (typeof window !== 'undefined' && typeof window.matchMedia === 'function')
+        ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        : false;
+
       if (window.electronAPI?.getSystemReducedMotion) {
         window.electronAPI.getSystemReducedMotion().then((nativeVal) => {
           if (typeof nativeVal === 'boolean') {
-            set({ isSystemReducedMotion: nativeVal });
+            set({ isSystemReducedMotion: nativeVal || mediaQueryMatches });
+          } else if (mediaQueryMatches) {
+            set({ isSystemReducedMotion: true });
           }
-        }).catch(() => {});
+        }).catch(() => {
+          set({ isSystemReducedMotion: mediaQueryMatches });
+        });
+      } else {
+        set({ isSystemReducedMotion: mediaQueryMatches });
       }
     };
 
@@ -374,7 +409,10 @@ const useUIStore = create((set, get) => ({
     if (window.electronAPI?.onSystemReducedMotionChanged) {
       window.electronAPI.onSystemReducedMotionChanged((nativeVal) => {
         if (typeof nativeVal === 'boolean') {
-          set({ isSystemReducedMotion: nativeVal });
+          const mediaQueryMatches = (typeof window !== 'undefined' && typeof window.matchMedia === 'function')
+            ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            : false;
+          set({ isSystemReducedMotion: nativeVal || mediaQueryMatches });
         }
       });
     }
@@ -1910,6 +1948,9 @@ const useUIStore = create((set, get) => ({
 
           set({ settings: merged });
           try {
+            applyAppFont(merged);
+          } catch (_) {}
+          try {
             localStorage.setItem('qbrowse_settings', JSON.stringify(merged));
           } catch (_) {}
 
@@ -1974,19 +2015,106 @@ const useUIStore = create((set, get) => ({
       }
     }
   },
-  resetAllSettings: () => {
-    set({ settings: { ...defaultSettings } });
+  resetAllToFactoryDefaults: async () => {
+    const cleanSettings = { ...defaultSettings };
+    set({
+      settings: cleanSettings,
+      theme: 'dark',
+      themeTransition: null,
+      accentColor: '#d4bc94',
+      accentRgb: '212, 188, 148',
+      isGlassEnabled: true,
+      isSwipeEnabled: true,
+      isForceDark: false,
+      darkExclusions: [],
+      customPresets: [],
+      activePresetId: 'balanced',
+      zoomLevel: 1.0
+    });
+
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.add('theme-dark');
+      document.documentElement.classList.remove('theme-light', 'bright-mode');
+    }
+
     try {
-      localStorage.setItem('qbrowse_settings', JSON.stringify(defaultSettings));
+      localStorage.setItem('qbrowse_settings', JSON.stringify(cleanSettings));
       localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+      localStorage.setItem('qbrowse_theme', 'dark');
+      localStorage.setItem('qbrowse_accent_color', '#d4bc94');
+      localStorage.setItem('qbrowse_isGlassEnabled', 'true');
+      localStorage.setItem('qbrowse_isSwipeEnabled', 'true');
+      localStorage.setItem('qbrowse_isForceDark', 'false');
+      localStorage.setItem('qbrowse_active_preset', 'balanced');
+      localStorage.removeItem('qbrowse_dark_exclusions');
+      localStorage.removeItem('qbrowse_custom_presets');
+      localStorage.removeItem('qbrowse_preset_overrides');
+      localStorage.removeItem('qbrowse_custom_search_engines');
     } catch (_) {}
+
+    try {
+      if (get().resetCustomWallpaper) {
+        await get().resetCustomWallpaper();
+      }
+      if (typeof window !== 'undefined' && window.electronAPI?.resetWallpaper) {
+        await window.electronAPI.resetWallpaper().catch(() => {});
+      }
+    } catch (_) {}
+
+    try {
+      applyAppFont(cleanSettings);
+      if (typeof document !== 'undefined') {
+        const customFontEl = document.getElementById('qbrowse-custom-font');
+        if (customFontEl) customFontEl.remove();
+        const googleFontEl = document.getElementById('qbrowse-google-font');
+        if (googleFontEl) googleFontEl.remove();
+      }
+    } catch (_) {}
+
+    try {
+      get().resetTopBarIcons?.();
+    } catch (_) {}
+
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI?.setZoomLevel) {
+        window.electronAPI.setZoomLevel(1.0);
+      }
+    } catch (_) {}
+
+    try {
+      const { applyExperiencePreset, EXPERIENCE_PRESETS } = await import('../utils/experiencePresets');
+      applyExperiencePreset(EXPERIENCE_PRESETS[0], {
+        uiStore: get(),
+        tabStore: typeof window !== 'undefined' ? window.__tabStore?.getState?.() : null
+      });
+    } catch (_) {}
+
+    try {
+      if (typeof window !== 'undefined' && window.__tabStore) {
+        window.__tabStore.getState()?.setActiveSpace?.('personal');
+      }
+    } catch (_) {}
+
     if (typeof window !== 'undefined' && window.electronAPI) {
       if (window.electronAPI.saveSettingsBatch) {
-        window.electronAPI.saveSettingsBatch(defaultSettings);
+        window.electronAPI.saveSettingsBatch(cleanSettings);
       } else if (window.electronAPI.saveSetting) {
-        window.electronAPI.saveSetting({ batch: defaultSettings });
+        window.electronAPI.saveSetting({ batch: cleanSettings });
+      }
+      if (window.electronAPI.saveSetting) {
+        window.electronAPI.saveSetting('theme', 'dark');
+        window.electronAPI.saveSetting('isGlassEnabled', true);
+        window.electronAPI.saveSetting('isSwipeEnabled', true);
+        window.electronAPI.saveSetting('isForceDark', false);
+        window.electronAPI.saveSetting('darkExclusions', []);
+      }
+      if (window.electronAPI.syncThemeSource) {
+        window.electronAPI.syncThemeSource('dark');
       }
     }
+  },
+  resetAllSettings: function() {
+    return this.resetAllToFactoryDefaults();
   },
   toggleSetting: (key) => {
       set((state) => {
@@ -2041,6 +2169,11 @@ const useUIStore = create((set, get) => ({
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, value);
           }
+          if (typeof key === 'string' && key.startsWith('appFont')) {
+              try {
+                  applyAppFont(newSettings);
+              } catch (_) {}
+          }
           return { settings: newSettings };
       });
   },
@@ -2059,8 +2192,57 @@ const useUIStore = create((set, get) => ({
                   window.electronAPI.saveSetting({ batch: partialSettings });
               }
           }
+          if (Object.keys(partialSettings).some(k => k.startsWith('appFont'))) {
+              try {
+                  applyAppFont(newSettings);
+              } catch (_) {}
+          }
           return { settings: newSettings };
       });
+  },
+  setAppFont: (config) => {
+      const current = get().settings || {};
+      const updates = {
+          appFontType: config.appFontType || 'default',
+          appFontFamily: config.appFontFamily || 'default',
+          appFontGoogleFamily: config.appFontGoogleFamily !== undefined ? config.appFontGoogleFamily : (current.appFontGoogleFamily || ''),
+          appFontCustomName: config.appFontCustomName !== undefined ? config.appFontCustomName : (current.appFontCustomName || ''),
+          appFontLetterSpacing: config.appFontLetterSpacing || current.appFontLetterSpacing || 'normal',
+          appFontSizeScale: typeof config.appFontSizeScale === 'number' ? config.appFontSizeScale : (current.appFontSizeScale ?? 100),
+          appFontWeightShift: config.appFontWeightShift || current.appFontWeightShift || 'normal',
+          appFontFileData: config.appFontFileData !== undefined ? config.appFontFileData : (current.appFontFileData || null),
+          appFontFileName: config.appFontFileName !== undefined ? config.appFontFileName : (current.appFontFileName || '')
+      };
+      get().setSettingsBatch(updates);
+      try {
+          applyAppFont({ ...current, ...updates });
+      } catch (_) {}
+  },
+  setAppFontLetterSpacing: (spacing) => {
+      get().setSettingValue('appFontLetterSpacing', spacing);
+  },
+  setAppFontSizeScale: (scale) => {
+      get().setSettingValue('appFontSizeScale', scale);
+  },
+  setAppFontWeightShift: (shift) => {
+      get().setSettingValue('appFontWeightShift', shift);
+  },
+  resetAppFont: () => {
+      get().setAppFont({
+          appFontType: 'default',
+          appFontFamily: 'default',
+          appFontGoogleFamily: '',
+          appFontCustomName: '',
+          appFontLetterSpacing: 'normal',
+          appFontSizeScale: 100,
+          appFontWeightShift: 'normal',
+          appFontFileData: null,
+          appFontFileName: ''
+      });
+      get().showToast('Typography reset to System Default');
+  },
+  setAppLanguage: (langCode) => {
+      get().setSettingValue('appLanguage', langCode);
   },
   setSidebarPosition: (pos) => {
       const opposite = pos === 'right' ? 'left' : 'right';
@@ -2402,11 +2584,19 @@ const useUIStore = create((set, get) => ({
           frameCurvature: s.frameCurvature || 'default',
           tabPresentation: s.tabPresentation || 'pills',
           windowControlsStyle: s.windowControlsStyle || 'mac',
+          windowControlsOrder: s.windowControlsOrder || 'auto',
           layoutTag,
           layoutSummary,
           isAdblockActive,
           adblockLevel: s.adblockLevel || 'standard',
           customSpaces: spaces,
+          appFontType: s.appFontType || 'default',
+          appFontFamily: s.appFontFamily || 'default',
+          appFontGoogleFamily: s.appFontGoogleFamily || '',
+          appFontCustomName: s.appFontCustomName || '',
+          appFontLetterSpacing: s.appFontLetterSpacing || 'normal',
+          appFontSizeScale: s.appFontSizeScale ?? 100,
+          appFontWeightShift: s.appFontWeightShift || 'normal',
           highlights: [
               layoutTag,
               `${spaces.length} Workspace${spaces.length > 1 ? 's' : ''}`,
@@ -2660,6 +2850,15 @@ const useUIStore = create((set, get) => ({
       }
       if (typeof window !== 'undefined' && window.electronAPI?.syncThemeSource) {
           window.electronAPI.syncThemeSource(validTheme);
+      }
+
+      const isReduced = Boolean(get().settings?.a11yReducedMotion || get().isSystemReducedMotion);
+      if (isReduced) {
+          set({ 
+              theme: validTheme,
+              themeTransition: null
+          });
+          return;
       }
 
       // Trigger GPU compositor veil crossfade
@@ -3230,6 +3429,9 @@ export const syncInitialSettingsToElectron = () => {
 
 if (typeof window !== 'undefined') {
   window.__uiStore = useUIStore;
+  try {
+    applyAppFont(useUIStore.getState().settings);
+  } catch (_) {}
 }
 
 // Hardware-aware animation duration scaler for eco, balanced, and ultra performance tiers

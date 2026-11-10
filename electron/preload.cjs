@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Platform & Hardware Specs
     platform: process.platform,
     getHardwareSpecs: () => ipcRenderer.invoke('get-hardware-specs'),
-    
+
     // Window controls
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
@@ -55,7 +55,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     openWithDialog: (url) => ipcRenderer.invoke('open-with-dialog', url),
     logToTerminal: (message, data) => {
-        try { ipcRenderer.send('debug-terminal-log', message, data); } catch (_) {}
+        try { ipcRenderer.send('debug-terminal-log', message, data); } catch (_) { }
     },
 
     // Vault
@@ -323,6 +323,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getActiveWallpaper: () => ipcRenderer.invoke('wallpaper-get-active'),
     resetWallpaper: () => ipcRenderer.invoke('wallpaper-reset'),
     getGifDuration: (url) => ipcRenderer.invoke('wallpaper-get-gif-duration', url),
+    getGifData: (url) => ipcRenderer.invoke('wallpaper-get-gif-data', url),
 
     // Runtime Firebase Configuration (for production packaged installations like .deb / .exe)
     getFirebaseConfig: () => ipcRenderer.invoke('get-firebase-config'),

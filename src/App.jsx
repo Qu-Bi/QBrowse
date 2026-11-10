@@ -9,6 +9,7 @@ import useGlobalShortcuts from './hooks/useGlobalShortcuts';
 import useDragAndDrop from './hooks/useDragAndDrop';
 import { listenToEvent } from './services/electronIPC';
 import { playBootWelcomeChime, playDownloadCompleteChime } from './utils/bootAudio';
+import { applyAppFont } from './utils/appFontManager';
 
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
@@ -29,9 +30,11 @@ import AddPinModal from './components/modals/AddPinModal';
 import PasskeyVerificationModal from './components/modals/PasskeyVerificationModal';
 import Overlays from './components/common/Overlays';
 import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
+import LanguageWarpOverlay from './components/common/LanguageWarpOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
 import UserProfilePopover from './components/popovers/UserProfilePopover';
+import { resolveActiveLanguage } from './i18n/index';
 import WallpaperEngine from './components/common/WallpaperEngine';
 import { isLikelyDownloadUrl } from './utils/downloadHelpers';
 
@@ -67,6 +70,16 @@ export default function App() {
     const initSystemReducedMotion = useUIStore(state => state.initSystemReducedMotion);
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
     const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
+
+    const appFontType = useUIStore(state => state.settings?.appFontType);
+    const appFontFamily = useUIStore(state => state.settings?.appFontFamily);
+    const appFontGoogleFamily = useUIStore(state => state.settings?.appFontGoogleFamily);
+    const appFontCustomName = useUIStore(state => state.settings?.appFontCustomName);
+    const appFontLetterSpacing = useUIStore(state => state.settings?.appFontLetterSpacing);
+    const appFontSizeScale = useUIStore(state => state.settings?.appFontSizeScale);
+    const appFontWeightShift = useUIStore(state => state.settings?.appFontWeightShift);
+    const appFontFileData = useUIStore(state => state.settings?.appFontFileData);
+    const appLanguage = useUIStore(state => state.settings?.appLanguage);
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
@@ -586,6 +599,28 @@ export default function App() {
         }
     }, [a11yHighContrast, a11yDyslexiaFont, a11yReducedMotion, a11yFocusRings, isSystemReducedMotion, frameCurvature]);
 
+    // Synchronize custom app font and typography variables
+    useEffect(() => {
+        applyAppFont({
+            appFontType,
+            appFontFamily,
+            appFontGoogleFamily,
+            appFontCustomName,
+            appFontLetterSpacing,
+            appFontSizeScale,
+            appFontWeightShift,
+            appFontFileData
+        });
+    }, [appFontType, appFontFamily, appFontGoogleFamily, appFontCustomName, appFontLetterSpacing, appFontSizeScale, appFontWeightShift, appFontFileData]);
+
+    // Synchronize active language with document root
+    useEffect(() => {
+        const activeCode = resolveActiveLanguage(appLanguage);
+        if (typeof document !== 'undefined') {
+            document.documentElement.lang = activeCode;
+        }
+    }, [appLanguage]);
+
     const handleBootFinish = () => {
         finishBoot();
         if (!useUIStore.getState().setupComplete) {
@@ -708,6 +743,7 @@ export default function App() {
 
                 <Overlays />
                 <TabSwitcherOverlay />
+                <LanguageWarpOverlay />
                 <DefaultBrowserBanner />
 
                 {/* USER PROFILE & CLOUD SYNC POPOVER */}

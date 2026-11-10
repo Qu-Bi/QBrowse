@@ -303,10 +303,18 @@ export const applyExperiencePreset = (preset, { uiStore, tabStore, showToast } =
     if (preset.frameCurvature) batchUpdates.frameCurvature = preset.frameCurvature;
     if (preset.tabPresentation) batchUpdates.tabPresentation = preset.tabPresentation;
     if (preset.windowControlsStyle) batchUpdates.windowControlsStyle = preset.windowControlsStyle;
+    if (preset.windowControlsOrder) batchUpdates.windowControlsOrder = preset.windowControlsOrder;
     if (preset.adblockLevel) batchUpdates.adblockLevel = preset.adblockLevel;
     if (preset.searchEngine) batchUpdates.searchEngine = preset.searchEngine;
     if (preset.uiScale) batchUpdates.uiScale = preset.uiScale;
     if (Array.isArray(preset.customSpaces)) batchUpdates.customSpaces = preset.customSpaces;
+    if (preset.appFontType) batchUpdates.appFontType = preset.appFontType;
+    if (preset.appFontFamily) batchUpdates.appFontFamily = preset.appFontFamily;
+    if (preset.appFontGoogleFamily !== undefined) batchUpdates.appFontGoogleFamily = preset.appFontGoogleFamily;
+    if (preset.appFontCustomName !== undefined) batchUpdates.appFontCustomName = preset.appFontCustomName;
+    if (preset.appFontLetterSpacing) batchUpdates.appFontLetterSpacing = preset.appFontLetterSpacing;
+    if (preset.appFontSizeScale !== undefined) batchUpdates.appFontSizeScale = preset.appFontSizeScale;
+    if (preset.appFontWeightShift) batchUpdates.appFontWeightShift = preset.appFontWeightShift;
 
     if (Object.keys(batchUpdates).length > 0) {
         if (uiStore?.setSettingsBatch) {
