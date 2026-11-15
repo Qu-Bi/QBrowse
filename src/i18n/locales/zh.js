@@ -64,6 +64,7 @@ export default {
         tabs: {
             appearance: "外观与主题",
             layout: "界面与布局",
+            typography: "排版与字体",
             spaces: "工作区管理",
             accessibility: "无障碍辅助",
             privacy: "隐私与安全",

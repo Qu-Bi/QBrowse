@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
 
 export default function FindInPageBar() {
     const {
@@ -80,21 +81,14 @@ export default function FindInPageBar() {
 
     return (
         <div 
-            style={{ 
-                backdropFilter: 'blur(28px) saturate(180%)', 
-                WebkitBackdropFilter: 'blur(28px) saturate(180%)' 
-            }}
-            className={`absolute top-5 right-7 z-[60] flex items-center gap-1.5 backdrop-blur-2xl rounded-full h-11 px-3.5 ${
+            style={getLiquidGlassInlineStyle(isBright)}
+            className={`absolute top-5 right-7 z-[60] flex items-center gap-1.5 rounded-full h-11 px-3.5 ${
                 isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
-            } origin-top-right select-none transition-all duration-200 border ${
-                isBright
-                    ? 'bg-white/90 border-black/[0.06] shadow-[0_16px_40px_rgba(0,0,0,0.12)] text-zinc-900'
-                    : 'bg-[#181a24]/80 border-white/[0.08] shadow-[0_16px_40px_rgba(0,0,0,0.55)] text-white/90'
-            }`}
+            } origin-top-right select-none transition-all duration-200 ${getLiquidGlassSurfaceClasses(isBright)}`}
             onClick={(e) => e.stopPropagation()}
         >
-            <div className="w-6 h-6 rounded-full bg-white/[0.04] flex items-center justify-center shrink-0">
-                <Search size={12} className={isBright ? 'text-zinc-500' : 'text-accent'} />
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'}`}>
+                <Search size={12} className={isBright ? 'text-zinc-600' : 'text-accent'} />
             </div>
             
             <input
@@ -173,7 +167,7 @@ export default function FindInPageBar() {
             <button
                 onClick={() => setIsFindOpen(false)}
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-95 ml-0.5 ${
-                    isBright ? 'text-zinc-400 hover:text-rose-600 hover:bg-black/5' : 'text-white/40 hover:text-rose-400 hover:bg-white/10'
+                    isBright ? 'text-zinc-500 hover:text-rose-600 hover:bg-black/5' : 'text-white/40 hover:text-rose-400 hover:bg-white/10'
                 }`}
                 title="Close (Esc)"
             >

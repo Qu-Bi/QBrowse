@@ -3,6 +3,21 @@ import { Compass, X, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react'
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import qbrowseLogo from '../../assets/icon.png';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
+
+const getPlatformId = () => {
+    const p = (typeof window !== 'undefined' && (window.electronAPI?.platform || window.process?.platform))
+        || (typeof process !== 'undefined' && process?.platform)
+        || '';
+    if (p === 'darwin' || p === 'linux' || p === 'win32') return p;
+    const ua = typeof navigator !== 'undefined'
+        ? `${navigator.userAgentData?.platform || ''} ${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase()
+        : '';
+    if (ua.includes('mac') || ua.includes('darwin')) return 'darwin';
+    if (ua.includes('win')) return 'win32';
+    if (ua.includes('linux')) return 'linux';
+    return 'win32';
+};
 
 export default function DefaultBrowserBanner() {
     const showToast = useUIStore(state => state.showToast);
@@ -12,6 +27,17 @@ export default function DefaultBrowserBanner() {
     const setupComplete = useUIStore(state => state.setupComplete);
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const platformId = getPlatformId();
+    const defaultAppsLabel = platformId === 'linux'
+        ? 'Default Applications'
+        : platformId === 'darwin'
+            ? 'macOS System Settings'
+            : 'Windows Default Apps';
+    const settingsWindowLabel = platformId === 'linux'
+        ? 'System Settings'
+        : platformId === 'darwin'
+            ? 'macOS System Settings'
+            : 'Windows Settings';
 
     const [isVisible, setIsVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
@@ -191,9 +217,9 @@ export default function DefaultBrowserBanner() {
                 closeBanner();
             } else {
                 setWaitingForConfirmation(true);
-                showToast('Opening Windows Default Apps. Click "Set default" for QBrowse.');
+                showToast(`Opening ${defaultAppsLabel}. Click "Set default" for QBrowse.`);
 
-                // Background poll every 2s for up to 30s while user interacts with Windows Settings window
+                // Background poll every 2s for up to 30s while user interacts with system Settings window
                 if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
                 let polls = 0;
                 pollIntervalRef.current = setInterval(async () => {
@@ -259,11 +285,10 @@ export default function DefaultBrowserBanner() {
 
     return (
         <div className={`fixed top-12 right-6 z-[9990] max-w-[350px] w-full ${isClosing ? 'animate-pop-out' : 'animate-pop-in'} origin-top-right pointer-events-auto select-none`}>
-            <div className={`relative overflow-hidden p-3 rounded-2xl backdrop-blur-3xl transition-all duration-300 ${
-                isBright
-                    ? 'bg-white/90 border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] text-zinc-900'
-                    : 'bg-[#0c0c10]/95 border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.65)] text-white'
-            }`}>
+            <div
+                style={getLiquidGlassInlineStyle(isBright)}
+                className={`relative overflow-hidden p-3 rounded-2xl transition-all duration-300 ${getLiquidGlassSurfaceClasses(isBright)}`}
+            >
                 {/* Subtle top accent gradient line */}
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-accent to-transparent opacity-80" />
 
@@ -299,7 +324,7 @@ export default function DefaultBrowserBanner() {
                                 className="px-3 py-1 bg-accent text-black font-semibold rounded-lg text-[11px] transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm shadow-accent/20 flex items-center gap-1 cursor-pointer disabled:opacity-75"
                             >
                                 {waitingForConfirmation ? (
-                                    <span className="animate-pulse">Confirm in Windows Settings...</span>
+                                    <span className="animate-pulse">Confirm in {settingsWindowLabel}...</span>
                                 ) : isSetting ? (
                                     <span>Opening Settings...</span>
                                 ) : (
@@ -313,7 +338,7 @@ export default function DefaultBrowserBanner() {
                             <button
                                 onClick={handleNeverAskAgain}
                                 className={`text-[11px] transition-colors cursor-pointer ${
-                                    isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white/80'
+                                    isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/45 hover:text-white/80'
                                 }`}
                             >
                                 Don't ask again
@@ -325,7 +350,7 @@ export default function DefaultBrowserBanner() {
                     <button
                         onClick={handleDismissSession}
                         className={`p-1 rounded-md transition-colors cursor-pointer -mt-0.5 -mr-0.5 ${
-                            isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'
+                            isBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'
                         }`}
                         title="Dismiss for now"
                     >

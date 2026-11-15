@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import useTabStore from '../../store/useTabStore';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
@@ -9,6 +10,7 @@ import { useAnnotationStore, normalizeAnnotationUrl, HIGHLIGHT_COLORS } from '..
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
 import { X, StickyNote, Trash2, Copy, Check } from 'lucide-react';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 import FlagsPage from '../pages/FlagsPage';
 import LocalFileViewer from '../pages/LocalFileViewer';
 import DrmHandOffBanner from '../features/DrmHandOffBanner';
@@ -44,6 +46,7 @@ const isSameOrEquivalentUrl = (a, b) => {
 const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions, theme: themeProp }) => {
     const storeTheme = useUIStore(state => state.theme);
     const theme = themeProp || storeTheme;
+    const wrapperRef = useRef(null);
     const wvRef = useRef(null);
     const isDomReadyRef = useRef(false);
     const pendingScrollAnnotationRef = useRef(null);
@@ -621,7 +624,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             try {
                 const isCosmetic = useUIStore.getState().settings?.cosmetic !== false;
                 if (isCosmetic) {
-                    wv.insertCSS(`.ad-container, .adsbygoogle, div[id^="google_ads_"], div[aria-label="Advertisement"], .ytd-ad-slot-renderer, .trc_rbox_outer, .OUTBRAIN, #taboola-below-article-thumbnails, [class*="reklama"], [id*="reklama"], [id*="Reklama"], [class*="Reklama"], .wp-header-panel, [class*="wp-header-panel"], [class*="bmjdxfegh"], [class*="screeningWallpaper"], [data-st-area*="reklama"], [data-vab-box], .cHJldmVudENC, .font-wp-native, [class*="Billboard"], [id*="Billboard"], [class*="Wallpaper"], [id*="Wallpaper"], [class*="Tapeta"], [id*="Tapeta"], [class*="Branding"], [id*="Branding"], [id^="wp-ad"], [class*="wp-ad"], [id^="gpt-ad"], [class*="gpt-ad"], [id^="ad-desktop"], [class*="ad-desktop"], [class*="AdSlot"], [class*="ad-slot"], [class*="ad_slot"] { display: none !important; height: 0 !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }`).catch(() => {});
+                    wv.insertCSS(`.ad-container, .adsbygoogle, div[id^="google_ads_"], div[aria-label="Advertisement"], .ytd-ad-slot-renderer, .trc_rbox_outer, .OUTBRAIN, #taboola-below-article-thumbnails, [class*="reklama"], [id*="reklama"], [id*="Reklama"], [class*="Reklama"], .wp-header-panel, [class*="wp-header-panel"], [class*="bmjdxfegh"], [class*="screeningWallpaper"], [data-st-area*="reklama"], [data-vab-box], .cHJldmVudENC, .font-wp-native, [class*="Billboard"], [id*="Billboard"], [class*="Wallpaper"], [id*="Wallpaper"], [class*="Tapeta"], [id*="Tapeta"], [id^="wp-ad"], [class*="wp-ad"], [id^="gpt-ad"], [class*="gpt-ad"], [id^="ad-desktop"], [class*="ad-desktop"], [class*="AdSlot"], [class*="ad-slot"], [class*="ad_slot"] { display: none !important; height: 0 !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }`).catch(() => {});
                     const currentTabUrl = tab.url ? tab.url.toLowerCase() : '';
                     if (currentTabUrl.includes('wp.pl')) {
                         wv.insertCSS(`body, html, #root, #app { background-image: none !important; } .wp-header-panel, [class*="wp-header-panel"], [class*="screeningWallpaper"] { display: none !important; height: 0 !important; } div[class^="_"] > style + div[class] { display: none !important; }`).catch(() => {});
@@ -1237,7 +1240,6 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('console-message', handleConsoleMessage);
         wv.addEventListener('ipc-message', handleIpcMessage);
         wv.addEventListener('new-window', handleNewWindow);
-        wv.addEventListener('did-create-window', handleNewWindow);
         wv.addEventListener('will-navigate', handleWillNavigate);
 
         return () => {
@@ -1262,7 +1264,6 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('ipc-message', handleIpcMessage);
             wv.removeEventListener('found-in-page', handleFoundInPage);
             wv.removeEventListener('new-window', handleNewWindow);
-            wv.removeEventListener('did-create-window', handleNewWindow);
             wv.removeEventListener('will-navigate', handleWillNavigate);
         };
     }, [isActive, isSpaceActive, setSpaceTabs, tab.id]);
@@ -1724,30 +1725,50 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         return () => window.removeEventListener('mousedown', handleHostDismiss, true);
     }, [selectionPill]);
 
-    const containerW = wvRef.current?.clientWidth || 800;
-    const containerH = wvRef.current?.clientHeight || 600;
+    const [, setPortalTick] = useState(0);
+    useEffect(() => {
+        if (!activeNoteCard && !selectionPill) return;
+        const handleResize = () => setPortalTick(t => t + 1);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [activeNoteCard, selectionPill]);
 
-    const cardTop = activeNoteCard?.rect 
-        ? Math.max(10, Math.min(activeNoteCard.rect.bottom + 8, containerH - 240))
-        : 10;
+    const wvRect = (activeNoteCard || selectionPill)
+        ? (wvRef.current || wrapperRef.current)?.getBoundingClientRect()
+        : null;
+    const viewLeft = wvRect?.left ?? 0;
+    const viewTop = wvRect?.top ?? 0;
+    const viewW = wvRect?.width || wvRef.current?.clientWidth || 800;
+    const viewH = wvRect?.height || wvRef.current?.clientHeight || 600;
+    const winW = typeof window !== 'undefined' ? window.innerWidth : viewW;
+    const winH = typeof window !== 'undefined' ? window.innerHeight : viewH;
+
+    const cardMaxTop = Math.max(12, Math.min(winH - 245, viewTop + viewH - 245));
+    const cardMaxLeft = Math.max(12, Math.min(winW - 332, viewLeft + viewW - 332));
+    const cardTop = activeNoteCard?.rect
+        ? Math.max(12, Math.min(viewTop + activeNoteCard.rect.bottom + 8, cardMaxTop))
+        : Math.max(12, viewTop + 12);
     const cardLeft = activeNoteCard?.rect
-        ? Math.max(12, Math.min(activeNoteCard.rect.left, containerW - 340))
-        : 12;
+        ? Math.max(12, Math.min(viewLeft + activeNoteCard.rect.left, cardMaxLeft))
+        : Math.max(12, viewLeft + 12);
 
+    const pillMaxTop = Math.max(12, Math.min(winH - 52, viewTop + viewH - 52));
+    const pillMaxLeft = Math.max(12, Math.min(winW - 256, viewLeft + viewW - 256));
     const pillTop = selectionPill?.rect
         ? (selectionPill.rect.top < 52
-            ? Math.max(10, Math.min(selectionPill.rect.bottom + 8, containerH - 46))
-            : Math.max(10, Math.min(selectionPill.rect.top - 44, containerH - 46)))
-        : 10;
+            ? Math.max(12, Math.min(viewTop + selectionPill.rect.bottom + 8, pillMaxTop))
+            : Math.max(12, Math.min(viewTop + selectionPill.rect.top - 44, pillMaxTop)))
+        : Math.max(12, viewTop + 12);
     const pillLeft = selectionPill?.rect
-        ? Math.max(12, Math.min(selectionPill.rect.left + (selectionPill.rect.width / 2) - 115, containerW - 245))
-        : 12;
+        ? Math.max(12, Math.min(viewLeft + selectionPill.rect.left + (selectionPill.rect.width / 2) - 115, pillMaxLeft))
+        : Math.max(12, viewLeft + 12);
 
     const shouldShow = isVisible && !tab.isClosing;
     const isHtmlFs = isThisTabHtmlFullscreen && shouldShow;
 
     return (
         <div 
+            ref={wrapperRef}
             className={`w-full absolute ${isBright ? 'bg-white' : 'bg-[#0c0d14]'} transition-opacity duration-200 ${
                 tab.isClosing ? 'webview-closing-anim' : ''
             } ${isHtmlFs ? 'fixed inset-0 !z-[999999] !w-screen !h-screen bg-black' : ''}`} 
@@ -1858,7 +1879,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 plugins="true"
                 webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}
             />
-            {activeNoteCard && shouldShow && (
+            {activeNoteCard && shouldShow && typeof document !== 'undefined' && createPortal(
                 <>
                     <div
                         className="fixed inset-0 z-[99990] bg-transparent cursor-default select-none"
@@ -1873,8 +1894,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     />
                     <div
                         id="qbrowse-sticky-note-card"
-                        className="absolute z-[99999] w-[320px] bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.65)] p-3.5 text-white flex flex-col gap-2.5 animate-pop-in select-none"
+                        className={`fixed z-[99999] w-[320px] rounded-2xl p-3.5 flex flex-col gap-2.5 animate-pop-in select-none ${getLiquidGlassSurfaceClasses(isBright)}`}
                         style={{
+                            ...getLiquidGlassInlineStyle(isBright),
                             top: `${cardTop}px`,
                             left: `${cardLeft}px`
                         }}
@@ -1882,11 +1904,11 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                         onMouseDown={e => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
+                        <div className={`flex items-center justify-between border-b pb-2 ${isBright ? 'border-black/[0.08]' : 'border-white/[0.08]'}`}>
                             <div className="flex items-center gap-2">
                                 <div className="flex items-center gap-1.5">
                                     <StickyNote size={13} className="text-accent" />
-                                    <span className="text-[11px] font-bold uppercase tracking-wider text-white/70 font-mono">Sticky Note</span>
+                                    <span className={`text-[11px] font-bold uppercase tracking-wider font-mono ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>Sticky Note</span>
                                 </div>
                                 <div className="flex items-center gap-1.5 ml-1">
                                     {Object.keys(HIGHLIGHT_COLORS).map(key => {
@@ -1896,7 +1918,11 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                             <button
                                                 key={key}
                                                 onClick={() => handleNoteColorChange(key)}
-                                                className={`w-3.5 h-3.5 rounded-full transition-transform cursor-pointer border ${isSelected ? 'border-white scale-125 shadow-[0_0_8px_rgba(255,255,255,0.4)]' : 'border-white/20 hover:scale-110'}`}
+                                                className={`w-3.5 h-3.5 rounded-full transition-transform cursor-pointer border ${
+                                                    isSelected
+                                                        ? (isBright ? 'border-zinc-900 scale-125 shadow-[0_0_8px_rgba(0,0,0,0.22)]' : 'border-white scale-125 shadow-[0_0_8px_rgba(255,255,255,0.4)]')
+                                                        : (isBright ? 'border-black/25 hover:scale-110 hover:border-black/50' : 'border-white/25 hover:scale-110 hover:border-white/60')
+                                                }`}
                                                 style={{ backgroundColor: col.border }}
                                                 title={col.label}
                                             />
@@ -1906,7 +1932,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                             </div>
                             <button
                                 onClick={handleCloseNoteCard}
-                                className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer text-xs flex items-center justify-center"
+                                className={`p-1 rounded-lg transition cursor-pointer text-xs flex items-center justify-center ${
+                                    isBright ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/85 hover:text-white hover:bg-white/10'
+                                }`}
                                 title="Close (Esc)"
                             >
                                 <X size={13} />
@@ -1928,34 +1956,44 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                 }
                             }}
                             placeholder="Type your note, thought, or takeaway..."
-                            className="w-full h-24 bg-white/[0.03] focus:bg-white/[0.06] border border-white/[0.08] focus:border-accent/60 rounded-xl p-2.5 text-xs text-white/90 resize-none outline-none transition placeholder-white/30 font-sans leading-relaxed focus:shadow-[0_0_15px_rgba(212,163,115,0.15)] custom-scrollbar"
+                            className={`w-full h-24 rounded-xl p-2.5 text-xs resize-none outline-none transition font-sans leading-relaxed custom-scrollbar border ${
+                                isBright
+                                    ? 'bg-black/[0.03] focus:bg-white/85 border-black/[0.10] focus:border-accent text-zinc-900 placeholder-zinc-500 focus:shadow-[0_0_15px_rgba(0,0,0,0.06)]'
+                                    : 'bg-white/[0.04] focus:bg-white/[0.07] border-white/[0.08] focus:border-accent/60 text-white/90 placeholder-white/35 focus:shadow-[0_0_15px_rgba(212,163,115,0.15)]'
+                            }`}
                         />
 
                         {/* Action Buttons */}
                         <div className="flex items-center justify-between pt-0.5">
                             <button
                                 onClick={handleDeleteNote}
-                                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                                className={`border px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                                    isBright
+                                        ? 'bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/25'
+                                        : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/25'
+                                }`}
                             >
                                 <Trash2 size={12} />
                                 <span>Delete</span>
                             </button>
                             <button
                                 onClick={handleSaveNote}
-                                className="bg-accent hover:opacity-90 text-black px-4 py-1.5 rounded-xl text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95"
+                                className="bg-accent hover:opacity-90 text-zinc-950 px-4 py-1.5 rounded-xl text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95"
                             >
                                 Save
                             </button>
                         </div>
                     </div>
-                </>
+                </>,
+                document.body
             )}
             {/* Floating Selection Highlight Pill */}
-            {selectionPill && shouldShow && (
+            {selectionPill && shouldShow && typeof document !== 'undefined' && createPortal(
                 <div
                     id="qbrowse-highlight-pill"
-                    className="absolute z-[99998] flex items-center gap-1.5 px-3 py-1.5 bg-[#0c0c0f]/94 backdrop-blur-2xl border border-white/[0.06] rounded-full shadow-[0_16px_40px_rgba(0,0,0,0.65)] animate-pop-in select-none text-white font-sans"
+                    className={`fixed z-[99998] flex items-center gap-1.5 px-3 py-1.5 !rounded-full animate-pop-in select-none font-sans ${getLiquidGlassSurfaceClasses(isBright)}`}
                     style={{
+                        ...getLiquidGlassInlineStyle(isBright),
                         top: `${pillTop}px`,
                         left: `${pillLeft}px`
                     }}
@@ -1974,7 +2012,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                     key={key}
                                     onClick={() => handlePillHighlight(key)}
                                     title={`Highlight with ${col.label}`}
-                                    className="w-3.5 h-3.5 rounded-full border border-white/30 hover:scale-125 hover:border-white transition-all cursor-pointer shadow-sm"
+                                    className={`w-3.5 h-3.5 rounded-full border hover:scale-125 transition-all cursor-pointer shadow-sm ${
+                                        isBright ? 'border-black/25 hover:border-zinc-950' : 'border-white/30 hover:border-white'
+                                    }`}
                                     style={{ backgroundColor: col.border }}
                                 />
                             );
@@ -1982,12 +2022,16 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     </div>
 
                     {/* Divider */}
-                    <div className="w-[1px] h-3.5 bg-white/20 mx-0.5" />
+                    <div className={`w-[1px] h-3.5 mx-0.5 ${isBright ? 'bg-black/[0.08]' : 'bg-white/10'}`} />
 
                     {/* Sticky Note Button */}
                     <button
                         onClick={handlePillAddNote}
-                        className="flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.08] hover:bg-white/[0.16] border border-white/10 rounded-full text-xs font-medium text-white/90 hover:text-white transition cursor-pointer"
+                        className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-full text-xs font-medium transition cursor-pointer ${
+                            isBright
+                                ? 'bg-black/[0.03] border-black/[0.08] text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]'
+                                : 'bg-white/[0.06] border-white/10 text-white/85 hover:text-white hover:bg-white/10'
+                        }`}
                         title="Add Note"
                     >
                         <StickyNote size={12} className="text-accent" />
@@ -1997,12 +2041,17 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     {/* Copy Selection Button */}
                     <button
                         onClick={handlePillCopy}
-                        className="flex items-center justify-center p-1 px-1.5 bg-white/[0.08] hover:bg-white/[0.16] border border-white/10 rounded-full text-xs font-medium text-white/90 hover:text-white transition cursor-pointer"
+                        className={`flex items-center justify-center p-1 px-1.5 border rounded-full text-xs font-medium transition cursor-pointer ${
+                            isBright
+                                ? 'bg-black/[0.03] border-black/[0.08] text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]'
+                                : 'bg-white/[0.06] border-white/10 text-white/85 hover:text-white hover:bg-white/10'
+                        }`}
                         title="Copy selection"
                     >
-                        {pillCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        {pillCopied ? <Check size={12} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} /> : <Copy size={12} />}
                     </button>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

@@ -8,6 +8,11 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import qbrowseLogo from '../../assets/icon.png';
 
+const getBiometricLabel = () => {
+    const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
+    return osPlatform === 'darwin' ? 'Touch ID' : osPlatform === 'linux' ? 'System Biometrics' : 'Windows Hello';
+};
+
 const TOUR_STEPS = [
     {
         id: 'spaces',
@@ -52,7 +57,7 @@ const TOUR_STEPS = [
         title: 'Zero-Knowledge QVault',
         icon: KeyRound,
         badge: 'Hardware Security',
-        description: 'Your master passwords, passkeys, and credit card autofills are encrypted directly on your device using local hardware keys and Windows Hello biometric security. Zero plain text ever leaves your PC.',
+        description: `Your master passwords, passkeys, and credit card autofills are encrypted directly on your device using local hardware keys and ${getBiometricLabel()} biometric security. Zero plain text ever leaves your PC.`,
         missionInstruction: 'Click the QVault icon on the top bar to open your local QVault',
         missionSuccess: 'QVault opened! All stored credentials are encrypted locally on your hardware with biometric protection.',
         shortcut: 'Top Bar'

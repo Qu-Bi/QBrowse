@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Shield, AlertCircle, HelpCircle, Terminal, Lock, User, Eye, EyeOff, X } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 
 export default function BrowserDialogOverlay() {
     const activeDialog = useUIStore(state => state.activeDialog);
     const closeActiveDialog = useUIStore(state => state.closeActiveDialog);
     const theme = useUIStore(state => state.theme);
-    const isBright = theme === 'light';
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const [inputValue, setInputValue] = useState('');
     const [authUsername, setAuthUsername] = useState('');
@@ -155,13 +158,10 @@ export default function BrowserDialogOverlay() {
         >
             <div 
                 id="browser-dialog-card"
-                className={`relative w-full max-w-md rounded-2xl overflow-hidden border transition-all duration-300 ${
+                style={getLiquidGlassInlineStyle(isBright)}
+                className={`relative w-full max-w-md rounded-2xl overflow-hidden transition-all duration-300 ${getLiquidGlassSurfaceClasses(isBright)} ${
                     isClosing ? 'animate-pop-out' : 'animate-pop-in'
-                } p-5 flex flex-col gap-4 ${
-                    isBright 
-                        ? 'bg-white/85 backdrop-blur-3xl border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.12)]' 
-                        : 'bg-[#0c0d14]/85 backdrop-blur-3xl border-white/[0.06] text-white shadow-[0_25px_70px_rgba(0,0,0,0.7)]'
-                }`}
+                } p-5 flex flex-col gap-4`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Ambient Glowing Highlights matching ToolHub & AuthModal */}

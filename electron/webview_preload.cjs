@@ -10,11 +10,9 @@ ipcRenderer.sendToHost = function(channel, ...args) {
 
 function detectIsOAuthPopup() {
     try {
+        const isTopFrame = typeof window !== 'undefined' && window === window.top;
+        if (!isTopFrame) return false;
         if (Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup')) return true;
-        if (typeof window !== 'undefined' && Boolean(window.opener)) return true;
-        if (typeof window !== 'undefined' && window.location && isGoogleAuthTarget(window.location.href)) {
-            if (typeof ipcRenderer.sendToHost !== 'function' || !origSendToHost) return true;
-        }
     } catch (_) {}
     return false;
 }
@@ -58,14 +56,38 @@ const isGoogleAuth = isGoogleAuthTarget(currentHostname) || isGoogleAuthTarget(c
 
 // Authentic Google Chrome desktop stealth hardening: remove Electron tokens, mock standard Chrome runtime APIs
 try {
-    const chromeFull = (process && process.versions && process.versions.chrome) || '150.0.7871.114';
-    const chromeMajor = chromeFull.split('.')[0] || '150';
+    const chromeFull = String((process && process.versions && process.versions.chrome) || '134.0.0.0').replace(/[^0-9.]/g, '') || '134.0.0.0';
+    const chromeMajor = chromeFull.split('.')[0] || '134';
+    const hostPlatform = process.platform === 'linux' ? 'Linux' : process.platform === 'darwin' ? 'macOS' : 'Windows';
+    const hostOscpu = process.platform === 'linux' ? 'Linux x86_64' : process.platform === 'darwin' ? 'Intel Mac OS X 10_15_7' : 'Windows NT 10.0; Win64; x64';
+    const hostNavPlatform = process.platform === 'linux' ? 'Linux x86_64' : process.platform === 'darwin' ? 'MacIntel' : 'Win32';
+    const hostPlatformVersion = process.platform === 'win32' ? '15.0.0' : '6.8.0';
+    const hostUaOs = process.platform === 'linux' ? `X11; ${hostOscpu}` : process.platform === 'darwin' ? `Macintosh; ${hostOscpu}` : hostOscpu;
+    const hostArch = process.arch === 'arm64' ? 'arm' : 'x86';
+    const cleanUserAgent = `Mozilla/5.0 (${hostUaOs}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeFull} Safari/537.36`;
+
     const stealthChromeScript = `
         (function() {
             'use strict';
             try {
-                // 1. Sanitize navigator.userAgentData to pure Google Chrome desktop on prototype
+                // 1. Sanitize navigator.userAgent, navigator.platform & navigator.userAgentData to pure Google Chrome desktop on prototype
                 const proto = (window.navigator && Object.getPrototypeOf(window.navigator)) || (window.navigator || {});
+                if (window.navigator) {
+                    try {
+                        Object.defineProperty(proto, 'userAgent', {
+                            get: () => '${cleanUserAgent}',
+                            configurable: true,
+                            enumerable: true
+                        });
+                    } catch (_) {}
+                    try {
+                        Object.defineProperty(proto, 'platform', {
+                            get: () => '${hostNavPlatform}',
+                            configurable: true,
+                            enumerable: true
+                        });
+                    } catch (_) {}
+                }
                 if (window.navigator && window.navigator.userAgentData) {
                     const cleanBrands = [
                         { brand: 'Google Chrome', version: '${chromeMajor}' },
@@ -76,15 +98,15 @@ try {
                     const fakeUaData = {
                         brands: cleanBrands,
                         mobile: false,
-                        platform: 'Windows',
+                        platform: '${hostPlatform}',
                         getHighEntropyValues: async (hints = []) => {
                             const res = {
                                 brands: cleanBrands,
                                 mobile: false,
-                                platform: 'Windows'
+                                platform: '${hostPlatform}'
                             };
-                            if (hints.includes('platformVersion')) res.platformVersion = '15.0.0';
-                            if (hints.includes('architecture')) res.architecture = 'x86';
+                            if (hints.includes('platformVersion')) res.platformVersion = '${hostPlatformVersion}';
+                            if (hints.includes('architecture')) res.architecture = '${hostArch}';
                             if (hints.includes('bitness')) res.bitness = '64';
                             if (hints.includes('model')) res.model = '';
                             if (hints.includes('uaFullVersion')) res.uaFullVersion = '${chromeFull}';
@@ -100,7 +122,7 @@ try {
                         toJSON: () => ({
                             brands: cleanBrands,
                             mobile: false,
-                            platform: 'Windows'
+                            platform: '${hostPlatform}'
                         })
                     };
 
@@ -2182,8 +2204,8 @@ function applyWebviewA11yStyles(config) {
         }
     }
 
-    // 4. Force Reduced Motion (Strict WCAG 2.2.2 / 2.3.3 & Windows Animation Effects sync)
-    const isMotionReduced = currentA11yConfig.a11yReducedMotion || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    // 4. Force Reduced Motion (only when explicitly enabled in QBrowse Accessibility settings)
+    const isMotionReduced = Boolean(currentA11yConfig.a11yReducedMotion);
     if (isMotionReduced) {
         css += `
             *, *::before, *::after {
@@ -3918,33 +3940,29 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 (function() {
     function getIsOAuth() {
         try {
-            if (isOAuthPopup) return true;
-            if (Array.isArray(process.argv) && process.argv.includes('--is-oauth-popup')) return true;
-            if (typeof window !== 'undefined' && Boolean(window.opener)) return true;
-            if (typeof window !== 'undefined' && window.location && isGoogleAuthTarget(window.location.href)) {
-                if (typeof ipcRenderer.sendToHost !== 'function' || !origSendToHost) return true;
-            }
+            if (typeof window !== 'undefined' && window !== window.top) return false;
+            return isOAuthPopup === true;
         } catch (_) {}
         return false;
     }
 
     let isOAuth = getIsOAuth();
 
-    ipcRenderer.on('init-oauth-popup-mode', () => {
+    const activateOAuthPopupMode = () => {
+        if (typeof window !== 'undefined' && window !== window.top) return;
         isOAuth = true;
         isOAuthPopup = true;
         if (typeof injectOAuthControls === 'function') {
             injectOAuthControls();
         }
-    });
+    };
+
+    ipcRenderer.on('init-oauth-popup-mode', activateOAuthPopupMode);
+    ipcRenderer.on('mark-as-oauth', activateOAuthPopupMode);
 
     if (typeof window !== 'undefined') {
         try {
-            window.__qbrowse_inject_oauth_controls = () => {
-                isOAuth = true;
-                isOAuthPopup = true;
-                injectOAuthControls();
-            };
+            window.__qbrowse_inject_oauth_controls = activateOAuthPopupMode;
         } catch (_) {}
     }
 
@@ -4039,6 +4057,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
     }
 
     function injectOAuthControls() {
+        if (typeof window !== 'undefined' && window !== window.top) return;
         if (!isOAuth && !getIsOAuth()) return;
         if (document.getElementById('qbrowse-oauth-header')) return;
         if (!document.documentElement) {
@@ -5277,19 +5296,56 @@ try {
     }, true);
 } catch (_) {}
 
+// Shared helper to query live adblock + per-site whitelist state from main process
+async function queryAdblockPageState() {
+    try {
+        const pageState = await ipcRenderer.invoke('get-adblock-page-state', window.location.href);
+        if (pageState && typeof pageState.effectiveEnabled === 'boolean') {
+            return pageState;
+        }
+    } catch (_) {}
+
+    try {
+        const [status, settings] = await Promise.all([
+            ipcRenderer.invoke('get-adblock-status').catch(() => null),
+            ipcRenderer.invoke('get-settings').catch(() => null)
+        ]);
+        const enabled = (status ? status.active !== false : true) && (!settings || settings.adblockEnabled !== false);
+        const youtubeAds = !settings || settings.adblockYoutubeAds !== false;
+        const host = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
+        const allowlist = Array.isArray(settings?.adblockAllowlist) ? settings.adblockAllowlist : [];
+        const whitelisted = allowlist.some((raw) => {
+            if (typeof raw !== 'string') return false;
+            const clean = raw.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+            return clean && (host === clean || host.endsWith('.' + clean));
+        });
+        return {
+            enabled,
+            youtubeAds,
+            whitelisted,
+            effectiveEnabled: enabled && !whitelisted
+        };
+    } catch (_) {
+        return { enabled: true, youtubeAds: true, whitelisted: false, effectiveEnabled: true };
+    }
+}
+
 // Native Adblocker DOM Placeholder Collapser
 // Eliminates blank/grey empty boxes left by blocked ad scripts and iframes
 (function setupAdPlaceholderCollapser() {
     try {
         if (isOAuthPopup || isGoogleAuth) return;
         const href = (typeof window !== 'undefined' && window.location && window.location.href) || '';
+        const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) || '';
         if (
             href.startsWith('chrome:') ||
             href.startsWith('qbrowse:') ||
             href.startsWith('about:') ||
             href.includes('docs.google.com') ||
             href.includes('drive.google.com') ||
-            href.includes('mail.google.com')
+            href.includes('mail.google.com') ||
+            /(^|\.)librus\.pl$/i.test(hostname) ||
+            /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i.test(hostname)
         ) {
             return;
         }
@@ -5326,8 +5382,10 @@ try {
             '[class*="bmjdxfegh"]'
         ].join(',');
 
+        let isCollapserAllowed = true;
+
         function collapseElement(el) {
-            if (!el || el.dataset.qbCollapsed === 'true') return;
+            if (!isCollapserAllowed || !el || el.dataset.qbCollapsed === 'true') return;
             try {
                 el.style.setProperty('display', 'none', 'important');
                 el.style.setProperty('visibility', 'hidden', 'important');
@@ -5378,6 +5436,7 @@ try {
 
         function scanAndCollapse() {
             collapseScheduled = false;
+            if (!isCollapserAllowed) return;
             try {
                 const matches = document.querySelectorAll(AD_SELECTORS);
                 for (let i = 0; i < matches.length; i++) {
@@ -5387,7 +5446,7 @@ try {
         }
 
         function scheduleCollapse() {
-            if (collapseScheduled) return;
+            if (!isCollapserAllowed || collapseScheduled) return;
             collapseScheduled = true;
             if (typeof requestIdleCallback === 'function') {
                 requestIdleCallback(scanAndCollapse, { timeout: 150 });
@@ -5396,19 +5455,8 @@ try {
             }
         }
 
-        // Run immediately if DOM elements exist
-        scheduleCollapse();
-
-        // Run on DOM ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', scheduleCollapse);
-        }
-
-        // Run on window load
-        window.addEventListener('load', scheduleCollapse);
-
-        // Run on dynamic DOM mutations (SPAs and infinite scroll feeds)
         const observer = new MutationObserver((mutations) => {
+            if (!isCollapserAllowed) return;
             let hasAddedNodes = false;
             for (let i = 0; i < mutations.length; i++) {
                 if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
@@ -5421,15 +5469,352 @@ try {
             }
         });
 
-        if (document.body) {
-            observer.observe(document.body, { childList: true, subtree: true });
-        } else {
-            document.addEventListener('DOMContentLoaded', () => {
-                if (document.body) {
-                    observer.observe(document.body, { childList: true, subtree: true });
-                }
-                scheduleCollapse();
-            });
+        queryAdblockPageState().then((state) => {
+            if (!state || !state.effectiveEnabled) {
+                isCollapserAllowed = false;
+                observer.disconnect();
+                return;
+            }
+            isCollapserAllowed = true;
+            scheduleCollapse();
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', scheduleCollapse);
+            }
+            window.addEventListener('load', scheduleCollapse);
+
+            if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true });
+            } else {
+                document.addEventListener('DOMContentLoaded', () => {
+                    if (isCollapserAllowed && document.body) {
+                        observer.observe(document.body, { childList: true, subtree: true });
+                    }
+                    scheduleCollapse();
+                });
+            }
+        }).catch(() => {});
+    } catch (_) {}
+})();
+
+// YouTube Ad Mitigation Engine (pure auto-mute, staged fast-forward & state restoration)
+(function setupYouTubeAdMitigation() {
+    try {
+        if (isOAuthPopup || isGoogleAuth) return;
+        const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) || '';
+        if (!/(^|\.)youtube\.com$/i.test(hostname)) return;
+
+        const VIDEO_GUARD_EVENTS = ['timeupdate', 'ratechange', 'loadedmetadata', 'loadeddata', 'durationchange', 'play', 'playing', 'pause'];
+
+        let active = false;
+        let observedPlayer = null;
+        let playerObserver = null;
+        let rootObserver = null;
+        let adPollTimer = null;
+        let watchTimer = null;
+        let mediaListenersAttached = false;
+        let isProcessingAdState = false;
+        const adMitigationState = {
+            savedPlaybackRate: 1,
+            wasMutedBeforeAd: false,
+            wasInAd: false,
+            capturedPreAdState: false
+        };
+
+        function stopAdPolling() {
+            if (adPollTimer) {
+                clearInterval(adPollTimer);
+                adPollTimer = null;
+            }
         }
+
+        function stopWatchTimer() {
+            if (watchTimer) {
+                clearInterval(watchTimer);
+                watchTimer = null;
+            }
+        }
+
+        function isPlayerShowingAd(player) {
+            return Boolean(
+                player &&
+                (player.classList.contains('ad-showing') ||
+                 player.classList.contains('ad-interrupting'))
+            );
+        }
+
+        function getSafeUserPlaybackRate() {
+            return (
+                Number.isFinite(adMitigationState.savedPlaybackRate) &&
+                adMitigationState.savedPlaybackRate > 0 &&
+                adMitigationState.savedPlaybackRate <= 2
+            )
+                ? adMitigationState.savedPlaybackRate
+                : 1;
+        }
+
+        function restoreVideoState(fallbackVideo) {
+            const targetVideo = fallbackVideo || document.querySelector('video.html5-main-video, video');
+            const targetRate = getSafeUserPlaybackRate();
+            const wasInAd = adMitigationState.wasInAd;
+
+            if (wasInAd) {
+                adMitigationState.wasInAd = false;
+                adMitigationState.capturedPreAdState = false;
+            }
+
+            if (targetVideo) {
+                if (wasInAd || targetVideo.playbackRate > 2) {
+                    try {
+                        if (targetVideo.playbackRate !== targetRate) {
+                            targetVideo.playbackRate = targetRate;
+                        }
+                    } catch (_) {}
+                } else if (
+                    Number.isFinite(targetVideo.playbackRate) &&
+                    targetVideo.playbackRate > 0 &&
+                    targetVideo.playbackRate <= 2
+                ) {
+                    adMitigationState.savedPlaybackRate = targetVideo.playbackRate;
+                }
+
+                if (wasInAd) {
+                    try {
+                        const desiredMuted = Boolean(adMitigationState.wasMutedBeforeAd);
+                        if (targetVideo.muted !== desiredMuted) {
+                            targetVideo.muted = desiredMuted;
+                        }
+                    } catch (_) {}
+                }
+            }
+        }
+
+        function processPlayerAdState() {
+            if (!active || isProcessingAdState) return;
+            isProcessingAdState = true;
+            try {
+                const player = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+                const video = (player && player.querySelector('video.html5-main-video, video')) ||
+                              document.querySelector('video.html5-main-video, video');
+
+                const isAdShowing = isPlayerShowingAd(player);
+
+                if (isAdShowing) {
+                    if (!adMitigationState.wasInAd) {
+                        adMitigationState.wasInAd = true;
+                        adMitigationState.capturedPreAdState = false;
+                    }
+                    if (!adPollTimer) {
+                        adPollTimer = setInterval(processPlayerAdState, 100);
+                    }
+                    if (video) {
+                        if (!adMitigationState.capturedPreAdState) {
+                            adMitigationState.wasMutedBeforeAd = Boolean(video.muted);
+                            if (
+                                Number.isFinite(video.playbackRate) &&
+                                video.playbackRate > 0 &&
+                                video.playbackRate <= 2
+                            ) {
+                                adMitigationState.savedPlaybackRate = video.playbackRate;
+                            }
+                            adMitigationState.capturedPreAdState = true;
+                        }
+                        try {
+                            if (!video.muted) {
+                                video.muted = true;
+                            }
+                        } catch (_) {}
+
+                        const hasDuration = Number.isFinite(video.duration) && video.duration > 0;
+                        const timeRemaining = hasDuration ? (video.duration - video.currentTime) : Infinity;
+
+                        if (timeRemaining <= 0.8) {
+                            const safeRate = getSafeUserPlaybackRate();
+                            try {
+                                if (video.playbackRate !== safeRate) {
+                                    video.playbackRate = safeRate;
+                                }
+                            } catch (_) {}
+                        } else if (timeRemaining <= 1.8) {
+                            try {
+                                if (video.playbackRate !== 2) {
+                                    video.playbackRate = 2;
+                                }
+                            } catch (_) {}
+                        } else if (!video.paused && !video.seeking && video.readyState >= 2 && video.currentTime >= 0.6) {
+                            const targetAdRate = video.readyState >= 3 ? 8 : 3;
+                            try {
+                                if (video.playbackRate !== targetAdRate) {
+                                    video.playbackRate = targetAdRate;
+                                }
+                            } catch (_) {
+                                try {
+                                    if (video.playbackRate !== 3) {
+                                        video.playbackRate = 3;
+                                    }
+                                } catch (_) {}
+                            }
+                        }
+                    }
+                } else {
+                    stopAdPolling();
+                    restoreVideoState(video);
+                }
+            } finally {
+                isProcessingAdState = false;
+            }
+        }
+
+        function handleVideoGuardEvent(event) {
+            if (!active) return;
+            const video = event && event.target;
+            if (!video || video.tagName !== 'VIDEO') return;
+
+            const player = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+            const isAdShowing = isPlayerShowingAd(player);
+
+            if (isAdShowing) {
+                if (
+                    event.type === 'loadedmetadata' ||
+                    event.type === 'loadeddata' ||
+                    event.type === 'durationchange' ||
+                    event.type === 'play' ||
+                    event.type === 'playing' ||
+                    event.type === 'timeupdate' ||
+                    event.type === 'ratechange'
+                ) {
+                    processPlayerAdState();
+                }
+                return;
+            }
+
+            if (adMitigationState.wasInAd || video.playbackRate > 2) {
+                restoreVideoState(video);
+            } else if (
+                Number.isFinite(video.playbackRate) &&
+                video.playbackRate > 0 &&
+                video.playbackRate <= 2
+            ) {
+                adMitigationState.savedPlaybackRate = video.playbackRate;
+            }
+        }
+
+        function attachMediaGuardListeners() {
+            if (mediaListenersAttached) return;
+            mediaListenersAttached = true;
+            for (let i = 0; i < VIDEO_GUARD_EVENTS.length; i++) {
+                document.addEventListener(VIDEO_GUARD_EVENTS[i], handleVideoGuardEvent, true);
+            }
+        }
+
+        function detachMediaGuardListeners() {
+            if (!mediaListenersAttached) return;
+            mediaListenersAttached = false;
+            for (let i = 0; i < VIDEO_GUARD_EVENTS.length; i++) {
+                document.removeEventListener(VIDEO_GUARD_EVENTS[i], handleVideoGuardEvent, true);
+            }
+        }
+
+        function ensurePlayerObserver() {
+            if (!active) return;
+            const player = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+            if (!player || player === observedPlayer) return;
+
+            if (playerObserver) {
+                playerObserver.disconnect();
+            }
+            observedPlayer = player;
+            playerObserver = new MutationObserver(() => {
+                processPlayerAdState();
+            });
+            playerObserver.observe(player, {
+                attributes: true,
+                attributeFilter: ['class'],
+                childList: true,
+                subtree: true
+            });
+            processPlayerAdState();
+        }
+
+        function activate() {
+            if (active) {
+                attachMediaGuardListeners();
+                ensurePlayerObserver();
+                if (!watchTimer) {
+                    watchTimer = setInterval(processPlayerAdState, 250);
+                }
+                processPlayerAdState();
+                return;
+            }
+            active = true;
+            attachMediaGuardListeners();
+            ensurePlayerObserver();
+            if (!watchTimer) {
+                watchTimer = setInterval(processPlayerAdState, 250);
+            }
+            processPlayerAdState();
+
+            if (!rootObserver) {
+                rootObserver = new MutationObserver(() => {
+                    if (!active) return;
+                    ensurePlayerObserver();
+                });
+                const observeTarget = document.documentElement || document.body;
+                if (observeTarget) {
+                    rootObserver.observe(observeTarget, { childList: true, subtree: true });
+                }
+            }
+        }
+
+        function teardown() {
+            active = false;
+            stopAdPolling();
+            stopWatchTimer();
+            detachMediaGuardListeners();
+            restoreVideoState(null);
+            if (playerObserver) {
+                playerObserver.disconnect();
+                playerObserver = null;
+            }
+            observedPlayer = null;
+            if (rootObserver) {
+                rootObserver.disconnect();
+                rootObserver = null;
+            }
+        }
+
+        let stateCheckInFlight = false;
+        async function syncYouTubeAdMitigation() {
+            if (stateCheckInFlight) return;
+            stateCheckInFlight = true;
+            try {
+                const state = await queryAdblockPageState();
+                if (state && state.effectiveEnabled && state.youtubeAds !== false) {
+                    activate();
+                } else {
+                    teardown();
+                }
+            } catch (_) {
+            } finally {
+                stateCheckInFlight = false;
+            }
+        }
+
+        function handleYouTubeNavigation() {
+            syncYouTubeAdMitigation();
+        }
+
+        syncYouTubeAdMitigation();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', syncYouTubeAdMitigation, { once: true });
+        }
+        window.addEventListener('yt-navigate-finish', handleYouTubeNavigation);
+        window.addEventListener('popstate', handleYouTubeNavigation);
+        window.addEventListener('focus', syncYouTubeAdMitigation);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                syncYouTubeAdMitigation();
+            }
+        });
     } catch (_) {}
 })();

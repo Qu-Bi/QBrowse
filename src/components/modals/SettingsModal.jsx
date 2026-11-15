@@ -10,7 +10,7 @@ import {
     Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch,
     ArrowLeftRight, ListOrdered, User, Briefcase, Code, Bookmark, Coffee, Folder,
     Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical, Copy,
-    Layout, Sidebar, Languages
+    Layout, Sidebar, Languages, Play
 } from 'lucide-react';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
 import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
@@ -75,15 +75,15 @@ const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
     return (
         <div className={`flex items-center justify-between p-3 px-3.5 rounded-xl transition-all duration-200 group hover:-translate-y-0.5 hover:shadow-md ${
             isBright 
-                ? 'bg-white/75 hover:bg-white/95 border border-black/[0.08] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03),0_1px_2px_rgba(0,0,0,0.02)]' 
-                : 'bg-white/[0.025] hover:bg-white/[0.045] border border-white/[0.04] hover:border-white/[0.10]'
+                ? 'bg-black/[0.02] hover:bg-black/[0.035] border border-black/[0.07] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03),0_1px_2px_rgba(0,0,0,0.02)]' 
+                : 'bg-white/[0.02] hover:bg-white/[0.045] border border-white/[0.06] hover:border-white/[0.10]'
         }`}>
             <div className="flex items-center gap-3 min-w-0 pr-4">
                 {Icon && (
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
                         isBright 
-                            ? 'bg-black/[0.04] text-accent border border-black/[0.06] group-hover:border-accent/40' 
-                            : 'bg-white/[0.03] text-accent/80 border border-white/[0.05] group-hover:border-accent/25 group-hover:text-accent'
+                            ? 'bg-black/[0.04] text-accent border border-black/[0.07] group-hover:border-accent/40' 
+                            : 'bg-white/[0.03] text-accent/80 border border-white/[0.06] group-hover:border-accent/25 group-hover:text-accent'
                     }`}>
                         <Icon size={15} />
                     </div>
@@ -101,8 +101,8 @@ const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
                             ) : (
                                 <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full border tracking-normal select-none ${
                                     isBright
-                                        ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
-                                        : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                        ? 'bg-amber-500/10 text-amber-700 border-black/[0.07]'
+                                        : 'bg-amber-500/15 text-amber-300 border-white/[0.06]'
                                 }`}>
                                     {badge}
                                 </span>
@@ -150,17 +150,18 @@ const SettingToggle = ({ isChecked, onToggle }) => {
 };
 
 // Helper Section Header Component for Unified Settings
-const SectionHeader = ({ icon: Icon, title, description, badge, action }) => {
+const SectionHeader = ({ icon: Icon, title, description, subtitle, badge, action }) => {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const descText = description || subtitle;
 
     return (
         <div className="flex items-center justify-between gap-3 pt-2 pb-1">
             <div className="flex items-center gap-2.5 min-w-0">
                 {Icon && (
                     <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.06]'
                     }`}>
                         <Icon size={13} />
                     </div>
@@ -175,16 +176,16 @@ const SectionHeader = ({ icon: Icon, title, description, badge, action }) => {
                         {badge && (
                             <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
                                 isBright 
-                                    ? 'bg-black/5 text-zinc-600 border-black/10' 
+                                    ? 'bg-black/5 text-zinc-600 border-black/[0.07]' 
                                     : 'bg-accent/10 text-accent border-accent/25'
                             }`}>
                                 {badge}
                             </span>
                         )}
                     </div>
-                    {description && (
+                    {descText && (
                         <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                            {description}
+                            {descText}
                         </p>
                     )}
                 </div>
@@ -370,6 +371,12 @@ const SettingsModalContent = () => {
     const workTabs = useTabStore(state => state.workTabs);
     const customSpaceTabs = useTabStore(state => state.customSpaceTabs) || {};
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const platformFingerprint = `${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase();
+    const osPlatform = window.electronAPI?.platform || (
+        platformFingerprint.includes('linux') ? 'linux'
+        : (platformFingerprint.includes('mac') || platformFingerprint.includes('darwin')) ? 'darwin'
+        : 'win32'
+    );
 
     // Spatial Positioning Controls
     const sidebarPosition = settings?.sidebarPosition || 'left';
@@ -895,7 +902,12 @@ const SettingsModalContent = () => {
                     setIsDefaultBrowser(true);
                     showToast('QBrowse set as default browser!');
                 } else {
-                    showToast('Opening Windows Default Apps. Click "Set default" for QBrowse.');
+                    const defaultAppsToast = osPlatform === 'darwin'
+                        ? 'Opening System Settings. Select QBrowse as your default browser.'
+                        : osPlatform === 'linux'
+                            ? 'Opening Default Applications. Select QBrowse as your default browser.'
+                            : 'Opening Windows Default Apps. Click "Set default" for QBrowse.';
+                    showToast(defaultAppsToast);
                     let attempts = 0;
                     const pollTimer = setInterval(async () => {
                         attempts++;
@@ -1101,15 +1113,23 @@ const SettingsModalContent = () => {
             icon: Palette, 
             color: 'text-purple-400', 
             category: 'Preferences',
-            keywords: ['theme', 'dark mode', 'smart dark', 'light', 'wallpaper', 'live wallpaper', 'gif', 'video loop', 'presets', 'preset studio', 'accent color', 'glass', 'blur', 'translucency', 'colors', 'curvature', 'font', 'typography', 'custom font', 'google font', 'system font', 'font scale', 'letter spacing', 'text size', 'typeface'] 
+            keywords: ['theme', 'dark mode', 'smart dark', 'light', 'wallpaper', 'live wallpaper', 'gif', 'video loop', 'presets', 'preset studio', 'accent color', 'glass', 'blur', 'translucency', 'colors', 'curvature'] 
         },
         { 
             id: 'layout', 
-            label: t('settings.tabs.layout', null, 'Layout & Chrome'), 
+            label: t('settings.tabs.layout', null, 'Layout & Interface'), 
             icon: Layout, 
             color: 'text-amber-400', 
             category: 'Preferences',
             keywords: ['sidebar', 'top bar', 'bottom bar', 'omnibox', 'window controls', 'close minimize maximize', 'tabs', 'tab layout', 'density', 'pills', 'cards', 'ui scale', 'compact', 'toolhub'] 
+        },
+        { 
+            id: 'typography', 
+            label: t('settings.tabs.typography', null, 'Typography & Fonts'), 
+            icon: Type, 
+            color: 'text-rose-400', 
+            category: 'Preferences',
+            keywords: ['font', 'typography', 'custom font', 'google font', 'system font', 'font scale', 'letter spacing', 'text size', 'typeface', 'weight', 'ttf', 'otf', 'woff'] 
         },
         { 
             id: 'spaces', 
@@ -1131,14 +1151,14 @@ const SettingsModalContent = () => {
             id: 'accessibility', 
             label: t('settings.tabs.accessibility', null, 'Accessibility'), 
             icon: Eye, 
-            color: 'text-amber-400', 
+            color: 'text-teal-400', 
             category: 'Preferences',
-            keywords: ['reduced motion', 'motion', 'animations', 'disable animations', 'windows sync', 'dyslexia font', 'high contrast', 'focus rings', 'font size', 'zoom', 'caret browsing', 'autoplay', 'captions', 'mono audio', 'vestibular'] 
+            keywords: ['reduced motion', 'motion', 'animations', 'disable animations', 'system sync', 'os sync', 'windows sync', 'dyslexia font', 'high contrast', 'focus rings', 'font size', 'zoom', 'caret browsing', 'autoplay', 'captions', 'mono audio', 'vestibular'] 
         },
         { 
             id: 'privacy', 
             label: t('settings.tabs.privacy', null, 'Privacy & Security'), 
-            icon: Shield, 
+            icon: Lock, 
             color: 'text-emerald-400', 
             category: 'Preferences',
             keywords: ['tor', 'onion', 'ghost', 'incognito', 'doh', 'dns over https', 'history', 'cache', 'clear browsing data', 'vault', 'passwords', 'autofill', 'https', 'telemetry', 'webrtc', 'leak'] 
@@ -1433,177 +1453,58 @@ const SettingsModalContent = () => {
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Appearance &amp; Themes</h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Customize visual themes, browsing presets, wallpapers, and glassmorphism physics.
+                                    Customize color themes, browsing presets, wallpapers, live playback, and surface glass effects.
                                 </p>
                             </div>
 
-                            {/* Browsing Experience Presets */}
-                                    <div className={`p-5 rounded-2xl border space-y-3.5 ${
-                                        isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.025] border-white/[0.05]'
-                                    }`}>
-                                        <div className="flex items-center justify-between flex-wrap gap-2">
-                                            <div>
-                                                <span className="text-xs font-bold uppercase text-accent tracking-wider block">
-                                                    Browsing Presets &amp; Layouts
-                                                </span>
-                                                <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Quick configurations for workspaces, privacy shields, and aesthetics.
+                            {/* 1. COLOR THEME & ACCENT */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Palette}
+                                    title="Color Theme & Accent"
+                                    subtitle="Select your primary interface surface and accent color."
+                                />
+
+                                <SettingCard
+                                    icon={theme === 'light' ? Sun : Moon}
+                                    title="Browser Interface Theme"
+                                    description="Switch between dark obsidian and bright frosted interface."
+                                >
+                                    <div className="min-w-[190px]">
+                                        <SlidingPillSwitcher
+                                            options={[
+                                                { id: 'dark', label: 'Dark', icon: Moon },
+                                                { id: 'light', label: 'Bright', icon: Sun }
+                                            ]}
+                                            value={theme === 'light' ? 'light' : 'dark'}
+                                            onChange={(val) => setTheme(val)}
+                                            isBright={isBright}
+                                        />
+                                    </div>
+                                </SettingCard>
+
+                                {/* Accent Color Swatches & Hex Picker */}
+                                <div className={`p-3.5 px-4 rounded-xl border transition-all duration-200 space-y-3 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                                isBright ? 'bg-black/[0.04] text-accent border border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.06]'
+                                            }`}>
+                                                <Palette size={15} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className={`font-medium text-xs ${isBright ? 'text-zinc-800 font-semibold' : 'text-zinc-200'}`}>
+                                                    Accent Color
+                                                </p>
+                                                <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Rewrites all glass highlights, shadows, and active states instantly.
                                                 </p>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={openStudio}
-                                                className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition cursor-pointer active:scale-95 ${
-                                                    isBright 
-                                                        ? 'text-zinc-700 hover:text-zinc-950 border-black/10 hover:border-black/20 hover:bg-black/5' 
-                                                        : 'text-zinc-300 hover:text-white border-white/10 hover:border-white/20 hover:bg-white/5'
-                                                }`}
-                                            >
-                                                <Sliders size={13} strokeWidth={2} />
-                                                <span>Preset Studio &rarr;</span>
-                                            </button>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {[...EXPERIENCE_PRESETS, ...(customPresets || [])].map((p) => {
-                                                const PresetIcon = getPresetIcon(p.icon);
-                                                const isSelected = (storeActivePresetId || activePresetId) === p.id;
-                                                const tagline = PRESET_TAGLINES[p.id] || p.tagline;
-
-                                                const handleActivate = () => {
-                                                    applyExperiencePreset(p, {
-                                                        uiStore: useUIStore.getState(),
-                                                        tabStore: useTabStore.getState(),
-                                                        showToast: showToast || useUIStore.getState().showToast
-                                                    });
-                                                    setActivePresetId(p.id);
-                                                    setStoreActivePresetId?.(p.id);
-                                                };
-
-                                                return (
-                                                    <div
-                                                        key={p.id}
-                                                        className={`p-3.5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between group relative ${
-                                                            isSelected
-                                                                ? (isBright 
-                                                                    ? 'bg-accent/15 border-accent text-zinc-950 shadow-md ring-1 ring-accent/30' 
-                                                                    : 'bg-accent/10 border-accent text-white shadow-[0_0_20px_rgba(var(--accent-rgb,212,188,148),0.15)] ring-1 ring-accent/40')
-                                                                : (isBright 
-                                                                    ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800 hover:shadow-xs' 
-                                                                    : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200 hover:shadow-xs')
-                                                        }`}
-                                                    >
-                                                        {/* Header: Icon + Name + Active Badge + Action buttons */}
-                                                        <div className="flex items-center justify-between gap-2 mb-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleActivate}
-                                                                className="flex items-center gap-2 min-w-0 text-left cursor-pointer outline-none active:scale-[0.99] flex-1"
-                                                            >
-                                                                <div 
-                                                                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
-                                                                    style={{
-                                                                        backgroundColor: `${p.accentColor}18`,
-                                                                        borderColor: `${p.accentColor}40`,
-                                                                        color: p.accentColor
-                                                                    }}
-                                                                >
-                                                                    <PresetIcon size={14} />
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                                    <span className="text-xs font-bold truncate">{p.name}</span>
-                                                                    {isSelected && (
-                                                                        <span 
-                                                                            className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold border"
-                                                                            style={{
-                                                                                borderColor: `${p.accentColor}60`,
-                                                                                backgroundColor: `${p.accentColor}25`,
-                                                                                color: isBright ? '#181b24' : p.accentColor
-                                                                            }}
-                                                                        >
-                                                                            Active
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </button>
-
-                                                            {/* Action buttons (Duplicate, Edit, Delete) */}
-                                                            <div className="flex items-center gap-1 shrink-0">
-                                                                {p.isCustom && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            openStudio(p.id);
-                                                                        }}
-                                                                        title="Edit in Preset Studio"
-                                                                        className={`p-1 rounded-lg border transition cursor-pointer ${
-                                                                            isBright ? 'border-black/10 hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
-                                                                        }`}
-                                                                    >
-                                                                        <Edit3 size={11} />
-                                                                    </button>
-                                                                )}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        duplicatePreset(p.id);
-                                                                    }}
-                                                                    title="Duplicate Preset"
-                                                                    className={`p-1 rounded-lg border transition cursor-pointer ${
-                                                                        isBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
-                                                                    }`}
-                                                                >
-                                                                    <Copy size={11} />
-                                                                </button>
-                                                                {p.isCustom && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            deleteCustomPreset(p.id);
-                                                                        }}
-                                                                        title="Delete Custom Preset"
-                                                                        className="p-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
-                                                                    >
-                                                                        <Trash2 size={11} />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Visual Wireframe Preview (clickable to activate preset) */}
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleActivate}
-                                                            className="w-full mb-2 cursor-pointer outline-none active:scale-[0.99] text-left"
-                                                        >
-                                                            <PresetLayoutWireframe preset={p} isSelected={isSelected} isBright={isBright} compact={true} />
-                                                        </button>
-
-                                                        {/* Tagline & Layout summary */}
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleActivate}
-                                                            className="w-full text-left cursor-pointer outline-none"
-                                                        >
-                                                            <p className={`text-[11px] leading-snug line-clamp-1 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                                                {tagline}
-                                                            </p>
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Magic Accent Color */}
-                                    <div className={`p-5 rounded-2xl border space-y-4 ${
-                                        isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'
-                                    }`}>
-                                        <span className="text-xs font-bold uppercase text-accent tracking-wider block">Magic Accent Color</span>
-                                        <div className="flex gap-3 items-center flex-wrap">
+                                        <div className="flex gap-2.5 items-center flex-wrap flex-shrink-0">
                                             {[
                                                 { hex: '#d4bc94', name: 'Sand' },
                                                 { hex: '#3b82f6', name: 'Ocean' },
@@ -1615,21 +1516,28 @@ const SettingsModalContent = () => {
                                             ].map((c) => (
                                                 <button
                                                     key={c.hex}
+                                                    type="button"
                                                     onClick={() => setAccentColor(c.hex)}
-                                                    className={`w-8 h-8 rounded-full shadow-lg transition-transform hover:scale-110 flex items-center justify-center cursor-pointer ${accentColor === c.hex ? 'ring-2 ring-white ring-offset-2 ring-offset-black/50 scale-110' : ''}`}
+                                                    className={`w-7 h-7 rounded-full shadow-sm transition-transform hover:scale-110 flex items-center justify-center cursor-pointer ${
+                                                        accentColor === c.hex
+                                                            ? (isBright ? 'ring-2 ring-zinc-900 ring-offset-2 ring-offset-white scale-110' : 'ring-2 ring-white ring-offset-2 ring-offset-black/50 scale-110')
+                                                            : ''
+                                                    }`}
                                                     style={{ backgroundColor: c.hex }}
                                                     title={c.name}
                                                 >
-                                                    {accentColor === c.hex && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                    {accentColor === c.hex && <div className="w-2 h-2 bg-white rounded-full" />}
                                                 </button>
                                             ))}
-                                            <div className="w-px h-6 bg-white/20 mx-1"></div>
+                                            <div className={`w-px h-5 mx-0.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
 
-                                            <div className="relative flex items-center bg-black/40 border border-white/[0.06] rounded-xl overflow-hidden focus-within:border-accent">
-                                                <div className="pl-3 pr-2 py-2 border-r border-white/[0.06]">
-                                                    <Palette size={14} className="text-white/40" />
+                                            <div className={`relative flex items-center border rounded-xl overflow-hidden focus-within:border-accent ${
+                                                isBright ? 'bg-white border-black/[0.08]' : 'bg-black/40 border-white/[0.06]'
+                                            }`}>
+                                                <div className={`pl-2.5 pr-2 py-1.5 border-r ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
+                                                    <Palette size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
                                                 </div>
-                                                <span className="pl-2 text-xs text-white/40 font-mono">#</span>
+                                                <span className={`pl-2 text-xs font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>#</span>
                                                 <input
                                                     type="text"
                                                     value={accentColor.replace('#', '')}
@@ -1637,441 +1545,519 @@ const SettingsModalContent = () => {
                                                         const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
                                                         if (val.length <= 6) setAccentColor('#' + val);
                                                     }}
-                                                    className="w-16 bg-transparent border-none text-xs text-white font-mono outline-none py-2 uppercase"
+                                                    className={`w-16 bg-transparent border-none text-xs font-mono outline-none py-1.5 uppercase ${
+                                                        isBright ? 'text-zinc-900' : 'text-white'
+                                                    }`}
                                                     maxLength={6}
                                                 />
                                             </div>
                                         </div>
-                                        <p className="text-xs text-white/40">Selecting a color rewrites all glass highlights, shadows, and active states instantly.</p>
                                     </div>
+                                </div>
 
-                                    {/* Browser Interface Theme Card */}
-                                    <div className="p-5 bg-white/[0.025] hover:bg-white/[0.035] border border-white/[0.05] rounded-2xl space-y-3 transition-colors">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
-                                                    {theme === 'light' ? <Sun size={17} /> : <Moon size={17} />}
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-sm">Browser Interface Theme</p>
-                                                    <p className="text-xs text-white/40 mt-0.5">Switch between dark obsidian and bright frosted chrome interface.</p>
-                                                </div>
-                                            </div>
-                                            <div className={`relative flex p-1 rounded-full border shadow-xs min-w-[200px] ${isBright ? 'bg-black/[0.03] border-black/[0.05]' : 'bg-[#0c0d14]/78 border-white/[0.06]'}`}>
-                                                <div 
-                                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                                        theme === 'dark'
-                                                            ? (isBright ? 'bg-zinc-900 text-white shadow-xs' : 'bg-accent text-zinc-950 font-bold shadow-xs')
-                                                            : (isBright ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'bg-accent text-zinc-950 font-bold shadow-xs')
-                                                    }`}
-                                                    style={{ 
-                                                        transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)'
-                                                    }}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTheme('dark')}
-                                                    className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
-                                                        theme === 'dark'
-                                                            ? (isBright ? 'text-white font-bold' : 'text-zinc-950 font-bold')
-                                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
-                                                    }`}
-                                                >
-                                                    <Moon size={13} className={theme === 'dark' ? 'fill-current' : ''} />
-                                                    <span>Dark</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTheme('light')}
-                                                    className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-semibold rounded-full transition-colors duration-300 cursor-pointer ${
-                                                        theme === 'light'
-                                                            ? (isBright ? 'text-zinc-900 font-bold' : 'text-zinc-950 font-bold')
-                                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
-                                                    }`}
-                                                >
-                                                    <Sun size={13} className={theme === 'light' ? 'text-amber-600 fill-amber-500/20' : ''} />
-                                                    <span>Bright</span>
-                                                </button>
-                                            </div>
-                                        </div>
+                                <SettingCard
+                                    icon={Eye}
+                                    title="Smart Dark Mode (Websites)"
+                                    description="Smart luminosity engine inverts light websites while preserving native dark sites."
+                                >
+                                    <SettingToggle isChecked={isForceDark} onToggle={() => setIsForceDark(!isForceDark)} />
+                                </SettingCard>
+
+                                <div className={`p-3.5 px-4 rounded-xl border space-y-2 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                            Smart Dark Mode Excluded Domains
+                                        </p>
+                                        <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                            One per line
+                                        </span>
                                     </div>
+                                    <textarea
+                                        value={localDarkExclusions}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setLocalDarkExclusions(val);
+                                            const parsed = val.split('\n').map(s => s.trim()).filter(Boolean);
+                                            setDarkExclusions(parsed);
+                                        }}
+                                        onBlur={() => {
+                                            const cleaned = (localDarkExclusions || '').split('\n').map(s => s.trim()).filter(Boolean);
+                                            setDarkExclusions(cleaned);
+                                            setLocalDarkExclusions(cleaned.join('\n'));
+                                        }}
+                                        placeholder={"example.com\ngithub.com"}
+                                        className={`w-full h-20 border rounded-xl p-2.5 text-xs font-mono resize-none outline-none focus:border-accent transition-colors ${
+                                            isBright
+                                                ? 'bg-white border-black/[0.08] text-zinc-900 placeholder:text-zinc-400'
+                                                : 'bg-black/40 border-white/[0.06] text-white/80 placeholder:text-white/30'
+                                        }`}
+                                    />
+                                </div>
+                            </div>
 
-                                    {/* Smart Dark Mode (Websites) Card */}
-                                    <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
-                                                    <Eye size={16} />
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-sm">Smart Dark Mode (Websites)</p>
-                                                    <p className="text-xs text-white/40 mt-0.5">Smart luminosity engine inverts light websites while preserving native dark sites.</p>
-                                                </div>
-                                            </div>
-                                            <SettingToggle isChecked={isForceDark} onToggle={() => setIsForceDark(!isForceDark)} />
-                                        </div>
-                                        <div className="mt-2">
-                                            <p className="text-xs text-white/50 mb-1.5 font-semibold">Excluded Domains (One per line):</p>
-                                            <textarea
-                                                value={localDarkExclusions}
-                                                onChange={(e) => {
-                                                    const val = e.target.value;
-                                                    setLocalDarkExclusions(val);
-                                                    const parsed = val.split('\n').map(s => s.trim()).filter(Boolean);
-                                                    setDarkExclusions(parsed);
-                                                }}
-                                                onBlur={() => {
-                                                    const cleaned = (localDarkExclusions || '').split('\n').map(s => s.trim()).filter(Boolean);
-                                                    setDarkExclusions(cleaned);
-                                                    setLocalDarkExclusions(cleaned.join('\n'));
-                                                }}
-                                                placeholder={"example.com\ngithub.com"}
-                                                className="w-full h-24 bg-black/40 border border-white/[0.06] rounded-xl p-2.5 text-xs font-mono text-white/80 resize-none outline-none focus:border-accent transition-colors"
-                                            />
-                                        </div>
-                                    </div>
+                            {/* 2. QUICK PRESETS */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Sparkles}
+                                    title="Quick Presets"
+                                    subtitle="Apply curated interface themes or open Preset Studio."
+                                    action={
+                                        <button
+                                            type="button"
+                                            onClick={openStudio}
+                                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition cursor-pointer active:scale-95 ${
+                                                isBright 
+                                                    ? 'bg-black/[0.02] text-zinc-700 hover:text-zinc-950 border-black/[0.07] hover:border-black/20 hover:bg-black/5' 
+                                                    : 'bg-white/[0.02] text-zinc-300 hover:text-white border-white/[0.06] hover:border-white/15 hover:bg-white/[0.05]'
+                                            }`}
+                                        >
+                                            <Sliders size={13} strokeWidth={2} />
+                                            <span>Preset Studio &rarr;</span>
+                                        </button>
+                                    }
+                                />
 
-                            {/* Window Background & Wallpaper */}
-                                    <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded-xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center shadow-sm">
-                                                    <ImageIcon size={16} />
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-sm">Window Background & Wallpaper</p>
-                                                    <p className="text-xs text-white/40 mt-0.5">Customize the root window backdrop with a local image, web image URL, or animated GIF.</p>
-                                                </div>
-                                            </div>
-                                            {customWallpaper && (
-                                                <button
-                                                    type="button"
-                                                    onClick={handleResetWallpaper}
-                                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer hover:border-white/20"
-                                                    title="Reset to default wallpaper"
-                                                >
-                                                    <RotateCcw size={12} />
-                                                    <span>Reset to Default</span>
-                                                </button>
-                                            )}
-                                        </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {[...EXPERIENCE_PRESETS, ...(customPresets || [])].map((p) => {
+                                        const PresetIcon = getPresetIcon(p.icon);
+                                        const isSelected = (storeActivePresetId || activePresetId) === p.id;
+                                        const tagline = PRESET_TAGLINES[p.id] || p.tagline;
 
-                                {/* Preview and Source Info */}
-                                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 rounded-xl bg-black/30 border border-white/[0.04]">
-                                            <WallpaperPreviewThumbnail
-                                                customWallpaper={customWallpaper}
-                                                loopMode={wallpaperVideoLoopMode}
-                                                crossfadeDuration={wallpaperVideoCrossfadeDuration}
-                                                dimming={wallpaperDimming}
-                                                blur={wallpaperBlur}
-                                                blurEnabled={blurWallpaper}
-                                                defaultThumbnail={DEFAULT_STOCK_THUMBNAIL}
-                                            />
+                                        const handleActivate = () => {
+                                            applyExperiencePreset(p, {
+                                                uiStore: useUIStore.getState(),
+                                                tabStore: useTabStore.getState(),
+                                                showToast: showToast || useUIStore.getState().showToast
+                                            });
+                                            setActivePresetId(p.id);
+                                            setStoreActivePresetId?.(p.id);
+                                        };
 
-                                            <div className="flex-1 min-w-0 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-medium text-zinc-300">Active Source:</span>
-                                                    <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
-                                                        !customWallpaper 
-                                                            ? 'bg-white/5 border-white/10 text-white/60' 
-                                                            : isVideoWallpaper(customWallpaper)
-                                                                ? 'bg-purple-500/15 border-purple-500/35 text-purple-400 font-semibold'
-                                                                : isGifWallpaper(customWallpaper)
-                                                                    ? 'bg-amber-500/15 border-amber-500/35 text-amber-400 font-semibold'
-                                                                    : customWallpaperSource === 'file' 
-                                                                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' 
-                                                                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                                    }`}>
-                                                        {getWallpaperBadgeLabel(customWallpaper, customWallpaperSource)}
-                                                    </span>
-                                                    {customWallpaperSource === 'file' && (
-                                                        <span className="text-[10px] text-zinc-500 italic">(Local only, skipped during cloud sync)</span>
-                                                    )}
-                                                </div>
-                                                <p className="text-[11px] text-zinc-400 leading-relaxed truncate">
-                                                    {!customWallpaper 
-                                                        ? 'Default dynamic landscape wallpaper is active. Import your own photo, GIF, or looping video to personalize your workspace.'
-                                                        : customWallpaperSource === 'file'
-                                                            ? 'Using an imported local media file stored safely in your application data directory.'
-                                                            : `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Import Controls */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                                            {/* Local File Import */}
-                                            <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
-                                                <div>
-                                                    <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
-                                                        <Upload size={13} className="text-accent" />
-                                                        <span>Choose from Hard Drive</span>
-                                                    </p>
-                                                    <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                                                        Pick a JPG, PNG, WebP, GIF, or MP4/WebM video from your PC. Automatically saved into app storage.
-                                                    </p>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleImportWallpaperFile}
-                                                    disabled={isImportingFile}
-                                                    className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/15 text-white border border-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                                                >
-                                                    {isImportingFile ? (
-                                                        <RefreshCw size={13} className="animate-spin text-accent" />
-                                                    ) : (
-                                                        <Upload size={13} />
-                                                    )}
-                                                    <span>{isImportingFile ? 'Importing...' : 'Browse Media File...'}</span>
-                                                </button>
-                                            </div>
-
-                                            {/* Web URL Import */}
-                                            <div className="p-3 bg-white/[0.02] border border-white/[0.05] rounded-xl flex flex-col justify-between gap-3">
-                                                <div>
-                                                    <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
-                                                        <LinkIcon size={13} className="text-accent" />
-                                                        <span>Import from Web URL</span>
-                                                    </p>
-                                                    <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                                                        Paste any public image, GIF, or video URL (.mp4, .webm). Cached locally and synced across devices.
-                                                    </p>
-                                                </div>
-                                                <form onSubmit={handleImportWallpaperUrl} className="flex gap-2">
-                                                    <input
-                                                        type="url"
-                                                        value={wallpaperUrlInput}
-                                                        onChange={(e) => setWallpaperUrlInput(e.target.value)}
-                                                        placeholder="https://... (.jpg, .png, .gif, .mp4, .webm)"
-                                                        className="flex-1 min-w-0 bg-black/40 border border-white/[0.08] focus:border-accent rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/25 outline-none transition-colors"
-                                                    />
+                                        return (
+                                            <div
+                                                key={p.id}
+                                                className={`p-3.5 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between group relative ${
+                                                    isSelected
+                                                        ? (isBright 
+                                                            ? 'bg-accent/15 border-accent text-zinc-950 shadow-md ring-1 ring-accent/30' 
+                                                            : 'bg-accent/10 border-accent text-white shadow-[0_0_20px_rgba(var(--accent-rgb,212,188,148),0.15)] ring-1 ring-accent/40')
+                                                        : (isBright 
+                                                            ? 'bg-black/[0.02] border-black/[0.07] hover:border-black/20 text-zinc-800 hover:shadow-xs' 
+                                                            : 'bg-white/[0.02] border-white/[0.06] hover:border-white/15 text-zinc-200 hover:shadow-xs')
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2 mb-2">
                                                     <button
-                                                        type="submit"
-                                                        disabled={isImportingUrl || !wallpaperUrlInput.trim()}
-                                                        className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-accent text-black hover:bg-accent/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                                                        type="button"
+                                                        onClick={handleActivate}
+                                                        className="flex items-center gap-2 min-w-0 text-left cursor-pointer outline-none active:scale-[0.99] flex-1"
                                                     >
-                                                        {isImportingUrl ? (
-                                                            <RefreshCw size={12} className="animate-spin" />
-                                                        ) : (
-                                                            <span>Apply</span>
-                                                        )}
+                                                        <div 
+                                                            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
+                                                            style={{
+                                                                backgroundColor: `${p.accentColor}18`,
+                                                                borderColor: `${p.accentColor}40`,
+                                                                color: p.accentColor
+                                                            }}
+                                                        >
+                                                            <PresetIcon size={14} />
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 min-w-0">
+                                                            <span className="text-xs font-bold truncate">{p.name}</span>
+                                                            {isSelected && (
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
+                                                            )}
+                                                        </div>
                                                     </button>
-                                                </form>
-                                            </div>
-                                        </div>
 
-                                        {/* Dimming & Contrast Slider */}
-                                        <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                            <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                                    <Sliders size={15} />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Backdrop Contrast Dimming</p>
-                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust dark overlay to ensure text and tab readability over bright wallpapers.</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3 flex-shrink-0">
-                                                <input
-                                                    type="range"
-                                                    min={0}
-                                                    max={80}
-                                                    step={5}
-                                                    value={wallpaperDimming}
-                                                    onChange={(e) => setWallpaperDimming(Number(e.target.value))}
-                                                    className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
-                                                />
-                                                <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperDimming}%</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Blur Background Wallpaper Toggle */}
-                                        <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                            <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                                    <ImageIcon size={15} />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Blur Wallpaper Background</p>
-                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>When disabled, the wallpaper stays crisp and sharp while UI panels retain frosted glass blur.</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3 flex-shrink-0">
-                                                <SettingToggle 
-                                                    isChecked={!!blurWallpaper} 
-                                                    onToggle={() => toggleSetting('blurWallpaper')} 
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Liquid Glass Frosted Blur Slider */}
-                                        <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                            <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                                    <Sparkles size={15} />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Liquid Glass UI Frosted Blur</p>
-                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Adjust frosted glass diffusion on UI surfaces (Sidebar, TopBar, and tab windows).</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3 flex-shrink-0">
-                                                <input
-                                                    type="range"
-                                                    min={0}
-                                                    max={48}
-                                                    step={2}
-                                                    value={wallpaperBlur}
-                                                    onChange={(e) => setWallpaperBlur(Number(e.target.value))}
-                                                    className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
-                                                />
-                                                <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperBlur}px</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Live Wallpaper Optimization Toggles (Shown ONLY when a Live Wallpaper - Video or GIF - is selected) */}
-                                        {isCurrentLive && (
-                                            <>
-                                                {/* Pause Live Wallpaper in Background Toggle */}
-                                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                                    <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                                            <Zap size={15} />
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Pause Live Wallpapers in Background</p>
-                                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Automatically pause video and animated GIF playback when QBrowse is minimized or unfocused to eliminate CPU/GPU drain.</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                                        <SettingToggle 
-                                                            isChecked={settings?.pauseWallpaperInBackground !== false} 
-                                                            onToggle={() => toggleSetting('pauseWallpaperInBackground')} 
-                                                        />
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        {p.isCustom && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openStudio(p.id);
+                                                                }}
+                                                                title="Edit in Preset Studio"
+                                                                className={`p-1 rounded-lg border transition cursor-pointer ${
+                                                                    isBright ? 'border-black/[0.07] hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'border-white/[0.06] hover:bg-white/10 text-zinc-400 hover:text-white'
+                                                                }`}
+                                                            >
+                                                                <Edit3 size={11} />
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                duplicatePreset(p.id);
+                                                            }}
+                                                            title="Duplicate Preset"
+                                                            className={`p-1 rounded-lg border transition cursor-pointer ${
+                                                                isBright ? 'border-black/[0.07] hover:bg-black/5 text-zinc-600' : 'border-white/[0.06] hover:bg-white/10 text-zinc-400 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            <Copy size={11} />
+                                                        </button>
+                                                        {p.isCustom && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    deleteCustomPreset(p.id);
+                                                                }}
+                                                                title="Delete Custom Preset"
+                                                                className="p-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                                                            >
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
 
-                                                {/* Pause Live Wallpaper in Eco Mode Toggle */}
-                                                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                                    <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                                            <BatteryCharging size={15} />
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Pause Live Wallpapers in Eco Mode</p>
-                                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Freeze animated wallpapers during laptop battery saving or Eco Mode.</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                                        <SettingToggle 
-                                                            isChecked={settings?.pauseWallpaperInEcoMode !== false} 
-                                                            onToggle={() => toggleSetting('pauseWallpaperInEcoMode')} 
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
+                                                <button
+                                                    type="button"
+                                                    onClick={handleActivate}
+                                                    className="w-full mb-2 cursor-pointer outline-none active:scale-[0.99] text-left"
+                                                >
+                                                    <PresetLayoutWireframe preset={p} isSelected={isSelected} isBright={isBright} compact={true} />
+                                                </button>
 
-                                        {/* Live Wallpaper Loop Transitions (Shown for Videos and Animated GIFs) */}
-                                        {isCurrentLive && (
-                                            <>
-                                                {/* Live Wallpaper Loop Transition Mode */}
-                                                <div className="pt-3 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                        <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                                            <RotateCcw size={15} />
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>Live Wallpaper Loop Mode</p>
-                                                            <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>Choose how video and animated GIF wallpapers seamlessly transition between cycles.</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex-shrink-0 w-full sm:w-auto min-w-[280px]">
-                                                        <SlidingPillSwitcher
-                                                            options={[
-                                                                { id: 'crossfade', label: 'Cross-Dissolve' },
-                                                                { id: 'dip', label: 'Ambient Dip' },
-                                                                { id: 'cut', label: 'Instant Cut' }
-                                                            ]}
-                                                            value={wallpaperVideoLoopMode}
-                                                            onChange={(mode) => setWallpaperVideoLoopMode(mode)}
-                                                            isBright={isBright}
-                                                            size="sm"
-                                                        />
-                                                    </div>
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleActivate}
+                                                    className="w-full text-left cursor-pointer outline-none"
+                                                >
+                                                    <p className={`text-[11px] leading-snug line-clamp-1 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                                                        {tagline}
+                                                    </p>
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
 
-                                                {/* Loop Transition Duration Slider (Active when crossfade or dip is selected) */}
-                                                {wallpaperVideoLoopMode !== 'cut' && (
-                                                    <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                                                        <div className="flex items-center gap-3 min-w-0 pr-4">
-                                                            <div className={`w-8 h-8 rounded-lg ${isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'} flex items-center justify-center flex-shrink-0`}>
-                                                                <SlidersHorizontal size={15} />
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <p className={`font-medium text-xs ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                                    {wallpaperVideoLoopMode === 'dip' ? 'Ambient Dip Duration' : 'Loop Dissolve Duration'}
-                                                                </p>
-                                                                <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'} mt-0.5 leading-snug`}>
-                                                                    {wallpaperVideoLoopMode === 'dip'
-                                                                        ? 'Total time of the ambient fade-down and return cycle.'
-                                                                        : 'Length of the blending overlap window between loop endings and beginnings.'}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-3 flex-shrink-0">
-                                                            <input
-                                                                type="range"
-                                                                min={0.4}
-                                                                max={2.5}
-                                                                step={0.1}
-                                                                value={wallpaperVideoCrossfadeDuration}
-                                                                onChange={(e) => setWallpaperVideoCrossfadeDuration(Number(e.target.value))}
-                                                                className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
-                                                            />
-                                                            <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperVideoCrossfadeDuration.toFixed(1)}s</span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
+                            {/* 3. WALLPAPER & BACKDROP */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={ImageIcon}
+                                    title="Wallpaper & Backdrop"
+                                    subtitle="Customize homepage backgrounds, live video/GIF wallpapers, and transitions."
+                                    action={
+                                        customWallpaper && (
+                                            <button
+                                                type="button"
+                                                onClick={handleResetWallpaper}
+                                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                                                    isBright
+                                                        ? 'bg-black/[0.02] text-zinc-700 hover:text-zinc-950 border-black/[0.07] hover:bg-black/5'
+                                                        : 'bg-white/[0.02] text-zinc-300 hover:text-white border-white/[0.06] hover:bg-white/[0.06]'
+                                                }`}
+                                                title="Reset to default wallpaper"
+                                            >
+                                                <RotateCcw size={12} />
+                                                <span>Reset to Default</span>
+                                            </button>
+                                        )
+                                    }
+                                />
 
-                                    {/* App Typography & Custom Font System */}
-                                    <CustomFontManager />
-
-                                    {/* Glass & Motion Physics */}
-                                    <div className="space-y-3">
-                                        <SectionHeader 
-                                            icon={Sparkles} 
-                                            title="Glass & Motion Physics" 
-                                            description="Hardware-accelerated translucency, animations, and visual feedbacks." 
+                                {/* Wallpaper Preview & Source Import Container */}
+                                <div className={`p-3.5 px-4 rounded-xl border space-y-3 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className={`flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 rounded-xl border ${
+                                        isBright ? 'bg-white/75 border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
+                                    }`}>
+                                        <WallpaperPreviewThumbnail
+                                            customWallpaper={customWallpaper}
+                                            loopMode={wallpaperVideoLoopMode}
+                                            crossfadeDuration={wallpaperVideoCrossfadeDuration}
+                                            dimming={wallpaperDimming}
+                                            blur={wallpaperBlur}
+                                            blurEnabled={blurWallpaper}
+                                            defaultThumbnail={DEFAULT_STOCK_THUMBNAIL}
                                         />
 
-                                        <SettingCard icon={Sliders} title="UI Transparency (Glassmorphism)" description="Disable backdrop-blur translucency for weaker GPUs.">
-                                            <SettingToggle isChecked={isGlassEnabled} onToggle={() => setIsGlassEnabled(!isGlassEnabled)} />
-                                        </SettingCard>
-
-                                        <SettingCard icon={Maximize2} title="Space Swipe Animations" description="Physical screen swipe transitions when switching workspace tabs.">
-                                            <SettingToggle isChecked={isSwipeEnabled} onToggle={() => setIsSwipeEnabled(!isSwipeEnabled)} />
-                                        </SettingCard>
-
-                                        <SettingCard icon={Sparkles} title="Active Tab Favicon Glow" description="Render a subtle glowing aura around active tab favicons.">
-                                            <SettingToggle isChecked={!!settings.faviconGlow} onToggle={() => toggleSetting('faviconGlow')} />
-                                        </SettingCard>
-
-                                        <SettingCard icon={Layers} title="Visual Tab Switcher (Ctrl+Tab)" description="Show Windows-style card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.">
-                                            <SettingToggle isChecked={settings.visualTabSwitcher !== false} onToggle={() => toggleSetting('visualTabSwitcher')} />
-                                        </SettingCard>
+                                        <div className="flex-1 min-w-0 space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                    Active Source:
+                                                </span>
+                                                <span className="text-xs font-mono font-semibold text-accent">
+                                                    {getWallpaperBadgeLabel(customWallpaper, customWallpaperSource)}
+                                                </span>
+                                                {customWallpaperSource === 'file' && (
+                                                    <span className={`text-[10px] italic ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        (Local only, skipped during cloud sync)
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className={`text-[11px] leading-relaxed truncate ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                {!customWallpaper 
+                                                    ? 'Default dynamic landscape wallpaper is active. Import your own photo, GIF, or looping video to personalize your workspace.'
+                                                    : customWallpaperSource === 'file'
+                                                        ? 'Using an imported local media file stored safely in your application data directory.'
+                                                        : `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`}
+                                            </p>
+                                        </div>
                                     </div>
+
+                                    {/* Import Controls */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {/* Local File Import */}
+                                        <div className={`p-3 rounded-xl border flex flex-col justify-between gap-3 ${
+                                            isBright ? 'bg-white/75 border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                        }`}>
+                                            <div>
+                                                <p className={`text-xs font-medium flex items-center gap-1.5 ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                    <Upload size={13} className="text-accent" />
+                                                    <span>Choose from Hard Drive</span>
+                                                </p>
+                                                <p className={`text-[11px] mt-1 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Pick a JPG, PNG, WebP, GIF, or MP4/WebM video from your PC. Automatically saved into app storage.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleImportWallpaperFile}
+                                                disabled={isImportingFile}
+                                                className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
+                                                    isBright
+                                                        ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-900 border-black/[0.07]'
+                                                        : 'bg-white/10 hover:bg-white/15 text-white border-white/[0.06]'
+                                                }`}
+                                            >
+                                                {isImportingFile ? (
+                                                    <RefreshCw size={13} className="animate-spin text-accent" />
+                                                ) : (
+                                                    <Upload size={13} />
+                                                )}
+                                                <span>{isImportingFile ? 'Importing...' : 'Browse Media File...'}</span>
+                                            </button>
+                                        </div>
+
+                                        {/* Web URL Import */}
+                                        <div className={`p-3 rounded-xl border flex flex-col justify-between gap-3 ${
+                                            isBright ? 'bg-white/75 border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                        }`}>
+                                            <div>
+                                                <p className={`text-xs font-medium flex items-center gap-1.5 ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                                                    <LinkIcon size={13} className="text-accent" />
+                                                    <span>Import from Web URL</span>
+                                                </p>
+                                                <p className={`text-[11px] mt-1 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Paste any public image, GIF, or video URL (.mp4, .webm). Cached locally and synced across devices.
+                                                </p>
+                                            </div>
+                                            <form onSubmit={handleImportWallpaperUrl} className="flex gap-2">
+                                                <input
+                                                    type="url"
+                                                    value={wallpaperUrlInput}
+                                                    onChange={(e) => setWallpaperUrlInput(e.target.value)}
+                                                    placeholder="https://... (.jpg, .png, .gif, .mp4, .webm)"
+                                                    className={`flex-1 min-w-0 border focus:border-accent rounded-lg px-2.5 py-1.5 text-xs outline-none transition-colors ${
+                                                        isBright
+                                                            ? 'bg-white border-black/[0.08] text-zinc-900 placeholder-zinc-400'
+                                                            : 'bg-black/40 border-white/[0.06] text-white placeholder-white/25'
+                                                    }`}
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    disabled={isImportingUrl || !wallpaperUrlInput.trim()}
+                                                    className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-accent text-black hover:bg-accent/90 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                                                >
+                                                    {isImportingUrl ? (
+                                                        <RefreshCw size={12} className="animate-spin" />
+                                                    ) : (
+                                                        <span>Apply</span>
+                                                    )}
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <SettingCard
+                                    icon={Sliders}
+                                    title="Backdrop Contrast Dimming"
+                                    description="Adjust dark overlay to ensure text and tab readability over bright wallpapers."
+                                >
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={80}
+                                            step={5}
+                                            value={wallpaperDimming}
+                                            onChange={(e) => setWallpaperDimming(Number(e.target.value))}
+                                            className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
+                                        />
+                                        <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperDimming}%</span>
+                                    </div>
+                                </SettingCard>
+
+                                <SettingCard
+                                    icon={ImageIcon}
+                                    title="Blur Wallpaper Background"
+                                    description="When disabled, the wallpaper stays crisp and sharp while UI panels retain frosted glass blur."
+                                >
+                                    <SettingToggle
+                                        isChecked={!!blurWallpaper}
+                                        onToggle={() => toggleSetting('blurWallpaper')}
+                                    />
+                                </SettingCard>
+
+                                {isCurrentLive && (
+                                    <>
+                                        <SettingCard
+                                            icon={RotateCcw}
+                                            title="Live Wallpaper Loop Mode"
+                                            description="Choose how video and animated GIF wallpapers transition between cycles."
+                                        >
+                                            <div className="min-w-[260px]">
+                                                <SlidingPillSwitcher
+                                                    options={[
+                                                        { id: 'crossfade', label: 'Cross-Dissolve' },
+                                                        { id: 'dip', label: 'Ambient Dip' },
+                                                        { id: 'cut', label: 'Instant Cut' }
+                                                    ]}
+                                                    value={wallpaperVideoLoopMode}
+                                                    onChange={(mode) => setWallpaperVideoLoopMode(mode)}
+                                                    isBright={isBright}
+                                                    size="sm"
+                                                />
+                                            </div>
+                                        </SettingCard>
+
+                                        {wallpaperVideoLoopMode !== 'cut' && (
+                                            <SettingCard
+                                                icon={SlidersHorizontal}
+                                                title={wallpaperVideoLoopMode === 'dip' ? 'Ambient Dip Duration' : 'Loop Dissolve Duration'}
+                                                description={
+                                                    wallpaperVideoLoopMode === 'dip'
+                                                        ? 'Total time of the ambient fade-down and return cycle.'
+                                                        : 'Length of the blending overlap window between loop endings and beginnings.'
+                                                }
+                                            >
+                                                <div className="flex items-center gap-3 flex-shrink-0">
+                                                    <input
+                                                        type="range"
+                                                        min={0.4}
+                                                        max={2.5}
+                                                        step={0.1}
+                                                        value={wallpaperVideoCrossfadeDuration}
+                                                        onChange={(e) => setWallpaperVideoCrossfadeDuration(Number(e.target.value))}
+                                                        className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
+                                                    />
+                                                    <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperVideoCrossfadeDuration.toFixed(1)}s</span>
+                                                </div>
+                                            </SettingCard>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {/* 4. LIVE WALLPAPER PLAYBACK */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Play}
+                                    title="Live Wallpaper Playback"
+                                    subtitle="Control when animated wallpapers play or pause to save resources."
+                                />
+
+                                <SettingCard
+                                    icon={Zap}
+                                    title="Pause When Window is Unfocused"
+                                    description="Automatically pause video and animated GIF playback when QBrowse is minimized or unfocused to eliminate CPU/GPU drain."
+                                >
+                                    <SettingToggle
+                                        isChecked={settings?.pauseWallpaperInBackground !== false}
+                                        onToggle={() => toggleSetting('pauseWallpaperInBackground')}
+                                    />
+                                </SettingCard>
+
+                                <SettingCard
+                                    icon={Globe}
+                                    title="Pause While Browsing Websites"
+                                    description="Pause animated video and GIF wallpapers whenever an active website tab is open, resuming automatically on the New Tab page."
+                                >
+                                    <SettingToggle
+                                        isChecked={!!settings?.pauseWallpaperOnWebview}
+                                        onToggle={() => toggleSetting('pauseWallpaperOnWebview')}
+                                    />
+                                </SettingCard>
+
+                                <SettingCard
+                                    icon={BatteryCharging}
+                                    title="Pause in Eco / Battery Saver Mode"
+                                    description="Freeze animated wallpapers during laptop battery saving or Eco Mode."
+                                >
+                                    <SettingToggle
+                                        isChecked={settings?.pauseWallpaperInEcoMode !== false}
+                                        onToggle={() => toggleSetting('pauseWallpaperInEcoMode')}
+                                    />
+                                </SettingCard>
+                            </div>
+
+                            {/* 5. GLASS & SURFACE EFFECTS */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Layers}
+                                    title="Glass & Surface Effects"
+                                    subtitle="Adjust frosted glass blur intensity and ambient glow."
+                                />
+
+                                <SettingCard icon={Sliders} title="UI Transparency (Glassmorphism)" description="Disable backdrop-blur translucency for weaker GPUs.">
+                                    <SettingToggle isChecked={isGlassEnabled} onToggle={() => setIsGlassEnabled(!isGlassEnabled)} />
+                                </SettingCard>
+
+                                <SettingCard icon={Sparkles} title="Liquid Glass UI Frosted Blur" description="Adjust frosted glass diffusion on UI surfaces (Sidebar, TopBar, and tab windows).">
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={48}
+                                            step={2}
+                                            value={wallpaperBlur}
+                                            onChange={(e) => setWallpaperBlur(Number(e.target.value))}
+                                            className={`w-32 sm:w-44 h-1.5 ${isBright ? 'bg-black/10' : 'bg-white/10'} rounded-lg appearance-none cursor-pointer accent-accent`}
+                                        />
+                                        <span className="text-xs font-mono font-semibold text-accent w-10 text-right select-none">{wallpaperBlur}px</span>
+                                    </div>
+                                </SettingCard>
+
+                                <SettingCard icon={Maximize2} title="Space Swipe Animations" description="Physical screen swipe transitions when switching workspace tabs.">
+                                    <SettingToggle isChecked={isSwipeEnabled} onToggle={() => setIsSwipeEnabled(!isSwipeEnabled)} />
+                                </SettingCard>
+
+                                <SettingCard icon={Sparkles} title="Active Tab Favicon Glow" description="Render a subtle glowing aura around active tab favicons.">
+                                    <SettingToggle isChecked={!!settings.faviconGlow} onToggle={() => toggleSetting('faviconGlow')} />
+                                </SettingCard>
+
+                                <SettingCard
+                                    icon={Layers}
+                                    title="Visual Tab Switcher (Ctrl+Tab)"
+                                    description={
+                                        osPlatform === 'win32'
+                                            ? 'Show Windows-style card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.'
+                                            : 'Show desktop card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.'
+                                    }
+                                >
+                                    <SettingToggle isChecked={settings.visualTabSwitcher !== false} onToggle={() => toggleSetting('visualTabSwitcher')} />
+                                </SettingCard>
+                            </div>
                         </div>
                     )}
 
-                    {/* TAB 2: LAYOUT & CHROME */}
+                    {/* TAB 2: LAYOUT & INTERFACE */}
                     {settingsTab === 'layout' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Layout &amp; Chrome</h3>
+                                <h3 className="text-2xl font-bold mb-1">Layout &amp; Interface</h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                     Configure spatial dockings, window geometry, omnibox architecture, and toolbar controls.
                                 </p>
@@ -2209,23 +2195,23 @@ const SettingsModalContent = () => {
                                         </p>
                                     </div>
 
-                                    {/* Preset Studio & Visual Architect Launch Banner */}
+                                    {/* Preset Studio Launch Banner */}
                                     <div className={`p-5 rounded-2xl border transition-all duration-300 relative overflow-hidden ${
-                                        isBright 
-                                            ? 'bg-gradient-to-r from-accent/15 via-white/80 to-accent/10 border-accent/30 shadow-[0_2px_12px_rgba(0,0,0,0.03)]' 
-                                            : 'bg-gradient-to-r from-accent/15 via-white/[0.03] to-purple-500/10 border-accent/25 shadow-lg'
+                                        isBright
+                                            ? 'bg-black/[0.02] border-black/[0.07]'
+                                            : 'bg-white/[0.02] border-white/[0.06]'
                                     }`}>
                                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
                                             <div className="flex items-center gap-3.5">
-                                                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${
-                                                    isBright 
-                                                        ? 'bg-white text-zinc-950 border-black/10' 
-                                                        : 'bg-accent/20 text-accent border-accent/40 shadow-[0_0_15px_var(--accent-20)]'
+                                                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+                                                    isBright
+                                                        ? 'bg-black/[0.04] text-zinc-900 border-black/[0.07]'
+                                                        : 'bg-accent/10 text-accent border-white/[0.06]'
                                                 }`}>
                                                     <Sliders size={20} strokeWidth={2.2} />
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-sm font-bold tracking-tight">Visual Architect &amp; Preset Studio</h4>
+                                                    <h4 className="text-sm font-bold tracking-tight">Preset Studio</h4>
                                                     <p className={`text-xs mt-0.5 max-w-xl ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                                         Craft, preview, and arrange custom spatial architectures with drag-and-drop live preview, custom docking slots, and preset duplication.
                                                     </p>
@@ -2242,11 +2228,11 @@ const SettingsModalContent = () => {
                                         </div>
                                     </div>
 
-                                    {/* Chrome Styling */}
+                                    {/* Window & Bar Geometry */}
                                     <div className="space-y-3">
                                         <SectionHeader 
                                             icon={Laptop} 
-                                            title="Browser Chrome Geometry" 
+                                            title="Window & Bar Geometry" 
                                             description="Window frame geometry, omnibox presentation, and system window controls." 
                                         />
 
@@ -2489,18 +2475,18 @@ const SettingsModalContent = () => {
 
                                         {/* Toolbar & Extensions Hub Quick Icons Card */}
                                         <div className={`p-5 rounded-2xl border space-y-3 transition-all duration-200 ${
-                                            isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                                         }`}>
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm ${
-                                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-accent/10 text-accent border border-accent/30'
+                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${
+                                                        isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-accent/10 text-accent border-white/[0.06]'
                                                     }`}>
                                                         <SlidersHorizontal size={17} />
                                                     </div>
                                                     <div>
                                                         <p className="font-semibold text-sm">Toolbar &amp; Extension Hub Icons</p>
-                                                        <p className="text-xs text-white/40 mt-0.5">Toggle quick-access buttons in the top bar. You can also right-click any icon in the toolbar to hide it.</p>
+                                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Toggle quick-access buttons in the top bar. You can also right-click any icon in the toolbar to hide it.</p>
                                                     </div>
                                                 </div>
                                                 <button
@@ -2538,7 +2524,7 @@ const SettingsModalContent = () => {
                                                             }`}
                                                         >
                                                             <span>{item.label}</span>
-                                                            <span className={`w-2 h-2 rounded-full transition-colors ${isItemVisible ? 'bg-accent shadow-[0_0_6px_var(--accent)]' : 'bg-white/20'}`} />
+                                                            <span className={`w-2 h-2 rounded-full transition-colors ${isItemVisible ? 'bg-accent shadow-[0_0_6px_var(--accent)]' : (isBright ? 'bg-black/20' : 'bg-white/20')}`} />
                                                         </button>
                                                     );
                                                 })}
@@ -2633,6 +2619,27 @@ const SettingsModalContent = () => {
                         </div>
                     )}
 
+                    {/* TAB: TYPOGRAPHY & FONTS */}
+                    {settingsTab === 'typography' && (
+                        <div className="animate-tab-fade space-y-6">
+                            <div>
+                                <h3 className="text-2xl font-bold mb-1">Typography &amp; Fonts</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                    Customize interface typefaces, web fonts, variable weights, sizing scale, and font smoothing.
+                                </p>
+                            </div>
+
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Type}
+                                    title="Interface & Web Typography"
+                                    description="Choose curated font presets, browse Google Fonts, load local font files, and tune scale & line height."
+                                />
+                                <CustomFontManager isBright={isBright} />
+                            </div>
+                        </div>
+                    )}
+
                     {/* TAB: WORKSPACES */}
                     {settingsTab === 'spaces' && (() => {
                         const spacesList = Array.isArray(settings?.customSpaces) && settings.customSpaces.length > 0
@@ -2690,11 +2697,11 @@ const SettingsModalContent = () => {
                                             onSubmit={handleCreateSpace}
                                             className={`p-4 rounded-2xl border flex flex-col gap-4 my-2 ${
                                                 isBright 
-                                                    ? 'bg-white/80 border-black/10 shadow-[0_2px_12px_rgba(0,0,0,0.03)]' 
-                                                    : 'bg-white/[0.03] border-white/[0.08]'
+                                                    ? 'bg-black/[0.02] border-black/[0.07]' 
+                                                    : 'bg-white/[0.02] border-white/[0.06]'
                                             }`}
                                         >
-                                            <div className="text-xs font-semibold tracking-wide text-zinc-300 dark:text-zinc-300">
+                                            <div className={`text-xs font-semibold tracking-wide ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
                                                 Create Workspace
                                             </div>
 
@@ -2792,14 +2799,11 @@ const SettingsModalContent = () => {
 
                                 {/* Workspaces List Section */}
                                 <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <h4 className={`text-xs font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Active Workspaces ({spacesList.length} / 8)
-                                        </h4>
-                                        <span className={`text-[11px] ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                            Drag handle or rows to reorder
-                                        </span>
-                                    </div>
+                                    <SectionHeader
+                                        icon={Layers}
+                                        title={`Active Workspaces (${spacesList.length} / 8)`}
+                                        description="Drag handle or rows to reorder your workspaces."
+                                    />
 
                                     <div className="space-y-2">
                                         {spacesList.map((sp, idx) => {
@@ -2847,8 +2851,8 @@ const SettingsModalContent = () => {
                                                             : isDragOver
                                                                 ? 'ring-2 ring-accent/70 shadow-xl border-accent bg-accent/[0.06]'
                                                                 : (isBright 
-                                                                    ? 'bg-white/75 hover:bg-white/95 border-black/[0.08] hover:border-black/[0.14] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-lg' 
-                                                                    : 'bg-white/[0.025] hover:bg-white/[0.045] border-white/[0.05] hover:border-white/[0.12] hover:shadow-lg')
+                                                                    ? 'bg-black/[0.02] hover:bg-black/[0.04] border-black/[0.07] hover:border-black/[0.14]' 
+                                                                    : 'bg-white/[0.02] hover:bg-white/[0.04] border-white/[0.06] hover:border-white/[0.12]')
                                                     }`}
                                                 >
                                                     <div className="p-3 px-4 flex items-center justify-between gap-3">
@@ -2874,6 +2878,15 @@ const SettingsModalContent = () => {
                                                                             setActiveIconPickerSpaceId(null);
                                                                             setIconPickerCoords(null);
                                                                         } else {
+                                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                                            const pickerW = 256;
+                                                                            const pickerH = 96;
+                                                                            const spaceBelow = window.innerHeight - rect.bottom - 12;
+                                                                            const openAbove = spaceBelow < pickerH + 8 && rect.top > pickerH + 20;
+                                                                            const left = Math.max(12, Math.min(rect.left, window.innerWidth - pickerW - 12));
+                                                                            const top = Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - pickerH - 12));
+                                                                            const bottom = Math.max(12, window.innerHeight - rect.top + 8);
+                                                                            setIconPickerCoords({ top, bottom, left, openAbove });
                                                                             setActiveIconPickerSpaceId(sp.id);
                                                                         }
                                                                     }}
@@ -2887,11 +2900,11 @@ const SettingsModalContent = () => {
                                                                     <IconComponent size={16} className="transition-transform duration-200 group-hover:scale-110" />
                                                                 </button>
 
-                                                                {/* Anchored Flagship Liquid Glass Icon Picker Popover (Rendered in-tree over sibling workspace content) */}
-                                                                {isIconPickerOpen && (
+                                                                {/* Anchored Flagship Liquid Glass Icon Picker Popover (Portaled to body for true backdrop blur) */}
+                                                                {isIconPickerOpen && iconPickerCoords && typeof document !== 'undefined' && createPortal(
                                                                     <>
                                                                         <div 
-                                                                            className="fixed inset-0 z-40 bg-transparent cursor-default" 
+                                                                            className="fixed inset-0 z-[99990] bg-transparent cursor-default" 
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
                                                                                 setActiveIconPickerSpaceId(null);
@@ -2908,19 +2921,13 @@ const SettingsModalContent = () => {
                                                                             onClick={(e) => e.stopPropagation()}
                                                                             onMouseDown={(e) => e.stopPropagation()}
                                                                             onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                                                            className={`absolute left-0 ${idx >= customSpaces.length - 1 && customSpaces.length > 2 ? 'bottom-full mb-2' : 'top-full mt-2'} z-50 p-2.5 rounded-2xl grid grid-cols-7 gap-1.5 w-64 animate-pop-in ${
-                                                                                isBright 
-                                                                                    ? 'border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
-                                                                                    : 'border border-white/[0.12] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.18)]'
-                                                                            }`}
+                                                                            className={`fixed z-[99995] !p-2.5 grid grid-cols-7 gap-1.5 w-64 animate-pop-in ${getLiquidGlassMenuClasses(isBright)}`}
                                                                             style={{
-                                                                                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.78)' : 'rgba(22, 25, 38, 0.65)',
-                                                                                backdropFilter: isBright
-                                                                                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) contrast(105%) brightness(1.10)',
-                                                                                WebkitBackdropFilter: isBright
-                                                                                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                                                                                    : 'blur(var(--glass-blur, 32px)) saturate(190%) contrast(105%) brightness(1.10)'
+                                                                                ...(iconPickerCoords.openAbove
+                                                                                    ? { bottom: `${iconPickerCoords.bottom}px` }
+                                                                                    : { top: `${iconPickerCoords.top}px` }),
+                                                                                left: `${iconPickerCoords.left}px`,
+                                                                                ...getLiquidGlassInlineStyle(isBright)
                                                                             }}
                                                                         >
                                                                             {SPACE_ICONS.map((ic) => {
@@ -2942,8 +2949,8 @@ const SettingsModalContent = () => {
                                                                                             isCur
                                                                                                 ? 'bg-accent text-zinc-950 font-bold shadow-sm'
                                                                                                 : (isBright 
-                                                                                                    ? 'hover:bg-black/5 text-zinc-700 hover:text-zinc-950' 
-                                                                                                    : 'hover:bg-white/10 text-white/70 hover:text-white')
+                                                                                                    ? 'hover:bg-black/[0.06] text-zinc-700 hover:text-zinc-950' 
+                                                                                                    : 'hover:bg-white/10 text-white/75 hover:text-white')
                                                                                         }`}
                                                                                     >
                                                                                         <Ic size={15} />
@@ -2951,7 +2958,8 @@ const SettingsModalContent = () => {
                                                                                 );
                                                                             })}
                                                                         </div>
-                                                                    </>
+                                                                    </>,
+                                                                    document.body
                                                                 )}
                                                             </div>
 
@@ -2969,7 +2977,7 @@ const SettingsModalContent = () => {
                                                                             }}
                                                                             maxLength={30}
                                                                             className={`px-2.5 py-1 text-xs rounded-lg outline-none border focus:border-accent ${
-                                                                                isBright ? 'bg-white border-black/20 text-zinc-900' : 'bg-black/50 border-white/20 text-white'
+                                                                                isBright ? 'bg-white border-black/[0.12] text-zinc-900' : 'bg-black/40 border-white/[0.10] text-white'
                                                                             }`}
                                                                             autoFocus
                                                                         />
@@ -3039,7 +3047,7 @@ const SettingsModalContent = () => {
                                                         {/* Right: Controls (GitHub Live toggle, Reorder, Delete) */}
                                                         <div className="flex items-center gap-2 sm:gap-3">
                                                             {/* GitHub Live Toggle */}
-                                                            <div className="flex items-center gap-2 pr-2.5 border-r border-black/10 dark:border-white/10">
+                                                            <div className={`flex items-center gap-2 pr-2.5 border-r ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
                                                                 <span className={`text-xs hidden sm:inline ${
                                                                     isBright ? 'text-zinc-600' : 'text-zinc-400'
                                                                 }`}>
@@ -3144,7 +3152,7 @@ const SettingsModalContent = () => {
 
                                 {/* Private Modes Note */}
                                 <div className={`p-3.5 rounded-xl border flex items-center gap-3 ${
-                                    isBright ? 'bg-black/[0.02] border-black/[0.06] text-zinc-600' : 'bg-white/[0.02] border-white/[0.05] text-zinc-400'
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-600' : 'bg-white/[0.02] border-white/[0.06] text-zinc-400'
                                 }`}>
                                     <Ghost size={16} className="text-accent shrink-0" />
                                     <p className="text-xs">
@@ -3166,7 +3174,7 @@ const SettingsModalContent = () => {
                             <div className="flex items-center justify-between flex-wrap gap-3 pr-14">
                                 <div>
                                     <h3 className="text-2xl font-bold mb-1">Accessibility</h3>
-                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                         Customize visual contrast, dyslexia typography, vestibular comfort, and navigation aids.
                                     </p>
                                 </div>
@@ -3185,32 +3193,23 @@ const SettingsModalContent = () => {
                             </div>
 
                             {/* Section 1: Visual Contrast & Typography */}
-                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
-                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                    }`}>
-                                        <Eye size={15} />
-                                    </div>
-                                    <div>
-                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Visual Contrast &amp; Typography</h4>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>High-contrast legibility, specialized typeface, minimum text sizing, and page scale.</p>
-                                    </div>
-                                </div>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Eye}
+                                    title="Visual Contrast & Typography"
+                                    description="High-contrast legibility, specialized typeface, minimum text sizing, and page scale."
+                                />
 
-                                <div className="space-y-2 pt-1">
-                                    <SettingCard 
-                                        icon={Eye} 
-                                        title="High Contrast Mode" 
-                                        description="Amplifies text luminance, defines stark contrast boundaries, and strips soft shadows across QBrowse chrome and web pages."
-                                    >
-                                        <SettingToggle 
-                                            isChecked={!!settings.a11yHighContrast} 
-                                            onToggle={() => toggleSetting('a11yHighContrast')} 
-                                        />
-                                    </SettingCard>
+                                <SettingCard 
+                                    icon={Eye} 
+                                    title="High Contrast Mode" 
+                                    description="Amplifies text luminance, defines stark contrast boundaries, and strips soft shadows across the QBrowse interface and web pages."
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings.a11yHighContrast} 
+                                        onToggle={() => toggleSetting('a11yHighContrast')} 
+                                    />
+                                </SettingCard>
 
                                     <SettingCard 
                                         icon={Type} 
@@ -3355,195 +3354,178 @@ const SettingsModalContent = () => {
                                             </div>
                                         </div>
                                     </SettingCard>
-                                </div>
                             </div>
 
                             {/* Section 2: Motion & Vestibular */}
-                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
-                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                    }`}>
-                                        <Zap size={15} />
-                                    </div>
-                                    <div>
-                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Motion &amp; Vestibular Comfort</h4>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Protect against motion sickness and vestibular strain by suppressing rapid animations.</p>
-                                    </div>
-                                </div>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Zap}
+                                    title="Motion & Vestibular Comfort"
+                                    description="Protect against motion sickness and vestibular strain by suppressing rapid animations."
+                                />
 
-                                <div className="space-y-2 pt-1">
-                                    <SettingCard 
-                                        icon={Zap} 
-                                        title="Force Reduced Motion" 
-                                        description={
-                                            settings?.a11yReducedMotion
-                                                ? "Reduced motion is manually forced on. Browser chrome transitions, Tab Map 3D tilt, and web animations are suppressed."
-                                                : isSystemReducedMotion
-                                                    ? "Windows Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match Windows."
-                                                    : "Disables browser chrome transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with Windows Animation Effects."
-                                        }
-                                    >
-                                        <SettingToggle 
-                                            isChecked={!!settings.a11yReducedMotion} 
-                                            onToggle={() => toggleSetting('a11yReducedMotion')} 
-                                        />
-                                    </SettingCard>
+                                <SettingCard 
+                                    icon={Zap} 
+                                    title="Force Reduced Motion" 
+                                    description={
+                                        settings?.a11yReducedMotion
+                                            ? "Reduced motion is manually forced on. Browser interface transitions, Tab Map 3D tilt, and web animations are suppressed."
+                                            : isSystemReducedMotion
+                                                ? (osPlatform === 'darwin'
+                                                    ? "macOS Reduce Motion is currently turned on in System Settings. Transitions and animations are automatically suppressed to match macOS."
+                                                    : osPlatform === 'linux'
+                                                        ? "System Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match your desktop settings."
+                                                        : "Windows Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match Windows.")
+                                                : (osPlatform === 'darwin'
+                                                    ? "Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with macOS Reduce Motion."
+                                                    : osPlatform === 'linux'
+                                                        ? "Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with OS Animation Effects."
+                                                        : "Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with Windows Animation Effects.")
+                                    }
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings.a11yReducedMotion} 
+                                        onToggle={() => toggleSetting('a11yReducedMotion')} 
+                                    />
+                                </SettingCard>
 
-                                    <SettingCard 
-                                        icon={VolumeX} 
-                                        title="Suppress Media Autoplay" 
-                                        description="Prevents background video elements and HTML5 audiovisual streams from auto-playing without explicit user initiation."
-                                    >
-                                        <SettingToggle 
-                                            isChecked={!!settings.a11ySuppressAutoplay} 
-                                            onToggle={() => toggleSetting('a11ySuppressAutoplay')} 
-                                        />
-                                    </SettingCard>
-                                </div>
+                                <SettingCard 
+                                    icon={VolumeX} 
+                                    title="Suppress Media Autoplay" 
+                                    description="Prevents background video elements and HTML5 audiovisual streams from auto-playing without explicit user initiation."
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings.a11ySuppressAutoplay} 
+                                        onToggle={() => toggleSetting('a11ySuppressAutoplay')} 
+                                    />
+                                </SettingCard>
                             </div>
 
                             {/* Section 3: Keyboard & Motor Navigation */}
-                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
-                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                    }`}>
-                                        <Keyboard size={15} />
-                                    </div>
-                                    <div>
-                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Keyboard Navigation &amp; Focus Indicators</h4>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Independent keyboard operation, high-visibility focus indicators, and text caret browsing.</p>
-                                    </div>
-                                </div>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Keyboard}
+                                    title="Keyboard Navigation & Focus Indicators"
+                                    description="Independent keyboard operation, high-visibility focus indicators, and text caret browsing."
+                                />
 
-                                <div className="space-y-2 pt-1">
-                                    <SettingCard 
-                                        icon={Keyboard} 
-                                        title="Caret Browsing (Text Cursor Navigation)" 
-                                        description="Place a moveable typing cursor on any web page to select text, scroll, and navigate purely via arrow keys. Press F7 at any time."
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-white/60">F7</span>
-                                            <SettingToggle 
-                                                isChecked={!!settings.a11yCaretBrowsing} 
-                                                onToggle={() => toggleSetting('a11yCaretBrowsing')} 
-                                            />
-                                        </div>
-                                    </SettingCard>
-
-                                    <SettingCard 
-                                        icon={Sliders} 
-                                        title="High-Visibility Keyboard Focus Rings" 
-                                        description="Renders a high-contrast 3px glowing amber border around whichever link, button, or input currently holds keyboard focus."
-                                    >
+                                <SettingCard 
+                                    icon={Keyboard} 
+                                    title="Caret Browsing (Text Cursor Navigation)" 
+                                    description="Place a moveable typing cursor on any web page to select text, scroll, and navigate purely via arrow keys. Press F7 at any time."
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-zinc-400'}`}>F7</span>
                                         <SettingToggle 
-                                            isChecked={!!settings.a11yFocusRings} 
-                                            onToggle={() => toggleSetting('a11yFocusRings')} 
+                                            isChecked={!!settings.a11yCaretBrowsing} 
+                                            onToggle={() => toggleSetting('a11yCaretBrowsing')} 
                                         />
-                                    </SettingCard>
-                                </div>
+                                    </div>
+                                </SettingCard>
+
+                                <SettingCard 
+                                    icon={Sliders} 
+                                    title="High-Visibility Keyboard Focus Rings" 
+                                    description="Renders a high-contrast 3px glowing amber border around whichever link, button, or input currently holds keyboard focus."
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings.a11yFocusRings} 
+                                        onToggle={() => toggleSetting('a11yFocusRings')} 
+                                    />
+                                </SettingCard>
                             </div>
 
                             {/* Section 4: Audio & Multimodal Reading */}
-                            <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-200 ${
-                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                    }`}>
-                                        <Volume2 size={15} />
-                                    </div>
-                                    <div>
-                                        <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Auditory &amp; Reading Assistance</h4>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Text-to-speech engine, automatic video subtitles, and mono audio downmixing.</p>
-                                    </div>
-                                </div>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Volume2}
+                                    title="Auditory & Reading Assistance"
+                                    description="Text-to-speech engine, automatic video subtitles, and mono audio downmixing."
+                                />
 
-                                <div className="space-y-2 pt-1">
-                                    <SettingCard 
-                                        icon={Volume2} 
-                                        title="Read Aloud Floating Assistant" 
-                                        description="Launches the dedicated text-to-speech toolbar to read web articles, news, or selected text with synchronized speech."
+                                <SettingCard 
+                                    icon={Volume2} 
+                                    title="Read Aloud Floating Assistant" 
+                                    description="Launches the dedicated text-to-speech toolbar to read web articles, news, or selected text with synchronized speech."
+                                >
+                                    <button
+                                        onClick={() => {
+                                            openReadAloud();
+                                            showToast('Read Aloud assistant launched.');
+                                        }}
+                                        className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition active:scale-95 flex items-center gap-2 cursor-pointer ${
+                                            isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/[0.07] text-zinc-800' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white'
+                                        }`}
                                     >
-                                        <button
-                                            onClick={() => {
-                                                openReadAloud();
-                                                showToast('Read Aloud assistant launched.');
-                                            }}
-                                            className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition active:scale-95 flex items-center gap-2 cursor-pointer ${
-                                                isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
-                                            }`}
-                                        >
-                                            <span>Launch Toolbar</span>
-                                            <span className="text-[10px] font-mono opacity-50">Alt+R</span>
-                                        </button>
-                                    </SettingCard>
+                                        <span>Launch Toolbar</span>
+                                        <span className="text-[10px] font-mono opacity-50">Alt+R</span>
+                                    </button>
+                                </SettingCard>
 
-                                    <SettingCard 
-                                        icon={Sparkles} 
-                                        title="Force Video Closed Captions (Subtitles)" 
-                                        description="Automatically instructs HTML5 video players to activate native closed caption and subtitle text tracks by default."
-                                    >
-                                        <SettingToggle 
-                                            isChecked={!!settings.a11yVideoCaptions} 
-                                            onToggle={() => toggleSetting('a11yVideoCaptions')} 
-                                        />
-                                    </SettingCard>
+                                <SettingCard 
+                                    icon={Sparkles} 
+                                    title="Force Video Closed Captions (Subtitles)" 
+                                    description="Automatically instructs HTML5 video players to activate native closed caption and subtitle text tracks by default."
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings.a11yVideoCaptions} 
+                                        onToggle={() => toggleSetting('a11yVideoCaptions')} 
+                                    />
+                                </SettingCard>
 
-                                    <SettingCard 
-                                        icon={VolumeX} 
-                                        title="Mono Audio Downmix" 
-                                        description="Combines left and right stereo audio channels into both ears to ensure no content is missed for users with unilateral hearing."
-                                    >
-                                        <SettingToggle 
-                                            isChecked={!!settings.a11yMonoAudio} 
-                                            onToggle={() => toggleSetting('a11yMonoAudio')} 
-                                        />
-                                    </SettingCard>
-                                </div>
+                                <SettingCard 
+                                    icon={VolumeX} 
+                                    title="Mono Audio Downmix" 
+                                    description="Combines left and right stereo audio channels into both ears to ensure no content is missed for users with unilateral hearing."
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings.a11yMonoAudio} 
+                                        onToggle={() => toggleSetting('a11yMonoAudio')} 
+                                    />
+                                </SettingCard>
                             </div>
                         </div>
                     )}
 
                     {/* TAB 2: PRIVACY & SECURITY */}
                     {settingsTab === 'privacy' && (
-                        <div className="animate-tab-fade space-y-4">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1">Privacy & Security</h3>
-                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Manage encrypted DNS routing, network protection, process sandboxing, and private spaces.</p>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Manage encrypted DNS routing, network protection, process sandboxing, and private spaces.</p>
                             </div>
 
-                            {/* 1. ENCRYPTED DNS & CUSTOM RESOLVER COMMAND CARD (AT VERY TOP!) */}
-                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
-                                isBright 
-                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
-                                    : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                {/* Header Row */}
-                                <div className="flex items-center justify-between gap-3 flex-wrap">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                            isBright 
-                                                ? 'bg-black/[0.04] text-accent border border-black/[0.06]' 
-                                                : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                        }`}>
-                                            <ShieldCheck size={16} />
+                            {/* 1. ENCRYPTED DNS & CUSTOM RESOLVER COMMAND CARD */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Lock}
+                                    title="Encrypted DNS"
+                                    description="Route domain lookups through an encrypted HTTPS resolver to prevent ISP profiling."
+                                />
+                                <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
+                                    isBright 
+                                        ? 'bg-black/[0.02] border-black/[0.07]' 
+                                        : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    {/* Header Row */}
+                                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${
+                                                isBright 
+                                                    ? 'bg-black/[0.04] text-accent border-black/[0.07]' 
+                                                    : 'bg-white/[0.03] text-accent/80 border-white/[0.06]'
+                                            }`}>
+                                                <Server size={15} />
+                                            </div>
+                                            <div>
+                                                <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    Encrypted DNS (DNS over HTTPS)
+                                                </h4>
+                                                <p className={`text-xs mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Select a trusted resolver or configure your own RFC 8484 DoH endpoint.
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Encrypted DNS (DNS over HTTPS)
-                                            </h4>
-                                            <p className={`text-xs mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                Route domain lookups through an encrypted HTTPS resolver to prevent ISP profiling and eavesdropping.
-                                            </p>
-                                        </div>
-                                    </div>
 
                                     {/* Inline Test Connection Pill */}
                                     <button
@@ -3709,7 +3691,7 @@ const SettingsModalContent = () => {
 
                                         {/* Active Resolver Summary Row */}
                                         <div className={`flex items-center justify-between p-2.5 px-3 rounded-xl border text-[11px] font-mono ${
-                                            isBright ? 'bg-black/[0.02] border-black/5 text-zinc-600' : 'bg-white/[0.02] border-white/5 text-zinc-400'
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-600' : 'bg-white/[0.02] border-white/[0.06] text-zinc-400'
                                         }`}>
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
@@ -3719,88 +3701,89 @@ const SettingsModalContent = () => {
                                                         : DOH_PROVIDERS.find(p => p.id === (settings.doh || 'cloudflare'))?.url || 'https://cloudflare-dns.com/dns-query'}
                                                 </span>
                                             </div>
-                                            <span className="flex-shrink-0 font-medium text-accent">
-                                                {settings.doh === 'custom' 
-                                                    ? 'Custom Resolver' 
-                                                    : DOH_PROVIDERS.find(p => p.id === (settings.doh || 'cloudflare'))?.badge || 'Encrypted'}
-                                            </span>
                                         </div>
                                     </div>
                                 )}
-                            </div>
-
-                            {/* 2. PRIVACY SHIELD LEVEL CARD */}
-                            <div className={`rounded-2xl border p-5 transition-all duration-200 space-y-3 ${
-                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                            Privacy Shield Level
-                                        </h4>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Select a baseline security preset or fine-tune individual protection layers below.
-                                        </p>
-                                    </div>
                                 </div>
-                                <SlidingPillSwitcher
-                                    options={[
-                                        { id: 'standard', label: 'Standard' },
-                                        { id: 'strict', label: 'Strict' },
-                                        { id: 'custom', label: 'Custom' }
-                                    ]}
-                                    value={
-                                        settings.privacyLevel || (
-                                            (settings.httpsOnly && settings.isolation && settings.webrtc && settings.dnt)
-                                                ? 'strict'
-                                                : (settings.httpsOnly && !settings.isolation && settings.webrtc && settings.dnt)
-                                                    ? 'standard'
-                                                    : 'custom'
-                                        )
-                                    }
-                                    onChange={(level) => {
-                                        if (level === 'standard') {
-                                            setSettingValue('privacyLevel', 'standard');
-                                            setSettingValue('httpsOnly', true);
-                                            setSettingValue('isolation', false);
-                                            setSettingValue('webrtc', true);
-                                            setSettingValue('dnt', true);
-                                            showToast('Privacy Shield: Standard profile applied');
-                                        } else if (level === 'strict') {
-                                            setSettingValue('privacyLevel', 'strict');
-                                            setSettingValue('httpsOnly', true);
-                                            setSettingValue('isolation', true);
-                                            setSettingValue('webrtc', true);
-                                            setSettingValue('dnt', true);
-                                            showToast('Privacy Shield: Strict profile applied');
-                                        } else {
-                                            setSettingValue('privacyLevel', 'custom');
-                                        }
-                                    }}
-                                    isBright={isBright}
-                                />
                             </div>
 
-                            {/* 3. NETWORK PROTECTION TOGGLES */}
-                            <SettingCard icon={Lock} title="HTTPS-Only Mode" description="Automatically upgrade all connections to secure HTTPS.">
-                                <SettingToggle 
-                                    isChecked={!!settings.httpsOnly} 
-                                    onToggle={() => {
-                                        setSettingValue('privacyLevel', 'custom');
-                                        toggleSetting('httpsOnly');
-                                    }} 
+                            {/* 2. PROTECTION & NETWORK ISOLATION */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Lock}
+                                    title="Protection & Network Isolation"
+                                    description="Baseline privacy profile, HTTPS enforcement, process sandboxing, and leak defense."
                                 />
-                            </SettingCard>
+                                <div className={`rounded-2xl border p-5 transition-all duration-200 space-y-3 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                Privacy Shield Level
+                                            </h4>
+                                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                Select a baseline security preset or fine-tune individual protection layers below.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <SlidingPillSwitcher
+                                        options={[
+                                            { id: 'standard', label: 'Standard' },
+                                            { id: 'strict', label: 'Strict' },
+                                            { id: 'custom', label: 'Custom' }
+                                        ]}
+                                        value={
+                                            settings.privacyLevel || (
+                                                (settings.httpsOnly && settings.isolation && settings.webrtc && settings.dnt)
+                                                    ? 'strict'
+                                                    : (settings.httpsOnly && !settings.isolation && settings.webrtc && settings.dnt)
+                                                        ? 'standard'
+                                                        : 'custom'
+                                            )
+                                        }
+                                        onChange={(level) => {
+                                            if (level === 'standard') {
+                                                setSettingValue('privacyLevel', 'standard');
+                                                setSettingValue('httpsOnly', true);
+                                                setSettingValue('isolation', false);
+                                                setSettingValue('webrtc', true);
+                                                setSettingValue('dnt', true);
+                                                showToast('Privacy Shield: Standard profile applied');
+                                            } else if (level === 'strict') {
+                                                setSettingValue('privacyLevel', 'strict');
+                                                setSettingValue('httpsOnly', true);
+                                                setSettingValue('isolation', true);
+                                                setSettingValue('webrtc', true);
+                                                setSettingValue('dnt', true);
+                                                showToast('Privacy Shield: Strict profile applied');
+                                            } else {
+                                                setSettingValue('privacyLevel', 'custom');
+                                            }
+                                        }}
+                                        isBright={isBright}
+                                    />
+                                </div>
 
-                            <SettingCard icon={Shield} title="Strict Process Isolation" description="Run each site in its own isolated Electron process sandbox.">
-                                <SettingToggle 
-                                    isChecked={!!settings.isolation} 
-                                    onToggle={() => {
-                                        setSettingValue('privacyLevel', 'custom');
-                                        toggleSetting('isolation');
-                                    }} 
-                                />
-                            </SettingCard>
+                                <SettingCard icon={Lock} title="HTTPS-Only Mode" description="Automatically upgrade all connections to secure HTTPS.">
+                                    <SettingToggle 
+                                        isChecked={!!settings.httpsOnly} 
+                                        onToggle={() => {
+                                            setSettingValue('privacyLevel', 'custom');
+                                            toggleSetting('httpsOnly');
+                                        }} 
+                                    />
+                                </SettingCard>
+
+                                <SettingCard icon={Cpu} title="Strict Process Isolation" description="Run each site in its own isolated Electron process sandbox.">
+                                    <SettingToggle 
+                                        isChecked={!!settings.isolation} 
+                                        onToggle={() => {
+                                            setSettingValue('privacyLevel', 'custom');
+                                            toggleSetting('isolation');
+                                        }} 
+                                    />
+                                </SettingCard>
 
                             <SettingCard icon={Globe} title="WebRTC Leak Protection" description="Prevent sites from discovering your true local IP address via WebRTC calls.">
                                 <SettingToggle 
@@ -3825,114 +3808,124 @@ const SettingsModalContent = () => {
                                     }} 
                                 />
                             </SettingCard>
-
-                            {/* Tor Onion Network Routing */}
-                            <SettingCard 
-                                icon={Globe} 
-                                title="Tor Onion Network Routing" 
-                                description="Route Private space through the Tor network. Onion icon dynamically replaces Ghost in the bottom spaces bar."
-                            >
-                                <SettingToggle 
-                                    isChecked={isTorEnabled} 
-                                    onToggle={() => toggleTorEnabled(undefined, { switchSpace: false, fallbackSpace: 'ghost' })} 
-                                />
-                            </SettingCard>
-
-                            {/* Encrypted Cloud Auto-Sync */}
-                            <SettingCard 
-                                icon={RefreshCw} 
-                                title="Encrypted Cloud Auto-Sync" 
-                                description={user 
-                                    ? `Automatically encrypts (AES-256) and syncs tabs, vault, and settings every 5 minutes and on local changes. (Last sync: ${lastSyncTime || 'Pending'})`
-                                    : "Sign in to your account from the user profile popover to enable automatic encrypted cloud sync across devices."
-                                }
-                            >
-                                <SettingToggle 
-                                    isChecked={!!user && autoSyncEnabled} 
-                                    onToggle={() => {
-                                        if (!user) {
-                                            openModal('auth');
-                                        } else {
-                                            toggleAutoSync();
-                                        }
-                                    }} 
-                                />
-                            </SettingCard>
-
-                            {/* QVault in Ghost & Tor Spaces */}
-                            <SettingCard 
-                                icon={Key} 
-                                title="QVault in Ghost & Tor Spaces" 
-                                description="Allow inline autofill of saved passwords while in private spaces. Password save prompts are always suppressed for privacy."
-                            >
-                                <SettingToggle 
-                                    isChecked={allowVaultInGhostTor} 
-                                    onToggle={() => {
-                                        const next = !allowVaultInGhostTor;
-                                        setAllowVaultInGhostTor(next);
-                                        showToast(next ? 'QVault autofill enabled in private spaces' : 'QVault autofill disabled in private spaces');
-                                    }} 
-                                />
-                            </SettingCard>
-
-                            {/* Excluded Sites (Never Save Passwords) */}
-                            <div className={`p-4 rounded-2xl border transition-all duration-300 ${
-                                isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center gap-3 mb-2.5">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${
-                                        isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                    }`}>
-                                        <Lock size={15} />
-                                    </div>
-                                    <div>
-                                        <p className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Never Saved Sites</p>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Websites where you dismissed credential saving with "Never for this site".</p>
-                                    </div>
-                                </div>
-                                {neverSaveDomains.length === 0 ? (
-                                    <div className={`text-center text-xs italic py-3 rounded-xl border ${isBright ? 'text-zinc-500 bg-black/[0.02] border-black/5' : 'text-white/30 bg-white/[0.02] border-white/[0.04]'}`}>
-                                        No sites excluded. QVault will offer to save logins across all websites.
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                        {neverSaveDomains.map(d => (
-                                            <div key={d} className={`flex items-center gap-2 pl-3 pr-2 py-1 rounded-lg text-xs border ${isBright ? 'bg-white/80 border-black/10 text-zinc-900 shadow-sm' : 'bg-white/5 border-white/10 text-white/90'}`}>
-                                                <span className="font-mono text-[11px]">{d}</span>
-                                                <button 
-                                                    onClick={() => {
-                                                        removeNeverSaveDomain(d);
-                                                        showToast(`Removed ${d} from excluded sites`);
-                                                    }}
-                                                    className={`w-4 h-4 rounded flex items-center justify-center transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-black' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}
-                                                    title="Remove exclusion"
-                                                >
-                                                    <X size={11} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
 
-                            {/* Clear Data Card */}
-                            <div className={`p-4 rounded-2xl flex items-center justify-between border ${isBright ? 'bg-red-500/[0.08] border-red-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                                <div>
-                                    <p className={`font-semibold text-sm ${isBright ? 'text-red-600' : 'text-red-400'}`}>Clear Browsing Data</p>
-                                    <p className={`text-xs mt-0.5 ${isBright ? 'text-red-600/70' : 'text-red-400/60'}`}>Clear history, cookies, and cache from local storage &amp; SQLite.</p>
-                                </div>
-                                <button 
-                                    onClick={async () => {
-                                        if (window.electronAPI && window.electronAPI.clearAllData) {
-                                            await window.electronAPI.clearAllData({ cookies: true, cache: true, storage: true }).catch(()=>{});
-                                        }
-                                        useHistoryStore.getState().clearHistory();
-                                        showToast('All browsing data cleared!');
-                                    }}
-                                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer"
+                            {/* 4. PRIVATE SPACES, SYNC & VAULT */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Ghost}
+                                    title="Private Spaces, Sync & Vault"
+                                    description="Tor routing, encrypted cloud auto-sync, QVault privacy rules, and browsing data cleanup."
+                                />
+
+                                {/* Tor Onion Network Routing */}
+                                <SettingCard 
+                                    icon={Globe} 
+                                    title="Tor Onion Network Routing" 
+                                    description="Route Private space through the Tor network. Onion icon dynamically replaces Ghost in the bottom spaces bar."
                                 >
-                                    Clear Data...
-                                </button>
+                                    <SettingToggle 
+                                        isChecked={isTorEnabled} 
+                                        onToggle={() => toggleTorEnabled(undefined, { switchSpace: false, fallbackSpace: 'ghost' })} 
+                                    />
+                                </SettingCard>
+
+                                {/* Encrypted Cloud Auto-Sync */}
+                                <SettingCard 
+                                    icon={RefreshCw} 
+                                    title="Encrypted Cloud Auto-Sync" 
+                                    description={user 
+                                        ? `Automatically encrypts (AES-256) and syncs tabs, vault, and settings every 5 minutes and on local changes. (Last sync: ${lastSyncTime || 'Pending'})`
+                                        : "Sign in to your account from the user profile popover to enable automatic encrypted cloud sync across devices."
+                                    }
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!user && autoSyncEnabled} 
+                                        onToggle={() => {
+                                            if (!user) {
+                                                openModal('auth');
+                                            } else {
+                                                toggleAutoSync();
+                                            }
+                                        }} 
+                                    />
+                                </SettingCard>
+
+                                {/* QVault in Ghost & Tor Spaces */}
+                                <SettingCard 
+                                    icon={Key} 
+                                    title="QVault in Ghost & Tor Spaces" 
+                                    description="Allow inline autofill of saved passwords while in private spaces. Password save prompts are always suppressed for privacy."
+                                >
+                                    <SettingToggle 
+                                        isChecked={allowVaultInGhostTor} 
+                                        onToggle={() => {
+                                            const next = !allowVaultInGhostTor;
+                                            setAllowVaultInGhostTor(next);
+                                            showToast(next ? 'QVault autofill enabled in private spaces' : 'QVault autofill disabled in private spaces');
+                                        }} 
+                                    />
+                                </SettingCard>
+
+                                {/* Excluded Sites (Never Save Passwords) */}
+                                <div className={`p-4 rounded-2xl border transition-all duration-300 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center gap-3 mb-2.5">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                                            isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border-white/[0.06]'
+                                        }`}>
+                                            <Lock size={15} />
+                                        </div>
+                                        <div>
+                                            <p className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Never Saved Sites</p>
+                                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Websites where you dismissed credential saving with "Never for this site".</p>
+                                        </div>
+                                    </div>
+                                    {neverSaveDomains.length === 0 ? (
+                                        <div className={`text-center text-xs italic py-3 rounded-xl border ${isBright ? 'text-zinc-500 bg-black/[0.02] border-black/[0.07]' : 'text-zinc-400 bg-white/[0.02] border-white/[0.06]'}`}>
+                                            No sites excluded. QVault will offer to save logins across all websites.
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {neverSaveDomains.map(d => (
+                                                <div key={d} className={`flex items-center gap-2 pl-3 pr-2 py-1 rounded-lg text-xs border ${isBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-900' : 'bg-white/[0.04] border-white/[0.06] text-white/90'}`}>
+                                                    <span className="font-mono text-[11px]">{d}</span>
+                                                    <button 
+                                                        onClick={() => {
+                                                            removeNeverSaveDomain(d);
+                                                            showToast(`Removed ${d} from excluded sites`);
+                                                        }}
+                                                        className={`w-4 h-4 rounded flex items-center justify-center transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-black' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}
+                                                        title="Remove exclusion"
+                                                    >
+                                                        <X size={11} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Clear Data Card */}
+                                <div className={`p-4 rounded-2xl flex items-center justify-between border ${isBright ? 'bg-red-500/[0.08] border-red-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                                    <div>
+                                        <p className={`font-semibold text-sm ${isBright ? 'text-red-600' : 'text-red-400'}`}>Clear Browsing Data</p>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-red-600/70' : 'text-red-400/60'}`}>Clear history, cookies, and cache from local storage &amp; SQLite.</p>
+                                    </div>
+                                    <button 
+                                        onClick={async () => {
+                                            if (window.electronAPI && window.electronAPI.clearAllData) {
+                                                await window.electronAPI.clearAllData({ cookies: true, cache: true, storage: true }).catch(()=>{});
+                                            }
+                                            useHistoryStore.getState().clearHistory();
+                                            showToast('All browsing data cleared!');
+                                        }}
+                                        className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer"
+                                    >
+                                        Clear Data...
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -3941,104 +3934,118 @@ const SettingsModalContent = () => {
                     {settingsTab === 'cookies' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Cookies & Site Permissions</h3>
-                                <p className="text-xs text-white/40">Control storage access, cross-site tracking cookies, and site rules.</p>
+                                <h3 className="text-2xl font-bold mb-1">Cookies &amp; Site Permissions</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Control storage access, cross-site tracking cookies, and site rules.</p>
                             </div>
 
-                            {/* Open Cookie Explorer Card */}
-                            <div className="p-3.5 px-4 bg-white/[0.025] border border-white/[0.05] rounded-xl flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] text-zinc-300 flex items-center justify-center flex-shrink-0">
-                                        <Cookie size={16} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-xs text-white">Interactive Cookie Explorer</p>
-                                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate">Inspect, search, and delete individual site cookies and local storage.</p>
-                                    </div>
-                                </div>
-                                <button 
-                                    onClick={() => openModal('cookies')}
-                                    className={`px-3 py-1.5 border font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95 ${
-                                        isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/15 border-white/15 text-white'
-                                    }`}
+                            {/* Cookie Storage & Tracking */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Cookie}
+                                    title="Cookie Storage & Tracking"
+                                    description="Inspect stored site data and control cross-site tracking cookies."
+                                />
+
+                                <SettingCard
+                                    icon={Cookie}
+                                    title="Interactive Cookie Explorer"
+                                    description="Inspect, search, and delete individual site cookies and local storage."
                                 >
-                                    Open Explorer
-                                </button>
+                                    <button 
+                                        onClick={() => openModal('cookies')}
+                                        className={`px-3 py-1.5 border font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95 ${
+                                            isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-white'
+                                        }`}
+                                    >
+                                        Open Explorer
+                                    </button>
+                                </SettingCard>
+
+                                <SettingCard icon={ShieldAlert} title="Block 3rd-Party Tracking Cookies" description="Prevent external tracking widgets from saving cross-site cookies.">
+                                    <SettingToggle isChecked={!!settings.block3rdParty} onToggle={() => toggleSetting('block3rdParty')} />
+                                </SettingCard>
+
+                                <SettingCard icon={RotateCcw} title="Clear Cookies on Exit" description="Automatically clear non-essential session cookies when QBrowse closes.">
+                                    <SettingToggle isChecked={!!settings.clearOnExit} onToggle={() => toggleSetting('clearOnExit')} />
+                                </SettingCard>
                             </div>
 
                             {/* Custom Domain Permission Overrides */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl flex flex-col gap-3">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="font-semibold text-sm">Site Permission Overrides</p>
-                                        <p className="text-xs text-white/40 mt-0.5">Sites with custom location, media, notification, or sound rules.</p>
-                                    </div>
-                                    <span className="text-xs font-mono font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full">
-                                        {Object.keys(allPermissions).length} Sites
-                                    </span>
-                                </div>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={SlidersHorizontal}
+                                    title="Site Permission Overrides"
+                                    description="Sites with custom location, media, notification, or sound rules."
+                                />
 
-                                {Object.keys(allPermissions).length === 0 ? (
-                                    <div className="p-4 rounded-xl bg-black/20 border border-white/5 text-center text-xs text-white/40">
-                                        No custom site permissions saved yet. Click the lock icon in the address bar on any site to set rules.
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col gap-2 max-h-56 overflow-y-auto hide-scroll pr-1">
-                                        {Object.entries(allPermissions).map(([domain, rules]) => (
-                                            <div key={domain} className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between gap-3">
-                                                <div className="flex flex-col gap-1 min-w-0">
-                                                    <span className="text-xs font-bold text-white font-mono">{domain}</span>
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        {Object.entries(rules).map(([perm, val]) => (
-                                                            <span key={perm} className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                                                                val === 'allow' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
-                                                            }`}>
-                                                                {perm}: {val}
-                                                            </span>
-                                                        ))}
+                                <div className={`p-4 rounded-2xl border flex flex-col gap-3 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    {Object.keys(allPermissions).length === 0 ? (
+                                        <div className={`p-4 rounded-xl border text-center text-xs ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-500' : 'bg-black/20 border-white/[0.06] text-zinc-400'
+                                        }`}>
+                                            No custom site permissions saved yet. Click the lock icon in the address bar on any site to set rules.
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col gap-2 max-h-56 overflow-y-auto hide-scroll pr-1">
+                                            {Object.entries(allPermissions).map(([domain, rules]) => (
+                                                <div key={domain} className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
+                                                }`}>
+                                                    <div className="flex flex-col gap-1 min-w-0">
+                                                        <span className={`text-xs font-bold font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>{domain}</span>
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            {Object.entries(rules).map(([perm, val]) => (
+                                                                <span key={perm} className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                                                                    val === 'allow' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                                                                }`}>
+                                                                    {perm}: {val}
+                                                                </span>
+                                                            ))}
+                                                        </div>
                                                     </div>
+                                                    <button 
+                                                        onClick={() => handleRemoveDomainRules(domain)}
+                                                        className={`p-1.5 rounded-lg hover:bg-red-500/20 hover:text-red-400 transition cursor-pointer ${
+                                                            isBright ? 'text-zinc-400' : 'text-white/40'
+                                                        }`}
+                                                        title="Reset permissions for domain"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 </div>
-                                                <button 
-                                                    onClick={() => handleRemoveDomainRules(domain)}
-                                                    className="p-1.5 rounded-lg hover:bg-red-500/20 text-white/40 hover:text-red-400 transition cursor-pointer"
-                                                    title="Reset permissions for domain"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-
-                            <SettingCard icon={ShieldAlert} title="Block 3rd-Party Tracking Cookies" description="Prevent external tracking widgets from saving cross-site cookies.">
-                                <SettingToggle isChecked={!!settings.block3rdParty} onToggle={() => toggleSetting('block3rdParty')} />
-                            </SettingCard>
-
-                            <SettingCard icon={RotateCcw} title="Clear Cookies on Exit" description="Automatically clear non-essential session cookies when QBrowse closes.">
-                                <SettingToggle isChecked={!!settings.clearOnExit} onToggle={() => toggleSetting('clearOnExit')} />
-                            </SettingCard>
                         </div>
                     )}
 
                     {/* TAB 4: SEARCH & OMNIBOX */}
                     {settingsTab === 'search' && (
-                        <div className="animate-tab-fade space-y-5">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Search & Omnibox</h3>
-                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Configure default search engines, live suggestions, and smart search bangs.</p>
+                                <h3 className="text-2xl font-bold mb-1">Search &amp; Omnibox</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Configure default search engines, live suggestions, and smart search bangs.</p>
                             </div>
 
                             {/* Default Search Engine */}
-                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-3.5 ${
-                                isBright 
-                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
-                                    : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Search}
+                                    title="Default Search Engine"
+                                    description="Select the primary search provider used across the Omnibox and context menus."
+                                />
+                                <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-3.5 ${
+                                    isBright 
+                                        ? 'bg-black/[0.02] border-black/[0.07]' 
+                                        : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${
+                                            isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border-white/[0.06]'
                                         }`}>
                                             <Search size={15} />
                                         </div>
@@ -4051,67 +4058,68 @@ const SettingsModalContent = () => {
                                             </p>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] font-mono px-2.5 py-1 rounded-full border ${
-                                        isBright ? 'bg-black/5 border-black/10 text-zinc-700' : 'bg-white/5 border-white/10 text-accent font-semibold'
-                                    }`}>
-                                        {getAllSearchEngines(settings?.customSearchEngines || []).find(e => e.id === (settings.searchEngine || 'google'))?.name || 'Google'}
-                                    </span>
-                                </div>
 
-                                {/* Engine Pill Chips */}
-                                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                    {getAllSearchEngines(settings?.customSearchEngines || []).map(se => {
-                                        const isDefault = (settings.searchEngine || 'google') === se.id;
-                                        return (
-                                            <button 
-                                                key={se.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setDefaultSearchEngine(se.id);
-                                                    showToast(`Default search: ${se.name}`);
-                                                }}
-                                                className={`py-1.5 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center gap-2 ${
-                                                    isDefault
-                                                        ? 'bg-accent text-zinc-950 font-bold shadow-sm'
-                                                        : (isBright 
-                                                            ? 'bg-white/70 hover:bg-white border-black/10 text-zinc-700 hover:text-black' 
-                                                            : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.06] text-white/70 hover:text-white')
-                                                }`}
-                                            >
-                                                <span 
-                                                    className="w-2 h-2 rounded-full flex-shrink-0" 
-                                                    style={{ backgroundColor: isDefault ? '#09090b' : (se.color || '#4285F4') }} 
-                                                />
-                                                <span>{se.name}</span>
-                                                {isDefault && <Check size={11} strokeWidth={3} className="text-zinc-950" />}
-                                            </button>
-                                        );
-                                    })}
+                                    {/* Engine Pill Chips */}
+                                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                        {getAllSearchEngines(settings?.customSearchEngines || []).map(se => {
+                                            const isDefault = (settings.searchEngine || 'google') === se.id;
+                                            return (
+                                                <button 
+                                                    key={se.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setDefaultSearchEngine(se.id);
+                                                        showToast(`Default search: ${se.name}`);
+                                                    }}
+                                                    className={`py-1.5 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center gap-2 ${
+                                                        isDefault
+                                                            ? 'bg-accent text-zinc-950 font-bold border-accent/40 shadow-sm'
+                                                            : (isBright 
+                                                                ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.07] text-zinc-700 hover:text-black' 
+                                                                : 'bg-white/[0.02] hover:bg-white/[0.06] border-white/[0.06] text-white/70 hover:text-white')
+                                                    }`}
+                                                >
+                                                    <span 
+                                                        className="w-2 h-2 rounded-full flex-shrink-0" 
+                                                        style={{ backgroundColor: isDefault ? '#09090b' : (se.color || '#4285F4') }} 
+                                                    />
+                                                    <span>{se.name}</span>
+                                                    {isDefault && <Check size={11} strokeWidth={3} className="text-zinc-950" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Manage Search Engines & Custom Shortcuts */}
-                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
-                                isBright 
-                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
-                                    : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                        }`}>
-                                            <Compass size={15} />
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Compass}
+                                    title="Omnibox Keywords & Custom Engines"
+                                    description="Assign short keyword triggers to search websites directly from the address bar."
+                                />
+                                <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
+                                    isBright 
+                                        ? 'bg-black/[0.02] border-black/[0.07]' 
+                                        : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${
+                                                isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border-white/[0.06]'
+                                            }`}>
+                                                <Compass size={15} />
+                                            </div>
+                                            <div>
+                                                <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    Custom Search Shortcuts
+                                                </h4>
+                                                <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Type a keyword followed by your query (e.g. <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">yt query</span>).
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Omnibox Keywords &amp; Custom Engines
-                                            </h4>
-                                            <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                Assign shortcuts to search websites directly from the address bar (e.g. type <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">yt query</span>).
-                                            </p>
-                                        </div>
-                                    </div>
 
                                     <button
                                         type="button"
@@ -4249,25 +4257,20 @@ const SettingsModalContent = () => {
                                                     key={engine.id}
                                                     className={`p-2.5 px-3.5 rounded-xl border flex items-center justify-between gap-3 transition ${
                                                         isBright 
-                                                            ? 'bg-white/70 border-black/10 hover:bg-white shadow-sm' 
-                                                            : 'bg-white/[0.025] border-white/[0.06] hover:bg-white/[0.04]'
+                                                            ? 'bg-black/[0.02] border-black/[0.07] hover:bg-black/[0.04]' 
+                                                            : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'
                                                     }`}
                                                 >
                                                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                                                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: engine.color || '#d4bc94' }} />
+                                                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: engine.color || '#d4bc94' }} />
                                                         <div className="min-w-0">
                                                             <div className="flex items-center gap-2">
                                                                 <span className={`text-xs font-bold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{engine.name}</span>
                                                                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-accent/15 text-accent font-bold border border-accent/25">
                                                                     {engine.keyword}
                                                                 </span>
-                                                                {isDefault && (
-                                                                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/25">
-                                                                        Default
-                                                                    </span>
-                                                                )}
                                                             </div>
-                                                            <p className={`text-[11px] font-mono truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{engine.url}</p>
+                                                            <p className={`text-[11px] font-mono truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{engine.url}</p>
                                                         </div>
                                                     </div>
 
@@ -4280,7 +4283,7 @@ const SettingsModalContent = () => {
                                                                     showToast(`Default search: ${engine.name}`);
                                                                 }}
                                                                 className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition cursor-pointer ${
-                                                                    isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70 hover:text-white'
+                                                                    isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/70 hover:text-white'
                                                                 }`}
                                                             >
                                                                 Make Default
@@ -4313,47 +4316,47 @@ const SettingsModalContent = () => {
                                         })
                                     )}
                                 </div>
+                                </div>
                             </div>
 
                             {/* Smart Search Bangs & Shortcuts Section */}
-                            <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
-                                isBright 
-                                    ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' 
-                                    : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                            isBright ? 'bg-black/[0.04] text-accent border border-black/[0.06]' : 'bg-white/[0.03] text-accent/80 border border-white/[0.05]'
-                                        }`}>
-                                            <Sparkles size={15} />
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Sparkles}
+                                    title="Smart Search Bangs"
+                                    description="Route searches directly to specific engines using ! or @ prefixes in the Omnibox."
+                                />
+                                <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
+                                    isBright 
+                                        ? 'bg-black/[0.02] border-black/[0.07]' 
+                                        : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${
+                                                isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border-white/[0.06]'
+                                            }`}>
+                                                <Sparkles size={15} />
+                                            </div>
+                                            <div>
+                                                <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    Bang Triggers Directory
+                                                </h4>
+                                                <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    Type <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">!yt</span> or <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">@wiki</span> in the address bar to route searches immediately.
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Smart Search Bangs
-                                            </h4>
-                                            <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                Type <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">!yt</span> or <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">@wiki</span> in the address bar to route searches immediately.
-                                            </p>
-                                        </div>
-                                    </div>
 
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-[10px] font-mono px-2.5 py-1 rounded-full border ${
-                                            isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 border-white/10 text-white/50'
-                                        }`}>
-                                            {getAllBangs(settings?.customBangs || []).length} Bangs
-                                        </span>
                                         <button
                                             type="button"
                                             onClick={() => setIsAddingBang(!isAddingBang)}
-                                            className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
+                                            className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer shrink-0"
                                         >
                                             <Plus size={13} className={`transition-transform duration-300 ${isAddingBang ? 'rotate-45' : ''}`} />
                                             <span>{isAddingBang ? 'Cancel' : 'Add Bang'}</span>
                                         </button>
                                     </div>
-                                </div>
 
                                 {/* Add Custom Bang Form Accordion */}
                                 <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAddingBang ? 'grid-rows-[1fr] opacity-100 mb-1' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}>
@@ -4491,8 +4494,8 @@ const SettingsModalContent = () => {
                                                     key={bang.id} 
                                                     className={`p-3 border rounded-xl flex items-center justify-between gap-3 transition group ${
                                                         isBright 
-                                                            ? 'bg-white/75 border-black/10 hover:border-black/20' 
-                                                            : 'bg-black/40 border-white/5 hover:border-white/10'
+                                                            ? 'bg-black/[0.02] border-black/[0.07] hover:border-black/15' 
+                                                            : 'bg-black/30 border-white/[0.06] hover:border-white/15'
                                                     }`}
                                                 >
                                                     <div className="flex items-center gap-2.5 min-w-0">
@@ -4505,16 +4508,13 @@ const SettingsModalContent = () => {
                                                         <div className="flex flex-col min-w-0">
                                                             <div className="flex items-center gap-1.5">
                                                                 <span className={`font-bold text-xs truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{bang.name}</span>
-                                                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-white/70 font-mono font-semibold">
+                                                                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-semibold ${
+                                                                    isBright ? 'bg-black/[0.05] text-zinc-700' : 'bg-white/[0.06] text-zinc-300'
+                                                                }`}>
                                                                     !{bang.prefix}
                                                                 </span>
-                                                                {isCustom && (
-                                                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-accent/20 text-accent font-bold">
-                                                                        Custom
-                                                                    </span>
-                                                                )}
                                                             </div>
-                                                            <span className={`text-[10px] truncate font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                                            <span className={`text-[10px] truncate font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                                 {bang.url}
                                                             </span>
                                                         </div>
@@ -4526,7 +4526,9 @@ const SettingsModalContent = () => {
                                                                 removeCustomBang(bang.prefix);
                                                                 showToast(`Removed custom bang "!${bang.prefix}"`);
                                                             }}
-                                                            className="p-1.5 rounded-lg hover:bg-red-500/20 text-white/30 hover:text-red-400 transition cursor-pointer flex-shrink-0"
+                                                            className={`p-1.5 rounded-lg hover:bg-red-500/20 hover:text-red-400 transition cursor-pointer flex-shrink-0 ${
+                                                                isBright ? 'text-zinc-400' : 'text-white/30'
+                                                            }`}
                                                             title="Delete custom bang"
                                                         >
                                                             <Trash2 size={13} />
@@ -4536,71 +4538,87 @@ const SettingsModalContent = () => {
                                             );
                                         })}
                                 </div>
+                                </div>
                             </div>
 
-                            <SettingCard icon={Search} title="Smart Calculator in Omnibox" description="Solve math equations directly in the address bar dropdown.">
-                                <SettingToggle isChecked={!!settings.smartCalc} onToggle={() => toggleSetting('smartCalc')} />
-                            </SettingCard>
+                            {/* Omnibox Behavior & Display */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={SlidersHorizontal}
+                                    title="Omnibox Behavior & Display"
+                                    description="Control inline calculations, live autocomplete, and URL formatting."
+                                />
+                                <SettingCard icon={Search} title="Smart Calculator in Omnibox" description="Solve math equations directly in the address bar dropdown.">
+                                    <SettingToggle isChecked={!!settings.smartCalc} onToggle={() => toggleSetting('smartCalc')} />
+                                </SettingCard>
 
-                            <SettingCard icon={Zap} title="Live Search Suggestions" description="Send typed queries to your search engine for live autocomplete.">
-                                <SettingToggle isChecked={!!settings.liveSearch} onToggle={() => toggleSetting('liveSearch')} />
-                            </SettingCard>
+                                <SettingCard icon={Zap} title="Live Search Suggestions" description="Send typed queries to your search engine for live autocomplete.">
+                                    <SettingToggle isChecked={!!settings.liveSearch} onToggle={() => toggleSetting('liveSearch')} />
+                                </SettingCard>
 
-                            <SettingCard icon={Globe} title="Show Full Raw URLs" description="Display complete protocol and parameters instead of simplified domain names.">
-                                <SettingToggle isChecked={!!settings.showFullUrls} onToggle={() => toggleSetting('showFullUrls')} />
-                            </SettingCard>
+                                <SettingCard icon={Globe} title="Show Full Raw URLs" description="Display complete protocol and parameters instead of simplified domain names.">
+                                    <SettingToggle isChecked={!!settings.showFullUrls} onToggle={() => toggleSetting('showFullUrls')} />
+                                </SettingCard>
+                            </div>
                         </div>
                     )}
 
                     {/* TAB 5: DOWNLOADS & MEDIA */}
                     {settingsTab === 'downloads' && (
-                        <div className="animate-tab-fade space-y-4">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Downloads & Media</h3>
-                                <p className="text-xs text-white/40">Manage file storage paths, organization, and background media policies.</p>
+                                <h3 className="text-2xl font-bold mb-1">Downloads &amp; Media</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Manage file storage paths, organization, and background media policies.</p>
                             </div>
 
-                            <SettingCard icon={Download} title="Ask where to save each file" description="Prompt save-as file picker instead of downloading automatically.">
-                                <SettingToggle isChecked={!!settings.askSave} onToggle={() => toggleSetting('askSave')} />
-                            </SettingCard>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Download}
+                                    title="File Storage & Organization"
+                                    description="Configure download prompts, target folder, automatic grouping, and completion alerts."
+                                />
+                                <SettingCard icon={Download} title="Ask where to save each file" description="Prompt save-as file picker instead of downloading automatically.">
+                                    <SettingToggle isChecked={!!settings.askSave} onToggle={() => toggleSetting('askSave')} />
+                                </SettingCard>
 
-                            <SettingCard icon={Laptop} title="Default Storage Directory" description={settings.downloadsPath || 'C:\\Users\\Downloads'}>
-                                <button 
-                                    onClick={async () => {
-                                        if (window.electronAPI && window.electronAPI.selectFolder) {
-                                            const folder = await window.electronAPI.selectFolder();
-                                            if (folder) {
-                                                setSettingValue('downloadsPath', folder);
-                                                showToast('Downloads directory updated');
+                                <SettingCard icon={Laptop} title="Default Storage Directory" description={settings.downloadsPath || 'C:\\Users\\Downloads'}>
+                                    <button 
+                                        onClick={async () => {
+                                            if (window.electronAPI && window.electronAPI.selectFolder) {
+                                                const folder = await window.electronAPI.selectFolder();
+                                                if (folder) {
+                                                    setSettingValue('downloadsPath', folder);
+                                                    showToast('Downloads directory updated');
+                                                }
+                                            } else {
+                                                showToast('Downloads directory configured');
                                             }
-                                        } else {
-                                            showToast('Downloads directory configured');
-                                        }
-                                    }}
-                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border ${
-                                        isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
-                                    }`}
-                                >
-                                    Change...
-                                </button>
-                            </SettingCard>
+                                        }}
+                                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border ${
+                                            isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
+                                        }`}
+                                    >
+                                        Change...
+                                    </button>
+                                </SettingCard>
 
-                            <SettingCard icon={Layers} title="Group Files by Category" description="Automatically organize downloads into Images, Documents, and Archives.">
-                                <SettingToggle isChecked={!!settings.groupDownloads} onToggle={() => toggleSetting('groupDownloads')} />
-                            </SettingCard>
+                                <SettingCard icon={Layers} title="Group Files by Category" description="Automatically organize downloads into Images, Documents, and Archives.">
+                                    <SettingToggle isChecked={!!settings.groupDownloads} onToggle={() => toggleSetting('groupDownloads')} />
+                                </SettingCard>
 
-                            <SettingCard icon={Bell} title="Download Completion Sound" description="Play an audio chime when a file finish downloading.">
-                                <SettingToggle isChecked={!!settings.downloadSound} onToggle={() => toggleSetting('downloadSound')} />
-                            </SettingCard>
+                                <SettingCard icon={Bell} title="Download Completion Sound" description="Play an audio chime when a file finishes downloading.">
+                                    <SettingToggle isChecked={!!settings.downloadSound} onToggle={() => toggleSetting('downloadSound')} />
+                                </SettingCard>
+                            </div>
                         </div>
                     )}
 
                     {/* TAB: WORK MODE & GITHUB INTEGRATION */}
                     {settingsTab === 'workmode' && (
-                        <div className="animate-tab-fade space-y-5">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
-                                    <GitPullRequest className="text-emerald-400" size={24} /> Work Mode & GitHub
+                                    <GitPullRequest className="text-emerald-400" size={24} /> Work Mode &amp; GitHub
                                 </h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                     Dynamic Pull Requests and Issues integration inspired by Arc Browser. Built with a strict zero-resource architecture when turned off.
@@ -4608,25 +4626,29 @@ const SettingsModalContent = () => {
                             </div>
 
                             {/* Master Toggle */}
-                            <SettingCard 
-                                icon={GitPullRequest} 
-                                title="Enable GitHub Live Integration" 
-                                description="Auto-updates pull requests and assigned issues directly in your Work Space sidebar. When turned off, all background timers and network calls are completely shut down."
-                            >
-                                <SettingToggle 
-                                    isChecked={!!settings.githubIntegrationEnabled} 
-                                    onToggle={() => {
-                                        toggleSetting('githubIntegrationEnabled');
-                                        setTimeout(() => {
-                                            useGitHubStore.getState().syncWithConfig();
-                                        }, 50);
-                                    }} 
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={GitPullRequest}
+                                    title="GitHub Live Sync"
+                                    description="Enable sidebar live folder tracking and background refresh frequency."
                                 />
-                            </SettingCard>
+                                <SettingCard 
+                                    icon={GitPullRequest} 
+                                    title="Enable GitHub Live Integration" 
+                                    description="Auto-updates pull requests and assigned issues directly in your Work Space sidebar. When turned off, all background timers and network calls are completely shut down."
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings.githubIntegrationEnabled} 
+                                        onToggle={() => {
+                                            toggleSetting('githubIntegrationEnabled');
+                                            setTimeout(() => {
+                                                useGitHubStore.getState().syncWithConfig();
+                                            }, 50);
+                                        }} 
+                                    />
+                                </SettingCard>
 
-                            {settings.githubIntegrationEnabled ? (
-                                <>
-                                    {/* Sync Frequency */}
+                                {settings.githubIntegrationEnabled && (
                                     <SettingCard 
                                         icon={RefreshCw} 
                                         title="Background Refresh Interval" 
@@ -4650,13 +4672,18 @@ const SettingsModalContent = () => {
                                             ]}
                                         />
                                     </SettingCard>
+                                )}
+                            </div>
 
+                            {settings.githubIntegrationEnabled ? (
+                                <>
                                     {/* Display Sections */}
-                                    <div className="pt-2">
-                                        <h4 className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                                            Tracked Categories
-                                        </h4>
-                                    </div>
+                                    <div className="space-y-3">
+                                        <SectionHeader
+                                            icon={GitBranch}
+                                            title="Tracked Categories"
+                                            description="Select which pull request and issue queues appear in your Work Space."
+                                        />
 
                                     <SettingCard 
                                         icon={CheckCircle2} 
@@ -4713,13 +4740,15 @@ const SettingsModalContent = () => {
                                             }} 
                                         />
                                     </SettingCard>
+                                    </div>
 
                                     {/* UI & Glances */}
-                                    <div className="pt-2">
-                                        <h4 className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                                            Sidebar & Preview
-                                        </h4>
-                                    </div>
+                                    <div className="space-y-3">
+                                        <SectionHeader
+                                            icon={Eye}
+                                            title="Sidebar & Preview"
+                                            description="Control hover peeks and counter badges on the pinned Live Folder."
+                                        />
 
                                     <SettingCard 
                                         icon={Eye} 
@@ -4742,86 +4771,95 @@ const SettingsModalContent = () => {
                                             onToggle={() => toggleSetting('githubBadgeCountEnabled')} 
                                         />
                                     </SettingCard>
+                                    </div>
 
                                     {/* Repository Filter */}
-                                    <div className="pt-2">
-                                        <h4 className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                                            Scope & Credentials
-                                        </h4>
-                                    </div>
-
-                                    <div className={`p-3.5 rounded-xl border transition-all ${
-                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.04]'
-                                    }`}>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/[0.03] text-accent border border-white/[0.05]">
-                                                <Filter size={15} />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-xs text-white">Repository Scope (Optional)</p>
-                                                <p className="text-[11px] text-zinc-400">Leave blank to watch all repositories, or enter comma-separated repos (e.g. <code>facebook/react, vercel/next.js</code>):</p>
-                                            </div>
-                                        </div>
-                                        <input 
-                                            type="text"
-                                            placeholder="e.g. vercel/next.js, facebook/react"
-                                            value={settings.githubRepoFilter || ''}
-                                            onChange={(e) => setSettingValue('githubRepoFilter', e.target.value)}
-                                            onBlur={() => useGitHubStore.getState().syncWithConfig()}
-                                            className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
-                                                isBright 
-                                                    ? 'bg-white border-black/15 text-zinc-800' 
-                                                    : 'bg-black/40 border-white/10 text-zinc-200'
-                                            }`}
+                                    <div className="space-y-3">
+                                        <SectionHeader
+                                            icon={Key}
+                                            title="Scope & Credentials"
+                                            description="Filter monitored repositories or provide a Personal Access Token for SSO organizations."
                                         />
-                                    </div>
 
-                                    {/* Personal Access Token */}
-                                    <div className={`p-3.5 rounded-xl border transition-all ${
-                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.04]'
-                                    }`}>
-                                        <div className="flex items-center justify-between gap-3 mb-2">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/[0.03] text-accent border border-white/[0.05]">
-                                                    <Key size={15} />
+                                        <div className={`p-4 rounded-2xl border transition-all ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                        }`}>
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
+                                                    isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent border-white/[0.06]'
+                                                }`}>
+                                                    <Filter size={15} />
                                                 </div>
                                                 <div>
-                                                    <p className="font-medium text-xs text-white">Custom Personal Access Token (Optional)</p>
-                                                    <p className="text-[11px] text-zinc-400">QBrowse auto-detects your active GitHub session. Provide a PAT if your organization enforces SSO/SAML:</p>
+                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>Repository Scope (Optional)</p>
+                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Leave blank to watch all repositories, or enter comma-separated repos (e.g. <code>facebook/react, vercel/next.js</code>):</p>
                                                 </div>
                                             </div>
-                                            <button 
-                                                onClick={async () => {
-                                                    await useGitHubStore.getState().syncWithConfig();
-                                                    await useGitHubStore.getState().fetchData(true);
-                                                    showToast('Synced with GitHub');
-                                                }}
-                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-all cursor-pointer flex-shrink-0"
-                                            >
-                                                Test & Sync
-                                            </button>
+                                            <input 
+                                                type="text"
+                                                placeholder="e.g. vercel/next.js, facebook/react"
+                                                value={settings.githubRepoFilter || ''}
+                                                onChange={(e) => setSettingValue('githubRepoFilter', e.target.value)}
+                                                onBlur={() => useGitHubStore.getState().syncWithConfig()}
+                                                className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                                                    isBright 
+                                                        ? 'bg-white border-black/[0.12] text-zinc-800' 
+                                                        : 'bg-black/40 border-white/[0.08] text-zinc-200'
+                                                }`}
+                                            />
                                         </div>
-                                        <input 
-                                            type="password"
-                                            placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                                            value={settings.githubPersonalAccessToken || ''}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                setSettingValue('githubPersonalAccessToken', val);
-                                                setSettingValue('githubAuthMode', val.trim() ? 'token' : 'auto');
-                                            }}
-                                            onBlur={() => useGitHubStore.getState().syncWithConfig()}
-                                            className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
-                                                isBright 
-                                                    ? 'bg-white border-black/15 text-zinc-800' 
-                                                    : 'bg-black/40 border-white/10 text-zinc-200'
-                                            }`}
-                                        />
+
+                                        {/* Personal Access Token */}
+                                        <div className={`p-4 rounded-2xl border transition-all ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                        }`}>
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
+                                                        isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent border-white/[0.06]'
+                                                    }`}>
+                                                        <Key size={15} />
+                                                    </div>
+                                                    <div>
+                                                        <p className={`font-medium text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>Custom Personal Access Token (Optional)</p>
+                                                        <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>QBrowse auto-detects your active GitHub session. Provide a PAT if your organization enforces SSO/SAML:</p>
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={async () => {
+                                                        await useGitHubStore.getState().syncWithConfig();
+                                                        await useGitHubStore.getState().fetchData(true);
+                                                        showToast('Synced with GitHub');
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all cursor-pointer flex-shrink-0"
+                                                >
+                                                    Test &amp; Sync
+                                                </button>
+                                            </div>
+                                            <input 
+                                                type="password"
+                                                placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                value={settings.githubPersonalAccessToken || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setSettingValue('githubPersonalAccessToken', val);
+                                                    setSettingValue('githubAuthMode', val.trim() ? 'token' : 'auto');
+                                                }}
+                                                onBlur={() => useGitHubStore.getState().syncWithConfig()}
+                                                className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                                                    isBright 
+                                                        ? 'bg-white border-black/[0.12] text-zinc-800' 
+                                                        : 'bg-black/40 border-white/[0.08] text-zinc-200'
+                                                }`}
+                                            />
+                                        </div>
                                     </div>
                                 </>
                             ) : (
-                                <div className="p-6 text-center rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
-                                    <p className="text-xs text-zinc-400">
+                                <div className={`p-6 text-center rounded-2xl border space-y-2 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                         GitHub Live Integration is currently dormant. Turn it on above to start tracking Pull Requests and Issues in Work Mode.
                                     </p>
                                 </div>
@@ -4831,65 +4869,85 @@ const SettingsModalContent = () => {
 
                     {/* TAB 6: ENGINE & PERFORMANCE */}
                     {(settingsTab === 'engine' || settingsTab === 'performance') && (
-                        <div className="animate-tab-fade space-y-5">
+                        <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
-                                    <Cpu className="text-accent" size={24} /> Engine & Performance
+                                    <Cpu className="text-accent" size={24} /> Engine &amp; Performance
                                 </h3>
-                                <p className="text-xs text-white/40">
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                     Adaptive hardware tiering, Chromium background throttling, memory saving, and GPU rasterization.
                                 </p>
                             </div>
 
-                            {/* Live Hardware Diagnostics Banner */}
-                            <div className="p-3.5 px-4 rounded-xl bg-white/[0.025] border border-white/[0.05] shadow-sm relative overflow-hidden">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <Activity size={13} className="text-zinc-400" />
-                                            <span className="text-[10px] uppercase tracking-wider font-mono text-zinc-400">Detected System Hardware</span>
-                                        </div>
-                                        <h4 className="text-xs font-semibold text-white mt-1 font-mono">
-                                            {hardwareProfile?.cpuModel || 'Detecting CPU...'}
-                                        </h4>
-                                        <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs">
-                                            <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] font-mono text-zinc-300 text-[11px]">
-                                                {hardwareProfile?.coreCount ? `${hardwareProfile.coreCount} Cores` : 'Multi-Core'}
-                                            </span>
-                                            <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] font-mono text-zinc-300 text-[11px]">
-                                                {hardwareProfile?.totalMemGB ? `${hardwareProfile.totalMemGB} GB RAM` : 'RAM'}
-                                            </span>
-                                            {hardwareProfile?.freeMemGB && (
-                                                <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] font-mono text-zinc-300 text-[11px]">
-                                                    {hardwareProfile.freeMemGB} GB Free
-                                                </span>
-                                            )}
-                                            <span className="px-2 py-0.5 rounded bg-accent/15 border border-accent/30 text-accent font-mono text-[11px] flex items-center gap-1 font-bold">
-                                                <Zap size={10} className="text-accent" /> {hardwareProfile?.detectedTier?.toUpperCase() || 'BALANCED'}
-                                            </span>
-                                            {hardwareProfile?.isOnBattery && (
-                                                <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono text-[11px] flex items-center gap-1">
-                                                    <BatteryCharging size={10} /> Battery
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <button 
-                                        onClick={() => openModal('resources')}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 self-start sm:self-center cursor-pointer active:scale-95 ${
-                                            isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
-                                        }`}
-                                    >
-                                        <Activity size={12} className={isBright ? 'text-zinc-600' : 'text-zinc-300'} />
-                                        <span>Task Manager</span>
-                                    </button>
-                                </div>
-                            </div>
+                            {/* Hardware & Scaling Section */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={GaugeCircle}
+                                    title="Hardware & Performance Profile"
+                                    description="Detected system specifications and active adaptive scaling tier."
+                                />
 
-                            {/* Performance Mode Selector */}
-                            <div className={`p-5 rounded-2xl border transition-all duration-200 space-y-4 ${
-                                isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                            }`}>
+                                {/* Live Hardware Diagnostics Banner */}
+                                <div className={`p-4 rounded-2xl border relative overflow-hidden ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <Activity size={13} className={isBright ? 'text-zinc-500' : 'text-zinc-400'} />
+                                                <span className={`text-[10px] uppercase tracking-wider font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Detected System Hardware</span>
+                                            </div>
+                                            <h4 className={`text-xs font-semibold mt-1 font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                {hardwareProfile?.cpuModel || 'Detecting CPU...'}
+                                            </h4>
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs">
+                                                <span className={`px-2 py-0.5 rounded border font-mono text-[11px] ${
+                                                    isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-zinc-300'
+                                                }`}>
+                                                    {hardwareProfile?.coreCount ? `${hardwareProfile.coreCount} Cores` : 'Multi-Core'}
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded border font-mono text-[11px] ${
+                                                    isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-zinc-300'
+                                                }`}>
+                                                    {hardwareProfile?.totalMemGB ? `${hardwareProfile.totalMemGB} GB RAM` : 'RAM'}
+                                                </span>
+                                                {hardwareProfile?.freeMemGB && (
+                                                    <span className={`px-2 py-0.5 rounded border font-mono text-[11px] ${
+                                                        isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-zinc-300'
+                                                    }`}>
+                                                        {hardwareProfile.freeMemGB} GB Free
+                                                    </span>
+                                                )}
+                                                <span className={`px-2 py-0.5 rounded border font-mono text-[11px] flex items-center gap-1 font-bold ${
+                                                    isBright ? 'bg-accent/15 border-accent/30 text-zinc-900' : 'bg-accent/15 border-accent/30 text-accent'
+                                                }`}>
+                                                    <Zap size={10} className="text-accent" /> {hardwareProfile?.detectedTier?.toUpperCase() || 'BALANCED'}
+                                                </span>
+                                                {hardwareProfile?.isOnBattery && (
+                                                    <span className={`px-2 py-0.5 rounded border font-mono text-[11px] flex items-center gap-1 ${
+                                                        isBright ? 'bg-amber-500/10 border-black/[0.07] text-amber-700' : 'bg-amber-500/10 border-white/[0.06] text-amber-300'
+                                                    }`}>
+                                                        <BatteryCharging size={10} /> Battery
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => openModal('resources')}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 self-start sm:self-center cursor-pointer active:scale-95 ${
+                                                isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
+                                            }`}
+                                        >
+                                            <Activity size={12} className={isBright ? 'text-zinc-600' : 'text-zinc-300'} />
+                                            <span>Task Manager</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Performance Mode Selector */}
+                                <div className={`p-5 rounded-2xl border transition-all duration-200 space-y-4 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
@@ -4979,8 +5037,17 @@ const SettingsModalContent = () => {
                                     })}
                                 </div>
                             </div>
+                            </div>
 
-                            {/* Tab Memory Saver Inactivity Timeout */}
+                            {/* Memory, Rendering & Flags */}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Cpu}
+                                    title="Memory, Rendering & Flags"
+                                    description="Configure background tab hibernation, bfcache freezing, GPU acceleration, and experimental flags."
+                                />
+
+                                {/* Tab Memory Saver Inactivity Timeout */}
                             <SettingCard 
                                 icon={Zap} 
                                 title="Memory Saver Inactivity Timeout" 
@@ -5069,16 +5136,11 @@ const SettingsModalContent = () => {
                             </SettingCard>
 
                             {/* Experimental Flags Shortcut */}
-                            <div className="p-3.5 px-4 bg-white/[0.025] border border-white/[0.05] rounded-xl flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] text-zinc-300 flex items-center justify-center flex-shrink-0">
-                                        <Flag size={15} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-xs text-white">Experimental Flags & Features</p>
-                                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate">Configure advanced Chromium & QBrowse experimental flags.</p>
-                                    </div>
-                                </div>
+                            <SettingCard
+                                icon={Flag}
+                                title="Experimental Flags & Features"
+                                description="Configure advanced Chromium & QBrowse experimental flags."
+                            >
                                 <button 
                                     onClick={() => {
                                         closeModal();
@@ -5088,11 +5150,12 @@ const SettingsModalContent = () => {
                                         }
                                     }}
                                     className={`px-3 py-1.5 border font-medium rounded-lg text-xs transition cursor-pointer flex-shrink-0 active:scale-95 ${
-                                        isBright ? 'bg-black/[0.05] hover:bg-black/10 text-zinc-800 border-black/10 shadow-sm' : 'bg-white/10 hover:bg-white/15 border-white/15 text-white'
+                                        isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-white'
                                     }`}
                                 >
                                     Open Flags
                                 </button>
+                            </SettingCard>
                             </div>
                         </div>
                     )}
@@ -5154,103 +5217,111 @@ const SettingsModalContent = () => {
                                     </p>
                                 </div>
 
-                                {/* 1. MAIN TOGGLE CARD */}
-                                <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
-                                    isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                                }`}>
-                                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                                        <div className="flex items-center gap-3.5">
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
-                                                isAdblockActive 
-                                                    ? (isBright ? 'bg-accent/15 text-accent border border-accent/25' : 'bg-accent/15 text-accent border border-accent/30') 
-                                                    : (isBright ? 'bg-black/5 text-zinc-400 border border-black/10' : 'bg-white/5 text-white/40 border border-white/10')
-                                            }`}>
-                                                <Shield size={20} />
-                                            </div>
-                                            <div>
-                                                <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    Ad &amp; Tracker Protection
-                                                </h4>
-                                                <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Blocks advertising banners, tracking pixels, and analytical telemetry.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-4">
-                                            {blockedTrackersCount > 0 && (
-                                                <div className={`text-right pr-3 border-r ${isBright ? 'border-black/10' : 'border-white/10'}`}>
-                                                    <span className={`text-sm font-semibold font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                        {blockedTrackersCount.toLocaleString()}
-                                                    </span>
-                                                    <p className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>Blocked</p>
-                                                </div>
-                                            )}
-                                            <SettingToggle isChecked={isAdblockActive} onToggle={toggleAdblock} />
-                                        </div>
-                                    </div>
-
-                                    {/* Update status row */}
-                                    <div className={`flex items-center justify-between pt-3 border-t text-xs ${
-                                        isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
-                                    }`}>
-                                        <span className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                            {filterUpdateStatus || 'Filters updated and ready'}
-                                        </span>
-
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                setIsUpdatingFilters(true);
-                                                try {
-                                                    if (window.electronAPI?.updateAdblockFilters) {
-                                                        await window.electronAPI.updateAdblockFilters();
-                                                    }
-                                                    setFilterUpdateStatus('Updated just now');
-                                                    showToast('Filter lists updated');
-                                                } catch (err) {
-                                                    setFilterUpdateStatus('Updated just now');
-                                                    showToast('Filter lists up to date');
-                                                } finally {
-                                                    setIsUpdatingFilters(false);
-                                                }
-                                            }}
-                                            disabled={isUpdatingFilters}
-                                            className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-                                                isBright 
-                                                    ? 'bg-black/5 hover:bg-black/10 text-zinc-800 border-black/10 shadow-xs' 
-                                                    : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
-                                            }`}
-                                        >
-                                            <RefreshCw size={12} className={isUpdatingFilters ? 'animate-spin text-accent' : ''} />
-                                            <span>{isUpdatingFilters ? 'Updating...' : 'Check for Updates'}</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* 2. BLOCKING PROFILE SWITCHER */}
-                                <div className={`p-5 rounded-2xl border transition-all duration-200 space-y-3 ${
-                                    isBright ? 'bg-white/75 border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.03)]' : 'bg-white/[0.025] border-white/[0.05]'
-                                }`}>
-                                    <div>
-                                        <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                            Protection Level
-                                        </h4>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Select a balanced standard profile or strict privacy shielding.
-                                        </p>
-                                    </div>
-
-                                    <SlidingPillSwitcher
-                                        options={[
-                                            { id: 'standard', label: 'Standard' },
-                                            { id: 'strict', label: 'Strict' },
-                                            { id: 'custom', label: 'Custom' }
-                                        ]}
-                                        value={currentAdblockLevel}
-                                        onChange={handleSetAdblockMode}
-                                        isBright={isBright}
+                                {/* 1. MAIN TOGGLE & PROTECTION LEVEL */}
+                                <div className="space-y-3">
+                                    <SectionHeader
+                                        icon={Shield}
+                                        title="Shields Protection"
+                                        description="Global ad & tracker blocker switch, filter updates, and baseline profile."
                                     />
+
+                                    <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                    }`}>
+                                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                                            <div className="flex items-center gap-3.5">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors border ${
+                                                    isAdblockActive 
+                                                        ? (isBright ? 'bg-accent/15 text-accent border-accent/30' : 'bg-accent/15 text-accent border-accent/30') 
+                                                        : (isBright ? 'bg-black/[0.04] text-zinc-400 border-black/[0.07]' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]')
+                                                }`}>
+                                                    <Shield size={20} />
+                                                </div>
+                                                <div>
+                                                    <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                        Ad &amp; Tracker Protection
+                                                    </h4>
+                                                    <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        Blocks advertising banners, tracking pixels, and analytical telemetry.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-4">
+                                                {blockedTrackersCount > 0 && (
+                                                    <div className={`text-right pr-3 border-r ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
+                                                        <span className={`text-sm font-semibold font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                            {blockedTrackersCount.toLocaleString()}
+                                                        </span>
+                                                        <p className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Blocked</p>
+                                                    </div>
+                                                )}
+                                                <SettingToggle isChecked={isAdblockActive} onToggle={toggleAdblock} />
+                                            </div>
+                                        </div>
+
+                                        {/* Update status row */}
+                                        <div className={`flex items-center justify-between pt-3 border-t text-xs ${
+                                            isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                                        }`}>
+                                            <span className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                {filterUpdateStatus || 'Filters updated and ready'}
+                                            </span>
+
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    setIsUpdatingFilters(true);
+                                                    try {
+                                                        if (window.electronAPI?.updateAdblockFilters) {
+                                                            await window.electronAPI.updateAdblockFilters();
+                                                        }
+                                                        setFilterUpdateStatus('Updated just now');
+                                                        showToast('Filter lists updated');
+                                                    } catch (err) {
+                                                        setFilterUpdateStatus('Updated just now');
+                                                        showToast('Filter lists up to date');
+                                                    } finally {
+                                                        setIsUpdatingFilters(false);
+                                                    }
+                                                }}
+                                                disabled={isUpdatingFilters}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                                                    isBright 
+                                                        ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' 
+                                                        : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
+                                                }`}
+                                            >
+                                                <RefreshCw size={12} className={isUpdatingFilters ? 'animate-spin text-accent' : ''} />
+                                                <span>{isUpdatingFilters ? 'Updating...' : 'Check for Updates'}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. BLOCKING PROFILE SWITCHER */}
+                                    <div className={`p-5 rounded-2xl border transition-all duration-200 space-y-3 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                    }`}>
+                                        <div>
+                                            <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                Protection Level
+                                            </h4>
+                                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                Select a balanced standard profile or strict privacy shielding.
+                                            </p>
+                                        </div>
+
+                                        <SlidingPillSwitcher
+                                            options={[
+                                                { id: 'standard', label: 'Standard' },
+                                                { id: 'strict', label: 'Strict' },
+                                                { id: 'custom', label: 'Custom' }
+                                            ]}
+                                            value={currentAdblockLevel}
+                                            onChange={handleSetAdblockMode}
+                                            isBright={isBright}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* 3. TOGGLE CARDS */}
@@ -5364,8 +5435,8 @@ const SettingsModalContent = () => {
                                                 key={filter.id}
                                                 className={`flex items-center justify-between p-3.5 px-4 rounded-xl border transition-all duration-200 ${
                                                     isBright 
-                                                        ? 'bg-white/75 hover:bg-white/95 border-black/[0.08] shadow-xs' 
-                                                        : 'bg-white/[0.025] hover:bg-white/[0.04] border-white/[0.04]'
+                                                        ? 'bg-black/[0.02] hover:bg-black/[0.04] border-black/[0.07]' 
+                                                        : 'bg-white/[0.02] hover:bg-white/[0.04] border-white/[0.06]'
                                                 }`}
                                             >
                                                 <div className="min-w-0 pr-4">
@@ -5401,16 +5472,14 @@ const SettingsModalContent = () => {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                                     {/* Allowlist */}
-                                    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
-                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
+                                    <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                                     }`}>
                                         <div className="flex items-center justify-between">
                                             <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
                                                 Allowlist
                                             </span>
-                                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                                                isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
-                                            }`}>
+                                            <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                 {(settings.adblockAllowlist || []).length}
                                             </span>
                                         </div>
@@ -5469,17 +5538,15 @@ const SettingsModalContent = () => {
                                     </div>
 
                                     {/* Custom Blocked Domains */}
-                                    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
-                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.025] border-white/[0.05]'
+                                    <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                                     }`}>
                                         <div className="flex items-center justify-between flex-wrap gap-2">
                                             <div className="flex items-center gap-2">
                                                 <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
                                                     Custom Blocklist
                                                 </span>
-                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                                                    isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-white/50 border-white/10'
-                                                }`}>
+                                                <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                     {(settings.adblockCustomBlockedDomains || []).length.toLocaleString()}
                                                 </span>
                                             </div>
@@ -5697,402 +5764,490 @@ const SettingsModalContent = () => {
                     {settingsTab === 'about' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">About & System Info</h3>
-                                <p className="text-xs text-white/40">System architecture, runtime specifications, and app updates.</p>
+                                <h3 className="text-2xl font-bold mb-1">About &amp; System Info</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>System architecture, runtime specifications, and app updates.</p>
                             </div>
 
                             {/* Account & Firebase Sync Card */}
-                            <div className="p-6 bg-white/[0.025] border border-white/[0.05] rounded-3xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-2xl bg-accent-10 text-accent border border-accent-30 flex items-center justify-center font-bold text-lg">
-                                            {user ? (user.email ? user.email.charAt(0).toUpperCase() : 'U') : <Lock size={20} />}
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={User}
+                                    title="Account & Cloud Sync"
+                                    description="Manage your encrypted cloud profile, snapshots, and cross-device synchronization."
+                                />
+                                <div className={`p-5 rounded-2xl border space-y-4 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border ${
+                                                isBright ? 'bg-accent/15 text-accent border-black/[0.07]' : 'bg-accent/10 text-accent border-white/[0.06]'
+                                            }`}>
+                                                {user ? (user.email ? user.email.charAt(0).toUpperCase() : 'U') : <Lock size={20} />}
+                                            </div>
+                                            <div>
+                                                <h4 className={`font-bold text-base flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    {user ? user.email : 'Guest / Offline Mode'}
+                                                    <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border ${
+                                                        user
+                                                            ? (isBright ? 'bg-emerald-500/10 text-emerald-700 border-black/[0.07]' : 'bg-emerald-500/15 text-emerald-300 border-white/[0.06]')
+                                                            : (isBright ? 'bg-black/[0.04] text-zinc-500 border-black/[0.07]' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]')
+                                                    }`}>
+                                                        {user ? 'AES-256 Encrypted' : 'Local Only'}
+                                                    </span>
+                                                </h4>
+                                                <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    {user ? `Last synced: ${lastSyncTime || 'Just now'} • ${syncedItemsCount || 24} items synced` : 'Sign in to sync your encrypted passwords, settings, and tabs across devices.'}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className="font-bold text-base text-white flex items-center gap-2">
-                                                {user ? user.email : 'Guest / Offline Mode'}
-                                                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${user ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/10 text-white/40'}`}>
-                                                    {user ? 'AES-256 Encrypted' : 'Local Only'}
-                                                </span>
-                                            </h4>
-                                            <p className="text-xs text-white/40 mt-0.5">
-                                                {user ? `Last synced: ${lastSyncTime || 'Just now'} • ${syncedItemsCount || 24} items synced` : 'Sign in to sync your encrypted passwords, settings, and tabs across devices.'}
-                                            </p>
-                                        </div>
-                                    </div>
 
-                                    {user ? (
-                                        <div className="flex gap-2">
+                                        {user ? (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={syncNow}
+                                                    disabled={isSyncing}
+                                                    className="px-4 py-2 bg-accent text-zinc-950 font-bold rounded-xl text-xs transition hover:brightness-105 cursor-pointer shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                                                >
+                                                    <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
+                                                    {isSyncing ? 'Syncing...' : 'Sync Now'}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        useSyncStore.getState().pushManualBackup('Manual Snapshot from Settings');
+                                                    }}
+                                                    className={`px-3 py-2 border rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                                                        isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
+                                                    }`}
+                                                    title="Push Cloud Backup Version"
+                                                >
+                                                    <UploadCloud size={13} className="text-accent" />
+                                                    Push Backup
+                                                </button>
+                                                <button
+                                                    onClick={logout}
+                                                    className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition cursor-pointer"
+                                                >
+                                                    Sign Out
+                                                </button>
+                                            </div>
+                                        ) : (
                                             <button
-                                                onClick={syncNow}
-                                                disabled={isSyncing}
-                                                className="px-4 py-2 bg-accent text-black font-bold rounded-xl text-xs transition hover:scale-105 cursor-pointer shadow-md disabled:opacity-50 flex items-center gap-1.5"
+                                                onClick={() => openModal('auth')}
+                                                className="px-5 py-2.5 bg-accent text-zinc-950 font-bold rounded-xl text-xs transition hover:brightness-105 cursor-pointer shadow-sm"
                                             >
-                                                <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
-                                                {isSyncing ? 'Syncing...' : 'Sync Now'}
+                                                Sign In / Register
                                             </button>
-                                            <button
-                                                onClick={() => {
-                                                    useSyncStore.getState().pushManualBackup('Manual Snapshot from Settings');
-                                                }}
-                                                className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
-                                                title="Push Cloud Backup Version"
-                                            >
-                                                <UploadCloud size={13} className="text-accent" />
-                                                Push Backup
-                                            </button>
-                                            <button
-                                                onClick={logout}
-                                                className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition cursor-pointer"
-                                            >
-                                                Sign Out
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <button
-                                            onClick={() => openModal('auth')}
-                                            className="px-5 py-2.5 bg-accent text-black font-bold rounded-xl text-xs transition hover:scale-105 cursor-pointer shadow-lg shadow-accent/20"
-                                        >
-                                            Sign In / Register
-                                        </button>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Default Browser Management Card */}
-                            <div className="p-6 bg-white/[0.025] border border-white/[0.05] rounded-3xl space-y-4 hover:border-accent-30 transition-all duration-300">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border p-2 ${
-                                            isDefaultBrowser 
-                                                ? 'bg-emerald-500/10 border-emerald-500/30 shadow-emerald-500/10 shadow-lg' 
-                                                : 'bg-accent-10 border-accent-30 shadow-sm'
-                                        }`}>
-                                            <img 
-                                                src={qbrowseLogo} 
-                                                alt="QBrowse" 
-                                                className="w-full h-full object-contain rounded-xl drop-shadow" 
-                                                onError={(e) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
-                                                }}
-                                            />
-                                            <Compass size={24} className="hidden text-accent" />
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Compass}
+                                    title="Default Browser & Startup"
+                                    description="Configure system web link handling and session restoration."
+                                />
+                                <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-300 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border p-2 ${
+                                                isDefaultBrowser 
+                                                    ? (isBright ? 'bg-emerald-500/10 border-black/[0.07]' : 'bg-emerald-500/10 border-white/[0.06]')
+                                                    : (isBright ? 'bg-black/[0.04] border-black/[0.07]' : 'bg-white/[0.04] border-white/[0.06]')
+                                            }`}>
+                                                <img 
+                                                    src={qbrowseLogo} 
+                                                    alt="QBrowse" 
+                                                    className="w-full h-full object-contain rounded-xl drop-shadow" 
+                                                    onError={(e) => {
+                                                        e.currentTarget.style.display = 'none';
+                                                        if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
+                                                    }}
+                                                />
+                                                <Compass size={24} className="hidden text-accent" />
+                                            </div>
+                                            <div>
+                                                <h4 className={`font-bold text-base flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    Default Web Browser
+                                                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                                        isDefaultBrowser 
+                                                            ? (isBright ? 'bg-emerald-500/10 text-emerald-700 border-black/[0.07]' : 'bg-emerald-500/15 text-emerald-300 border-white/[0.06]')
+                                                            : (isBright ? 'bg-amber-500/10 text-amber-700 border-black/[0.07]' : 'bg-amber-500/15 text-amber-300 border-white/[0.06]')
+                                                    }`}>
+                                                        {isDefaultBrowser ? 'Default Browser' : 'Not Default'}
+                                                    </span>
+                                                </h4>
+                                                <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    {isDefaultBrowser 
+                                                        ? (osPlatform === 'darwin'
+                                                            ? 'QBrowse is currently your primary browser on macOS for all web links, HTML documents, and protocol requests.'
+                                                            : osPlatform === 'linux'
+                                                                ? 'QBrowse is currently your Linux desktop default browser for all web links, HTML documents, and protocol requests.'
+                                                                : 'QBrowse is currently your Windows default browser for all web links, HTML documents, and protocol requests.')
+                                                        : (osPlatform === 'darwin'
+                                                            ? 'Make QBrowse your default browser in macOS System Settings to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.'
+                                                            : osPlatform === 'linux'
+                                                                ? 'Make QBrowse your default browser in Linux Desktop Default Applications to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.'
+                                                                : 'Make QBrowse your default browser in Windows Settings to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.')}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className="font-bold text-base text-white flex items-center gap-2">
-                                                Default Web Browser
-                                                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-                                                    isDefaultBrowser 
-                                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
-                                                        : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                                                }`}>
-                                                    {isDefaultBrowser ? 'Default Browser' : 'Not Default'}
-                                                </span>
-                                            </h4>
-                                            <p className="text-xs text-white/40 mt-0.5">
-                                                {isDefaultBrowser 
-                                                    ? 'QBrowse is currently your primary browser for all web links, HTML documents, and protocol requests.' 
-                                                    : 'Make QBrowse your default browser to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.'}
-                                            </p>
-                                        </div>
-                                    </div>
 
-                                    <div className="flex items-center gap-2">
-                                        {!isDefaultBrowser && (
+                                        <div className="flex items-center gap-2">
+                                            {!isDefaultBrowser && (
+                                                <button
+                                                    onClick={handleSetDefaultBrowser}
+                                                    className="px-4 py-2 bg-accent text-zinc-950 font-bold rounded-xl text-xs transition hover:brightness-105 active:scale-95 cursor-pointer shadow-sm flex items-center gap-1.5"
+                                                >
+                                                    <CheckCircle2 size={14} />
+                                                    Set as Default
+                                                </button>
+                                            )}
                                             <button
-                                                onClick={handleSetDefaultBrowser}
-                                                className="px-4 py-2 bg-accent text-black font-bold rounded-xl text-xs transition hover:scale-105 active:scale-95 cursor-pointer shadow-lg shadow-accent/20 flex items-center gap-1.5"
+                                                onClick={handleOpenDefaultAppsSettings}
+                                                className={`px-3 py-2 border rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                                                    isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
+                                                }`}
+                                                title={
+                                                    osPlatform === 'darwin'
+                                                        ? 'Open macOS System Settings'
+                                                        : osPlatform === 'linux'
+                                                            ? 'Open Linux Desktop Default Applications'
+                                                            : 'Open Windows Default Apps Settings'
+                                                }
                                             >
-                                                <CheckCircle2 size={14} />
-                                                Set as Default
+                                                <ExternalLink size={13} />
+                                                {osPlatform === 'darwin'
+                                                    ? 'macOS System Settings'
+                                                    : osPlatform === 'linux'
+                                                        ? 'Default Applications'
+                                                        : 'Windows Settings'}
                                             </button>
-                                        )}
-                                        <button
-                                            onClick={handleOpenDefaultAppsSettings}
-                                            className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/[0.06] rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
-                                            title="Open OS Default Apps Settings"
-                                        >
-                                            <ExternalLink size={13} />
-                                            System Settings
-                                        </button>
-                                        <button
-                                            onClick={refreshDefaultBrowserStatus}
-                                            disabled={isCheckingDefault}
-                                            className="p-2 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/[0.06] rounded-xl text-xs transition cursor-pointer"
-                                            title="Refresh status"
-                                        >
-                                            <RefreshCw size={14} className={isCheckingDefault ? 'animate-spin text-accent' : ''} />
-                                        </button>
+                                            <button
+                                                onClick={refreshDefaultBrowserStatus}
+                                                disabled={isCheckingDefault}
+                                                className={`p-2 border rounded-xl text-xs transition cursor-pointer ${
+                                                    isBright ? 'bg-black/[0.03] hover:bg-black/[0.07] text-zinc-600 hover:text-zinc-900 border-black/[0.07]' : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06]'
+                                                }`}
+                                                title="Refresh status"
+                                            >
+                                                <RefreshCw size={14} className={isCheckingDefault ? 'animate-spin text-accent' : ''} />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="pt-3 border-t border-white/5 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-xs text-white/70 font-medium">Check if QBrowse is default on startup</p>
-                                        <span className="text-[10px] text-white/40">(Prompts banner if not default)</span>
+                                    <div className={`pt-3 border-t flex items-center justify-between ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
+                                        <div className="flex items-center gap-2">
+                                            <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>Check if QBrowse is default on startup</p>
+                                            <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>(Prompts banner if not default)</span>
+                                        </div>
+                                        <SettingToggle 
+                                            isChecked={checkDefaultOnStartup} 
+                                            onToggle={handleToggleStartupCheck} 
+                                        />
                                     </div>
-                                    <SettingToggle 
-                                        isChecked={checkDefaultOnStartup} 
-                                        onToggle={handleToggleStartupCheck} 
-                                    />
-                                </div>
 
-                                <div className="pt-3 border-t border-white/5 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-xs text-white/70 font-medium">Remember open websites on close</p>
-                                        <span className="text-[10px] text-white/40">(Reopen previous session tabs on startup)</span>
+                                    <div className={`pt-3 border-t flex items-center justify-between ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
+                                        <div className="flex items-center gap-2">
+                                            <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>Remember open websites on close</p>
+                                            <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>(Reopen previous session tabs on startup)</span>
+                                        </div>
+                                        <SettingToggle 
+                                            isChecked={settings.restoreTabsOnStartup !== false} 
+                                            onToggle={() => toggleSetting('restoreTabsOnStartup')} 
+                                        />
                                     </div>
-                                    <SettingToggle 
-                                        isChecked={settings.restoreTabsOnStartup !== false} 
-                                        onToggle={() => toggleSetting('restoreTabsOnStartup')} 
-                                    />
                                 </div>
                             </div>
 
                             {/* App Banner & GitHub Releases Auto-Updater */}
-                            <div className="p-4 px-5 bg-white/[0.025] border border-white/[0.05] rounded-xl flex flex-col gap-3">
-                                <div className="flex items-center justify-between gap-4 flex-wrap">
-                                    <div className="flex items-center gap-3.5">
-                                        <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm overflow-hidden">
-                                            <img 
-                                                src={qbrowseLogo} 
-                                                alt="QBrowse" 
-                                                className="w-full h-full object-contain rounded-lg drop-shadow" 
-                                                onError={(e) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
-                                                }}
-                                            />
-                                            <span className="hidden text-white font-bold text-sm">QB</span>
-                                        </div>
-                                        <div>
-                                            <h4 className="text-xs font-semibold text-white flex items-center gap-2 flex-wrap">
-                                                QBrowse
-                                                <span className="text-[10px] font-mono font-medium bg-white/[0.06] text-zinc-300 px-2 py-0.5 rounded border border-white/[0.06]">
-                                                    v{String(currentAppVersion).replace(/^v/i, '')}
-                                                </span>
-                                                {updateData?.syncedWithGitHub && updateData?.latestVersion && (
-                                                    <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border flex items-center gap-1 ${
-                                                        updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
-                                                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                                            : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-                                                    }`}>
-                                                        <CheckCircle2 size={10} />
-                                                        {updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
-                                                            ? `GitHub Release: v${String(updateData.latestVersion).replace(/^v/i, '')}`
-                                                            : `Synced with GitHub (v${String(updateData.latestVersion).replace(/^v/i, '')})`}
-                                                    </span>
-                                                )}
-                                            </h4>
-                                            <p className="text-[11px] text-zinc-400 mt-0.5">
-                                                {updateData?.status === 'error' && updateData?.message
-                                                    ? `Update check notice: ${updateData.message}`
-                                                    : updateData?.status === 'available'
-                                                    ? `New version v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} is available on GitHub Releases.`
-                                                    : updateData?.status === 'downloaded'
-                                                    ? `Update v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} verified and ready to install.`
-                                                    : 'Privacy-first multi-space desktop browser'}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        {updateData?.status === 'downloaded' ? (
-                                            <button 
-                                                onClick={async () => {
-                                                    if (window.electronAPI?.quitAndInstallUpdate) {
-                                                        showToast('Launching update installer...');
-                                                        const res = await window.electronAPI.quitAndInstallUpdate();
-                                                        if (res?.status === 'error') {
-                                                            showToast('Install failed: ' + (res.message || 'Unknown error'));
-                                                        }
-                                                    } else {
-                                                        showToast('Restarting to install update...');
-                                                    }
-                                                }}
-                                                className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-emerald-400/30 shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95 animate-pulse"
-                                            >
-                                                <CheckCircle2 size={13} />
-                                                Restart & Update (v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')})
-                                            </button>
-                                        ) : updateData?.status === 'downloading' ? (
-                                            <div className="flex items-center gap-2.5 bg-white/10 px-3 py-1.5 rounded-lg border border-white/10">
-                                                <RefreshCw size={12} className="animate-spin text-accent" />
-                                                <span className="text-xs text-white/90 font-mono">
-                                                    Downloading v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')} ({updateData.percent || 0}%)
-                                                </span>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Info}
+                                    title="Application & Updates"
+                                    description="Current build version, GitHub Releases sync, and automatic updates."
+                                />
+                                <div className={`p-4 px-5 rounded-2xl border flex flex-col gap-3 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                                        <div className="flex items-center gap-3.5">
+                                            <div className={`w-10 h-10 rounded-xl border flex items-center justify-center p-1.5 overflow-hidden ${
+                                                isBright ? 'bg-black/[0.04] border-black/[0.07]' : 'bg-white/[0.04] border-white/[0.06]'
+                                            }`}>
+                                                <img 
+                                                    src={qbrowseLogo} 
+                                                    alt="QBrowse" 
+                                                    className="w-full h-full object-contain rounded-lg drop-shadow" 
+                                                    onError={(e) => {
+                                                        e.currentTarget.style.display = 'none';
+                                                        if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'block';
+                                                    }}
+                                                />
+                                                <span className={`hidden font-bold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>QB</span>
                                             </div>
-                                        ) : updateData?.status === 'available' ? (
-                                            <button 
-                                                onClick={async () => {
-                                                    if (window.electronAPI?.downloadUpdate) {
-                                                        showToast(`Downloading QBrowse v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}...`);
-                                                        await window.electronAPI.downloadUpdate();
-                                                    }
-                                                }}
-                                                className="px-3.5 py-1.5 bg-accent text-black font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-accent/20 hover:scale-105 active:scale-95"
-                                            >
-                                                <Download size={13} />
-                                                Download v{String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}
-                                            </button>
-                                        ) : null}
+                                            <div>
+                                                <h4 className={`text-xs font-semibold flex items-center gap-2 flex-wrap ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                    QBrowse
+                                                    <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
+                                                        isBright ? 'bg-black/[0.04] text-zinc-700 border-black/[0.07]' : 'bg-white/[0.05] text-zinc-300 border-white/[0.06]'
+                                                    }`}>
+                                                        v{String(currentAppVersion).replace(/^v/i, '')}
+                                                    </span>
+                                                    {updateData?.syncedWithGitHub && updateData?.latestVersion && (
+                                                        <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border flex items-center gap-1 ${
+                                                            updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
+                                                                ? (isBright ? 'bg-amber-500/10 text-amber-700 border-black/[0.07]' : 'bg-amber-500/15 text-amber-300 border-white/[0.06]')
+                                                                : (isBright ? 'bg-emerald-500/10 text-emerald-700 border-black/[0.07]' : 'bg-emerald-500/10 text-emerald-300 border-white/[0.06]')
+                                                        }`}>
+                                                            <CheckCircle2 size={10} />
+                                                            {updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
+                                                                ? `GitHub Release: v${String(updateData.latestVersion).replace(/^v/i, '')}`
+                                                                : `Synced with GitHub (v${String(updateData.latestVersion).replace(/^v/i, '')})`}
+                                                        </span>
+                                                    )}
+                                                </h4>
+                                                <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                    {updateData?.status === 'error' && updateData?.message
+                                                        ? `Update check notice: ${updateData.message}`
+                                                        : updateData?.status === 'available'
+                                                        ? `New version v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} is available on GitHub Releases.`
+                                                        : updateData?.status === 'downloaded'
+                                                        ? `Update v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} verified and ready to install.`
+                                                        : 'Privacy-first multi-space desktop browser'}
+                                                </p>
+                                            </div>
+                                        </div>
 
-                                        {updateData?.status !== 'downloading' && (
-                                            <button 
-                                                onClick={async () => {
-                                                    setIsCheckingUpdates(true);
-                                                    if (window.electronAPI?.checkForUpdates) {
-                                                        try {
-                                                            const res = await window.electronAPI.checkForUpdates();
-                                                            if (res) {
-                                                                setUpdateData(prev => ({ ...(prev || {}), ...res }));
+                                        <div className="flex items-center gap-2">
+                                            {updateData?.status === 'downloaded' ? (
+                                                <button 
+                                                    onClick={async () => {
+                                                        if (window.electronAPI?.quitAndInstallUpdate) {
+                                                            showToast('Launching update installer...');
+                                                            const res = await window.electronAPI.quitAndInstallUpdate();
+                                                            if (res?.status === 'error') {
+                                                                showToast('Install failed: ' + (res.message || 'Unknown error'));
                                                             }
-                                                            setIsCheckingUpdates(false);
-                                                        } catch (e) {
-                                                            setIsCheckingUpdates(false);
-                                                            showToast('Update check failed: ' + (e?.message || e));
+                                                        } else {
+                                                            showToast('Restarting to install update...');
                                                         }
+                                                    }}
+                                                    className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-emerald-400/30 shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95 animate-pulse"
+                                                >
+                                                    <CheckCircle2 size={13} />
+                                                    Restart &amp; Update (v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')})
+                                                </button>
+                                            ) : updateData?.status === 'downloading' ? (
+                                                <div className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg border ${
+                                                    isBright ? 'bg-black/[0.04] border-black/[0.07]' : 'bg-white/[0.06] border-white/[0.06]'
+                                                }`}>
+                                                    <RefreshCw size={12} className="animate-spin text-accent" />
+                                                    <span className={`text-xs font-mono ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
+                                                        Downloading v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')} ({updateData.percent || 0}%)
+                                                    </span>
+                                                </div>
+                                            ) : updateData?.status === 'available' ? (
+                                                <button 
+                                                    onClick={async () => {
+                                                        if (window.electronAPI?.downloadUpdate) {
+                                                            showToast(`Downloading QBrowse v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}...`);
+                                                            await window.electronAPI.downloadUpdate();
+                                                        }
+                                                    }}
+                                                    className="px-3.5 py-1.5 bg-accent text-zinc-950 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-2 shadow-sm hover:brightness-105 active:scale-95"
+                                                >
+                                                    <Download size={13} />
+                                                    Download v{String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}
+                                                </button>
+                                            ) : null}
+
+                                            {updateData?.status !== 'downloading' && (
+                                                <button 
+                                                    onClick={async () => {
+                                                        setIsCheckingUpdates(true);
+                                                        if (window.electronAPI?.checkForUpdates) {
+                                                            try {
+                                                                const res = await window.electronAPI.checkForUpdates();
+                                                                if (res) {
+                                                                    setUpdateData(prev => ({ ...(prev || {}), ...res }));
+                                                                }
+                                                                setIsCheckingUpdates(false);
+                                                            } catch (e) {
+                                                                setIsCheckingUpdates(false);
+                                                                showToast('Update check failed: ' + (e?.message || e));
+                                                            }
+                                                        } else {
+                                                            setTimeout(() => {
+                                                                setIsCheckingUpdates(false);
+                                                                showToast(`QBrowse is up to date! (v${String(currentAppVersion).replace(/^v/i, '')})`);
+                                                            }, 1200);
+                                                        }
+                                                    }}
+                                                    disabled={isCheckingUpdates}
+                                                    className={`px-3 py-1.5 font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border active:scale-95 disabled:opacity-50 ${
+                                                        isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
+                                                    }`}
+                                                >
+                                                    <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
+                                                    {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
+                                                </button>
+                                            )}
+
+                                            <button
+                                                onClick={() => {
+                                                    const targetUrl = updateData?.releaseUrl || 'https://github.com/Qu-Bi/QBrowse/releases';
+                                                    if (window.electronAPI?.openExternal) {
+                                                        window.electronAPI.openExternal(targetUrl);
                                                     } else {
-                                                        setTimeout(() => {
-                                                            setIsCheckingUpdates(false);
-                                                            showToast(`QBrowse is up to date! (v${String(currentAppVersion).replace(/^v/i, '')})`);
-                                                        }, 1200);
+                                                        window.open(targetUrl, '_blank', 'noopener,noreferrer');
                                                     }
                                                 }}
-                                                disabled={isCheckingUpdates}
-                                                className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-white/[0.06] active:scale-95 disabled:opacity-50"
+                                                className={`p-1.5 px-2.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 border ${
+                                                    isBright ? 'bg-black/[0.03] hover:bg-black/[0.07] text-zinc-700 border-black/[0.07]' : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white border-white/[0.06]'
+                                                }`}
+                                                title="View QBrowse Releases on GitHub"
                                             >
-                                                <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
-                                                {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
+                                                <ExternalLink size={12} />
+                                                GitHub
                                             </button>
-                                        )}
-
-                                        <button
-                                            onClick={() => {
-                                                const targetUrl = updateData?.releaseUrl || 'https://github.com/Qu-Bi/QBrowse/releases';
-                                                if (window.electronAPI?.openExternal) {
-                                                    window.electronAPI.openExternal(targetUrl);
-                                                } else {
-                                                    window.open(targetUrl, '_blank', 'noopener,noreferrer');
-                                                }
-                                            }}
-                                            className="p-1.5 px-2.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 border border-white/[0.06]"
-                                            title="View QBrowse Releases on GitHub"
-                                        >
-                                            <ExternalLink size={12} />
-                                            GitHub
-                                        </button>
+                                        </div>
                                     </div>
+
+                                    {updateData?.status === 'downloading' && (
+                                        <div className={`w-full rounded-full h-1.5 overflow-hidden ${isBright ? 'bg-black/[0.07]' : 'bg-white/[0.06]'}`}>
+                                            <div 
+                                                className="bg-accent h-full transition-all duration-200 rounded-full"
+                                                style={{ width: `${Math.max(2, Math.min(100, updateData.percent || 0))}%` }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-
-                                {updateData?.status === 'downloading' && (
-                                    <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                                        <div 
-                                            className="bg-accent h-full transition-all duration-200 rounded-full"
-                                            style={{ width: `${Math.max(2, Math.min(100, updateData.percent || 0))}%` }}
-                                        />
-                                    </div>
-                                )}
                             </div>
 
                             {/* Engine Specifications Table */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl flex flex-col gap-3">
-                                <p className="font-semibold text-sm text-white/80">System Specifications</p>
-                                <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
-                                        <span className="text-white/40">Chromium Engine</span>
-                                        <span className="font-mono font-semibold text-white">
-                                            {updateData?.runtimeVersions?.chrome || '130.0.6723.117'}
-                                        </span>
-                                    </div>
-                                    <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
-                                        <span className="text-white/40">Electron Platform</span>
-                                        <span className="font-mono font-semibold text-white">
-                                            {updateData?.runtimeVersions?.electron || '43.1.1'}
-                                        </span>
-                                    </div>
-                                    <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
-                                        <span className="text-white/40">Node.js Runtime</span>
-                                        <span className="font-mono font-semibold text-white">
-                                            {updateData?.runtimeVersions?.node || '20.18.0'}
-                                        </span>
-                                    </div>
-                                    <div className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
-                                        <span className="text-white/40">Architecture</span>
-                                        <span className="font-mono font-semibold text-emerald-400">
-                                            {window.electronAPI?.platform === 'linux' || navigator.userAgent.includes('Linux') ? 'Linux x64 (x86_64)' : window.electronAPI?.platform === 'darwin' || navigator.userAgent.includes('Mac') ? 'macOS (ARM/x64)' : 'Windows x64 (x86_64)'}
-                                        </span>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Cpu}
+                                    title="System Specifications"
+                                    description="Embedded Chromium engine, Electron runtime, and local storage subsystems."
+                                />
+                                <div className={`p-5 rounded-2xl border flex flex-col gap-3 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="grid grid-cols-2 gap-3 text-xs">
+                                        <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
+                                        }`}>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Chromium Engine</span>
+                                            <span className={`font-mono font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                {updateData?.runtimeVersions?.chrome || '130.0.6723.117'}
+                                            </span>
+                                        </div>
+                                        <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
+                                        }`}>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Electron Platform</span>
+                                            <span className={`font-mono font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                {updateData?.runtimeVersions?.electron || '43.1.1'}
+                                            </span>
+                                        </div>
+                                        <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
+                                        }`}>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Node.js Runtime</span>
+                                            <span className={`font-mono font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>
+                                                {updateData?.runtimeVersions?.node || '20.18.0'}
+                                            </span>
+                                        </div>
+                                        <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
+                                        }`}>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Architecture</span>
+                                            <span className={`font-mono font-semibold ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                                                {window.electronAPI?.platform === 'linux' || navigator.userAgent.includes('Linux') ? 'Linux x64 (x86_64)' : window.electronAPI?.platform === 'darwin' || navigator.userAgent.includes('Mac') ? 'macOS (ARM/x64)' : 'Windows x64 (x86_64)'}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* System Cards */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3">
-                                    <CheckCircle2 size={20} className="text-emerald-400 flex-shrink-0" />
-                                    <div>
-                                        <p className="font-semibold text-xs text-emerald-300">SQLite History Sync</p>
-                                        <p className="text-[11px] text-white/40 mt-0.5">Encrypted local database active</p>
+                                {/* System Cards */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className={`p-4 border rounded-2xl flex items-center gap-3 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                    }`}>
+                                        <CheckCircle2 size={20} className="text-emerald-400 flex-shrink-0" />
+                                        <div>
+                                            <p className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>SQLite History Sync</p>
+                                            <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Encrypted local database active</p>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="p-4 bg-accent/10 border border-accent-30 rounded-2xl flex items-center gap-3">
-                                    <Layers size={20} className="text-accent flex-shrink-0" />
-                                    <div>
-                                        <p className="font-semibold text-xs text-accent">Zen Workspace Engine</p>
-                                        <p className="text-[11px] text-white/40 mt-0.5">Personal, Work & Incognito spaces</p>
+                                    <div className={`p-4 border rounded-2xl flex items-center gap-3 ${
+                                        isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                    }`}>
+                                        <Layers size={20} className="text-accent flex-shrink-0" />
+                                        <div>
+                                            <p className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>Zen Workspace Engine</p>
+                                            <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Personal, Work &amp; Incognito spaces</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Experience & Onboarding Controls */}
-                            <div className="p-5 bg-white/[0.025] border border-white/[0.05] rounded-2xl flex flex-col gap-3.5">
-                                <p className="font-semibold text-sm text-white/80">Experience & Discovery</p>
-                                <div className="flex flex-col gap-2.5">
-                                    <div className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-xl">
-                                        <div className="flex items-center gap-3">
-                                            <Volume2 size={16} className="text-accent" />
-                                            <div>
-                                                <p className="text-xs text-white/80 font-medium">Play startup welcome chime</p>
-                                                <p className="text-[10px] text-white/40">Synthesized acoustic chord when launching the browser</p>
-                                            </div>
-                                        </div>
-                                        <SettingToggle 
-                                            isChecked={!!settings?.playStartupSound} 
-                                            onToggle={() => toggleSetting('playStartupSound')} 
-                                        />
-                                    </div>
+                            <div className="space-y-3">
+                                <SectionHeader
+                                    icon={Sparkles}
+                                    title="Experience & Discovery"
+                                    description="Startup audio cues, onboarding setup flow, and interactive feature tour."
+                                />
+                                <SettingCard
+                                    icon={Volume2}
+                                    title="Play startup welcome chime"
+                                    description="Synthesized acoustic chord when launching the browser."
+                                >
+                                    <SettingToggle 
+                                        isChecked={!!settings?.playStartupSound} 
+                                        onToggle={() => toggleSetting('playStartupSound')} 
+                                    />
+                                </SettingCard>
 
-                                    <div className="grid grid-cols-2 gap-3 mt-1">
-                                        <button
-                                            onClick={() => {
-                                                if (switchModal) {
-                                                    switchModal('setup');
-                                                } else {
-                                                    closeModal();
-                                                    setTimeout(() => openModal('setup'), 300);
-                                                }
-                                            }}
-                                            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-accent/40 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
-                                        >
-                                            <RotateCcw size={13} className="text-accent" />
-                                            <span>Relaunch Setup Journey</span>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (switchModal) {
-                                                    switchModal('tour');
-                                                } else {
-                                                    closeModal();
-                                                    setTimeout(() => openModal('tour'), 300);
-                                                }
-                                            }}
-                                            className="px-4 py-2.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
-                                        >
-                                            <Compass size={13} />
-                                            <span>Interactive Living Tour</span>
-                                        </button>
-                                    </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={() => {
+                                            if (switchModal) {
+                                                switchModal('setup');
+                                            } else {
+                                                closeModal();
+                                                setTimeout(() => openModal('setup'), 300);
+                                            }
+                                        }}
+                                        className={`px-4 py-2.5 border rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 active:scale-95 ${
+                                            isBright ? 'bg-black/[0.03] hover:bg-black/[0.07] text-zinc-900 border-black/[0.07]' : 'bg-white/[0.03] hover:bg-white/[0.07] text-white border-white/[0.06]'
+                                        }`}
+                                    >
+                                        <RotateCcw size={13} className="text-accent" />
+                                        <span>Relaunch Setup Journey</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (switchModal) {
+                                                switchModal('tour');
+                                            } else {
+                                                closeModal();
+                                                setTimeout(() => openModal('tour'), 300);
+                                            }
+                                        }}
+                                        className="px-4 py-2.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                        <Compass size={13} />
+                                        <span>Interactive Living Tour</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>

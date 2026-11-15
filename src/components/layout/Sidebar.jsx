@@ -1,10 +1,12 @@
 import React, { useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     X, Minus, Maximize2, Square, UserPlus, Clock, Settings, Home, Plus, ChevronRight, 
     User, Layers, Ghost, PictureInPicture2, VolumeX, Volume2, Pin, Globe, 
     FolderPlus, Check, Edit2, FolderOpen, Briefcase, Code, Rocket, Compass, 
     Bookmark, Sparkles, Coffee, Folder, Terminal, Shield, Heart
 } from 'lucide-react';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
@@ -186,6 +188,15 @@ export default function Sidebar() {
     const [activeRenamingSpace, setActiveRenamingSpace] = React.useState(null);
     const [isRenamingClosing, setIsRenamingClosing] = React.useState(false);
     const closeRenameTimerRef = React.useRef(null);
+    const footerBarRef = React.useRef(null);
+    const [, setRenameResizeTick] = React.useState(0);
+
+    React.useEffect(() => {
+        if (!activeRenamingSpace) return;
+        const onResize = () => setRenameResizeTick(t => t + 1);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, [activeRenamingSpace]);
 
     React.useEffect(() => {
         if (renamingSpaceId) {
@@ -1339,18 +1350,26 @@ export default function Sidebar() {
                 })()}
             </div>
 
-            <div className="relative p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-1.5 items-center">
-                {/* Anchored Rename Workspace Popover */}
-                {(activeRenamingSpace || (renamingSpaceId && customSpaces.find(s => s.id === renamingSpaceId))) && (() => {
+            <div ref={footerBarRef} className="relative p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-1.5 items-center">
+                {/* Anchored Rename Workspace Popover (Portaled to body for true backdrop blur) */}
+                {(activeRenamingSpace || (renamingSpaceId && customSpaces.find(s => s.id === renamingSpaceId))) && typeof document !== 'undefined' && (() => {
                     const targetSpace = activeRenamingSpace || customSpaces.find(s => s.id === renamingSpaceId);
                     if (!targetSpace) return null;
                     const SpaceIcon = (targetSpace.icon && SPACE_ICONS[targetSpace.icon]) ? SPACE_ICONS[targetSpace.icon] : Layers;
+                    const anchorRect = footerBarRef.current?.getBoundingClientRect();
+                    const popW = anchorRect && anchorRect.width > 40 ? Math.max(200, anchorRect.width - 20) : 236;
+                    const popLeft = anchorRect
+                        ? Math.max(12, Math.min(anchorRect.left + 10, window.innerWidth - popW - 12))
+                        : 12;
+                    const popBottom = anchorRect
+                        ? Math.max(12, Math.min(window.innerHeight - anchorRect.top + 8, window.innerHeight - 170))
+                        : 68;
 
-                    return (
+                    return createPortal(
                         <>
                             {/* Dismiss Backdrop (transparent like global context menu) */}
                             <div 
-                                className={`fixed inset-0 z-40 bg-transparent cursor-default select-none transition-opacity ${
+                                className={`fixed inset-0 z-[99990] bg-transparent cursor-default select-none transition-opacity ${
                                     isRenamingClosing ? 'pointer-events-none' : ''
                                 }`}
                                 onClick={closeRenamePopover}
@@ -1358,21 +1377,14 @@ export default function Sidebar() {
 
                             {/* Anchored Glass Popover directly above space pill */}
                             <div 
-                                className={`absolute bottom-full mb-2 left-2.5 right-2.5 z-50 p-3 rounded-2xl border select-none outline-none ${
+                                className={`fixed z-[99995] p-3 rounded-2xl select-none outline-none ${
                                     isRenamingClosing ? 'animate-pop-out' : 'animate-pop-in'
-                                } ${
-                                    isBright 
-                                        ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
-                                        : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
-                                }`}
+                                } ${getLiquidGlassSurfaceClasses(isBright)}`}
                                 style={{
-                                    backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
-                                    backdropFilter: isBright
-                                        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                                        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
-                                    WebkitBackdropFilter: isBright
-                                        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                                        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+                                    bottom: `${popBottom}px`,
+                                    left: `${popLeft}px`,
+                                    width: `${popW}px`,
+                                    ...getLiquidGlassInlineStyle(isBright)
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                             >
@@ -1389,17 +1401,17 @@ export default function Sidebar() {
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-2 min-w-0">
                                             <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
-                                                isBright ? 'bg-black/5 text-zinc-700' : 'bg-white/10 text-accent'
+                                                isBright ? 'bg-black/[0.05] text-zinc-800' : 'bg-white/10 text-accent'
                                             }`}>
                                                 <SpaceIcon size={13} />
                                             </div>
-                                            <span className="text-xs font-bold truncate">Rename Workspace</span>
+                                            <span className={`text-xs font-bold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>Rename Workspace</span>
                                         </div>
                                         <button
                                             type="button"
                                             onClick={closeRenamePopover}
                                             className={`p-1 rounded-md transition-colors cursor-pointer active:scale-90 ${
-                                                isBright ? 'hover:bg-black/10 text-zinc-500' : 'hover:bg-white/10 text-white/50 hover:text-white'
+                                                isBright ? 'hover:bg-black/[0.06] text-zinc-600 hover:text-zinc-950' : 'hover:bg-white/10 text-white/55 hover:text-white'
                                             }`}
                                         >
                                             <X size={12} />
@@ -1423,25 +1435,25 @@ export default function Sidebar() {
                                             placeholder="Workspace name..."
                                             className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-medium transition outline-none ${
                                                 isBright 
-                                                    ? 'bg-black/[0.03] border-black/10 text-zinc-900 focus:border-accent focus:bg-white' 
-                                                    : 'bg-white/[0.05] border-white/[0.08] text-white placeholder-white/35 focus:border-accent/80 focus:bg-white/[0.08]'
+                                                    ? 'bg-black/[0.04] border-black/12 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white' 
+                                                    : 'bg-white/[0.06] border-white/[0.10] text-white placeholder-white/35 focus:border-accent/80 focus:bg-white/[0.09]'
                                             }`}
                                         />
                                         <span className={`absolute right-2 top-2 text-[9px] font-mono select-none ${
-                                            isBright ? 'text-zinc-400' : 'text-white/30'
+                                            isBright ? 'text-zinc-500' : 'text-white/40'
                                         }`}>
                                             {renameValue.length}/30
                                         </span>
                                     </div>
 
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[10px] text-zinc-400 select-none">↵ to save</span>
+                                        <span className={`text-[10px] select-none ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>↵ to save</span>
                                         <div className="flex items-center gap-1.5">
                                             <button
                                                 type="button"
                                                 onClick={closeRenamePopover}
                                                 className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer active:scale-95 ${
-                                                    isBright ? 'hover:bg-black/5 text-zinc-600' : 'hover:bg-white/10 text-white/70'
+                                                    isBright ? 'hover:bg-black/[0.06] text-zinc-700 hover:text-zinc-950' : 'hover:bg-white/10 text-white/75 hover:text-white'
                                                 }`}
                                             >
                                                 Cancel
@@ -1456,7 +1468,8 @@ export default function Sidebar() {
                                     </div>
                                 </form>
                             </div>
-                        </>
+                        </>,
+                        document.body
                     );
                 })()}
                 <div 

@@ -10,11 +10,51 @@ import useVaultStore from '../../store/useVaultStore';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import usePopoverAnchor from '../../hooks/usePopoverAnchor';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import { parseVaultContent } from '../../utils/vaultImporter';
 import {
     cleanTotpSecret, isValidTotpSecret, parseOtpAuthUri,
     generateTotpCode, getTotpRemainingSeconds, formatTotpCode
 } from '../../utils/totp';
+
+const ADD_TYPE_TABS = ['login', 'totp', 'card', 'address', 'passkey'];
+const MAIN_PAGE_TABS = ['logins', '2fa', 'wallet', 'generator'];
+const LOGIN_SUB_FILTER_TABS = ['all', 'passwords', 'passkeys'];
+
+const ADD_TYPE_PILL_RGB = {
+    login: { bright: '2, 132, 199', dark: '56, 189, 248' },
+    totp: { bright: '5, 150, 105', dark: '52, 211, 153' },
+    card: { bright: '37, 99, 235', dark: '96, 165, 250' },
+    address: { bright: '217, 119, 6', dark: '251, 191, 36' },
+    passkey: { bright: '147, 51, 234', dark: '192, 132, 252' }
+};
+
+const getAddTypePillStyle = (type, isBright) => {
+    const rgb = (ADD_TYPE_PILL_RGB[type] || ADD_TYPE_PILL_RGB.login)[isBright ? 'bright' : 'dark'];
+    return isBright
+        ? {
+            borderColor: `rgba(${rgb}, 0.35)`,
+            backgroundColor: 'rgba(255, 255, 255, 0.96)',
+            boxShadow: `0 2px 8px rgba(${rgb}, 0.12)`
+        }
+        : {
+            borderColor: `rgba(${rgb}, 0.55)`,
+            backgroundColor: `rgba(${rgb}, 0.18)`,
+            boxShadow: `0 2px 10px rgba(${rgb}, 0.22), inset 0 1px 0 0 rgba(255, 255, 255, 0.22)`
+        };
+};
+
+const getBiometricLabel = () => {
+    const raw = (
+        (typeof window !== 'undefined' && window.electronAPI?.platform) ||
+        (typeof process !== 'undefined' && process?.platform) ||
+        (typeof navigator !== 'undefined' && (navigator.userAgentData?.platform || navigator.platform)) ||
+        ''
+    ).toLowerCase();
+    if (raw.includes('darwin') || raw.includes('mac')) return 'Touch ID';
+    if (raw.includes('linux')) return 'System Biometrics';
+    return 'Windows Hello';
+};
 
 function CountdownRing({ remaining, size = 26, strokeWidth = 2.5 }) {
     const radius = (size - strokeWidth * 2) / 2;
@@ -73,6 +113,7 @@ export default function QVaultPopover({ isClosing }) {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const biometricLabel = getBiometricLabel();
 
     // Live clock for TOTP updates
     const [now, setNow] = useState(Date.now());
@@ -97,6 +138,7 @@ export default function QVaultPopover({ isClosing }) {
     const [activePage, setActivePage] = useState('logins'); // 'logins' | '2fa' | 'wallet' | 'generator'
     const [hoveredActivePage, setHoveredActivePage] = useState(null);
     const [loginSubFilter, setLoginSubFilter] = useState('all'); // 'all' | 'passwords' | 'passkeys'
+    const [hoveredSubFilter, setHoveredSubFilter] = useState(null);
     const [expandedItemIds, setExpandedItemIds] = useState(new Set());
     const [unlockMode, setUnlockMode] = useState(pinEnabled ? 'pin' : 'password');
     const [editingItemId, setEditingItemId] = useState(null);
@@ -337,12 +379,12 @@ export default function QVaultPopover({ isClosing }) {
             const target = !biometricsEnabled;
             const ok = await setBiometrics(target);
             if (ok) {
-                showToast(target ? 'Windows Hello biometric unlock enabled' : 'Windows Hello biometric unlock disabled');
+                showToast(target ? `${biometricLabel} biometric unlock enabled` : `${biometricLabel} biometric unlock disabled`);
             } else {
-                showToast('Windows Hello verification cancelled or failed', 'error');
+                showToast(`${biometricLabel} verification cancelled or failed`, 'error');
             }
         } catch (err) {
-            showToast(err.message || 'Windows Hello error', 'error');
+            showToast(err.message || `${biometricLabel} error`, 'error');
         } finally {
             setIsTogglingBio(false);
         }
@@ -903,7 +945,15 @@ export default function QVaultPopover({ isClosing }) {
 
     const previewTotpCode = isValidTotpSecret(totpSecret) ? generateTotpCode(totpSecret, now) : null;
 
-    const cardClass = isBright ? 'bg-black/[0.035] border-black/[0.06]' : 'bg-black/25 border-white/[0.08]';
+    const cardClass = getLiquidGlassCardClasses(isBright);
+    const unlockModeIndex = unlockMode === 'password' ? 1 : 0;
+    const hoveredUnlockIndex = hoveredUnlockMode === 'password' ? 1 : 0;
+    const addTypeIndex = Math.max(0, ADD_TYPE_TABS.indexOf(newItemType));
+    const hoveredAddTypeIndex = hoveredNewItemType ? Math.max(0, ADD_TYPE_TABS.indexOf(hoveredNewItemType)) : 0;
+    const activePageIndex = Math.max(0, MAIN_PAGE_TABS.indexOf(activePage));
+    const hoveredPageIndex = hoveredActivePage ? Math.max(0, MAIN_PAGE_TABS.indexOf(hoveredActivePage)) : 0;
+    const subFilterIndex = Math.max(0, LOGIN_SUB_FILTER_TABS.indexOf(loginSubFilter));
+    const hoveredSubFilterIndex = hoveredSubFilter ? Math.max(0, LOGIN_SUB_FILTER_TABS.indexOf(hoveredSubFilter)) : 0;
     const inputClass = isBright
         ? 'bg-black/[0.04] border-black/[0.10] focus:border-accent focus:bg-white text-zinc-900 placeholder-zinc-400'
         : 'bg-black/30 border-white/[0.10] focus:border-accent focus:bg-black/40 text-white placeholder-white/45';
@@ -921,18 +971,9 @@ export default function QVaultPopover({ isClosing }) {
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
             style={{
                 ...anchor.style,
-                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
-                backdropFilter: isBright
-                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
-                WebkitBackdropFilter: isBright
-                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
+                ...getLiquidGlassInlineStyle(isBright),
             }}
-            className={`absolute z-[70000] w-[460px] max-w-[calc(100vw-32px)] rounded-3xl overflow-hidden p-4 transition-all duration-200 border ${isBright
-                    ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]'
-                    : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
-                } ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}
+            className={`absolute z-[70000] w-[460px] max-w-[calc(100vw-32px)] rounded-3xl overflow-hidden p-4 transition-all duration-200 ${getLiquidGlassSurfaceClasses(isBright)} ${isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'}`}
         >
             {/* Header */}
             <div className={`flex items-center justify-between pb-3 border-b mb-3.5 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.08]'}`}>
@@ -975,34 +1016,40 @@ export default function QVaultPopover({ isClosing }) {
                 <div className="flex flex-col gap-3.5 py-1">
                     {/* Unlock Mode Selector */}
                     {pinEnabled && (
-                        <div onMouseLeave={() => setHoveredUnlockMode(null)} className={`relative flex p-1 rounded-full border shadow-xs transition-colors duration-200 select-none ${isBright
+                        <div onMouseLeave={() => setHoveredUnlockMode(null)} className={`relative grid grid-cols-2 p-1 rounded-full border shadow-xs transition-colors duration-200 select-none ${isBright
                                 ? 'bg-black/[0.03] border-black/[0.05]'
                                 : 'bg-black/25 border-white/[0.08]'
                             }`}>
                             {hoveredUnlockMode && hoveredUnlockMode !== unlockMode && (
                                 <div
-                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                    className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${
                                         isBright ? 'bg-black/[0.04]' : 'bg-white/[0.06]'
                                     }`}
                                     style={{
-                                        transform: hoveredUnlockMode === 'password' ? 'translateX(100%)' : 'translateX(0)',
+                                        left: '4px',
+                                        width: 'calc((100% - 8px) / 2)',
+                                        transform: `translateX(${hoveredUnlockIndex * 100}%)`,
+                                        transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
                                     }}
                                 />
                             )}
                             <div
-                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isBright
+                                className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${isBright
                                         ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                                         : 'bg-white/[0.12] border border-white/20 shadow-xs'
                                     }`}
                                 style={{
-                                    transform: unlockMode === 'password' ? 'translateX(100%)' : 'translateX(0)',
+                                    left: '4px',
+                                    width: 'calc((100% - 8px) / 2)',
+                                    transform: `translateX(${unlockModeIndex * 100}%)`,
+                                    transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)'
                                 }}
                             />
                             <button
                                 type="button"
                                 onMouseEnter={() => setHoveredUnlockMode('pin')}
                                 onClick={() => setUnlockMode('pin')}
-                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${unlockMode === 'pin'
+                                className={`relative z-10 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer ${unlockMode === 'pin'
                                         ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                                     }`}
@@ -1013,7 +1060,7 @@ export default function QVaultPopover({ isClosing }) {
                                 type="button"
                                 onMouseEnter={() => setHoveredUnlockMode('password')}
                                 onClick={() => setUnlockMode('password')}
-                                className={`relative z-10 flex-1 py-1.5 text-center text-[11px] font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${unlockMode === 'password'
+                                className={`relative z-10 py-1.5 text-center text-[11px] font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer ${unlockMode === 'password'
                                         ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                                     }`}
@@ -1128,14 +1175,14 @@ export default function QVaultPopover({ isClosing }) {
                                 disabled={isLoading}
                                 onClick={async () => {
                                     const ok = await unlockWithWindowsHello();
-                                    if (ok) showToast('Unlocked via Windows Hello');
+                                    if (ok) showToast(`Unlocked via ${biometricLabel}`);
                                 }}
                                 className={`w-full h-10 rounded-full font-semibold text-xs flex items-center justify-center gap-2 transition-all duration-200 active:scale-95 cursor-pointer border ${isBright
                                         ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10 shadow-xs'
                                         : 'bg-white/[0.08] hover:bg-white/[0.12] text-white border-white/10'
                                     }`}
                             >
-                                <Fingerprint size={14} className="text-accent" /> Unlock with Windows Hello
+                                <Fingerprint size={14} className="text-accent" /> Unlock with {biometricLabel}
                             </button>
                         )}
                     </form>
@@ -1188,11 +1235,11 @@ export default function QVaultPopover({ isClosing }) {
                         </div>
                     </form>
 
-                    {/* Windows Hello Biometrics */}
+                    {/* Platform Biometrics */}
                     <div className={`p-3 border rounded-2xl flex items-center justify-between ${cardClass}`}>
                         <div className="flex flex-col gap-0.5">
                             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                <Fingerprint size={14} className="text-accent" /> Windows Hello Biometrics
+                                <Fingerprint size={14} className="text-accent" /> {biometricLabel === 'System Biometrics' ? 'System Biometrics' : `${biometricLabel} Biometrics`}
                             </span>
                             <p className={`text-[11px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>Use fingerprint, facial recognition, or PIN.</p>
                         </div>
@@ -1370,51 +1417,40 @@ export default function QVaultPopover({ isClosing }) {
                         {/* Hover preview pill */}
                         {hoveredNewItemType && hoveredNewItemType !== newItemType && (
                             <div
-                                className={`absolute top-1 bottom-1 w-[calc(20%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${
                                     isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
                                 }`}
                                 style={{
-                                    left: 4,
-                                    transform: hoveredNewItemType === 'login' ? 'translateX(0)' :
-                                        hoveredNewItemType === 'totp' ? 'translateX(100%)' :
-                                        hoveredNewItemType === 'card' ? 'translateX(200%)' :
-                                        hoveredNewItemType === 'address' ? 'translateX(300%)' :
-                                        'translateX(400%)'
+                                    left: '4px',
+                                    width: 'calc((100% - 8px) / 5)',
+                                    transform: `translateX(${hoveredAddTypeIndex * 100}%)`,
+                                    transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
                                 }}
                             />
                         )}
                         <div
-                            className={`absolute top-1 bottom-1 w-[calc(20%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isBright
-                                    ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                                    : 'border'
-                                }`}
+                            className="absolute top-1 bottom-1 rounded-full border pointer-events-none"
                             style={{
-                                left: 4,
-                                transform: newItemType === 'login' ? 'translateX(0)' :
-                                    newItemType === 'totp' ? 'translateX(100%)' :
-                                    newItemType === 'card' ? 'translateX(200%)' :
-                                    newItemType === 'address' ? 'translateX(300%)' :
-                                    'translateX(400%)',
-                                ...(!isBright ? {
-                                    borderColor: 'var(--accent, #d4bc94)',
-                                    backgroundColor: 'rgba(212, 188, 148, 0.22)',
-                                    boxShadow: '0 2px 10px rgba(212, 188, 148, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.25)'
-                                } : {})
+                                left: '4px',
+                                width: 'calc((100% - 8px) / 5)',
+                                transform: `translateX(${addTypeIndex * 100}%)`,
+                                transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1), background-color 250ms ease, border-color 250ms ease',
+                                ...getAddTypePillStyle(newItemType, isBright)
                             }}
                         />
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('login')} onClick={() => setNewItemType('login')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'login' ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('login')} onClick={() => setNewItemType('login')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'login' ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
                             <Globe size={11} className={newItemType === 'login' ? (isBright ? 'text-sky-600' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Login
                         </button>
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('totp')} onClick={() => setNewItemType('totp')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'totp' ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('totp')} onClick={() => setNewItemType('totp')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'totp' ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
                             <ShieldCheck size={11} className={newItemType === 'totp' ? (isBright ? 'text-emerald-600' : 'text-emerald-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> 2FA
                         </button>
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('card')} onClick={() => setNewItemType('card')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'card' ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('card')} onClick={() => setNewItemType('card')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'card' ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
                             <CreditCard size={11} className={newItemType === 'card' ? (isBright ? 'text-blue-600' : 'text-blue-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Card
                         </button>
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('address')} onClick={() => setNewItemType('address')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'address' ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('address')} onClick={() => setNewItemType('address')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'address' ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
                             <MapPin size={11} className={newItemType === 'address' ? (isBright ? 'text-amber-600' : 'text-amber-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Address
                         </button>
-                        <button type="button" onMouseEnter={() => setHoveredNewItemType('passkey')} onClick={() => setNewItemType('passkey')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'passkey' ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
+                        <button type="button" onMouseEnter={() => setHoveredNewItemType('passkey')} onClick={() => setNewItemType('passkey')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'passkey' ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
                             <Fingerprint size={11} className={newItemType === 'passkey' ? (isBright ? 'text-purple-600' : 'text-purple-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Passkey
                         </button>
                     </div>
@@ -1806,32 +1842,30 @@ export default function QVaultPopover({ isClosing }) {
                         {/* Hover preview pill */}
                         {hoveredActivePage && hoveredActivePage !== activePage && (
                             <div
-                                className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
+                                className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${
                                     isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
                                 }`}
                                 style={{
-                                    left: 4,
-                                    transform: hoveredActivePage === 'logins' ? 'translateX(0)' :
-                                        hoveredActivePage === '2fa' ? 'translateX(100%)' :
-                                        hoveredActivePage === 'wallet' ? 'translateX(200%)' :
-                                        'translateX(300%)'
+                                    left: '4px',
+                                    width: 'calc((100% - 8px) / 4)',
+                                    transform: `translateX(${hoveredPageIndex * 100}%)`,
+                                    transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
                                 }}
                             />
                         )}
 
                         {/* Animated sliding indicator pill */}
                         <div
-                            className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                            className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${
                                 isBright
                                     ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                                     : 'border'
                             }`}
                             style={{
-                                left: 4,
-                                transform: activePage === 'logins' ? 'translateX(0)' :
-                                    activePage === '2fa' ? 'translateX(100%)' :
-                                    activePage === 'wallet' ? 'translateX(200%)' :
-                                    'translateX(300%)',
+                                left: '4px',
+                                width: 'calc((100% - 8px) / 4)',
+                                transform: `translateX(${activePageIndex * 100}%)`,
+                                transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
                                 ...(!isBright ? {
                                     borderColor: 'var(--accent, #d4bc94)',
                                     backgroundColor: 'rgba(212, 188, 148, 0.22)',
@@ -1845,7 +1879,7 @@ export default function QVaultPopover({ isClosing }) {
                             type="button"
                             onMouseEnter={() => setHoveredActivePage('logins')}
                             onClick={() => setActivePage('logins')}
-                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                                 activePage === 'logins'
                                     ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold')
                                     : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
@@ -1867,7 +1901,7 @@ export default function QVaultPopover({ isClosing }) {
                             type="button"
                             onMouseEnter={() => setHoveredActivePage('2fa')}
                             onClick={() => setActivePage('2fa')}
-                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                                 activePage === '2fa'
                                     ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold')
                                     : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
@@ -1889,7 +1923,7 @@ export default function QVaultPopover({ isClosing }) {
                             type="button"
                             onMouseEnter={() => setHoveredActivePage('wallet')}
                             onClick={() => setActivePage('wallet')}
-                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                                 activePage === 'wallet'
                                     ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold')
                                     : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
@@ -1911,7 +1945,7 @@ export default function QVaultPopover({ isClosing }) {
                             type="button"
                             onMouseEnter={() => setHoveredActivePage('generator')}
                             onClick={() => setActivePage('generator')}
-                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                            className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                                 activePage === 'generator'
                                     ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold')
                                     : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')
@@ -2173,15 +2207,45 @@ export default function QVaultPopover({ isClosing }) {
 
                             {/* Sub-filter micro-pills for Logins tab */}
                             {activePage === 'logins' && (
-                                <div className={`flex items-center gap-1.5 p-1 rounded-2xl border mb-0.5 select-none shrink-0 ${
-                                    isBright ? 'bg-black/[0.025] border-black/[0.06]' : 'bg-black/20 border-white/[0.06]'
-                                }`}>
+                                <div
+                                    onMouseLeave={() => setHoveredSubFilter(null)}
+                                    className={`relative grid grid-cols-3 p-1 rounded-xl border mb-0.5 select-none shrink-0 ${
+                                        isBright ? 'bg-black/[0.025] border-black/[0.06]' : 'bg-black/20 border-white/[0.06]'
+                                    }`}
+                                >
+                                    {hoveredSubFilter && hoveredSubFilter !== loginSubFilter && (
+                                        <div
+                                            className={`absolute top-1 bottom-1 rounded-lg pointer-events-none ${
+                                                isBright ? 'bg-black/[0.04]' : 'bg-white/[0.06]'
+                                            }`}
+                                            style={{
+                                                left: '4px',
+                                                width: 'calc((100% - 8px) / 3)',
+                                                transform: `translateX(${hoveredSubFilterIndex * 100}%)`,
+                                                transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
+                                            }}
+                                        />
+                                    )}
+                                    <div
+                                        className={`absolute top-1 bottom-1 rounded-lg border pointer-events-none ${
+                                            isBright
+                                                ? 'bg-white border-black/10 shadow-xs'
+                                                : 'bg-white/15 border-white/20 shadow-xs'
+                                        }`}
+                                        style={{
+                                            left: '4px',
+                                            width: 'calc((100% - 8px) / 3)',
+                                            transform: `translateX(${subFilterIndex * 100}%)`,
+                                            transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)'
+                                        }}
+                                    />
                                     <button
                                         type="button"
+                                        onMouseEnter={() => setHoveredSubFilter('all')}
                                         onClick={() => setLoginSubFilter('all')}
-                                        className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-semibold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
+                                        className={`relative z-10 py-1 px-2 rounded-lg text-[10px] font-semibold transition-colors duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
                                             loginSubFilter === 'all'
-                                                ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                                ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold')
                                                 : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                         }`}
                                     >
@@ -2194,10 +2258,11 @@ export default function QVaultPopover({ isClosing }) {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setLoginSubFilter('passwords')}
-                                        className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-semibold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
+                                        onMouseEnter={() => setHoveredSubFilter('passwords')}
+                                        onClick={() => setLoginSubFilter(prev => prev === 'passwords' ? 'all' : 'passwords')}
+                                        className={`relative z-10 py-1 px-2 rounded-lg text-[10px] font-semibold transition-colors duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
                                             loginSubFilter === 'passwords'
-                                                ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                                ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold')
                                                 : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                         }`}
                                     >
@@ -2211,10 +2276,11 @@ export default function QVaultPopover({ isClosing }) {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setLoginSubFilter('passkeys')}
-                                        className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-semibold transition active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
+                                        onMouseEnter={() => setHoveredSubFilter('passkeys')}
+                                        onClick={() => setLoginSubFilter(prev => prev === 'passkeys' ? 'all' : 'passkeys')}
+                                        className={`relative z-10 py-1 px-2 rounded-lg text-[10px] font-semibold transition-colors duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-1 ${
                                             loginSubFilter === 'passkeys'
-                                                ? (isBright ? 'bg-white text-zinc-950 font-bold shadow-xs border border-black/10' : 'bg-white/15 text-white font-bold shadow-xs border border-white/20')
+                                                ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold')
                                                 : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                         }`}
                                     >

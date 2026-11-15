@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     Command, Search, ChevronUp, ChevronDown, X, Moon, Sun, Trash2, 
     ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
@@ -7,6 +8,7 @@ import {
     ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy,
     Columns, Layers, Sparkles, CornerDownLeft
 } from 'lucide-react';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 
 function getToastIcon(message, isBright = false) {
     const iconClass = isBright ? "text-zinc-700 flex-shrink-0" : "text-white/80 flex-shrink-0";
@@ -83,7 +85,8 @@ const DownloadPopup = () => {
     const activeDownloadPopup = useUIStore(state => state.activeDownloadPopup);
     const setActiveDownloadPopup = useUIStore(state => state.setActiveDownloadPopup);
     const theme = useUIStore(state => state.theme);
-    const isBright = theme === 'light';
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const [popupData, setPopupData] = useState(null);
     const [isClosing, setIsClosing] = useState(false);
@@ -104,25 +107,22 @@ const DownloadPopup = () => {
         }
     }, [activeDownloadPopup, activePopupDownload]);
 
-    if (!popupData) return null;
+    if (!popupData || typeof document === 'undefined') return null;
 
     const handleClose = (e) => {
         if (e) e.stopPropagation();
         setActiveDownloadPopup(null);
     };
 
-    return (
+    return createPortal(
         <div 
             id="download-toast-popup" 
-            className={`fixed top-4 right-6 w-72 backdrop-blur-2xl rounded-2xl p-1.5 select-none outline-none z-[70000] ${
-                isBright 
-                    ? 'bg-white/90 border border-black/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.1)] text-zinc-900' 
-                    : 'bg-[#0c0c0f]/94 border border-white/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.6)] text-white/90'
-            } ${isClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+            style={getLiquidGlassInlineStyle(isBright)}
+            className={`fixed top-4 right-6 w-72 rounded-2xl p-1.5 select-none outline-none z-[70000] ${getLiquidGlassSurfaceClasses(isBright)} ${isClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
         >
             {/* Header: Section Header matching right-click menu */}
             <div className={`flex items-center justify-between px-2.5 py-1 text-xs font-semibold border-b mb-1 ${
-                isBright ? 'text-zinc-500 border-black/[0.06]' : 'text-white/50 border-white/[0.06]'
+                isBright ? 'text-zinc-600 border-black/[0.08]' : 'text-white/60 border-white/[0.08]'
             }`}>
                 <div className="flex items-center gap-2 truncate">
                     {popupData.isScreenshot ? (
@@ -143,7 +143,7 @@ const DownloadPopup = () => {
                 <button 
                     onClick={handleClose} 
                     className={`p-1 rounded-lg transition cursor-pointer ${
-                        isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'
+                        isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'
                     }`}
                 >
                     <X size={12} />
@@ -151,13 +151,11 @@ const DownloadPopup = () => {
             </div>
 
             {/* Details row */}
-            <div className={`px-2.5 py-1.5 rounded-xl transition ${
-                isBright ? 'bg-black/[0.02]' : 'bg-white/[0.03]'
-            }`}>
-                <div className={`text-xs font-medium truncate ${isBright ? 'text-zinc-800' : 'text-white/90'}`} title={popupData.fileName}>
+            <div className={`px-2.5 py-1.5 rounded-xl transition ${getLiquidGlassCardClasses(isBright)}`}>
+                <div className={`text-xs font-medium truncate ${isBright ? 'text-zinc-900' : 'text-white/95'}`} title={popupData.fileName}>
                     {popupData.fileName}
                 </div>
-                <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-600' : 'text-white/55'}`}>
                     <span>
                         {popupData.state === 'progressing' 
                             ? `${((popupData.receivedBytes || 0) / 1024 / 1024).toFixed(1)} / ${((popupData.totalBytes || 1) / 1024 / 1024).toFixed(1)} MB`
@@ -174,17 +172,17 @@ const DownloadPopup = () => {
                         </span>
                     )}
                     {popupData.state === 'completed' && popupData.verified && (
-                        <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
-                            • <ShieldCheck size={11} className="inline text-emerald-400" /> Verified
+                        <span className={`font-semibold flex items-center gap-0.5 ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>
+                            • <ShieldCheck size={11} className={`inline ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`} /> Verified
                         </span>
                     )}
                     {popupData.state === 'completed' && popupData.verified === false && (
-                        <span className="text-amber-400 font-semibold flex items-center gap-0.5">
-                            • <AlertCircle size={11} className="inline text-amber-400" /> Unverified
+                        <span className={`font-semibold flex items-center gap-0.5 ${isBright ? 'text-amber-700' : 'text-amber-400'}`}>
+                            • <AlertCircle size={11} className={`inline ${isBright ? 'text-amber-600' : 'text-amber-400'}`} /> Unverified
                         </span>
                     )}
                     {popupData.isScreenshot && (
-                        <span className="text-emerald-400/90 font-sans">• Copied to clipboard</span>
+                        <span className={`font-sans ${isBright ? 'text-emerald-700' : 'text-emerald-400/90'}`}>• Copied to clipboard</span>
                     )}
                 </div>
             </div>
@@ -199,28 +197,28 @@ const DownloadPopup = () => {
             {/* Action Buttons styled like right click menu items */}
             {popupData.state === 'completed' && (
                 <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${
-                    isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'
+                    isBright ? 'border-black/[0.08]' : 'border-white/[0.08]'
                 }`}>
                     <button 
                         onClick={() => window.electronAPI?.openFile?.(popupData.savePath)} 
                         className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
                             isBright
-                                ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/5 active:bg-black/10'
-                                : 'text-white/80 hover:text-white hover:bg-white/10 active:bg-white/15'
+                                ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06] active:bg-black/10'
+                                : 'text-white/85 hover:text-white hover:bg-white/10 active:bg-white/15'
                         }`}
                     >
-                        <ExternalLink size={13} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
+                        <ExternalLink size={13} className={isBright ? 'text-zinc-600' : 'text-white/60'} />
                         <span>Open</span>
                     </button>
                     <button 
                         onClick={() => window.electronAPI?.showItemInFolder?.(popupData.savePath)} 
                         className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
                             isBright
-                                ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5 active:bg-black/10'
-                                : 'text-white/60 hover:text-white hover:bg-white/10 active:bg-white/15'
+                                ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:bg-black/10'
+                                : 'text-white/75 hover:text-white hover:bg-white/10 active:bg-white/15'
                         }`}
                     >
-                        <FolderOpen size={13} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
+                        <FolderOpen size={13} className={isBright ? 'text-zinc-600' : 'text-white/60'} />
                         <span>Folder</span>
                     </button>
                     {popupData.checksum && (
@@ -232,11 +230,11 @@ const DownloadPopup = () => {
                             title={`SHA-256: ${popupData.checksum}`}
                             className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
                                 isBright
-                                    ? 'text-emerald-700 hover:text-emerald-950 hover:bg-emerald-50 active:bg-emerald-100'
+                                    ? 'text-emerald-700 hover:text-emerald-950 hover:bg-emerald-500/10 active:bg-emerald-500/20'
                                     : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 active:bg-emerald-500/20'
                             }`}
                         >
-                            <ShieldCheck size={13} className="text-emerald-400" />
+                            <ShieldCheck size={13} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} />
                             <span>Hash</span>
                         </button>
                     )}
@@ -251,8 +249,8 @@ const DownloadPopup = () => {
                             title="Copy Image to Clipboard"
                             className={`p-1.5 rounded-xl transition cursor-pointer outline-none ${
                                 isBright
-                                    ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5 active:bg-black/10'
-                                    : 'text-white/60 hover:text-white hover:bg-white/10 active:bg-white/15'
+                                    ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:bg-black/10'
+                                    : 'text-white/75 hover:text-white hover:bg-white/10 active:bg-white/15'
                             }`}
                         >
                             <Copy size={13} />
@@ -260,7 +258,8 @@ const DownloadPopup = () => {
                     )}
                 </div>
             )}
-        </div>
+        </div>,
+        document.body
     );
 };
 
@@ -407,8 +406,26 @@ export default function MainFrame() {
                     <div className={`flex flex-col items-center px-4 w-full text-center ${isReducedMotion ? 'transition-none' : 'transition-[margin] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'} ${
                         isZenDropdownOpen ? 'mb-6 md:mb-8' : 'mb-10 md:mb-14'
                     }`}>
-                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isSpaceTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')}`}>{dateString}</span>
-                        <h1 className={`text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isSpaceTor ? 'from-purple-200 via-purple-300/80 to-purple-500/20' : (isDark ? 'from-white via-white/90 to-white/20' : 'from-zinc-900 via-zinc-800 to-zinc-700')} select-none transition-colors duration-500 px-4`} style={{ textShadow: isSpaceTor ? '0 20px 50px rgba(168,85,247,0.3)' : (isDark ? '0 20px 50px rgba(0,0,0,0.5)' : '0 20px 50px rgba(0,0,0,0.05)') }}>
+                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${
+                            isSpaceTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')
+                        }`}>{dateString}</span>
+                        <h1
+                            className={`qbrowse-hero-clock text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${
+                                isSpaceTor
+                                    ? 'from-purple-200 via-purple-300/85 to-purple-500/20'
+                                    : (isDark
+                                        ? 'from-white via-white/90 to-white/20'
+                                        : 'from-zinc-900 via-zinc-800 to-zinc-700')
+                            } select-none transition-colors duration-500 px-4`}
+                            style={{
+                                fontFamily: 'var(--clock-font-family)',
+                                filter: isSpaceTor
+                                    ? 'drop-shadow(0 16px 36px rgba(168,85,247,0.35)) drop-shadow(0 4px 12px rgba(0,0,0,0.45))'
+                                    : (isDark
+                                        ? 'drop-shadow(0 18px 40px rgba(0,0,0,0.55)) drop-shadow(0 0 28px rgba(var(--accent-rgb),0.14))'
+                                        : 'drop-shadow(0 16px 36px rgba(0,0,0,0.08))')
+                            }}
+                        >
                             {timeString}
                         </h1>
                     </div>
@@ -440,6 +457,7 @@ export default function MainFrame() {
     const mainContainerRef = useRef(null);
     const leftPaneRef = useRef(null);
     const rightPaneRef = useRef(null);
+    const splitInputWrapperRef = useRef(null);
     const currentRatioRef = useRef(splitRatio);
 
     useLayoutEffect(() => {
@@ -669,16 +687,12 @@ export default function MainFrame() {
                 <div 
                     id="popover-darkmode-container"
                     onClick={e => e.stopPropagation()} 
-                    style={darkmodeAnchor.style}
-                    className={`absolute z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-all border ${
-                        isBright 
-                            ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
-                            : 'bg-[#0c0d14]/85 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
-                    } ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                    style={{ ...darkmodeAnchor.style, ...getLiquidGlassInlineStyle(isBright) }}
+                    className={`absolute z-[60] w-80 rounded-2xl overflow-hidden flex flex-col transition-all ${getLiquidGlassSurfaceClasses(isBright)} ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
                 >
                     {/* Section 1: Browser Appearance Theme */}
-                    <div className={`p-4 border-b ${isBright ? 'border-black/5 bg-zinc-50/50' : 'border-white/[0.05] bg-white/[0.02]'}`}>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 block ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                    <div className={`p-4 border-b ${isBright ? 'border-black/[0.06] bg-black/[0.02]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 block ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
                             Browser Appearance
                         </span>
                         <div 
@@ -748,8 +762,8 @@ export default function MainFrame() {
                     <div className="p-4 flex flex-col gap-3">
                         <div className="flex items-center justify-between">
                             <div className="flex flex-col">
-                                <span className="text-xs font-semibold">Web Smart Dark</span>
-                                <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Invert light webpages only</span>
+                                <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>Web Smart Dark</span>
+                                <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Invert light webpages only</span>
                             </div>
                             <button 
                                 type="button"
@@ -763,14 +777,14 @@ export default function MainFrame() {
                         </div>
 
                         <div>
-                            <span className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 block ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 block ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
                                 Excluded Domains (One per line)
                             </span>
                             <textarea 
                                 className={`w-full h-24 rounded-xl p-2.5 text-xs font-mono resize-none outline-none transition-colors border ${
                                     isBright
-                                        ? 'bg-zinc-50 border-black/10 text-zinc-800 placeholder-zinc-400 focus:border-accent'
-                                        : 'bg-white/[0.04] border-white/[0.08] text-white/90 placeholder-white/30 focus:border-accent/60'
+                                        ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white/80'
+                                        : 'bg-white/[0.04] border-white/[0.08] text-white/90 placeholder-white/35 focus:border-accent/60'
                                 }`}
                                 value={localDarkExclusions}
                                 onChange={(e) => {
@@ -795,42 +809,36 @@ export default function MainFrame() {
                 <div 
                     id="popover-adblock-container"
                     onClick={e => e.stopPropagation()} 
-                    style={adblockAnchor.style}
-                    className={`absolute z-[60] w-72 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
-                        isBright 
-                            ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
-                            : 'bg-[#0c0d14]/78 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
-                    } ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                    style={{ ...adblockAnchor.style, ...getLiquidGlassInlineStyle(isBright) }}
+                    className={`absolute z-[60] w-72 rounded-2xl overflow-hidden flex flex-col ${getLiquidGlassSurfaceClasses(isBright)} ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
                 >
                     <div className={`p-5 flex flex-col items-center justify-center border-b transition-colors duration-500 ${
                         isBright
-                            ? (isAdblockActive ? 'bg-emerald-500/10 border-black/5' : 'bg-black/[0.02] border-black/5')
-                            : (isAdblockActive ? 'bg-green-500/10 border-white/[0.05]' : 'bg-white/[0.02] border-white/[0.05]')
+                            ? (isAdblockActive ? 'bg-emerald-500/10 border-black/[0.06]' : 'bg-black/[0.02] border-black/[0.06]')
+                            : (isAdblockActive ? 'bg-green-500/10 border-white/[0.06]' : 'bg-white/[0.02] border-white/[0.06]')
                     }`}>
-                        <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? (isBright ? 'text-emerald-600' : 'text-green-400') : (isBright ? 'text-zinc-300' : 'text-white/20')}`} strokeWidth={1.5} />
+                        <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? (isBright ? 'text-emerald-600' : 'text-green-400') : (isBright ? 'text-zinc-400' : 'text-white/25')}`} strokeWidth={1.5} />
                         <span 
                             title={isAdblockActive ? `${Number(adblockStats.count || 0).toLocaleString()} blocked trackers` : 'Adblock inactive'}
-                            className={`text-3xl font-black tracking-tight ${isAdblockActive ? (isBright ? 'text-zinc-900' : 'text-white') : (isBright ? 'text-zinc-400' : 'text-white/40')}`}
+                            className={`text-3xl font-black tracking-tight ${isAdblockActive ? (isBright ? 'text-zinc-900' : 'text-white') : (isBright ? 'text-zinc-500' : 'text-white/45')}`}
                         >
                             {isAdblockActive ? formatCompactNumber(adblockStats.count) : '0'}
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Blocked Trackers</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Blocked Trackers</span>
                     </div>
                     <div className="p-4 bg-transparent flex flex-col gap-3">
                         <div className="flex items-center justify-between">
-                            <span className={`text-sm font-semibold ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>Native Interceptor</span>
+                            <span className={`text-sm font-semibold ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>Native Interceptor</span>
                             <button onClick={() => setIsAdblockActive(!isAdblockActive)} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 cursor-pointer ${isAdblockActive ? 'bg-green-500' : (isBright ? 'bg-zinc-300' : 'bg-white/20')}`}>
                                 <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isAdblockActive ? 'translate-x-4' : 'translate-x-0'}`}></div>
                             </button>
                         </div>
-                        <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 rounded-xl p-2.5 border ${
-                            isBright 
-                                ? 'bg-black/[0.02] border-black/5 text-zinc-700' 
-                                : 'bg-white/[0.03] border-white/[0.06] text-white/80'
+                        <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 rounded-xl p-2.5 ${getLiquidGlassCardClasses(isBright)} ${
+                            isBright ? 'text-zinc-800' : 'text-white/85'
                         } ${isAdblockActive ? 'opacity-100' : 'opacity-30'}`}>
-                            {adblockStats.domains.length === 0 && <div className={`text-center py-2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>No trackers blocked yet</div>}
+                            {adblockStats.domains.length === 0 && <div className={`text-center py-2 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>No trackers blocked yet</div>}
                             {adblockStats.domains.map((domain, i) => (
-                                <div key={i} className="flex justify-between"><span className="truncate mr-2">{domain}</span><span className="text-red-500 flex-shrink-0 font-semibold">Blocked</span></div>
+                                <div key={i} className="flex justify-between"><span className="truncate mr-2">{domain}</span><span className={`flex-shrink-0 font-semibold ${isBright ? 'text-red-600' : 'text-red-400'}`}>Blocked</span></div>
                             ))}
                         </div>
                     </div>
@@ -845,34 +853,28 @@ export default function MainFrame() {
                 <div 
                     id="popover-downloads-container"
                     onClick={e => e.stopPropagation()} 
-                    style={downloadsAnchor.style}
-                    className={`absolute z-[60] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col border ${
-                        isBright 
-                            ? 'bg-white/60 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.10)]' 
-                            : 'bg-[#0c0d14]/78 border-white/[0.08] text-white shadow-[0_25px_80px_rgba(0,0,0,0.85)]'
-                    } ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                    style={{ ...downloadsAnchor.style, ...getLiquidGlassInlineStyle(isBright) }}
+                    className={`absolute z-[60] w-80 rounded-2xl overflow-hidden flex flex-col ${getLiquidGlassSurfaceClasses(isBright)} ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
                 >
-                    <div className={`p-4 border-b flex items-center justify-between ${isBright ? 'border-black/5 bg-zinc-50/50' : 'border-white/[0.05] bg-white/[0.02]'}`}>
+                    <div className={`p-4 border-b flex items-center justify-between ${isBright ? 'border-black/[0.06] bg-black/[0.02] text-zinc-900' : 'border-white/[0.06] bg-white/[0.02] text-white'}`}>
                         <div className="flex items-center gap-2 font-semibold text-sm">
                             <Download size={16} className="text-accent" /> Downloads
                         </div>
-                        <button className={`transition text-xs font-medium ${isBright ? 'text-zinc-400 hover:text-black' : 'text-white/40 hover:text-white'}`}>Clear All</button>
+                        <button className={`px-2 py-1 rounded-lg transition text-xs font-medium cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>Clear All</button>
                     </div>
                     <div className="p-2 flex flex-col gap-1">
-                        <div className={`p-3 border rounded-xl flex flex-col gap-2 relative overflow-hidden group transition ${
-                            isBright ? 'bg-black/[0.02] hover:bg-black/[0.04] border-black/5' : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.06]'
-                        }`}>
+                        <div className={`p-3 rounded-xl flex flex-col gap-2 relative overflow-hidden group transition ${getLiquidGlassCardClasses(isBright)}`}>
                             <div className="flex justify-between items-start relative z-10">
                                 <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500 flex-shrink-0 shadow-inner"><Cpu size={14} /></div>
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 shadow-inner ${isBright ? 'bg-blue-500/15 text-blue-600' : 'bg-blue-500/20 text-blue-400'}`}><Cpu size={14} /></div>
                                     <div className="flex flex-col truncate">
-                                        <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>ubuntu-24.04-desktop.iso</span>
-                                        <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>1.2 GB / 4.5 GB • 12 MB/s</span>
+                                        <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>ubuntu-24.04-desktop.iso</span>
+                                        <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>1.2 GB / 4.5 GB • 12 MB/s</span>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <button className={`p-1 rounded-lg transition ${isBright ? 'text-zinc-400 hover:text-black hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`} title="Pause"><Pause size={14} /></button>
-                                    <button className="p-1 text-red-500 hover:bg-red-500/10 rounded-lg transition" title="Cancel"><XCircle size={14} /></button>
+                                    <button className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`} title="Pause"><Pause size={14} /></button>
+                                    <button className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-red-600 hover:bg-red-500/10' : 'text-red-400 hover:bg-red-500/15'}`} title="Cancel"><XCircle size={14} /></button>
                                 </div>
                             </div>
                             <div className={`w-full h-1.5 rounded-full overflow-hidden mt-1 relative z-10 border ${isBright ? 'bg-black/10 border-black/5' : 'bg-black/40 border-white/5'}`}>
@@ -881,17 +883,15 @@ export default function MainFrame() {
                                 </div>
                             </div>
                         </div>
-                        <div className={`p-3 border rounded-xl flex items-center justify-between transition group cursor-pointer mt-1 ${
-                            isBright ? 'hover:bg-black/[0.03] border-transparent' : 'hover:bg-white/[0.04] border-transparent'
-                        }`}>
+                        <div className={`p-3 rounded-xl flex items-center justify-between transition group cursor-pointer mt-1 ${getLiquidGlassCardClasses(isBright)}`}>
                             <div className="flex items-center gap-3 overflow-hidden">
-                                <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center text-green-500 flex-shrink-0 shadow-inner"><FolderOpen size={14} /></div>
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 shadow-inner ${isBright ? 'bg-emerald-500/15 text-emerald-600' : 'bg-green-500/20 text-green-400'}`}><FolderOpen size={14} /></div>
                                 <div className="flex flex-col truncate">
-                                    <span className={`text-sm font-medium truncate ${isBright ? 'text-zinc-800 group-hover:text-black' : 'text-white/80 group-hover:text-white'}`}>Q4_Financial_Report.pdf</span>
-                                    <span className="text-[10px] text-green-500 font-mono mt-0.5">Completed • 2.4 MB</span>
+                                    <span className={`text-sm font-medium truncate ${isBright ? 'text-zinc-800 group-hover:text-zinc-950' : 'text-white/85 group-hover:text-white'}`}>Q4_Financial_Report.pdf</span>
+                                    <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`}>Completed • 2.4 MB</span>
                                 </div>
                             </div>
-                            <button className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition shadow-sm ${isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 text-white/60'}`} title="Show in folder">
+                            <button className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition shadow-sm cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`} title="Show in folder">
                                 <FolderOpen size={14} />
                             </button>
                         </div>
@@ -1065,13 +1065,14 @@ export default function MainFrame() {
                             {rightTab ? (
                                 <div className="relative w-full h-full flex flex-col">
                                     {/* Right Pane Overlay Controls */}
-                                    <div className={`h-10 border-b px-3.5 flex items-center justify-between text-xs z-30 shrink-0 backdrop-blur-2xl transition-colors ${
-                                        isBright 
-                                            ? 'bg-white/70 border-black/[0.08] text-zinc-900 shadow-xs' 
-                                            : 'bg-[#0c0d16]/80 border-white/[0.08] text-white shadow-xs'
-                                    }`}>
+                                    <div
+                                        style={getLiquidGlassInlineStyle(isBright)}
+                                        className={`h-10 border-b px-3.5 flex items-center justify-between text-xs z-30 shrink-0 transition-colors !rounded-none !shadow-xs ${getLiquidGlassSurfaceClasses(isBright)}`}
+                                    >
                                         <div className="flex items-center gap-2.5 truncate max-w-[65%]">
-                                            <div className="w-5 h-5 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0">
+                                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                                                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.06] border-white/10'
+                                            }`}>
                                                 {rightTab.url ? (
                                                     <img 
                                                         src={`https://www.google.com/s2/favicons?sz=32&domain=${rightTab.url}`} 
@@ -1079,12 +1080,14 @@ export default function MainFrame() {
                                                         onError={e=>e.target.style.display='none'} 
                                                     />
                                                 ) : (
-                                                    <Globe size={11} className={isBright ? 'text-zinc-500' : 'text-white/50'} />
+                                                    <Globe size={11} className={isBright ? 'text-zinc-600' : 'text-white/55'} />
                                                 )}
                                             </div>
                                             <span className="font-semibold truncate text-xs">{rightTab.title}</span>
                                             {rightTab.url && (
-                                                <span className="hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-white/50 truncate max-w-[140px]">
+                                                <span className={`hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full border truncate max-w-[140px] ${
+                                                    isBright ? 'bg-black/[0.04] border-black/[0.08] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/55'
+                                                }`}>
                                                     {rightTab.url.replace(/^https?:\/\//, '').split('/')[0]}
                                                 </span>
                                             )}
@@ -1093,8 +1096,10 @@ export default function MainFrame() {
                                         <div className="flex items-center gap-1.5">
                                             <button 
                                                 onClick={handleSwapPanes} 
-                                                className={`w-7 h-7 rounded-full border border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white transition active:scale-95 cursor-pointer flex items-center justify-center ${
-                                                    isBright ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]' : ''
+                                                className={`w-7 h-7 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                                    isBright
+                                                        ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
+                                                        : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
                                                 }`} 
                                                 title="Swap Left/Right Panes"
                                             >
@@ -1102,8 +1107,10 @@ export default function MainFrame() {
                                             </button>
                                             <button 
                                                 onClick={() => setSplitRightTabId(null)} 
-                                                className={`w-7 h-7 rounded-full border border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white transition active:scale-95 cursor-pointer flex items-center justify-center ${
-                                                    isBright ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]' : ''
+                                                className={`w-7 h-7 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                                    isBright
+                                                        ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
+                                                        : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
                                                 }`} 
                                                 title="Change Split Tab"
                                             >
@@ -1111,8 +1118,10 @@ export default function MainFrame() {
                                             </button>
                                             <button 
                                                 onClick={() => toggleSplitView()} 
-                                                className={`w-7 h-7 rounded-full border border-white/[0.08] hover:border-rose-500/30 bg-white/[0.04] hover:bg-rose-500/15 text-white/70 hover:text-rose-300 transition active:scale-95 cursor-pointer flex items-center justify-center ${
-                                                    isBright ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-rose-600 hover:bg-rose-500/10' : ''
+                                                className={`w-7 h-7 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                                    isBright
+                                                        ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-rose-600 hover:bg-rose-500/10 hover:border-rose-500/25'
+                                                        : 'border-white/[0.08] hover:border-rose-500/30 bg-white/[0.04] hover:bg-rose-500/15 text-white/75 hover:text-rose-300'
                                                 }`} 
                                                 title="Close Split View"
                                             >
@@ -1160,7 +1169,7 @@ export default function MainFrame() {
 
                                         {/* URL Input Form - clean sleek liquid pill */}
                                         <form onSubmit={handleOpenSplitUrl} className="w-full relative z-50">
-                                            <div className="relative w-full">
+                                            <div ref={splitInputWrapperRef} className="relative w-full">
                                                 <input 
                                                     type="text"
                                                     placeholder={`Search or enter URL for ${isSplitLeft ? 'Left' : 'Right'} Pane...`}
@@ -1182,54 +1191,64 @@ export default function MainFrame() {
                                                 </button>
                                             </div>
 
-                                            {/* Live Autocomplete Dropdown (Liquid glass matching Context Menu) */}
-                                            {splitLiveSuggestions.length > 0 && (
-                                                <div 
-                                                    style={{ backdropFilter: 'blur(28px) saturate(180%)', WebkitBackdropFilter: 'blur(28px) saturate(180%)' }}
-                                                    className={`absolute top-full left-0 right-0 mt-2 p-1.5 rounded-2xl border backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.55)] z-[100] max-h-60 overflow-y-auto hide-scroll text-left animate-pop-in ${
-                                                        isBright 
-                                                            ? 'bg-white/90 border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.1)]' 
-                                                            : 'bg-[#181a24]/75 border-white/[0.08] text-white/90'
-                                                    }`}
-                                                >
-                                                    {splitLiveSuggestions.map((item, idx) => (
-                                                        <div
-                                                            key={idx}
-                                                            onClick={() => handleOpenSplitUrl(item.url || item.title)}
-                                                            onMouseEnter={() => setSplitSelectedSuggestion(idx)}
-                                                            className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all duration-150 outline-none ${
-                                                                splitSelectedSuggestion === idx
-                                                                    ? (isBright ? 'bg-black/5 text-accent font-semibold' : 'bg-white/10 text-accent font-semibold')
-                                                                    : (isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/[0.06] text-white/80 hover:text-white')
-                                                            }`}
-                                                        >
-                                                            <div className="flex items-center gap-2.5 truncate min-w-0">
-                                                                {item.isSite || item.isHistory ? (
-                                                                    <Globe size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')}`} />
-                                                                ) : (
-                                                                    <Search size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-400' : 'text-white/40')}`} />
-                                                                )}
-                                                                <span className="truncate">{item.title}</span>
+                                            {/* Live Autocomplete Dropdown (Portaled so zoom transform/backdrop-filter never breaks blur) */}
+                                            {splitLiveSuggestions.length > 0 && typeof document !== 'undefined' && (() => {
+                                                const rect = splitInputWrapperRef.current?.getBoundingClientRect();
+                                                const dropTop = rect ? Math.max(12, rect.bottom + 8) : 200;
+                                                const dropLeft = rect ? Math.max(12, Math.min(rect.left, window.innerWidth - Math.max(240, rect.width) - 12)) : 12;
+                                                const dropWidth = rect ? rect.width : 360;
+                                                const maxH = Math.max(120, Math.min(240, window.innerHeight - dropTop - 16));
+                                                return createPortal(
+                                                    <div 
+                                                        style={{
+                                                            ...getLiquidGlassInlineStyle(isBright),
+                                                            top: `${dropTop}px`,
+                                                            left: `${dropLeft}px`,
+                                                            width: `${dropWidth}px`,
+                                                            maxHeight: `${maxH}px`
+                                                        }}
+                                                        className={`fixed p-1.5 rounded-2xl z-[99995] overflow-y-auto hide-scroll text-left animate-pop-in ${getLiquidGlassSurfaceClasses(isBright)}`}
+                                                    >
+                                                        {splitLiveSuggestions.map((item, idx) => (
+                                                            <div
+                                                                key={idx}
+                                                                onClick={() => handleOpenSplitUrl(item.url || item.title)}
+                                                                onMouseEnter={() => setSplitSelectedSuggestion(idx)}
+                                                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all duration-150 outline-none ${
+                                                                    splitSelectedSuggestion === idx
+                                                                        ? (isBright ? 'bg-black/[0.06] text-zinc-950 font-semibold' : 'bg-white/10 text-accent font-semibold')
+                                                                        : (isBright ? 'hover:bg-black/[0.05] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/[0.08] text-white/85 hover:text-white')
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-2.5 truncate min-w-0">
+                                                                    {item.isSite || item.isHistory ? (
+                                                                        <Globe size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-500' : 'text-white/45')}`} />
+                                                                    ) : (
+                                                                        <Search size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-500' : 'text-white/45')}`} />
+                                                                    )}
+                                                                    <span className="truncate">{item.title}</span>
+                                                                </div>
+                                                                <span className={`text-[10px] font-mono ml-2 shrink-0 ${
+                                                                    isBright ? 'text-zinc-500' : 'text-white/40'
+                                                                }`}>
+                                                                    {item.isSite ? 'Website' : (item.isHistory ? 'History' : 'Google')}
+                                                                </span>
                                                             </div>
-                                                            <span className={`text-[10px] font-mono ml-2 shrink-0 ${
-                                                                isBright ? 'text-zinc-400' : 'text-white/35 font-mono'
-                                                            }`}>
-                                                                {item.isSite ? 'Website' : (item.isHistory ? 'History' : 'Google')}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
+                                                        ))}
+                                                    </div>,
+                                                    document.body
+                                                );
+                                            })()}
                                         </form>
 
                                         {/* Available Tabs List - Absolute, so it NEVER alters the vertical center calculation! */}
                                         <div className="absolute top-[calc(100%+1.25rem)] left-6 right-6 flex flex-col gap-2 max-h-[30vh] overflow-y-auto hide-scroll text-left">
                                             <div className="flex items-center justify-between w-full mb-1 px-1">
-                                                <span className={`text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-1.5 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
+                                                <span className={`text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/45'}`}>
                                                     <Layers size={11} className="text-accent" />
                                                     Open Tabs in this Space
                                                 </span>
-                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isBright ? 'bg-black/[0.03] text-zinc-500' : 'bg-white/[0.04] text-white/40'}`}>
+                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isBright ? 'bg-black/[0.04] text-zinc-600' : 'bg-white/[0.04] text-white/45'}`}>
                                                     {availableRightTabs.length} {availableRightTabs.length === 1 ? 'tab' : 'tabs'}
                                                 </span>
                                             </div>
@@ -1237,14 +1256,16 @@ export default function MainFrame() {
                                             {availableRightTabs.length === 0 ? (
                                                 <div className={`w-full p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-1 shadow-xs ${
                                                     isBright 
-                                                        ? 'bg-black/[0.02] text-zinc-500 border-black/[0.06]' 
-                                                        : 'bg-white/[0.02] text-white/40 border-white/[0.06]'
+                                                        ? 'bg-black/[0.02] text-zinc-600 border-black/[0.06]' 
+                                                        : 'bg-white/[0.02] text-white/45 border-white/[0.06]'
                                                 }`}>
-                                                    <div className="w-8 h-8 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-white/40 mb-0.5">
+                                                    <div className={`w-8 h-8 rounded-full border flex items-center justify-center mb-0.5 ${
+                                                        isBright ? 'bg-black/[0.04] border-black/[0.08] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/45'
+                                                    }`}>
                                                         <Sparkles size={13} />
                                                     </div>
-                                                    <span className="text-xs font-semibold text-white/70">No other open tabs</span>
-                                                    <span className="text-[11px] text-white/40 max-w-[240px]">
+                                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>No other open tabs</span>
+                                                    <span className={`text-[11px] max-w-[240px] ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
                                                         Type a search query or URL above to browse side-by-side.
                                                     </span>
                                                 </div>
@@ -1260,7 +1281,9 @@ export default function MainFrame() {
                                                         }`}
                                                     >
                                                         <div className="flex items-center gap-3 truncate min-w-0 pr-2">
-                                                            <div className="w-7 h-7 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0 group-hover:border-accent/30 transition-all">
+                                                            <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 group-hover:border-accent/30 transition-all ${
+                                                                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.04] border-white/[0.06]'
+                                                            }`}>
                                                                 {t.url ? (
                                                                     <img 
                                                                         src={`https://www.google.com/s2/favicons?sz=32&domain=${t.url}`} 
@@ -1315,13 +1338,16 @@ export default function MainFrame() {
 
             {/* PEEK WINDOW */}
             {(peekWindow || isPeekClosing) && (
-                <div className={`absolute inset-8 md:inset-20 z-[1000] flex flex-col rounded-2xl shadow-[0_40px_100px_rgba(0,0,0,0.4)] overflow-hidden backdrop-blur-3xl border ${isBright ? 'bg-white/80 border-black/10 text-zinc-900 shadow-[0_30px_90px_rgba(0,0,0,0.15)]' : 'bg-black/60 border-white/10 text-white'} ${isPeekClosing ? 'animate-pop-out' : 'animate-pop-in'}`}>
-                    <button onClick={closePeek} className="absolute top-4 left-4 z-10 w-4 h-4 bg-red-500 hover:bg-red-400 text-transparent hover:text-white rounded-full flex items-center justify-center transition-colors shadow-sm group">
+                <div
+                    style={getLiquidGlassInlineStyle(isBright)}
+                    className={`absolute inset-8 md:inset-20 z-[1000] flex flex-col rounded-2xl overflow-hidden ${getLiquidGlassSurfaceClasses(isBright)} ${isPeekClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+                >
+                    <button onClick={closePeek} className="absolute top-4 left-4 z-10 w-4 h-4 bg-red-500 hover:bg-red-400 text-transparent hover:text-white rounded-full flex items-center justify-center transition-colors shadow-sm group cursor-pointer">
                         <X size={10} className="opacity-0 group-hover:opacity-100" />
                     </button>
                     <div className={`flex-1 flex flex-col items-center justify-center relative ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                        <Globe size={32} className={isBright ? 'text-zinc-300 mb-4' : 'text-white/20 mb-4'} />
-                        <span className={`text-sm font-bold uppercase tracking-widest ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Content Preview</span>
+                        <Globe size={32} className={isBright ? 'text-zinc-400 mb-4' : 'text-white/25 mb-4'} />
+                        <span className={`text-sm font-bold uppercase tracking-widest ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Content Preview</span>
                     </div>
                 </div>
             )}
@@ -1335,20 +1361,17 @@ export default function MainFrame() {
                         : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
                 }`}>
                     <div 
-                        className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all ${
-                            isBright 
-                                ? 'bg-white/90 border-black/10 text-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]' 
-                                : 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]'
-                        }`}
+                        style={getLiquidGlassInlineStyle(isBright)}
+                        className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl transition-all ${getLiquidGlassSurfaceClasses(isBright)}`}
                     >
                         <ZoomIn size={14} className="text-accent" />
-                        <span className="text-xs font-semibold tracking-tight select-none">
+                        <span className={`text-xs font-semibold tracking-tight select-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                             Canvas Zoom: <span className="font-mono font-bold">{canvasZoomLevel}%</span>
                         </span>
                         {canvasZoomLevel !== 100 && (
                             <button 
                                 onClick={handleResetCanvasZoom}
-                                className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1"
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1 cursor-pointer"
                                 title="Reset Canvas Zoom (Ctrl+Alt+0)"
                             >
                                 <RotateCcw size={10} /> Reset
@@ -1364,21 +1387,18 @@ export default function MainFrame() {
                         : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
                 }`}>
                     <div 
-                        className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all ${
-                            isBright 
-                                ? 'bg-white/90 border-black/10 text-zinc-800 shadow-[0_15px_35px_rgba(0,0,0,0.12)]' 
-                                : 'bg-[#121216]/90 border-white/15 text-white shadow-[0_15px_35px_rgba(0,0,0,0.7)]'
-                        }`}
+                        style={getLiquidGlassInlineStyle(isBright)}
+                        className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl transition-all ${getLiquidGlassSurfaceClasses(isBright)}`}
                     >
                         <ZoomIn size={14} className="text-accent" />
-                        <span className="text-xs font-bold font-mono tracking-tight min-w-[42px] text-center select-none">
+                        <span className={`text-xs font-bold font-mono tracking-tight min-w-[42px] text-center select-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                             {zoomLevel}%
                         </span>
                         <div className={`flex items-center gap-1 pl-2 border-l ${isBright ? 'border-black/10' : 'border-white/10'}`}>
                             <button 
                                 onClick={() => zoomOut()}
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
-                                    isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${
+                                    isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
                                 }`}
                                 title="Zoom Out (Ctrl -)"
                             >
@@ -1386,8 +1406,8 @@ export default function MainFrame() {
                             </button>
                             <button 
                                 onClick={() => zoomIn()}
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 ${
-                                    isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white'
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${
+                                    isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
                                 }`}
                                 title="Zoom In (Ctrl +)"
                             >
@@ -1396,7 +1416,7 @@ export default function MainFrame() {
                             {zoomLevel !== 100 && (
                                 <button 
                                     onClick={() => resetZoom()}
-                                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1"
+                                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1 cursor-pointer"
                                     title="Reset Zoom (Ctrl 0)"
                                 >
                                     <RotateCcw size={10} /> Reset
@@ -1412,12 +1432,11 @@ export default function MainFrame() {
                 <div 
                     role="status" 
                     aria-live="polite"
-                    className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 rounded-full backdrop-blur-2xl border text-xs font-medium ${
+                    style={getLiquidGlassInlineStyle(isBright)}
+                    className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 !rounded-full text-xs font-medium ${getLiquidGlassSurfaceClasses(isBright)} ${
                         isToastClosing ? 'animate-toast-out' : 'animate-toast'
                     } flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide ${
-                        isBright 
-                            ? 'bg-white/95 border-black/10 text-zinc-900 shadow-[0_12px_36px_rgba(0,0,0,0.15)]' 
-                            : 'bg-[#0c0d12]/95 border-white/12 text-white/90 shadow-[0_12px_36px_rgba(0,0,0,0.65)]'
+                        isBright ? 'text-zinc-900' : 'text-white/95'
                     }`}
                 >
                     {getToastIcon(toast, isBright)}

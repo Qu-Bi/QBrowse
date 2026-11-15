@@ -1,6 +1,9 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassMenuClasses } from './ContextMenuProvider';
 
 export default function CustomSelect({
     value,
@@ -15,45 +18,92 @@ export default function CustomSelect({
     ariaLabel
 }) {
     const storeTheme = useUIStore(state => state.theme);
-    const isBright = propIsBright !== undefined ? propIsBright : storeTheme === 'light';
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = propIsBright !== undefined
+        ? propIsBright
+        : (storeTheme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor');
     const [isOpen, setIsOpen] = useState(false);
     const [openUpwards, setOpenUpwards] = useState(false);
+    const [menuPositionStyle, setMenuPositionStyle] = useState(null);
+    const containerRef = useRef(null);
     const triggerRef = useRef(null);
-    const dropdownRef = useRef(null);
+    const menuRef = useRef(null);
 
     // Normalize options if passed as simple strings/numbers
-    const normalizedOptions = options.map(opt => {
+    const normalizedOptions = useMemo(() => options.map(opt => {
         if (typeof opt === 'object' && opt !== null) {
             return opt;
         }
         return { value: opt, label: String(opt) };
-    });
+    }), [options]);
 
     const selectedOption = normalizedOptions.find(opt => opt.value === value) || null;
 
-    // Detect if dropdown should flip upwards to avoid viewport clipping
-    useLayoutEffect(() => {
-        if (!isOpen || !triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
-        const estH = Math.min(normalizedOptions.length * 44 + 20, 320);
-        if (rect.bottom + estH > screenH - 12 && rect.top > estH + 12) {
-            setOpenUpwards(true);
-        } else {
-            setOpenUpwards(false);
-        }
-    }, [isOpen, normalizedOptions.length]);
+    const updateMenuPosition = useCallback(() => {
+        if (!isOpen || !containerRef.current || typeof window === 'undefined') return;
+        const rect = (triggerRef.current || containerRef.current).getBoundingClientRect();
+        const screenH = window.innerHeight || 800;
+        const screenW = window.innerWidth || 1200;
+        const estH = Math.min(normalizedOptions.length * 44 + 20, 300);
+        const spaceBelow = screenH - rect.bottom - 12;
+        const spaceAbove = rect.top - 12;
+        const shouldFlipUp = spaceBelow < estH && spaceAbove > spaceBelow;
 
-    // Handle outside clicks and keyboard navigation
+        const hasRichMeta = normalizedOptions.some(opt => opt.description || opt.badge);
+        const minW = hasRichMeta ? Math.max(rect.width, 210) : Math.max(rect.width, size === 'sm' ? 115 : 170);
+        const effectiveW = Math.min(minW, screenW - 24);
+
+        let left = rect.left;
+        if (left + effectiveW > screenW - 12) {
+            left = Math.max(12, rect.right - effectiveW);
+        }
+        left = Math.max(12, Math.min(left, screenW - effectiveW - 12));
+
+        const nextStyle = {
+            position: 'fixed',
+            zIndex: 99999,
+            left: `${Math.round(left)}px`,
+            width: rect.width >= minW ? `${Math.round(rect.width)}px` : undefined,
+            minWidth: `${Math.round(effectiveW)}px`,
+            maxWidth: `${screenW - 24}px`,
+            maxHeight: `${Math.min(300, Math.max(120, (shouldFlipUp ? spaceAbove : spaceBelow) - 6))}px`
+        };
+
+        if (shouldFlipUp) {
+            nextStyle.bottom = `${Math.round(screenH - rect.top + 6)}px`;
+        } else {
+            nextStyle.top = `${Math.round(rect.bottom + 6)}px`;
+        }
+
+        setOpenUpwards(shouldFlipUp);
+        setMenuPositionStyle(nextStyle);
+    }, [isOpen, normalizedOptions, size]);
+
+    // Measure trigger bounding rect before paint to position portaled menu without flicker
+    useLayoutEffect(() => {
+        if (!isOpen) {
+            setMenuPositionStyle(null);
+            return;
+        }
+        updateMenuPosition();
+    }, [isOpen, updateMenuPosition]);
+
+    // Handle outside clicks, scroll/resize repositioning, and keyboard navigation
     useEffect(() => {
         if (!isOpen) return;
         const handleClickOutside = (e) => {
-            if (
-                triggerRef.current && !triggerRef.current.contains(e.target) &&
-                dropdownRef.current && !dropdownRef.current.contains(e.target)
-            ) {
+            const inContainer = containerRef.current && containerRef.current.contains(e.target);
+            const inTrigger = triggerRef.current && triggerRef.current.contains(e.target);
+            const inMenu = menuRef.current && menuRef.current.contains(e.target);
+            if (!inContainer && !inTrigger && !inMenu) {
                 setIsOpen(false);
             }
+        };
+        const handleScrollOrResize = (e) => {
+            if (e?.type === 'scroll' && e.target && menuRef.current && menuRef.current.contains(e.target)) {
+                return;
+            }
+            updateMenuPosition();
         };
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
@@ -77,11 +127,15 @@ export default function CustomSelect({
 
         window.addEventListener('mousedown', handleClickOutside);
         window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('resize', handleScrollOrResize);
+        window.addEventListener('scroll', handleScrollOrResize, true);
         return () => {
             window.removeEventListener('mousedown', handleClickOutside);
             window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('resize', handleScrollOrResize);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
         };
-    }, [isOpen, normalizedOptions, value, onChange]);
+    }, [isOpen, normalizedOptions, value, onChange, updateMenuPosition]);
 
     const handleSelect = (optVal) => {
         onChange(optVal);
@@ -92,7 +146,7 @@ export default function CustomSelect({
     const isFullWidth = typeof className === 'string' && className.includes('w-full');
 
     return (
-        <div className={`relative ${isFullWidth ? 'block w-full' : 'inline-block'} text-left select-none`}>
+        <div ref={containerRef} className={`relative ${isFullWidth ? 'block w-full' : 'inline-block'} text-left select-none`}>
             <button
                 ref={triggerRef}
                 type="button"
@@ -139,20 +193,17 @@ export default function CustomSelect({
                 />
             </button>
 
-            {isOpen && (
+            {isOpen && menuPositionStyle && typeof document !== 'undefined' && createPortal(
                 <div
-                    ref={dropdownRef}
+                    ref={menuRef}
+                    data-open-upwards={openUpwards ? 'true' : 'false'}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                     style={{
-                        backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
-                        WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
+                        ...menuPositionStyle,
+                        ...getLiquidGlassInlineStyle(isBright)
                     }}
-                    className={`absolute z-[99999] ${isFullWidth ? 'left-0 right-0 w-full min-w-[210px]' : 'right-0 min-w-[210px]'} max-h-[300px] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-1.5 rounded-2xl border backdrop-blur-2xl flex flex-col gap-0.5 animate-pop-in ${
-                        openUpwards ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                    } ${
-                        isBright 
-                            ? 'bg-white/95 border-black/[0.08] text-zinc-900 shadow-[0_20px_45px_rgba(0,0,0,0.14)]' 
-                            : 'bg-[#12131a]/95 border-white/[0.08] text-white/90 shadow-[0_20px_50px_rgba(0,0,0,0.65)]'
-                    } ${dropdownClassName}`}
+                    className={`fixed overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-1.5 rounded-2xl flex flex-col gap-0.5 animate-pop-in select-none ${getLiquidGlassMenuClasses(isBright)} ${dropdownClassName}`}
                 >
                     {normalizedOptions.map((opt) => {
                         const isSelected = opt.value === value;
@@ -170,7 +221,7 @@ export default function CustomSelect({
                                         ? 'bg-accent text-zinc-950 font-bold shadow-sm'
                                         : (isBright 
                                             ? 'hover:bg-black/5 text-zinc-700 hover:text-zinc-950' 
-                                            : 'hover:bg-white/10 text-white/70 hover:text-white')
+                                            : 'hover:bg-white/10 text-white/75 hover:text-white')
                                 }`}
                             >
                                 <div className="flex items-center gap-2.5 truncate">
@@ -181,7 +232,7 @@ export default function CustomSelect({
                                         <span className="truncate">{opt.label}</span>
                                         {opt.description && (
                                             <span className={`text-[10px] font-normal leading-tight mt-0.5 ${
-                                                isSelected ? 'text-zinc-900/80' : (isBright ? 'text-zinc-500' : 'text-white/40')
+                                                isSelected ? 'text-zinc-900/80' : (isBright ? 'text-zinc-500' : 'text-white/45')
                                             }`}>
                                                 {opt.description}
                                             </span>
@@ -202,7 +253,8 @@ export default function CustomSelect({
                             </button>
                         );
                     })}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

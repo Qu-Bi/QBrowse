@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     GitPullRequest, GitBranch, AlertCircle, RefreshCw, ChevronDown, 
     Settings, MessageSquare, ExternalLink, EyeOff, CheckCircle2
@@ -6,6 +7,7 @@ import {
 import { useGitHubStore } from '../../store/useGitHubStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassMenuClasses } from '../common/ContextMenuProvider';
 
 export default function GitHubLiveFolder({ spaceId = 'work' }) {
     const settings = useUIStore(state => state.settings);
@@ -13,7 +15,8 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
     const openSettings = useUIStore(state => state.openSettings);
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
-    const isBright = theme === 'light';
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const addTab = useTabStore(state => state.addTab);
     const spaceTabs = useTabStore(state => state.getTabsForSpace ? state.getTabsForSpace(spaceId) : (spaceId === 'work' ? state.workTabs : state.privateTabs));
@@ -182,21 +185,27 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                     <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button 
                             onClick={() => fetchData(true)}
-                            className={`p-1 hover:text-white text-[color:var(--sidebar-text-muted)] rounded-md hover:bg-white/10 transition-all cursor-pointer ${isLoading ? 'animate-spin text-accent' : ''}`}
+                            className={`p-1 rounded-md transition-all cursor-pointer ${
+                                isBright ? 'text-zinc-500 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'
+                            } ${isLoading ? 'animate-spin text-accent' : ''}`}
                             title="Refresh GitHub Live"
                         >
                             <RefreshCw size={11} />
                         </button>
                         <button 
                             onClick={() => openSettings('workmode')}
-                            className="p-1 hover:text-white text-[color:var(--sidebar-text-muted)] rounded-md hover:bg-white/10 transition-all cursor-pointer"
+                            className={`p-1 rounded-md transition-all cursor-pointer ${
+                                isBright ? 'text-zinc-500 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'
+                            }`}
                             title="Customize GitHub Work Mode"
                         >
                             <Settings size={11} />
                         </button>
                         <button
                             onClick={toggleLiveFolder}
-                            className="p-0.5 text-[color:var(--sidebar-text-muted)] hover:text-white transition-all cursor-pointer"
+                            className={`p-0.5 transition-all cursor-pointer ${
+                                isBright ? 'text-zinc-500 hover:text-zinc-950' : 'text-white/55 hover:text-white'
+                            }`}
                             title={isLiveFolderOpen ? 'Collapse' : 'Expand'}
                         >
                             <ChevronDown size={12} className={`transition-transform duration-300 ${isLiveFolderOpen ? 'rotate-180' : ''}`} />
@@ -214,20 +223,26 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                 >
                     <div className="space-y-2">
                         {!authenticated ? (
-                            <div className="p-3 text-center rounded-xl bg-black/20 border border-[color:var(--sidebar-border)] space-y-2">
+                            <div className={`p-3 text-center rounded-xl border space-y-2 ${
+                                isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/20 border-[color:var(--sidebar-border)]'
+                            }`}>
                                 <p className="text-[11px] text-[color:var(--sidebar-text-muted)]">
                                     Connect your GitHub session in Work Mode or enter a Personal Access Token in settings.
                                 </p>
                                 <div className="flex items-center justify-center gap-2">
                                     <button 
                                         onClick={(e) => handleOpenItem(e, 'https://github.com/login')}
-                                        className="px-2.5 py-1 text-xs font-medium bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 rounded-lg transition-all cursor-pointer"
+                                        className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                                            isBright ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25' : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                                        }`}
                                     >
                                         Log In
                                     </button>
                                     <button 
                                         onClick={() => openSettings('workmode')}
-                                        className="px-2.5 py-1 text-xs font-medium bg-white/10 text-zinc-300 hover:bg-white/15 rounded-lg transition-all cursor-pointer"
+                                        className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                                            isBright ? 'bg-black/[0.06] text-zinc-700 hover:bg-black/10' : 'bg-white/10 text-zinc-300 hover:bg-white/15'
+                                        }`}
                                     >
                                         Configure
                                     </button>
@@ -358,42 +373,43 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                 </div>
             </div>
 
-            {/* Right-Click Context Menu with Insta-Hide */}
-            {contextMenuPos && (
+            {/* Right-Click Context Menu with Insta-Hide (Portaled to body for true backdrop blur) */}
+            {contextMenuPos && typeof document !== 'undefined' && createPortal(
                 <div 
-                    className="fixed inset-0 z-50 select-none"
+                    className="fixed inset-0 z-[99990] select-none"
                     onClick={() => setContextMenuPos(null)}
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuPos(null); }}
                 >
                     <div 
                         style={{ 
-                            top: `${Math.min(window.innerHeight - 200, contextMenuPos.y)}px`, 
-                            left: `${Math.min(window.innerWidth - 220, contextMenuPos.x)}px` 
+                            top: `${Math.max(12, Math.min(window.innerHeight - 190, contextMenuPos.y))}px`, 
+                            left: `${Math.max(12, Math.min(window.innerWidth - 220, contextMenuPos.x))}px`,
+                            ...getLiquidGlassInlineStyle(isBright)
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className={`absolute w-52 p-1.5 rounded-2xl border backdrop-blur-2xl shadow-2xl animate-pop-in ${
-                            isBright 
-                                ? 'bg-white/85 border-black/[0.08] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.14)]' 
-                                : 'bg-[#12131a]/85 border-white/[0.12] text-white/95 shadow-[0_24px_64px_rgba(0,0,0,0.75)]'
-                        }`}
+                        className={`fixed z-[99995] w-52 animate-pop-in ${getLiquidGlassMenuClasses(isBright)}`}
                     >
                         {/* Instant Hide */}
                         <button
                             onClick={handleInstaHide}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/15 rounded-xl transition-all cursor-pointer group"
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-xl transition-all cursor-pointer group ${
+                                isBright ? 'text-rose-600 hover:bg-rose-500/12' : 'text-rose-400 hover:bg-rose-500/15'
+                            }`}
                         >
                             <EyeOff size={14} className="group-hover:scale-110 transition-transform" />
                             <span>Hide GitHub Live</span>
                         </button>
 
-                        <div className="my-1 border-t border-white/[0.08]" />
+                        <div className={`my-1 border-t ${isBright ? 'border-black/[0.08]' : 'border-white/[0.08]'}`} />
 
                         <button
                             onClick={() => {
                                 fetchData(true);
                                 setContextMenuPos(null);
                             }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-[color:var(--sidebar-text-muted)] hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-xl transition-all cursor-pointer ${
+                                isBright ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/85 hover:text-white hover:bg-white/10'
+                            }`}
                         >
                             <RefreshCw size={14} />
                             <span>Refresh Live Data</span>
@@ -404,7 +420,9 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                 addTab({ url: 'https://github.com/', active: true, title: 'GitHub' }, spaceId);
                                 setContextMenuPos(null);
                             }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-[color:var(--sidebar-text-muted)] hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-xl transition-all cursor-pointer ${
+                                isBright ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/85 hover:text-white hover:bg-white/10'
+                            }`}
                         >
                             <ExternalLink size={14} />
                             <span>Open on GitHub</span>
@@ -415,13 +433,16 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                 openSettings('workmode');
                                 setContextMenuPos(null);
                             }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-[color:var(--sidebar-text-muted)] hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-xl transition-all cursor-pointer ${
+                                isBright ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/85 hover:text-white hover:bg-white/10'
+                            }`}
                         >
                             <Settings size={14} />
                             <span>Configure Settings...</span>
                         </button>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </>
     );

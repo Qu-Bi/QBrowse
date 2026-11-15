@@ -3,6 +3,7 @@ import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music, X, Picture
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import usePopoverAnchor from '../../hooks/usePopoverAnchor';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
 
 function formatTime(seconds) {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -56,25 +57,21 @@ export default function MediaPlayerPopover() {
         <div 
             id="popover-media-container"
             onClick={e => e.stopPropagation()}
-            style={anchor.style}
-            className={`absolute z-[70] w-80 backdrop-blur-3xl rounded-2xl overflow-hidden flex flex-col transition-colors ${
-                isBright
-                    ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14),0_1px_2px_rgba(0,0,0,0.05)] text-zinc-900'
-                    : 'bg-[#0c0d14]/78 border border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-white'
-            } ${
+            style={{ ...anchor.style, ...getLiquidGlassInlineStyle(isBright) }}
+            className={`absolute z-[70] w-80 rounded-2xl overflow-hidden flex flex-col transition-colors ${getLiquidGlassSurfaceClasses(isBright)} ${
                 isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'
             }`}
         >
             {/* Header */}
             <div className={`p-3.5 border-b flex items-center justify-between ${
-                isBright ? 'border-black/5 bg-black/[0.02]' : 'border-white/10 bg-white/5'
+                isBright ? 'border-black/[0.06] bg-black/[0.02]' : 'border-white/10 bg-white/5'
             }`}>
                 <div className="flex items-center gap-2">
                     <Music size={14} className="text-accent" />
                     <span className={`text-xs font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>Media Control</span>
                 </div>
                 <button onClick={closePopover} className={`p-1 rounded-md transition cursor-pointer ${
-                    isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-800' : 'hover:bg-white/10 text-white/40 hover:text-white'
+                    isBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-800' : 'hover:bg-white/10 text-white/40 hover:text-white'
                 }`}>
                     <X size={13} />
                 </button>
@@ -127,7 +124,7 @@ export default function MediaPlayerPopover() {
                     />
                 </div>
                 {mediaState.duration > 0 && (
-                    <div className={`flex items-center justify-between text-[10px] font-mono px-0.5 ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
+                    <div className={`flex items-center justify-between text-[10px] font-mono px-0.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                         <span>{formatTime(mediaState.currentTime)}</span>
                         <span>{formatTime(mediaState.duration)}</span>
                     </div>
@@ -163,7 +160,7 @@ export default function MediaPlayerPopover() {
                 <button 
                     onClick={handleMuteToggle}
                     className={`p-2 transition-transform active:scale-95 cursor-pointer ml-1 ${
-                        isMuted ? 'text-red-500 hover:text-red-400' : (isBright ? 'text-zinc-400 hover:text-zinc-900' : 'text-white/40 hover:text-white')
+                        isMuted ? 'text-red-500 hover:text-red-400' : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
                     }`}
                     title={isMuted ? "Unmute Tab Audio" : "Mute Tab Audio"}
                 >
@@ -172,7 +169,7 @@ export default function MediaPlayerPopover() {
 
                 <button 
                     onClick={() => sendMediaCommand('toggle-pip')}
-                    className={`p-2 transition-transform active:scale-95 cursor-pointer ${isBright ? 'text-zinc-400 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}
+                    className={`p-2 transition-transform active:scale-95 cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}
                     title="Toggle Picture-in-Picture (PiP)"
                 >
                     <PictureInPicture2 size={15} />

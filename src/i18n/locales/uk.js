@@ -64,6 +64,7 @@ export default {
         tabs: {
             appearance: "Вигляд та теми",
             layout: "Макет та панелі",
+            typography: "Типографіка та шрифти",
             spaces: "Робочі простори",
             accessibility: "Доступність",
             privacy: "Приватність і безпека",

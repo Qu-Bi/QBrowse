@@ -6,6 +6,26 @@ import {
 import useVaultStore from '../../store/useVaultStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
+
+const getBiometricLabel = () => {
+    const p = (typeof window !== 'undefined' && (window.electronAPI?.platform || window.process?.platform))
+        || (typeof process !== 'undefined' && process?.platform)
+        || '';
+    let os = p;
+    if (os !== 'darwin' && os !== 'linux' && os !== 'win32') {
+        const ua = typeof navigator !== 'undefined'
+            ? `${navigator.userAgentData?.platform || ''} ${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase()
+            : '';
+        if (ua.includes('mac') || ua.includes('darwin')) os = 'darwin';
+        else if (ua.includes('win')) os = 'win32';
+        else if (ua.includes('linux')) os = 'linux';
+        else os = 'win32';
+    }
+    if (os === 'darwin') return 'Touch ID';
+    if (os === 'linux') return 'System Biometrics';
+    return 'Windows Hello';
+};
 
 export default function SavePasswordBanner() {
     const { 
@@ -18,6 +38,7 @@ export default function SavePasswordBanner() {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const biometricLabel = getBiometricLabel();
 
     const [usernameInput, setUsernameInput] = useState('');
     const [passwordInput, setPasswordInput] = useState('');
@@ -158,10 +179,10 @@ export default function SavePasswordBanner() {
                 });
                 showToast(isUpdate ? `Updated password for ${domain}` : `Saved password for ${domain}!`, 'success');
             } else {
-                setUnlockError('Windows Security verification failed');
+                setUnlockError(`${biometricLabel} verification failed`);
             }
         } catch (err) {
-            setUnlockError(err.message || 'Windows Hello error');
+            setUnlockError(err.message || `${biometricLabel} error`);
         } finally {
             setIsSaving(false);
         }
@@ -175,22 +196,10 @@ export default function SavePasswordBanner() {
     return (
         <div 
             id="save-password-banner"
-            style={{
-                backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
-                backdropFilter: isBright
-                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
-                WebkitBackdropFilter: isBright
-                    ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-                    : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
-            }}
+            style={getLiquidGlassInlineStyle(isBright)}
             className={`absolute top-16 right-6 z-[70000] w-[350px] rounded-3xl p-4 ${
                 isClosing ? 'animate-slide-up-fade-out' : 'animate-slide-down-fade'
-            } origin-top-right overflow-hidden select-none transition-all duration-300 border ${
-                isBright 
-                    ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]' 
-                    : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
-            }`}
+            } origin-top-right overflow-hidden select-none transition-all duration-300 ${getLiquidGlassSurfaceClasses(isBright)}`}
             onClick={e => e.stopPropagation()}
         >
             {/* Top Accent Line */}
@@ -411,7 +420,7 @@ export default function SavePasswordBanner() {
                                     className={`p-1.5 rounded-lg border transition cursor-pointer ${
                                         isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700 hover:text-zinc-900' : 'bg-white/[0.08] hover:bg-white/[0.12] border-white/10 text-white/80 hover:text-white'
                                     }`}
-                                    title="Unlock with Windows Hello"
+                                    title={`Unlock with ${biometricLabel}`}
                                 >
                                     <Fingerprint size={14} />
                                 </button>

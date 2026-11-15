@@ -12,9 +12,7 @@ import {
     Laptop, 
     Globe, 
     FileText, 
-    Trash2, 
-    Layers,
-    ArrowRight
+    Trash2
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -27,10 +25,89 @@ import {
     isFontAvailable 
 } from '../../utils/appFontManager';
 
-export default function CustomFontManager({ isStudio = false }) {
+// Smooth hardware-accelerated sliding pill switcher matching QBrowse's motion language
+function FontSlidingPillSwitcher({ options = [], value, onChange, isBright, compact = false }) {
+    const [hoveredIdx, setHoveredIdx] = useState(null);
+    const count = options.length || 1;
+    const foundIdx = options.findIndex(o => o.id === value);
+    const activeIndex = foundIdx >= 0 ? foundIdx : 0;
+
+    return (
+        <div
+            className={`relative grid items-center p-1 rounded-full border backdrop-blur-xl transition-colors duration-200 select-none ${
+                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-black/40 border-white/[0.08]'
+            }`}
+            style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}
+            onMouseLeave={() => setHoveredIdx(null)}
+        >
+            {/* Subtle Hover Preview Pill */}
+            {hoveredIdx !== null && hoveredIdx !== activeIndex && (
+                <div
+                    className="absolute top-1 bottom-1 rounded-full pointer-events-none"
+                    style={{
+                        left: '4px',
+                        width: `calc((100% - 8px) / ${count})`,
+                        transform: `translateX(${hoveredIdx * 100}%)`,
+                        transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+                        willChange: 'transform',
+                        backgroundColor: isBright ? 'rgba(0, 0, 0, 0.045)' : 'rgba(255, 255, 255, 0.05)'
+                    }}
+                />
+            )}
+
+            {/* Smooth Sliding Active Pill */}
+            <div
+                className="absolute top-1 bottom-1 rounded-full pointer-events-none shadow-sm"
+                style={{
+                    left: '4px',
+                    width: `calc((100% - 8px) / ${count})`,
+                    transform: `translateX(${activeIndex * 100}%)`,
+                    transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    willChange: 'transform',
+                    backgroundColor: isBright ? '#ffffff' : 'rgba(255, 255, 255, 0.1)',
+                    border: isBright ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.14)',
+                    boxShadow: isBright
+                        ? '0 2px 8px rgba(0, 0, 0, 0.08)'
+                        : '0 2px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 0 rgba(255, 255, 255, 0.15)'
+                }}
+            />
+
+            {options.map((opt, idx) => {
+                const isActive = opt.id === value;
+                const Icon = opt.icon;
+                return (
+                    <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onChange(opt.id)}
+                        onMouseEnter={() => setHoveredIdx(idx)}
+                        className={`relative z-10 flex items-center justify-center gap-1.5 ${
+                            compact ? 'py-1.5 px-2 text-[11px]' : 'py-2 px-3 text-xs'
+                        } font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer select-none truncate outline-none ${
+                            isActive
+                                ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                : (isBright ? 'text-zinc-600 hover:text-zinc-900 font-medium' : 'text-white/60 hover:text-white font-medium')
+                        }`}
+                    >
+                        {Icon && (
+                            <Icon
+                                size={compact ? 12 : 14}
+                                className={`shrink-0 ${isActive ? 'text-accent' : 'opacity-70'}`}
+                            />
+                        )}
+                        <span className="truncate">{opt.label}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+export default function CustomFontManager({ isStudio = false, isBright: isBrightProp }) {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
-    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const computedBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const isBright = typeof isBrightProp === 'boolean' ? isBrightProp : computedBright;
 
     const settings = useUIStore(state => state.settings) || {};
     const setAppFont = useUIStore(state => state.setAppFont);
@@ -229,10 +306,10 @@ export default function CustomFontManager({ isStudio = false }) {
         <div className={`space-y-5 ${isStudio ? 'w-full' : ''}`}>
             
             {/* HEADER SUMMARY CARD */}
-            <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+            <div className={`p-4 sm:p-5 rounded-2xl transition-all ${
                 isBright 
-                    ? 'bg-black/[0.02] border-black/10' 
-                    : 'bg-white/[0.025] border-white/[0.06]'
+                    ? 'bg-black/[0.02] border border-black/[0.07]' 
+                    : 'bg-white/[0.02] border border-white/[0.06]'
             }`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -241,10 +318,7 @@ export default function CustomFontManager({ isStudio = false }) {
                         </div>
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="font-bold text-sm tracking-tight">App Typography &amp; Font</h3>
-                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-accent/20 text-accent font-semibold border border-accent/30">
-                                    {appFontType.toUpperCase()}
-                                </span>
+                                <h3 className={`font-bold text-sm tracking-tight ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>App Typography &amp; Font</h3>
                             </div>
                             <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                 Active: <span className="font-semibold text-accent">{currentActiveFontName}</span>
@@ -258,8 +332,8 @@ export default function CustomFontManager({ isStudio = false }) {
                             onClick={resetAppFont}
                             className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0 ${
                                 isBright 
-                                    ? 'border-black/10 hover:bg-black/5 text-zinc-700' 
-                                    : 'border-white/10 hover:bg-white/10 text-zinc-300'
+                                    ? 'border-black/[0.08] hover:border-black/[0.14] hover:bg-black/[0.04] text-zinc-700' 
+                                    : 'border-white/[0.08] hover:border-white/[0.14] hover:bg-white/[0.06] text-zinc-300'
                             }`}
                             title="Reset font to operating system default"
                         >
@@ -271,61 +345,35 @@ export default function CustomFontManager({ isStudio = false }) {
             </div>
 
             {/* MODE SELECTION TABS */}
-            <div className={`p-1 rounded-2xl border grid grid-cols-2 sm:grid-cols-4 gap-1 select-none ${
-                isBright ? 'bg-black/[0.03] border-black/10' : 'bg-black/30 border-white/5'
-            }`}>
-                {[
-                    { id: 'preset', label: 'Curated Presets', icon: Sparkles },
+            <FontSlidingPillSwitcher
+                isBright={isBright}
+                value={activeModeTab}
+                onChange={setActiveModeTab}
+                options={[
+                    { id: 'preset', label: 'Preset Fonts', icon: Sparkles },
                     { id: 'google', label: 'Google Fonts', icon: Globe },
-                    { id: 'system', label: 'Installed OS Font', icon: Laptop },
-                    { id: 'file', label: 'Upload Font File', icon: UploadCloud }
-                ].map(tab => {
-                    const Icon = tab.icon;
-                    const isSelected = activeModeTab === tab.id;
-                    return (
-                        <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setActiveModeTab(tab.id)}
-                            className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer active:scale-95 ${
-                                isSelected
-                                    ? (isBright 
-                                        ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-zinc-950 font-bold border border-black/10' 
-                                        : 'bg-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)] text-accent font-bold border border-white/15')
-                                    : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
-                            }`}
-                        >
-                            <Icon size={14} className={isSelected ? 'text-accent' : ''} />
-                            <span className="whitespace-nowrap">{tab.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
+                    { id: 'system', label: 'System Fonts', icon: Laptop },
+                    { id: 'file', label: 'Upload Font', icon: UploadCloud }
+                ]}
+            />
 
             {/* TAB CONTENT: 1. CURATED PRESETS */}
             {activeModeTab === 'preset' && (
                 <div className="space-y-3.5">
                     {/* Category Filter Pills */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                        {[
-                            { id: 'all', label: 'All Typefaces' },
-                            { id: 'sans', label: 'Modern Sans' },
-                            { id: 'mono', label: 'Monospace & Dev' },
-                            { id: 'serif', label: 'Editorial Serif' }
-                        ].map(cat => (
-                            <button
-                                key={cat.id}
-                                type="button"
-                                onClick={() => setPresetCategory(cat.id)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap active:scale-95 ${
-                                    presetCategory === cat.id
-                                        ? 'bg-accent/20 text-accent font-semibold border border-accent/30'
-                                        : (isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600' : 'bg-white/5 hover:bg-white/10 text-zinc-400')
-                                }`}
-                            >
-                                {cat.label}
-                            </button>
-                        ))}
+                    <div className="max-w-sm">
+                        <FontSlidingPillSwitcher
+                            compact
+                            isBright={isBright}
+                            value={presetCategory}
+                            onChange={setPresetCategory}
+                            options={[
+                                { id: 'all', label: 'All' },
+                                { id: 'sans', label: 'Sans' },
+                                { id: 'mono', label: 'Mono' },
+                                { id: 'serif', label: 'Serif' }
+                            ]}
+                        />
                     </div>
 
                     {/* Presets Grid */}
@@ -339,28 +387,23 @@ export default function CustomFontManager({ isStudio = false }) {
                                 <div
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset)}
-                                    className={`p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between group relative ${
+                                    className={`p-3.5 rounded-2xl text-left transition-all duration-200 cursor-pointer flex flex-col justify-between group relative ${
                                         active
                                             ? (isBright 
-                                                ? 'bg-accent/15 border-accent shadow-sm ring-1 ring-accent/30' 
-                                                : 'bg-accent/10 border-accent shadow-[0_0_20px_rgba(var(--accent-rgb,212,188,148),0.15)] ring-1 ring-accent/40')
+                                                ? 'bg-accent/15 border border-accent/50' 
+                                                : 'bg-accent/10 border border-accent/40')
                                             : (isBright 
-                                                ? 'bg-white/80 border-black/[0.06] hover:border-black/20 hover:shadow-xs' 
-                                                : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 hover:shadow-xs')
+                                                ? 'bg-black/[0.02] border border-black/[0.07] hover:border-black/[0.12]' 
+                                                : 'bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.10]')
                                     }`}
                                 >
                                     <div>
                                         <div className="flex items-center justify-between gap-2 mb-1.5">
-                                            <span className="text-xs font-bold tracking-tight text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                                            <span className={`text-xs font-bold tracking-tight flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
                                                 {preset.name}
                                                 {active && (
                                                     <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"></span>
                                                 )}
-                                            </span>
-                                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full border ${
-                                                isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/5 text-zinc-400 border-white/10'
-                                            }`}>
-                                                {preset.category}
                                             </span>
                                         </div>
 
@@ -371,8 +414,8 @@ export default function CustomFontManager({ isStudio = false }) {
 
                                     {/* Font Preview Line */}
                                     <div 
-                                        className={`p-2 rounded-lg border text-sm font-medium tracking-normal truncate transition-all ${
-                                            isBright ? 'bg-black/[0.02] border-black/5' : 'bg-black/40 border-white/5'
+                                        className={`p-2 rounded-xl border text-sm font-medium tracking-normal truncate transition-all ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.06] text-zinc-900' : 'bg-black/30 border-white/[0.05] text-zinc-100'
                                         }`}
                                         style={{ fontFamily: preset.family }}
                                     >
@@ -381,7 +424,7 @@ export default function CustomFontManager({ isStudio = false }) {
 
                                     {/* Action Footnote */}
                                     <div className="mt-2 flex items-center justify-between text-[11px]">
-                                        <span className={`font-mono text-[10px] ${active ? 'text-accent font-semibold' : 'text-zinc-400'}`}>
+                                        <span className={`font-mono text-[10px] ${active ? 'text-accent font-semibold' : (isBright ? 'text-zinc-500' : 'text-zinc-400')}`}>
                                             {active ? 'Active Font' : 'Click to apply'}
                                         </span>
                                         {active && (
@@ -399,13 +442,13 @@ export default function CustomFontManager({ isStudio = false }) {
             {activeModeTab === 'google' && (
                 <div className="space-y-4">
                     {/* Custom Google Font Search / Apply Bar */}
-                    <div className={`p-4 rounded-2xl border space-y-3 ${
-                        isBright ? 'bg-black/[0.02] border-black/10' : 'bg-white/[0.025] border-white/[0.06]'
+                    <div className={`p-4 rounded-2xl space-y-3 ${
+                        isBright ? 'bg-black/[0.02] border border-black/[0.07]' : 'bg-white/[0.02] border border-white/[0.06]'
                     }`}>
                         <div className="flex items-center gap-2">
                             <Globe size={16} className="text-accent shrink-0" />
                             <div className="flex-1">
-                                <span className="text-xs font-bold tracking-tight block">Use Any Google Font</span>
+                                <span className={`text-xs font-bold tracking-tight block ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>Use Any Google Font</span>
                                 <span className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                     Type any font name from fonts.google.com and press Enter to instantly load it into QBrowse.
                                 </span>
@@ -414,7 +457,7 @@ export default function CustomFontManager({ isStudio = false }) {
 
                         <div className="flex items-center gap-2">
                             <div className={`relative flex-1 flex items-center px-3 py-1.5 rounded-xl border text-xs ${
-                                isBright ? 'bg-white border-black/10' : 'bg-black/40 border-white/10'
+                                isBright ? 'bg-white border-black/[0.08]' : 'bg-black/35 border-white/[0.08]'
                             }`}>
                                 <Search size={14} className="text-zinc-400 mr-2 shrink-0" />
                                 <input
@@ -427,7 +470,9 @@ export default function CustomFontManager({ isStudio = false }) {
                                         }
                                     }}
                                     placeholder="e.g. Montserrat, Space Grotesk, Syne, Cinzel..."
-                                    className="w-full bg-transparent outline-none text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 font-mono"
+                                    className={`w-full bg-transparent outline-none text-xs font-mono ${
+                                        isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-zinc-100 placeholder-zinc-500'
+                                    }`}
                                 />
                             </div>
                             <button
@@ -437,7 +482,7 @@ export default function CustomFontManager({ isStudio = false }) {
                                 className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer active:scale-95 shrink-0 ${
                                     customGoogleInput.trim()
                                         ? 'bg-accent text-zinc-950 hover:brightness-105 shadow-sm'
-                                        : 'bg-zinc-500/20 text-zinc-400 cursor-not-allowed'
+                                        : (isBright ? 'bg-black/[0.06] text-zinc-400 cursor-not-allowed' : 'bg-white/[0.06] text-zinc-500 cursor-not-allowed')
                                 }`}
                             >
                                 Apply Font
@@ -452,7 +497,7 @@ export default function CustomFontManager({ isStudio = false }) {
                                 Popular Google Fonts
                             </span>
                             <div className={`relative flex items-center px-2 py-0.5 rounded-lg border text-[11px] w-44 ${
-                                isBright ? 'bg-black/5 border-black/10' : 'bg-black/40 border-white/10'
+                                isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/35 border-white/[0.08]'
                             }`}>
                                 <Search size={11} className="text-zinc-400 mr-1.5 shrink-0" />
                                 <input
@@ -460,7 +505,9 @@ export default function CustomFontManager({ isStudio = false }) {
                                     value={googleSearch}
                                     onChange={(e) => setGoogleSearch(e.target.value)}
                                     placeholder="Filter list..."
-                                    className="w-full bg-transparent outline-none text-[11px] text-zinc-900 dark:text-zinc-100 placeholder-zinc-500"
+                                    className={`w-full bg-transparent outline-none text-[11px] ${
+                                        isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-zinc-100 placeholder-zinc-500'
+                                    }`}
                                 />
                             </div>
                         </div>
@@ -473,12 +520,14 @@ export default function CustomFontManager({ isStudio = false }) {
                                         key={fontName}
                                         type="button"
                                         onClick={() => handleApplyGoogleFont(fontName)}
-                                        className={`p-3 rounded-xl border text-left transition-all duration-200 cursor-pointer active:scale-95 flex items-center justify-between ${
+                                        className={`p-3 rounded-2xl text-left transition-all duration-200 cursor-pointer active:scale-95 flex items-center justify-between ${
                                             isSelected
-                                                ? 'bg-accent/20 border-accent text-accent font-bold shadow-sm'
+                                                ? (isBright
+                                                    ? 'bg-accent/15 border border-accent/50 text-accent font-bold'
+                                                    : 'bg-accent/10 border border-accent/40 text-accent font-bold')
                                                 : (isBright 
-                                                    ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800' 
-                                                    : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200')
+                                                    ? 'bg-black/[0.02] border border-black/[0.07] hover:border-black/[0.12] text-zinc-900' 
+                                                    : 'bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.10] text-zinc-100')
                                         }`}
                                     >
                                         <span className="text-xs truncate font-medium">{fontName}</span>
@@ -494,13 +543,13 @@ export default function CustomFontManager({ isStudio = false }) {
             {/* TAB CONTENT: 3. INSTALLED OS SYSTEM FONT */}
             {activeModeTab === 'system' && (
                 <div className="space-y-4">
-                    <div className={`p-4 rounded-2xl border space-y-3 ${
-                        isBright ? 'bg-black/[0.02] border-black/10' : 'bg-white/[0.025] border-white/[0.06]'
+                    <div className={`p-4 rounded-2xl space-y-3 ${
+                        isBright ? 'bg-black/[0.02] border border-black/[0.07]' : 'bg-white/[0.02] border border-white/[0.06]'
                     }`}>
                         <div className="flex items-center gap-2">
                             <Laptop size={16} className="text-accent shrink-0" />
                             <div className="flex-1">
-                                <span className="text-xs font-bold tracking-tight block">Installed System Font Picker</span>
+                                <span className={`text-xs font-bold tracking-tight block ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>Installed System Font Picker</span>
                                 <span className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                     Enter any font installed on your operating system (e.g. Segoe UI Variable, Calibri, Helvetica, Comic Sans MS).
                                 </span>
@@ -509,7 +558,7 @@ export default function CustomFontManager({ isStudio = false }) {
 
                         <div className="flex items-center gap-2">
                             <div className={`relative flex-1 flex items-center px-3 py-1.5 rounded-xl border text-xs ${
-                                isBright ? 'bg-white border-black/10' : 'bg-black/40 border-white/10'
+                                isBright ? 'bg-white border-black/[0.08]' : 'bg-black/35 border-white/[0.08]'
                             }`}>
                                 <Type size={14} className="text-zinc-400 mr-2 shrink-0" />
                                 <input
@@ -522,16 +571,22 @@ export default function CustomFontManager({ isStudio = false }) {
                                         }
                                     }}
                                     placeholder="Enter system font name..."
-                                    className="w-full bg-transparent outline-none text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 font-mono"
+                                    className={`w-full bg-transparent outline-none text-xs font-mono ${
+                                        isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-zinc-100 placeholder-zinc-500'
+                                    }`}
                                 />
                                 {systemFontInput.trim() && (
                                     <div className="flex items-center gap-1 shrink-0 ml-2">
                                         {isSystemFontDetected ? (
-                                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                                isBright ? 'text-emerald-700 bg-emerald-500/10' : 'text-emerald-400 bg-emerald-500/10'
+                                            }`}>
                                                 <CheckCircle2 size={11} /> Installed
                                             </span>
                                         ) : (
-                                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded" title="Font not detected by canvas metrics differential, but CSS will still attempt to render it if available">
+                                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                                isBright ? 'text-amber-700 bg-amber-500/10' : 'text-amber-400 bg-amber-500/10'
+                                            }`} title="Font not detected by canvas metrics differential, but CSS will still attempt to render it if available">
                                                 <AlertCircle size={11} /> Not detected
                                             </span>
                                         )}
@@ -545,7 +600,7 @@ export default function CustomFontManager({ isStudio = false }) {
                                 className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer active:scale-95 shrink-0 ${
                                     systemFontInput.trim()
                                         ? 'bg-accent text-zinc-950 hover:brightness-105 shadow-sm'
-                                        : 'bg-zinc-500/20 text-zinc-400 cursor-not-allowed'
+                                        : (isBright ? 'bg-black/[0.06] text-zinc-400 cursor-not-allowed' : 'bg-white/[0.06] text-zinc-500 cursor-not-allowed')
                                 }`}
                             >
                                 Apply Font
@@ -569,17 +624,19 @@ export default function CustomFontManager({ isStudio = false }) {
                                             setSystemFontInput(s.name);
                                             handleApplySystemFont(s.name);
                                         }}
-                                        className={`p-2.5 rounded-xl border text-left transition-all duration-200 cursor-pointer active:scale-95 flex items-center justify-between ${
+                                        className={`p-2.5 rounded-2xl text-left transition-all duration-200 cursor-pointer active:scale-95 flex items-center justify-between ${
                                             isSelected
-                                                ? 'bg-accent/20 border-accent text-accent font-bold shadow-sm'
+                                                ? (isBright
+                                                    ? 'bg-accent/15 border border-accent/50 text-accent font-bold'
+                                                    : 'bg-accent/10 border border-accent/40 text-accent font-bold')
                                                 : (isBright 
-                                                    ? 'bg-white/80 border-black/[0.06] hover:border-black/20 text-zinc-800' 
-                                                    : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15 text-zinc-200')
+                                                    ? 'bg-black/[0.02] border border-black/[0.07] hover:border-black/[0.12] text-zinc-900' 
+                                                    : 'bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.10] text-zinc-100')
                                         }`}
                                     >
                                         <div className="truncate">
                                             <span className="text-xs font-medium block truncate">{s.name}</span>
-                                            <span className="text-[10px] text-zinc-400 font-mono">{s.os}</span>
+                                            <span className={`text-[10px] font-mono ${isSelected ? 'text-accent/80' : (isBright ? 'text-zinc-500' : 'text-zinc-400')}`}>{s.os}</span>
                                         </div>
                                         {isSelected && <Check size={13} className="text-accent shrink-0 ml-1" />}
                                     </button>
@@ -611,14 +668,14 @@ export default function CustomFontManager({ isStudio = false }) {
                             isDraggingFile 
                                 ? 'border-accent bg-accent/10 scale-[1.01]' 
                                 : (isBright 
-                                    ? 'border-black/15 hover:border-accent bg-black/[0.02] hover:bg-black/[0.04]' 
-                                    : 'border-white/15 hover:border-accent bg-white/[0.02] hover:bg-white/[0.04]')
+                                    ? 'border-black/[0.12] hover:border-accent/60 bg-black/[0.02] hover:bg-black/[0.03]' 
+                                    : 'border-white/[0.12] hover:border-accent/60 bg-white/[0.02] hover:bg-white/[0.03]')
                         }`}
                     >
                         <div className="w-12 h-12 rounded-2xl bg-accent/15 text-accent border border-accent/30 flex items-center justify-center mb-3 shadow-sm">
                             <UploadCloud size={24} />
                         </div>
-                        <h4 className="text-sm font-bold tracking-tight mb-1">
+                        <h4 className={`text-sm font-bold tracking-tight mb-1 ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
                             Click or drag &amp; drop your font file here
                         </h4>
                         <p className={`text-xs max-w-sm mb-3 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
@@ -633,7 +690,7 @@ export default function CustomFontManager({ isStudio = false }) {
                     </div>
 
                     {uploadError && (
-                        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+                        <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
                             <AlertCircle size={14} className="shrink-0" />
                             <span>{uploadError}</span>
                         </div>
@@ -641,18 +698,18 @@ export default function CustomFontManager({ isStudio = false }) {
 
                     {/* Active Uploaded File Card */}
                     {appFontType === 'file' && appFontFileName && (
-                        <div className={`p-4 rounded-xl border flex items-center justify-between gap-3 ${
-                            isBright ? 'bg-black/[0.02] border-black/10' : 'bg-white/[0.03] border-white/10'
+                        <div className={`p-4 rounded-2xl flex items-center justify-between gap-3 ${
+                            isBright ? 'bg-black/[0.02] border border-black/[0.07]' : 'bg-white/[0.02] border border-white/[0.06]'
                         }`}>
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-9 h-9 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
                                     <FileText size={18} />
                                 </div>
                                 <div className="min-w-0">
-                                    <span className="text-xs font-bold block truncate text-zinc-900 dark:text-zinc-100">
+                                    <span className={`text-xs font-bold block truncate ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
                                         {appFontFileName}
                                     </span>
-                                    <span className="text-[10px] text-emerald-500 font-mono font-medium">
+                                    <span className={`text-[10px] font-mono font-medium ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`}>
                                         Active Custom Font Face
                                     </span>
                                 </div>
@@ -672,8 +729,8 @@ export default function CustomFontManager({ isStudio = false }) {
             )}
 
             {/* FINE-TUNING CONTROLS: LETTER SPACING, FONT SCALE, WEIGHT SHIFT */}
-            <div className={`p-4 sm:p-5 rounded-2xl border space-y-4 ${
-                isBright ? 'bg-black/[0.02] border-black/10' : 'bg-white/[0.025] border-white/[0.06]'
+            <div className={`p-4 sm:p-5 rounded-2xl space-y-4 ${
+                isBright ? 'bg-black/[0.02] border border-black/[0.07]' : 'bg-white/[0.02] border border-white/[0.06]'
             }`}>
                 <div className="flex items-center gap-2">
                     <Sliders size={16} className="text-accent" />
@@ -688,24 +745,13 @@ export default function CustomFontManager({ isStudio = false }) {
                         <label className={`text-xs font-semibold block ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
                             Letter Spacing (Tracking)
                         </label>
-                        <div className={`p-1 rounded-xl border grid grid-cols-4 gap-1 ${
-                            isBright ? 'bg-black/5 border-black/10' : 'bg-black/40 border-white/5'
-                        }`}>
-                            {LETTER_SPACING_OPTIONS.map(opt => (
-                                <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => setAppFontLetterSpacing(opt.id)}
-                                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer active:scale-95 text-center ${
-                                        appFontLetterSpacing === opt.id
-                                            ? 'bg-accent text-zinc-950 font-bold shadow-xs'
-                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
-                                    }`}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
+                        <FontSlidingPillSwitcher
+                            compact
+                            isBright={isBright}
+                            value={appFontLetterSpacing}
+                            onChange={setAppFontLetterSpacing}
+                            options={LETTER_SPACING_OPTIONS}
+                        />
                     </div>
 
                     {/* 2. Weight Shift */}
@@ -713,24 +759,13 @@ export default function CustomFontManager({ isStudio = false }) {
                         <label className={`text-xs font-semibold block ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
                             Weight Shift (Boldness)
                         </label>
-                        <div className={`p-1 rounded-xl border grid grid-cols-3 gap-1 ${
-                            isBright ? 'bg-black/5 border-black/10' : 'bg-black/40 border-white/5'
-                        }`}>
-                            {WEIGHT_SHIFT_OPTIONS.map(opt => (
-                                <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => setAppFontWeightShift(opt.id)}
-                                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer active:scale-95 text-center ${
-                                        appFontWeightShift === opt.id
-                                            ? 'bg-accent text-zinc-950 font-bold shadow-xs'
-                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-zinc-400 hover:text-white')
-                                    }`}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
+                        <FontSlidingPillSwitcher
+                            compact
+                            isBright={isBright}
+                            value={appFontWeightShift}
+                            onChange={setAppFontWeightShift}
+                            options={WEIGHT_SHIFT_OPTIONS}
+                        />
                     </div>
 
                     {/* 3. Font Scale Slider */}
@@ -770,57 +805,26 @@ export default function CustomFontManager({ isStudio = false }) {
                 </div>
             </div>
 
-            {/* LIVE TYPOGRAPHY PREVIEW SANDBOX */}
-            <div className={`p-5 rounded-2xl border space-y-4 ${
-                isBright ? 'bg-white border-black/10 shadow-sm' : 'bg-[#0f111a] border-white/10 shadow-lg'
+            {/* TYPOGRAPHY SPECIMEN */}
+            <div className={`p-5 rounded-2xl space-y-3 ${
+                isBright
+                    ? 'bg-black/[0.02] border border-black/[0.07]'
+                    : 'bg-white/[0.02] border border-white/[0.06]'
             }`}>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
-                        <Sparkles size={13} />
-                        Live Typography Preview
-                    </span>
-                    <span className="text-[11px] font-mono text-zinc-400 truncate max-w-xs">
-                        family: {appFontFamily}
-                    </span>
-                </div>
+                <span className={`block text-[11px] font-medium opacity-50 ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
+                    Typography Specimen
+                </span>
 
-                {/* Typography Sample Section */}
-                <div className="space-y-2 p-4 rounded-xl bg-black/5 dark:bg-white/[0.02] border border-black/5 dark:border-white/5">
-                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
+                <div className="space-y-2">
+                    <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
                         The quick brown fox jumps over the lazy dog
                     </h2>
-                    <p className={`text-xs sm:text-sm leading-relaxed ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                        Sphinx of black quartz, judge my vow. 0123456789 &bull; Modern interface typography dynamically adapting across all tabs, omnibox, settings, and modal controls.
+                    <p className={`text-xs sm:text-sm leading-relaxed ${isBright ? 'text-zinc-600' : 'text-zinc-300'}`}>
+                        Sphinx of black quartz, judge my vow.
                     </p>
-                </div>
-
-                {/* Interactive Mini UI Components in Font */}
-                <div className="flex flex-wrap items-center gap-3 pt-1">
-                    {/* Pill Tab Mock */}
-                    <div className="px-3 py-1.5 rounded-full bg-accent text-zinc-950 font-bold text-xs shadow-sm flex items-center gap-1.5">
-                        <Layers size={12} />
-                        <span>Active Tab Pill</span>
-                    </div>
-
-                    {/* Search Mock */}
-                    <div className={`px-3 py-1.5 rounded-full border text-xs flex items-center gap-1.5 ${
-                        isBright ? 'bg-black/5 border-black/10 text-zinc-700' : 'bg-white/5 border-white/10 text-zinc-300'
-                    }`}>
-                        <Search size={12} className="text-zinc-400" />
-                        <span>Search or enter URL...</span>
-                    </div>
-
-                    {/* Secondary Button Mock */}
-                    <div className={`px-3 py-1.5 rounded-full border text-xs font-semibold ${
-                        isBright ? 'border-black/10 text-zinc-800' : 'border-white/10 text-zinc-200'
-                    }`}>
-                        Button Control
-                    </div>
-
-                    {/* Status Badge Mock */}
-                    <div className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        Shields 100% Protected
-                    </div>
+                    <p className={`text-xs tracking-wide pt-1 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                        ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789
+                    </p>
                 </div>
             </div>
 

@@ -1,5 +1,7 @@
 // QBrowse Custom Typography & App Font Engine
 
+export const DEFAULT_CLOCK_FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 export const PRESET_FONTS = [
     {
         id: 'default',
@@ -16,7 +18,7 @@ export const PRESET_FONTS = [
         category: 'Neo-Grotesque',
         family: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
         googleFamily: 'Inter',
-        googleWeights: '300;400;500;600;700',
+        googleWeights: '300;400;500;600;700;800;900',
         description: 'Clean, hyper-legible modern interface sans crafted for digital screens.',
         previewText: 'Modern Neo-Grotesque',
         type: 'preset'
@@ -27,7 +29,7 @@ export const PRESET_FONTS = [
         category: 'Minimalist',
         family: '"Geist", "Inter", -apple-system, BlinkMacSystemFont, sans-serif',
         googleFamily: 'Geist',
-        googleWeights: '300;400;500;600;700',
+        googleWeights: '300;400;500;600;700;800;900',
         description: 'Vercel\'s signature developer typeface with geometric precision.',
         previewText: 'Minimalist Engineering',
         type: 'preset'
@@ -38,7 +40,7 @@ export const PRESET_FONTS = [
         category: 'Geometric',
         family: '"Outfit", sans-serif',
         googleFamily: 'Outfit',
-        googleWeights: '300;400;500;600;700',
+        googleWeights: '300;400;500;600;700;800;900',
         description: 'Sophisticated geometric sans with high-fashion and luxury brand aesthetics.',
         previewText: 'Luxury Geometric Sans',
         type: 'preset'
@@ -49,7 +51,7 @@ export const PRESET_FONTS = [
         category: 'Contemporary',
         family: '"Plus Jakarta Sans", sans-serif',
         googleFamily: 'Plus Jakarta Sans',
-        googleWeights: '400;500;600;700',
+        googleWeights: '400;500;600;700;800',
         description: 'Fresh, warm, and friendly contemporary typeface designed for premium web apps.',
         previewText: 'Friendly Contemporary',
         type: 'preset'
@@ -60,7 +62,7 @@ export const PRESET_FONTS = [
         category: 'Geometric Rounded',
         family: '"Poppins", sans-serif',
         googleFamily: 'Poppins',
-        googleWeights: '300;400;500;600;700',
+        googleWeights: '300;400;500;600;700;800;900',
         description: 'Approachable geometric rounded sans with playful, energetic curves.',
         previewText: 'Approachable Curves',
         type: 'preset'
@@ -71,7 +73,7 @@ export const PRESET_FONTS = [
         category: 'Material',
         family: '"Roboto", sans-serif',
         googleFamily: 'Roboto',
-        googleWeights: '300;400;500;700',
+        googleWeights: '300;400;500;700;900',
         description: 'Google\'s signature Android and Material Design workhorse.',
         previewText: 'Material Architecture',
         type: 'preset'
@@ -82,7 +84,7 @@ export const PRESET_FONTS = [
         category: 'Semi-Geometric',
         family: '"Manrope", sans-serif',
         googleFamily: 'Manrope',
-        googleWeights: '400;500;600;700',
+        googleWeights: '400;500;600;700;800',
         description: 'Crossover between modern grotesk and geometric sans with superior legibility.',
         previewText: 'Precision Semi-Geometric',
         type: 'preset'
@@ -93,7 +95,7 @@ export const PRESET_FONTS = [
         category: 'High-Readability',
         family: '"Lexend", sans-serif',
         googleFamily: 'Lexend',
-        googleWeights: '300;400;500;600;700',
+        googleWeights: '300;400;500;600;700;800;900',
         description: 'Scientifically designed to reduce visual stress and accelerate reading speed.',
         previewText: 'Effortless Readability',
         type: 'preset'
@@ -104,7 +106,7 @@ export const PRESET_FONTS = [
         category: 'Developer Monospace',
         family: '"JetBrains Mono", monospace',
         googleFamily: 'JetBrains Mono',
-        googleWeights: '400;500;600;700',
+        googleWeights: '400;500;600;700;800',
         description: 'High-contrast code font with increased letter heights for dev enthusiasts.',
         previewText: 'Developer Aesthetics',
         type: 'preset'
@@ -126,7 +128,7 @@ export const PRESET_FONTS = [
         category: 'Editorial Serif',
         family: '"Playfair Display", serif',
         googleFamily: 'Playfair Display',
-        googleWeights: '400;500;600;700',
+        googleWeights: '400;500;600;700;800;900',
         description: 'High-contrast transitional serif reminiscent of European Enlightenment print.',
         previewText: 'Editorial High Fashion',
         type: 'preset'
@@ -137,7 +139,7 @@ export const PRESET_FONTS = [
         category: 'Warm Serif',
         family: '"Merriweather", serif',
         googleFamily: 'Merriweather',
-        googleWeights: '300;400;700',
+        googleWeights: '300;400;700;900',
         description: 'Warm, pleasant literary serif engineered for pleasant long-form reading.',
         previewText: 'Literary Classic Serif',
         type: 'preset'
@@ -227,7 +229,7 @@ export function isFontAvailable(fontName) {
 /**
  * Injects or updates Google Fonts <link> element in the document <head>.
  */
-export function injectGoogleFontLink(family, weights = '300;400;500;600;700') {
+export function injectGoogleFontLink(family, weights = '300;400;500;600;700;800;900') {
     if (typeof document === 'undefined' || !family) return;
     try {
         const cleanFamily = family.trim().replace(/^['"]|['"]$/g, '');
@@ -322,7 +324,8 @@ export function applyAppFont(settings = {}) {
         const customName = settings.appFontCustomName || '';
         const fileData = settings.appFontFileData || null;
         const letterSpacing = settings.appFontLetterSpacing || 'normal';
-        const sizeScale = Number(settings.appFontSizeScale) || 100;
+        const rawScale = Number(settings.appFontSizeScale);
+        const sizeScale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 100;
         const weightShift = settings.appFontWeightShift || 'normal';
 
         let resolvedFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -381,8 +384,14 @@ export function applyAppFont(settings = {}) {
         };
         const resolvedWeightShift = weightMap[weightShift] || '400';
 
+        // Clock font isolation: keep the hero clock crisp unless explicitly overridden
+        const resolvedClockFontFamily = settings?.appFontApplyToClock === true
+            ? resolvedFontFamily
+            : DEFAULT_CLOCK_FONT_STACK;
+
         // Set Root CSS Variables
         root.style.setProperty('--app-font-family', resolvedFontFamily);
+        root.style.setProperty('--clock-font-family', resolvedClockFontFamily);
         root.style.setProperty('--app-letter-spacing', resolvedSpacing);
         root.style.setProperty('--app-font-scale', String(scaleFactor));
         root.style.setProperty('--app-font-weight-shift', resolvedWeightShift);

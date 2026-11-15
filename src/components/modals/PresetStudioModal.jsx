@@ -3,14 +3,16 @@ import {
     X, Sparkles, Layout, Layers, Sliders, Palette, Check, Copy, 
     Trash2, Edit3, Move, ArrowLeftRight, ArrowUpDown, Plus, 
     Monitor, RefreshCw, Sun, Moon, ShieldCheck, Feather, 
-    PanelRight, PanelBottom, Code, Terminal, Zap, Cpu, Bookmark, 
+    PanelLeft, PanelRight, PanelBottom, Code, Terminal, Zap, Cpu, Bookmark, 
     Heart, Globe, Smartphone, Compass, Eye, Shield, Lock, Search,
-    GripVertical, GripHorizontal, ChevronRight, RotateCcw,
-    Minus, Square, Type
+    GripVertical, GripHorizontal, ChevronLeft, ChevronRight, RotateCcw,
+    Minus, Square, Puzzle
 } from 'lucide-react';
 import useUIStore, { hexToRgbString } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
-import CustomFontManager from '../common/CustomFontManager';
+import PresetLayoutWireframe from '../common/PresetLayoutWireframe';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
+import { PRESET_FONTS, LETTER_SPACING_OPTIONS, applyAppFont } from '../../utils/appFontManager';
 import { 
     EXPERIENCE_PRESETS, 
     applyExperiencePreset, 
@@ -51,7 +53,7 @@ function StudioSlidingPillSwitcher({ options = [], value, onChange, isBright, si
     return (
         <div 
             className={`relative grid items-center ${padding} rounded-full border backdrop-blur-xl transition-colors duration-200 select-none ${
-                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-black/40 border-white/5'
+                isBright ? 'bg-black/[0.04] border-black/[0.07]' : 'bg-black/40 border-white/[0.06]'
             }`}
             style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}
             onMouseLeave={() => setHoveredId(null)}
@@ -134,6 +136,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
         const initHex = currentAccentColor || '#d4bc94';
         return {
             sidebarPosition: settings?.sidebarPosition || 'left',
+            sidebarStyle: settings?.sidebarStyle || 'classic',
             topBarPosition: settings?.topBarPosition || 'top',
             toolHubPosition: settings?.toolHubPosition || 'right',
             omniboxStyle: settings?.omniboxStyle || 'capsule',
@@ -144,9 +147,121 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             theme: currentTheme || 'dark',
             accentColor: initHex,
             accentRgb: hexToRgbString(initHex),
-            uiScale: settings?.uiScale || 'comfortable'
+            uiScale: settings?.uiScale || 'comfortable',
+            appFontType: settings?.appFontType || 'default',
+            appFontFamily: settings?.appFontFamily || 'default',
+            appFontGoogleFamily: settings?.appFontGoogleFamily || '',
+            appFontCustomName: settings?.appFontCustomName || '',
+            appFontLetterSpacing: settings?.appFontLetterSpacing || 'normal',
+            appFontSizeScale: typeof settings?.appFontSizeScale === 'number' ? settings.appFontSizeScale : 100,
+            appFontWeightShift: settings?.appFontWeightShift || 'normal'
         };
     });
+
+    // Keep draft typography synced with live edits made in the Typography tab
+    useEffect(() => {
+        setDraft(prev => ({
+            ...prev,
+            appFontType: settings?.appFontType || 'default',
+            appFontFamily: settings?.appFontFamily || 'default',
+            appFontGoogleFamily: settings?.appFontGoogleFamily || '',
+            appFontCustomName: settings?.appFontCustomName || '',
+            appFontLetterSpacing: settings?.appFontLetterSpacing || 'normal',
+            appFontSizeScale: typeof settings?.appFontSizeScale === 'number' ? settings.appFontSizeScale : 100,
+            appFontWeightShift: settings?.appFontWeightShift || 'normal'
+        }));
+    }, [
+        settings?.appFontType,
+        settings?.appFontFamily,
+        settings?.appFontGoogleFamily,
+        settings?.appFontCustomName,
+        settings?.appFontLetterSpacing,
+        settings?.appFontSizeScale,
+        settings?.appFontWeightShift
+    ]);
+
+    // Resolve live preview font stack & spacing for MiniNavBar / MiniSidebar chrome
+    const previewFontMeta = useMemo(() => {
+        const type = draft.appFontType || 'default';
+        const fam = draft.appFontFamily || 'default';
+        const defaultStack = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
+        if (type === 'default' || fam === 'default') {
+            return { family: defaultStack, googleFamily: null, googleWeights: null };
+        }
+        if (type === 'preset') {
+            const found = PRESET_FONTS.find(p => p.id === fam);
+            if (found) {
+                return {
+                    family: found.family,
+                    googleFamily: found.googleFamily || null,
+                    googleWeights: found.googleWeights || '300;400;500;600;700;800;900'
+                };
+            }
+        }
+        if (type === 'google') {
+            const g = (draft.appFontGoogleFamily || fam || '').trim();
+            if (g) {
+                return {
+                    family: `"${g}", sans-serif`,
+                    googleFamily: g,
+                    googleWeights: '300;400;500;600;700;800;900'
+                };
+            }
+        }
+        if (type === 'system') {
+            const s = (draft.appFontCustomName || fam || '').trim().replace(/^['"]|['"]$/g, '');
+            if (s) {
+                return {
+                    family: `"${s}", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`,
+                    googleFamily: null,
+                    googleWeights: null
+                };
+            }
+        }
+        if (type === 'file') {
+            return { family: '"QBrowseCustomFont", sans-serif', googleFamily: null, googleWeights: null };
+        }
+        const fallbackPreset = PRESET_FONTS.find(p => p.id === fam);
+        return {
+            family: fallbackPreset ? fallbackPreset.family : (fam || defaultStack),
+            googleFamily: fallbackPreset?.googleFamily || null,
+            googleWeights: fallbackPreset?.googleWeights || null
+        };
+    }, [draft.appFontType, draft.appFontFamily, draft.appFontGoogleFamily, draft.appFontCustomName]);
+
+    const resolvedPreviewSpacing = useMemo(() => {
+        const opt = LETTER_SPACING_OPTIONS.find(o => o.id === draft.appFontLetterSpacing);
+        return opt ? opt.value : '0em';
+    }, [draft.appFontLetterSpacing]);
+
+    // Load studio preview Google font without overwriting global active browser font
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const existing = document.getElementById('qbrowse-studio-preview-font');
+        if (!previewFontMeta.googleFamily) {
+            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+            return;
+        }
+        const cleanFamily = previewFontMeta.googleFamily.trim().replace(/^['"]|['"]$/g, '');
+        const encodedFamily = cleanFamily.replace(/ /g, '+');
+        const weights = previewFontMeta.googleWeights || '300;400;500;600;700;800;900';
+        const href = `https://fonts.googleapis.com/css2?family=${encodedFamily}:wght@${weights}&display=swap`;
+        let link = existing;
+        if (!link) {
+            link = document.createElement('link');
+            link.id = 'qbrowse-studio-preview-font';
+            link.rel = 'stylesheet';
+            document.head.appendChild(link);
+        }
+        if (link.getAttribute('href') !== href) {
+            link.setAttribute('href', href);
+        }
+        return () => {
+            const el = document.getElementById('qbrowse-studio-preview-font');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        };
+    }, [previewFontMeta.googleFamily, previewFontMeta.googleWeights]);
 
     // Interactive Drag-and-Drop state
     const [draggedComponent, setDraggedComponent] = useState(null); // 'sidebar' | 'topbar' | 'toolhub'
@@ -351,6 +466,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
         const batchUpdates = {
             sidebarPosition: draft.sidebarPosition,
+            sidebarStyle: draft.sidebarStyle,
             topBarPosition: draft.topBarPosition,
             toolHubPosition: draft.toolHubPosition,
             omniboxStyle: draft.omniboxStyle,
@@ -358,7 +474,14 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             tabPresentation: draft.tabPresentation,
             windowControlsStyle: draft.windowControlsStyle,
             windowControlsOrder: draft.windowControlsOrder,
-            uiScale: draft.uiScale
+            uiScale: draft.uiScale,
+            appFontType: draft.appFontType,
+            appFontFamily: draft.appFontFamily,
+            appFontGoogleFamily: draft.appFontGoogleFamily,
+            appFontCustomName: draft.appFontCustomName,
+            appFontLetterSpacing: draft.appFontLetterSpacing,
+            appFontSizeScale: draft.appFontSizeScale,
+            appFontWeightShift: draft.appFontWeightShift
         };
 
         if (uiStore.setSettingsBatch) {
@@ -366,6 +489,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
         } else {
             Object.entries(batchUpdates).forEach(([k, v]) => uiStore.setSettingValue(k, v));
         }
+
+        applyAppFont({ ...settings, ...batchUpdates });
 
         if (draft.theme) {
             uiStore.setTheme(draft.theme);
@@ -384,6 +509,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
         const hex = currentAccentColor || '#d4bc94';
         setDraft({
             sidebarPosition: s.sidebarPosition || 'left',
+            sidebarStyle: s.sidebarStyle || 'classic',
             topBarPosition: s.topBarPosition || 'top',
             toolHubPosition: s.toolHubPosition || 'right',
             omniboxStyle: s.omniboxStyle || 'capsule',
@@ -394,7 +520,14 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             theme: currentTheme || 'dark',
             accentColor: hex,
             accentRgb: hexToRgbString(hex),
-            uiScale: s.uiScale || 'comfortable'
+            uiScale: s.uiScale || 'comfortable',
+            appFontType: s.appFontType || 'default',
+            appFontFamily: s.appFontFamily || 'default',
+            appFontGoogleFamily: s.appFontGoogleFamily || '',
+            appFontCustomName: s.appFontCustomName || '',
+            appFontLetterSpacing: s.appFontLetterSpacing || 'normal',
+            appFontSizeScale: typeof s.appFontSizeScale === 'number' ? s.appFontSizeScale : 100,
+            appFontWeightShift: s.appFontWeightShift || 'normal'
         });
         showToast('Studio draft reset to browser setup');
     };
@@ -402,8 +535,10 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     // Load preset into Studio
     const loadPresetIntoStudio = (preset, isCustomEdit = false) => {
         const hex = preset.accentColor || '#d4bc94';
+        const hasPresetFont = Boolean(preset.appFontType || preset.appFontFamily);
         setDraft({
             sidebarPosition: preset.sidebarPosition || 'left',
+            sidebarStyle: preset.sidebarStyle || 'classic',
             topBarPosition: preset.topBarPosition || 'top',
             toolHubPosition: preset.toolHubPosition || 'right',
             omniboxStyle: preset.omniboxStyle || 'capsule',
@@ -414,7 +549,14 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             theme: preset.theme || 'dark',
             accentColor: hex,
             accentRgb: preset.accentRgb || hexToRgbString(hex),
-            uiScale: preset.uiScale || 'comfortable'
+            uiScale: preset.uiScale || 'comfortable',
+            appFontType: hasPresetFont ? (preset.appFontType || 'preset') : (settings?.appFontType || 'default'),
+            appFontFamily: hasPresetFont ? (preset.appFontFamily || 'default') : (settings?.appFontFamily || 'default'),
+            appFontGoogleFamily: hasPresetFont ? (preset.appFontGoogleFamily || '') : (settings?.appFontGoogleFamily || ''),
+            appFontCustomName: hasPresetFont ? (preset.appFontCustomName || '') : (settings?.appFontCustomName || ''),
+            appFontLetterSpacing: hasPresetFont ? (preset.appFontLetterSpacing || 'normal') : (settings?.appFontLetterSpacing || 'normal'),
+            appFontSizeScale: hasPresetFont ? (preset.appFontSizeScale ?? 100) : (settings?.appFontSizeScale ?? 100),
+            appFontWeightShift: hasPresetFont ? (preset.appFontWeightShift || 'normal') : (settings?.appFontWeightShift || 'normal')
         });
         if (isCustomEdit || preset.isCustom) {
             setEditingPresetId(preset.id);
@@ -465,6 +607,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             accentColor: draft.accentColor,
             accentRgb: draft.accentRgb,
             sidebarPosition: draft.sidebarPosition,
+            sidebarStyle: draft.sidebarStyle,
             topBarPosition: draft.topBarPosition,
             toolHubPosition: draft.toolHubPosition,
             omniboxStyle: draft.omniboxStyle,
@@ -473,13 +616,13 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             windowControlsStyle: draft.windowControlsStyle,
             windowControlsOrder: draft.windowControlsOrder,
             uiScale: draft.uiScale,
-            appFontType: settings?.appFontType || 'default',
-            appFontFamily: settings?.appFontFamily || 'default',
-            appFontGoogleFamily: settings?.appFontGoogleFamily || '',
-            appFontCustomName: settings?.appFontCustomName || '',
-            appFontLetterSpacing: settings?.appFontLetterSpacing || 'normal',
-            appFontSizeScale: settings?.appFontSizeScale ?? 100,
-            appFontWeightShift: settings?.appFontWeightShift || 'normal',
+            appFontType: draft.appFontType || settings?.appFontType || 'default',
+            appFontFamily: draft.appFontFamily || settings?.appFontFamily || 'default',
+            appFontGoogleFamily: draft.appFontGoogleFamily || settings?.appFontGoogleFamily || '',
+            appFontCustomName: draft.appFontCustomName || settings?.appFontCustomName || '',
+            appFontLetterSpacing: draft.appFontLetterSpacing || settings?.appFontLetterSpacing || 'normal',
+            appFontSizeScale: draft.appFontSizeScale ?? settings?.appFontSizeScale ?? 100,
+            appFontWeightShift: draft.appFontWeightShift || settings?.appFontWeightShift || 'normal',
             layoutTag,
             layoutSummary,
             highlights: [
@@ -516,6 +659,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             accentColor: draft.accentColor,
             accentRgb: draft.accentRgb,
             sidebarPosition: draft.sidebarPosition,
+            sidebarStyle: draft.sidebarStyle,
             topBarPosition: draft.topBarPosition,
             toolHubPosition: draft.toolHubPosition,
             omniboxStyle: draft.omniboxStyle,
@@ -524,13 +668,13 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             windowControlsStyle: draft.windowControlsStyle,
             windowControlsOrder: draft.windowControlsOrder,
             uiScale: draft.uiScale,
-            appFontType: settings?.appFontType || 'default',
-            appFontFamily: settings?.appFontFamily || 'default',
-            appFontGoogleFamily: settings?.appFontGoogleFamily || '',
-            appFontCustomName: settings?.appFontCustomName || '',
-            appFontLetterSpacing: settings?.appFontLetterSpacing || 'normal',
-            appFontSizeScale: settings?.appFontSizeScale ?? 100,
-            appFontWeightShift: settings?.appFontWeightShift || 'normal',
+            appFontType: draft.appFontType || settings?.appFontType || 'default',
+            appFontFamily: draft.appFontFamily || settings?.appFontFamily || 'default',
+            appFontGoogleFamily: draft.appFontGoogleFamily || settings?.appFontGoogleFamily || '',
+            appFontCustomName: draft.appFontCustomName || settings?.appFontCustomName || '',
+            appFontLetterSpacing: draft.appFontLetterSpacing || settings?.appFontLetterSpacing || 'normal',
+            appFontSizeScale: draft.appFontSizeScale ?? settings?.appFontSizeScale ?? 100,
+            appFontWeightShift: draft.appFontWeightShift || settings?.appFontWeightShift || 'normal',
             layoutTag,
             layoutSummary,
             spacesSummary: 'Personal · Work',
@@ -601,11 +745,22 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             case 'sharp':
                 return 'rounded-none';
             case 'cohesive':
-                return 'rounded-xl';
+                return 'rounded-[18px]';
             default:
                 return 'rounded-2xl';
         }
     };
+
+    const isCompactScale = draft.uiScale === 'compact';
+    const isSquareFrame = draft.frameCurvature === 'square' || draft.frameCurvature === 'sharp';
+    const isCohesiveFrame = draft.frameCurvature === 'cohesive';
+    const isSidebarHidden = draft.sidebarStyle === 'hidden';
+    const isSidebarCompact = draft.sidebarStyle === 'compact';
+    const showLeftSidebar = draft.sidebarPosition === 'left' && !isSidebarHidden;
+    const showRightSidebar = draft.sidebarPosition === 'right' && !isSidebarHidden;
+    const showTopBar = draft.topBarPosition === 'top';
+    const showBottomBar = draft.topBarPosition === 'bottom';
+    const shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent) ? '⌘ K' : 'Ctrl K';
 
     return (
         <div 
@@ -623,19 +778,14 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             {/* Studio Window Card */}
             <div 
                 ref={modalRef}
-                className={`relative w-full max-w-6xl h-[92vh] max-h-[860px] min-h-[620px] rounded-[32px] border flex flex-col overflow-hidden backdrop-blur-3xl animate-pop-in ${
-                    isSystemBright
-                        ? 'bg-zinc-100/95 border-black/10 text-zinc-900 shadow-[0_25px_80px_rgba(0,0,0,0.18)]'
-                        : 'bg-[#090a0f]/95 border-white/[0.08] text-white shadow-[0_40px_100px_rgba(0,0,0,0.85)]'
+                className={`relative w-full max-w-6xl h-[92vh] max-h-[860px] min-h-[620px] rounded-[32px] border flex flex-col overflow-hidden animate-pop-in ${getLiquidGlassSurfaceClasses(isSystemBright)} ${
+                    isSystemBright ? 'text-zinc-900' : 'text-white'
                 }`}
-                style={{
-                    backdropFilter: 'blur(36px) saturate(180%)',
-                    WebkitBackdropFilter: 'blur(36px) saturate(180%)'
-                }}
+                style={getLiquidGlassInlineStyle(isSystemBright)}
             >
                 {/* STUDIO HEADER */}
                 <header className={`px-5 py-3.5 border-b flex items-center justify-between shrink-0 ${
-                    isSystemBright ? 'bg-black/[0.03] border-black/10' : 'bg-white/[0.025] border-white/[0.08]'
+                    isSystemBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                 }`}>
                     <div className="flex items-center gap-3">
                         <div 
@@ -645,7 +795,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-base font-bold tracking-tight">Preset Studio & Layout Architect</h2>
+                                <h2 className="text-base font-bold tracking-tight">Preset Studio</h2>
                             </div>
                             <p className={`text-xs ${isSystemBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                 Visually re-dock components, sculpt curvatures, customize themes, and manage custom presets.
@@ -653,24 +803,20 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         </div>
                     </div>
 
-                    {/* Mode Navigation Tabs: 3 Tabs on a Single-Row Pill */}
+                    {/* Mode Navigation Tabs: 2 Tabs on a Single-Row Pill */}
                     <div className="flex items-center gap-2">
-                        <div className={`relative p-1 rounded-full border grid grid-cols-3 items-center select-none w-80 sm:w-96 backdrop-blur-xl ${
-                            isSystemBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/5'
+                        <div className={`relative p-1 rounded-full border grid grid-cols-2 items-center select-none w-60 sm:w-64 backdrop-blur-xl ${
+                            isSystemBright ? 'bg-black/[0.04] border-black/[0.07]' : 'bg-black/40 border-white/[0.06]'
                         }`}>
                             {/* Animated Morphing Pill Indicator */}
                             <div 
-                                className={`absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.67px)] rounded-full transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none shadow-sm ${
+                                className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none shadow-sm ${
                                     isSystemBright 
                                         ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-black/[0.08]' 
-                                        : 'bg-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)] border border-white/10'
+                                        : 'bg-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.3)] border border-white/[0.10]'
                                 }`}
                                 style={{ 
-                                    transform: activeTab === 'typography' 
-                                        ? 'translateX(100%)' 
-                                        : activeTab === 'library' 
-                                            ? 'translateX(200%)' 
-                                            : 'translateX(0)' 
+                                    transform: activeTab === 'library' ? 'translateX(100%)' : 'translateX(0)'
                                 }} 
                             />
 
@@ -685,19 +831,6 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             >
                                 <Layout size={13} className="shrink-0" />
                                 <span className="whitespace-nowrap truncate">Canvas</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('typography')}
-                                className={`relative z-10 px-2.5 py-1.5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors duration-200 cursor-pointer active:scale-95 outline-none ${
-                                    activeTab === 'typography'
-                                        ? (isSystemBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
-                                        : (isSystemBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/60 hover:text-white font-medium')
-                                }`}
-                            >
-                                <Type size={13} className="shrink-0" />
-                                <span className="whitespace-nowrap truncate">Typography</span>
                             </button>
 
                             <button
@@ -728,8 +861,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             aria-label="Close Preset Studio"
                             className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
                                 isSystemBright 
-                                    ? 'border-black/10 hover:bg-black/5 text-zinc-600 hover:text-zinc-900' 
-                                    : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                    ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600 hover:text-zinc-900' 
+                                    : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/10 text-zinc-400 hover:text-white'
                             }`}
                         >
                             <X size={16} />
@@ -742,16 +875,20 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                     <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
                         
                         {/* LEFT: THE INTERACTIVE VISUAL MINI BROWSER CANVAS */}
-                        <div className={`flex-1 p-5 md:p-6 flex flex-col justify-between overflow-y-auto relative ${
-                            isSystemBright ? 'bg-black/[0.03]' : 'bg-white/[0.025]'
+                        <div className={`flex-1 p-5 md:p-6 flex flex-col justify-between overflow-y-auto hide-scroll relative ${
+                            isSystemBright ? 'bg-black/[0.02]' : 'bg-white/[0.02]'
                         }`}>
                             {/* MINIATURE DESKTOP MONITOR & WORKSPACE CANVAS */}
                             <div className="flex-1 flex items-center justify-center p-2 min-h-[380px]">
                                 <div 
-                                    className={`relative w-full max-w-3xl aspect-[16/10] max-h-[460px] rounded-3xl p-3 shadow-2xl border transition-all duration-300 flex flex-col justify-between overflow-hidden ${
+                                    className={`relative w-full max-w-3xl aspect-[16/10] max-h-[460px] ${
+                                        isSquareFrame ? 'rounded-none' : isCohesiveFrame ? 'rounded-[22px]' : 'rounded-3xl'
+                                    } ${
+                                        isCohesiveFrame ? 'p-2' : isCompactScale ? 'p-2.5' : 'p-3'
+                                    } shadow-2xl border transition-all duration-300 flex overflow-hidden ${
                                         isSystemBright 
-                                            ? 'bg-gradient-to-br from-zinc-200 via-stone-100 to-zinc-300 border-black/10' 
-                                            : 'bg-gradient-to-br from-[#121524] via-[#0b0d18] to-[#15192b] border-white/15'
+                                            ? 'bg-gradient-to-br from-zinc-200 via-stone-100 to-zinc-300 border-black/[0.07]' 
+                                            : 'bg-gradient-to-br from-[#121524] via-[#0b0d18] to-[#15192b] border-white/[0.06]'
                                     }`}
                                     style={{
                                         '--accent': draft.accentColor || '#d4bc94',
@@ -760,7 +897,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         '--accent-15': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.15)`,
                                         '--accent-20': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.2)`,
                                         '--accent-30': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.3)`,
-                                        '--accent-40': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.4)`
+                                        '--accent-40': `rgba(${hexToRgbString(draft.accentColor || '#d4bc94')}, 0.4)`,
+                                        fontFamily: previewFontMeta.family,
+                                        letterSpacing: resolvedPreviewSpacing
                                     }}
                                 >
                                     {/* Ambient Wallpaper Glow */}
@@ -773,207 +912,236 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         style={{ backgroundColor: draft.accentColor }}
                                     />
 
-                                    {/* DOCK TARGET: TOP BAR DROP ZONE */}
-                                    <div 
-                                        onDragOver={(e) => handleDragOver(e, 'top')}
-                                        onDragLeave={(e) => handleDragLeave(e, 'top')}
-                                        onDrop={(e) => handleDrop(e, 'top')}
-                                        className={`w-full transition-all duration-200 rounded-xl relative ${
-                                            draft.topBarPosition === 'top'
-                                                ? 'z-30'
-                                                : (draggedComponent === 'topbar' || activeDropZone === 'top')
-                                                    ? 'h-10 mb-2 border border-accent/40 bg-accent/[0.08] backdrop-blur-xl shadow-[0_0_20px_rgba(212,188,148,0.18)] flex items-center justify-center z-40'
-                                                    : 'h-2 border border-transparent'
-                                        }`}
-                                    >
-                                        {draft.topBarPosition === 'top' ? (
-                                            /* RENDER TOP BAR AT TOP */
-                                            <MiniNavBar 
-                                                draft={draft}
-                                                onDragStart={(e) => handleDragStart(e, 'topbar')}
-                                                onDragEnd={handleDragEnd}
-                                                onSwap={swapTopBarPosition}
-                                                isBright={draft.theme === 'light'}
-                                            />
-                                        ) : (
-                                            (draggedComponent === 'topbar' || activeDropZone === 'top') && (
-                                                <span className="text-[11px] font-mono font-medium text-accent flex items-center gap-1.5 drop-shadow-sm">
-                                                    <ArrowUpDown size={12} className="animate-bounce" />
-                                                    <span>Dock Navigation Bar at Top</span>
-                                                </span>
-                                            )
-                                        )}
-                                    </div>
+                                    {/* FULL-HEIGHT SIDEBAR + MAIN COLUMN (TOPBAR + VIEWPORT + BOTTOM DOCK) */}
+                                    <div className={`flex-1 flex min-w-0 min-h-0 relative z-20 ${
+                                        isCohesiveFrame ? 'gap-1.5' : isCompactScale ? 'gap-1.5' : 'gap-2'
+                                    }`}>
 
-                                    {/* MIDDLE AREA: SIDEBAR + MAINFRAME + TOOLHUB */}
-                                    <div className="flex-1 flex min-h-0 relative z-20 my-1 gap-2">
-                                        
-                                        {/* LEFT ZONE: CAN HOLD SIDEBAR OR DOCK TARGET */}
-                                        <div 
-                                            onDragOver={(e) => handleDragOver(e, 'left')}
-                                            onDragLeave={(e) => handleDragLeave(e, 'left')}
-                                            onDrop={(e) => handleDrop(e, 'left')}
-                                            className={`transition-all duration-300 flex flex-col shrink-0 ${
-                                                draft.sidebarPosition === 'left' 
-                                                    ? 'w-48 z-30' 
-                                                    : (draggedComponent === 'sidebar' || activeDropZone === 'left')
-                                                        ? 'w-48 border border-accent/40 bg-accent/[0.08] backdrop-blur-xl shadow-[0_0_20px_rgba(212,188,148,0.18)] rounded-2xl flex items-center justify-center'
-                                                        : 'w-2 border border-transparent'
-                                            }`}
-                                        >
-                                            {draft.sidebarPosition === 'left' ? (
-                                                <MiniSidebar 
-                                                    draft={draft} 
-                                                    onDragStart={(e) => handleDragStart(e, 'sidebar')}
-                                                    onDragEnd={handleDragEnd}
-                                                    onSwap={swapSidebarPosition}
-                                                    isBright={draft.theme === 'light'}
-                                                />
-                                            ) : (
-                                                (draggedComponent === 'sidebar' || activeDropZone === 'left') && (
+                                        {/* LEFT ZONE: CAN HOLD FULL-HEIGHT SIDEBAR OR DOCK TARGET */}
+                                        {(showLeftSidebar || draggedComponent === 'sidebar') && (
+                                            <div 
+                                                onDragOver={(e) => handleDragOver(e, 'left')}
+                                                onDragLeave={(e) => handleDragLeave(e, 'left')}
+                                                onDrop={(e) => handleDrop(e, 'left')}
+                                                className={`transition-all duration-300 flex flex-col shrink-0 h-full ${
+                                                    showLeftSidebar
+                                                        ? (isSidebarCompact ? 'w-14 z-30' : 'w-44 z-30')
+                                                        : `${isSquareFrame ? 'rounded-none' : 'rounded-2xl'} w-44 border backdrop-blur-xl shadow-[0_0_20px_rgba(var(--accent-rgb),0.18)] flex items-center justify-center ${
+                                                            activeDropZone === 'left'
+                                                                ? 'border-accent/70 bg-accent/15'
+                                                                : 'border-accent/40 bg-accent/[0.08]'
+                                                        }`
+                                                }`}
+                                            >
+                                                {showLeftSidebar ? (
+                                                    <MiniSidebar 
+                                                        draft={draft} 
+                                                        onDragStart={(e) => handleDragStart(e, 'sidebar')}
+                                                        onDragEnd={handleDragEnd}
+                                                        onSwap={swapSidebarPosition}
+                                                        isBright={draft.theme === 'light'}
+                                                        previewFont={previewFontMeta.family}
+                                                        previewSpacing={resolvedPreviewSpacing}
+                                                    />
+                                                ) : (
                                                     <span className="text-[11px] font-mono font-medium text-accent text-center px-2 flex flex-col items-center gap-1.5 drop-shadow-sm">
                                                         <ArrowLeftRight size={14} className="animate-pulse" />
                                                         <span>Dock Sidebar on Left</span>
                                                     </span>
-                                                )
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* MAIN COLUMN: TOPBAR + VIEWPORT FRAME + BOTTOMBAR */}
+                                        <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${
+                                            isCohesiveFrame ? 'gap-1' : isCompactScale ? 'gap-1.5' : 'gap-2'
+                                        }`}>
+                                            {/* DOCK TARGET: TOP BAR DROP ZONE */}
+                                            {(showTopBar || draggedComponent === 'topbar') && (
+                                                <div 
+                                                    onDragOver={(e) => handleDragOver(e, 'top')}
+                                                    onDragLeave={(e) => handleDragLeave(e, 'top')}
+                                                    onDrop={(e) => handleDrop(e, 'top')}
+                                                    className={`w-full transition-all duration-200 ${isSquareFrame ? 'rounded-none' : 'rounded-xl'} relative shrink-0 ${
+                                                        showTopBar
+                                                            ? 'z-30'
+                                                            : `h-9 border backdrop-blur-xl shadow-[0_0_20px_rgba(var(--accent-rgb),0.18)] flex items-center justify-center z-40 ${
+                                                                activeDropZone === 'top'
+                                                                    ? 'border-accent/70 bg-accent/15'
+                                                                    : 'border-accent/40 bg-accent/[0.08]'
+                                                            }`
+                                                    }`}
+                                                >
+                                                    {showTopBar ? (
+                                                        <MiniNavBar 
+                                                            draft={draft}
+                                                            onDragStart={(e) => handleDragStart(e, 'topbar')}
+                                                            onDragEnd={handleDragEnd}
+                                                            onSwap={swapTopBarPosition}
+                                                            isBright={draft.theme === 'light'}
+                                                            previewFont={previewFontMeta.family}
+                                                            previewSpacing={resolvedPreviewSpacing}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-[11px] font-mono font-medium text-accent flex items-center gap-1.5 drop-shadow-sm">
+                                                            <ArrowUpDown size={12} className="animate-bounce" />
+                                                            <span>Dock Navigation Bar at Top</span>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* CENTER: BROWSER VIEWPORT FRAME */}
+                                            <div className={`flex-1 min-h-0 relative flex flex-col overflow-hidden border shadow-inner transition-all duration-300 ${
+                                                getCurvatureClass(draft.frameCurvature)
+                                            } ${
+                                                isCohesiveFrame
+                                                    ? (draft.theme === 'light' ? 'ring-1 ring-inset ring-black/[0.06]' : 'ring-1 ring-inset ring-white/[0.08]')
+                                                    : ''
+                                            } ${
+                                                draft.theme === 'light'
+                                                    ? 'bg-gradient-to-b from-white via-zinc-50/80 to-zinc-100/90 border-black/[0.07] text-zinc-900'
+                                                    : 'bg-gradient-to-b from-[#0d0f17] via-[#090b12] to-[#0d0e16] border-white/[0.06] text-white'
+                                            }`}>
+                                                {/* Subtle Ambient Background Mesh in Viewport */}
+                                                <div 
+                                                    className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full blur-3xl pointer-events-none opacity-20"
+                                                    style={{ backgroundColor: draft.accentColor }}
+                                                />
+
+                                                {/* Authentic QBrowse Signature Start Page */}
+                                                <div className={`flex-1 ${isCompactScale ? 'p-3' : 'p-4'} flex flex-col items-center justify-center relative z-10 select-none`}>
+                                                    <div className={`flex flex-col items-center w-full transition-transform duration-300 ${
+                                                        isCompactScale ? 'scale-[0.92]' : 'scale-100'
+                                                    }`}>
+                                                        {/* Minimal Date Header */}
+                                                        <span className={`text-[9px] font-semibold uppercase tracking-widest mb-1 ${
+                                                            draft.theme === 'light' ? 'text-zinc-500' : 'text-zinc-400'
+                                                        }`}>
+                                                            {previewDate}
+                                                        </span>
+
+                                                        {/* Apple-grade Live Clock Digits (isolated from app font via .qbrowse-hero-clock) */}
+                                                        <h1 className={`qbrowse-hero-clock text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b ${
+                                                            draft.theme === 'light'
+                                                                ? 'from-zinc-900 via-zinc-800 to-zinc-600'
+                                                                : 'from-white via-white/95 to-white/70'
+                                                        } leading-none mb-3.5`}>
+                                                            {previewTime}
+                                                        </h1>
+
+                                                        {/* Sleek Translucent Search Pill */}
+                                                        <div className={`w-full max-w-xs h-7 px-3 ${isSquareFrame ? 'rounded-none' : 'rounded-full'} border flex items-center justify-between gap-2 text-[10px] backdrop-blur-md transition-all shadow-sm ${
+                                                            draft.theme === 'light'
+                                                                ? 'bg-black/[0.035] border-black/[0.07] text-zinc-500 hover:border-black/[0.12]'
+                                                                : 'bg-white/[0.05] border-white/[0.06] text-white/50 hover:border-white/[0.10]'
+                                                        }`}>
+                                                            <div className="flex items-center gap-2 min-w-0 truncate">
+                                                                <Search size={11} className="opacity-60 shrink-0" />
+                                                                <span className="truncate">Search the web, or type a command...</span>
+                                                            </div>
+                                                            <kbd className={`px-1.5 py-0.5 rounded text-[9px] font-mono tracking-normal leading-none whitespace-nowrap border font-semibold shrink-0 select-none ${
+                                                                draft.theme === 'light'
+                                                                    ? 'bg-black/[0.04] border-black/[0.07] text-zinc-600'
+                                                                    : 'bg-white/10 border-white/[0.10] text-white/70'
+                                                            }`}>
+                                                                {shortcutLabel}
+                                                            </kbd>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Authentic Sleek ToolHub Glass Pill Indicator on Active Side */}
+                                                    <div 
+                                                        draggable
+                                                        onDragStart={(e) => handleDragStart(e, 'toolhub')}
+                                                        onDragEnd={handleDragEnd}
+                                                        onClick={swapToolHubPosition}
+                                                        title={`ToolHub Dock: ${draft.toolHubPosition.toUpperCase()} (Click or drag to swap)`}
+                                                        className={`absolute top-1/2 -translate-y-1/2 ${
+                                                            draft.toolHubPosition === 'left' ? 'left-1.5' : 'right-1.5'
+                                                        } ${isCompactScale ? 'w-3.5 h-8' : 'w-4 h-10'} rounded-full border backdrop-blur-xl flex flex-col items-center justify-center gap-1 cursor-grab active:cursor-grabbing transition-all duration-300 shadow-md group hover:scale-105 active:scale-95 ${
+                                                            draft.theme === 'light'
+                                                                ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/[0.07] hover:border-black/[0.12] text-zinc-700'
+                                                                : 'bg-white/[0.07] hover:bg-white/[0.12] border-white/[0.08] hover:border-white/[0.14] text-white/80 shadow-[0_2px_10px_rgba(0,0,0,0.3)]'
+                                                        }`}
+                                                    >
+                                                        <div className="w-1 h-1 rounded-full bg-accent animate-pulse" />
+                                                        <Zap size={9} className="text-accent transition-transform group-hover:scale-110" />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* DOCK TARGET: BOTTOM BAR DROP ZONE */}
+                                            {(showBottomBar || draggedComponent === 'topbar') && (
+                                                <div 
+                                                    onDragOver={(e) => handleDragOver(e, 'bottom')}
+                                                    onDragLeave={(e) => handleDragLeave(e, 'bottom')}
+                                                    onDrop={(e) => handleDrop(e, 'bottom')}
+                                                    className={`w-full transition-all duration-200 ${isSquareFrame ? 'rounded-none' : 'rounded-xl'} relative shrink-0 ${
+                                                        showBottomBar
+                                                            ? 'z-30'
+                                                            : `h-9 border backdrop-blur-xl shadow-[0_0_20px_rgba(var(--accent-rgb),0.18)] flex items-center justify-center z-40 ${
+                                                                activeDropZone === 'bottom'
+                                                                    ? 'border-accent/70 bg-accent/15'
+                                                                    : 'border-accent/40 bg-accent/[0.08]'
+                                                            }`
+                                                    }`}
+                                                >
+                                                    {showBottomBar ? (
+                                                        <MiniNavBar 
+                                                            draft={draft}
+                                                            onDragStart={(e) => handleDragStart(e, 'topbar')}
+                                                            onDragEnd={handleDragEnd}
+                                                            onSwap={swapTopBarPosition}
+                                                            isBright={draft.theme === 'light'}
+                                                            previewFont={previewFontMeta.family}
+                                                            previewSpacing={resolvedPreviewSpacing}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-[11px] font-mono font-medium text-accent flex items-center gap-1.5 drop-shadow-sm">
+                                                            <ArrowUpDown size={12} className="animate-bounce" />
+                                                            <span>Dock Navigation Bar at Bottom</span>
+                                                        </span>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
 
-                                        {/* CENTER: BROWSER VIEWPORT FRAME */}
-                                        <div className={`flex-1 relative flex flex-col overflow-hidden border shadow-inner transition-all duration-300 ${
-                                            getCurvatureClass(draft.frameCurvature)
-                                        } ${
-                                            draft.theme === 'light'
-                                                ? 'bg-gradient-to-b from-white via-zinc-50/80 to-zinc-100/90 border-black/10 text-zinc-900'
-                                                : 'bg-gradient-to-b from-[#0d0f17] via-[#090b12] to-[#0d0e16] border-white/10 text-white'
-                                        }`}>
-                                            {/* Subtle Ambient Background Mesh in Viewport */}
+                                        {/* RIGHT ZONE: CAN HOLD FULL-HEIGHT SIDEBAR OR DOCK TARGET */}
+                                        {(showRightSidebar || draggedComponent === 'sidebar') && (
                                             <div 
-                                                className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full blur-3xl pointer-events-none opacity-20"
-                                                style={{ backgroundColor: draft.accentColor }}
-                                            />
-
-                                            {/* Authentic QBrowse Signature Start Page */}
-                                            <div className="flex-1 p-4 flex flex-col items-center justify-center relative z-10 select-none">
-                                                {/* Minimal Date Header */}
-                                                <span className={`text-[9px] font-semibold uppercase tracking-widest mb-1 ${
-                                                    draft.theme === 'light' ? 'text-zinc-500' : 'text-zinc-400'
-                                                }`}>
-                                                    {previewDate}
-                                                </span>
-
-                                                {/* Apple-grade Live Clock Digits */}
-                                                <h1 className={`text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b ${
-                                                    draft.theme === 'light'
-                                                        ? 'from-zinc-900 via-zinc-800 to-zinc-600'
-                                                        : 'from-white via-white/95 to-white/70'
-                                                } leading-none mb-3.5`}>
-                                                    {previewTime}
-                                                </h1>
-
-                                                {/* Sleek Translucent Search Pill */}
-                                                <div className={`w-full max-w-xs h-7 px-3 rounded-full border flex items-center justify-between gap-2 text-[10px] backdrop-blur-md transition-all shadow-sm ${
-                                                    draft.theme === 'light'
-                                                        ? 'bg-black/[0.035] border-black/10 text-zinc-500 hover:border-black/20'
-                                                        : 'bg-white/[0.05] border-white/10 text-white/50 hover:border-white/20'
-                                                }`}>
-                                                    <div className="flex items-center gap-2 min-w-0 truncate">
-                                                        <Search size={11} className="opacity-60 shrink-0" />
-                                                        <span className="truncate">Search the web, or type a command...</span>
-                                                    </div>
-                                                    <kbd className={`px-1.5 py-0.5 rounded text-[8px] font-mono border font-semibold shrink-0 select-none ${
-                                                        draft.theme === 'light'
-                                                            ? 'bg-black/[0.04] border-black/10 text-zinc-600'
-                                                            : 'bg-white/10 border-white/15 text-white/70'
-                                                    }`}>
-                                                        ⌘K
-                                                    </kbd>
-                                                </div>
-
-                                                {/* Authentic Sleek ToolHub Glass Pill Indicator on Active Side */}
-                                                <div 
-                                                    draggable
-                                                    onDragStart={(e) => handleDragStart(e, 'toolhub')}
-                                                    onDragEnd={handleDragEnd}
-                                                    onClick={swapToolHubPosition}
-                                                    title={`ToolHub Dock: ${draft.toolHubPosition.toUpperCase()} (Click or drag to swap)`}
-                                                    className={`absolute top-1/2 -translate-y-1/2 ${
-                                                        draft.toolHubPosition === 'left' ? 'left-1.5' : 'right-1.5'
-                                                    } w-4 h-10 rounded-full border backdrop-blur-xl flex flex-col items-center justify-center gap-1 cursor-grab active:cursor-grabbing transition-all duration-300 shadow-md group hover:scale-105 active:scale-95 ${
-                                                        draft.theme === 'light'
-                                                            ? 'bg-black/[0.05] hover:bg-black/10 border-black/10 text-zinc-700'
-                                                            : 'bg-white/[0.08] hover:bg-white/[0.14] border-white/15 text-white/80 shadow-[0_2px_10px_rgba(0,0,0,0.3)]'
-                                                    }`}
-                                                >
-                                                    <div className="w-1 h-1 rounded-full bg-accent animate-pulse" />
-                                                    <Zap size={9} className="text-accent transition-transform group-hover:scale-110" />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* RIGHT ZONE: CAN HOLD SIDEBAR OR DOCK TARGET */}
-                                        <div 
-                                            onDragOver={(e) => handleDragOver(e, 'right')}
-                                            onDragLeave={(e) => handleDragLeave(e, 'right')}
-                                            onDrop={(e) => handleDrop(e, 'right')}
-                                            className={`transition-all duration-300 flex flex-col shrink-0 ${
-                                                draft.sidebarPosition === 'right' 
-                                                    ? 'w-48 z-30' 
-                                                    : (draggedComponent === 'sidebar' || activeDropZone === 'right')
-                                                        ? 'w-48 border border-accent/40 bg-accent/[0.08] backdrop-blur-xl shadow-[0_0_20px_rgba(212,188,148,0.18)] rounded-2xl flex items-center justify-center'
-                                                        : 'w-2 border border-transparent'
-                                            }`}
-                                        >
-                                            {draft.sidebarPosition === 'right' ? (
-                                                <MiniSidebar 
-                                                    draft={draft} 
-                                                    onDragStart={(e) => handleDragStart(e, 'sidebar')}
-                                                    onDragEnd={handleDragEnd}
-                                                    onSwap={swapSidebarPosition}
-                                                    isBright={draft.theme === 'light'}
-                                                />
-                                            ) : (
-                                                (draggedComponent === 'sidebar' || activeDropZone === 'right') && (
+                                                onDragOver={(e) => handleDragOver(e, 'right')}
+                                                onDragLeave={(e) => handleDragLeave(e, 'right')}
+                                                onDrop={(e) => handleDrop(e, 'right')}
+                                                className={`transition-all duration-300 flex flex-col shrink-0 h-full ${
+                                                    showRightSidebar
+                                                        ? (isSidebarCompact ? 'w-14 z-30' : 'w-44 z-30')
+                                                        : `${isSquareFrame ? 'rounded-none' : 'rounded-2xl'} w-44 border backdrop-blur-xl shadow-[0_0_20px_rgba(var(--accent-rgb),0.18)] flex items-center justify-center ${
+                                                            activeDropZone === 'right'
+                                                                ? 'border-accent/70 bg-accent/15'
+                                                                : 'border-accent/40 bg-accent/[0.08]'
+                                                        }`
+                                                }`}
+                                            >
+                                                {showRightSidebar ? (
+                                                    <MiniSidebar 
+                                                        draft={draft} 
+                                                        onDragStart={(e) => handleDragStart(e, 'sidebar')}
+                                                        onDragEnd={handleDragEnd}
+                                                        onSwap={swapSidebarPosition}
+                                                        isBright={draft.theme === 'light'}
+                                                        previewFont={previewFontMeta.family}
+                                                        previewSpacing={resolvedPreviewSpacing}
+                                                    />
+                                                ) : (
                                                     <span className="text-[11px] font-mono font-medium text-accent text-center px-2 flex flex-col items-center gap-1.5 drop-shadow-sm">
                                                         <ArrowLeftRight size={14} className="animate-pulse" />
                                                         <span>Dock Sidebar on Right</span>
                                                     </span>
-                                                )
-                                            )}
-                                        </div>
-
-                                    </div>
-
-                                    {/* DOCK TARGET: BOTTOM BAR DROP ZONE */}
-                                    <div 
-                                        onDragOver={(e) => handleDragOver(e, 'bottom')}
-                                        onDragLeave={(e) => handleDragLeave(e, 'bottom')}
-                                        onDrop={(e) => handleDrop(e, 'bottom')}
-                                        className={`w-full transition-all duration-200 rounded-xl relative ${
-                                            draft.topBarPosition === 'bottom'
-                                                ? 'z-30'
-                                                : (draggedComponent === 'topbar' || activeDropZone === 'bottom')
-                                                    ? 'h-10 mt-2 border border-accent/40 bg-accent/[0.08] backdrop-blur-xl shadow-[0_0_20px_rgba(212,188,148,0.18)] flex items-center justify-center z-40'
-                                                    : 'h-2 border border-transparent'
-                                        }`}
-                                    >
-                                        {draft.topBarPosition === 'bottom' ? (
-                                            /* RENDER TOP BAR AT BOTTOM */
-                                            <MiniNavBar 
-                                                draft={draft}
-                                                onDragStart={(e) => handleDragStart(e, 'topbar')}
-                                                onDragEnd={handleDragEnd}
-                                                onSwap={swapTopBarPosition}
-                                                isBright={draft.theme === 'light'}
-                                            />
-                                        ) : (
-                                            (draggedComponent === 'topbar' || activeDropZone === 'bottom') && (
-                                                <span className="text-[11px] font-mono font-medium text-accent flex items-center gap-1.5 drop-shadow-sm">
-                                                    <ArrowUpDown size={12} className="animate-bounce" />
-                                                    <span>Dock Navigation Bar at Bottom</span>
-                                                </span>
-                                            )
+                                                )}
+                                            </div>
                                         )}
+
                                     </div>
 
                                 </div>
@@ -981,12 +1149,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                             {/* Canvas Bottom Legend */}
                             <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-[11px] font-mono shrink-0 ${
-                                isSystemBright ? 'border-black/5 text-zinc-500' : 'border-white/5 text-zinc-400'
+                                isSystemBright ? 'border-black/[0.07] text-zinc-500' : 'border-white/[0.06] text-zinc-400'
                             }`}>
                                 <div className="flex items-center gap-3">
                                     <span>Dock: <strong className="text-accent">{draft.topBarPosition.toUpperCase()}</strong> Bar</span>
                                     <span>·</span>
-                                    <span>Sidebar: <strong className="text-accent">{draft.sidebarPosition.toUpperCase()}</strong></span>
+                                    <span>Sidebar: <strong className="text-accent">{draft.sidebarPosition.toUpperCase()}</strong> ({draft.sidebarStyle})</span>
                                     <span>·</span>
                                     <span>ToolHub: <strong className="text-accent">{draft.toolHubPosition.toUpperCase()}</strong></span>
                                 </div>
@@ -998,21 +1166,25 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         </div>
 
                         {/* RIGHT: LIVE CUSTOMIZATION CONTROLS DRAWER */}
-                        <div className={`w-full lg:w-96 border-t lg:border-t-0 lg:border-l p-5 flex flex-col justify-between overflow-y-auto shrink-0 ${
-                            isSystemBright ? 'bg-black/[0.03] border-black/10' : 'bg-white/[0.025] border-white/[0.08]'
+                        <div className={`w-full lg:w-96 border-t lg:border-t-0 lg:border-l p-5 flex flex-col justify-between overflow-y-auto hide-scroll shrink-0 ${
+                            isSystemBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                         }`}>
                             <div className="space-y-4">
-                                <div className="flex items-center justify-between pb-2 border-b border-black/5 dark:border-white/5">
+                                <div className={`flex items-center justify-between pb-2 border-b ${
+                                    isSystemBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                                }`}>
                                     <h3 className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
                                         <Sliders size={13} />
-                                        Component Architect
+                                        Layout Controls
                                     </h3>
                                     <button
                                         type="button"
                                         onClick={handleResetDraft}
                                         title="Reset draft to current browser setup"
                                         className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition flex items-center gap-1 cursor-pointer ${
-                                            isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/5 text-zinc-400'
+                                            isSystemBright
+                                                ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600'
+                                                : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/5 text-zinc-400'
                                         }`}
                                     >
                                         <RotateCcw size={10} />
@@ -1022,7 +1194,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                 {editingPreset && (
                                     <div className={`flex items-center justify-between px-3 py-2 rounded-2xl border text-xs animate-fade-in ${
-                                        isSystemBright ? 'bg-amber-500/10 border-amber-500/25 text-amber-900' : 'bg-accent/10 border-accent/25 text-white'
+                                        isSystemBright ? 'bg-accent/15 border-accent/50 text-zinc-900' : 'bg-accent/10 border-accent/40 text-white'
                                     }`}>
                                         <div className="flex items-center gap-1.5 min-w-0">
                                             <Edit3 size={13} className="text-accent shrink-0" />
@@ -1035,7 +1207,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 showToast('Switched to new draft');
                                             }}
                                             className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition cursor-pointer ${
-                                                isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                                isSystemBright
+                                                    ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600'
+                                                    : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/10 text-zinc-400 hover:text-white'
                                             }`}
                                             title="Cancel editing and create a new preset"
                                         >
@@ -1043,6 +1217,22 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         </button>
                                     </div>
                                 )}
+
+                                {/* 0. SIDEBAR STYLE */}
+                                <div>
+                                    <label className="text-xs font-semibold block mb-1.5">Sidebar Mode</label>
+                                    <StudioSlidingPillSwitcher
+                                        options={[
+                                            { id: 'classic', label: 'Classic' },
+                                            { id: 'floating', label: 'Floating' },
+                                            { id: 'compact', label: 'Compact' },
+                                            { id: 'hidden', label: 'Hidden' }
+                                        ]}
+                                        value={draft.sidebarStyle || 'classic'}
+                                        onChange={(val) => updateDraft('sidebarStyle', val)}
+                                        isBright={isSystemBright}
+                                    />
+                                </div>
 
                                 {/* 1. CURVATURE */}
                                 <div>
@@ -1163,7 +1353,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 title={swatch.name}
                                                 className={`w-7 h-7 rounded-full shadow-md transition-all cursor-pointer flex items-center justify-center ${
                                                     draft.accentColor === swatch.hex 
-                                                        ? 'ring-2 ring-white ring-offset-2 ring-offset-black scale-110' 
+                                                        ? (isSystemBright
+                                                            ? 'ring-2 ring-zinc-900 ring-offset-2 ring-offset-white scale-110'
+                                                            : 'ring-2 ring-white ring-offset-2 ring-offset-black scale-110')
                                                         : 'hover:scale-105 opacity-80 hover:opacity-100'
                                                 }`}
                                                 style={{ backgroundColor: swatch.hex }}
@@ -1175,11 +1367,11 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         ))}
 
                                         {/* Custom Color Input matching SettingsModal */}
-                                        <div className={`w-px h-6 mx-0.5 ${isSystemBright ? 'bg-black/10' : 'bg-white/10'}`} />
+                                        <div className={`w-px h-6 mx-0.5 ${isSystemBright ? 'bg-black/[0.07]' : 'bg-white/[0.06]'}`} />
                                         <div className={`relative flex items-center rounded-xl border overflow-hidden transition-colors ${
                                             isSystemBright 
-                                                ? 'bg-black/[0.04] border-black/10 focus-within:border-accent text-zinc-900' 
-                                                : 'bg-black/40 border-white/10 focus-within:border-accent text-white'
+                                                ? 'bg-black/[0.02] border-black/[0.07] focus-within:border-accent/50 text-zinc-900' 
+                                                : 'bg-black/40 border-white/[0.06] focus-within:border-accent/50 text-white'
                                         }`}>
                                             <button 
                                                 type="button"
@@ -1187,8 +1379,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 title="Open System Color Picker"
                                                 className={`pl-2.5 pr-2 py-1.5 border-r transition cursor-pointer flex items-center justify-center ${
                                                     isSystemBright 
-                                                        ? 'border-black/10 hover:bg-black/5 text-zinc-500 hover:text-zinc-800' 
-                                                        : 'border-white/10 hover:bg-white/5 text-white/50 hover:text-white'
+                                                        ? 'border-black/[0.07] hover:bg-black/5 text-zinc-500 hover:text-zinc-800' 
+                                                        : 'border-white/[0.06] hover:bg-white/5 text-white/50 hover:text-white'
                                                 }`}
                                             >
                                                 <Palette 
@@ -1236,7 +1428,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             </div>
 
                             {/* STUDIO ACTION BAR */}
-                            <div className="mt-6 pt-4 border-t border-black/10 dark:border-white/10 space-y-2 shrink-0">
+                            <div className={`mt-6 pt-4 border-t space-y-2 shrink-0 ${
+                                isSystemBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                            }`}>
                                 {editingPresetId ? (
                                     <>
                                         <button
@@ -1254,8 +1448,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 onClick={handleApplyToBrowser}
                                                 className={`py-2 rounded-2xl border font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-[0.99] ${
                                                     isSystemBright
-                                                        ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800'
-                                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                                                        ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.07] hover:border-black/[0.12] text-zinc-800'
+                                                        : 'bg-white/[0.02] hover:bg-white/[0.06] border-white/[0.06] hover:border-white/[0.10] text-white'
                                                 }`}
                                             >
                                                 <Sparkles size={13} />
@@ -1267,8 +1461,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 onClick={handleSaveAsNew}
                                                 className={`py-2 rounded-2xl border font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-[0.99] ${
                                                     isSystemBright
-                                                        ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800'
-                                                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                                                        ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.07] hover:border-black/[0.12] text-zinc-800'
+                                                        : 'bg-white/[0.02] hover:bg-white/[0.06] border-white/[0.06] hover:border-white/[0.10] text-white'
                                                 }`}
                                             >
                                                 <Plus size={13} />
@@ -1292,8 +1486,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             onClick={() => openSaveDialog(null)}
                                             className={`w-full py-2.5 rounded-2xl border font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.99] ${
                                                 isSystemBright
-                                                    ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800'
-                                                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                                                    ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.07] hover:border-black/[0.12] text-zinc-800'
+                                                    : 'bg-white/[0.02] hover:bg-white/[0.06] border-white/[0.06] hover:border-white/[0.10] text-white'
                                             }`}
                                         >
                                             <Plus size={14} />
@@ -1305,20 +1499,17 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         </div>
 
                     </div>
-                ) : activeTab === 'typography' ? (
-                    /* TYPOGRAPHY MANAGER TAB */
-                    <div className="flex-1 p-5 md:p-6 overflow-y-auto max-w-5xl mx-auto w-full">
-                        <CustomFontManager isStudio={true} />
-                    </div>
                 ) : (
                     /* PRESET LIBRARY VIEW */
-                    <div className="flex-1 p-5 md:p-6 overflow-y-auto flex flex-col space-y-4">
+                    <div className="flex-1 p-5 md:p-6 overflow-y-auto hide-scroll flex flex-col space-y-4">
                         
                         {/* Top Toolbar: Search, Filters, Capture Current */}
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
                             <div className="flex items-center gap-2 w-full sm:w-auto">
-                                <div className={`relative flex-1 sm:w-64 flex items-center px-3 py-1.5 rounded-full border text-xs ${
-                                    isSystemBright ? 'bg-black/[0.03] border-black/10' : 'bg-black/40 border-white/5'
+                                <div className={`relative flex-1 sm:w-64 flex items-center px-3 py-1.5 rounded-full border text-xs transition-colors ${
+                                    isSystemBright
+                                        ? 'bg-black/[0.02] border-black/[0.07] focus-within:border-black/[0.12]'
+                                        : 'bg-black/40 border-white/[0.06] focus-within:border-white/[0.10]'
                                 }`}>
                                     <Search size={13} className="text-zinc-400 mr-2 shrink-0" />
                                     <input 
@@ -1329,7 +1520,11 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         className="bg-transparent border-none outline-none w-full text-xs"
                                     />
                                     {librarySearch && (
-                                        <button onClick={() => setLibrarySearch('')} className="text-zinc-400 hover:text-white cursor-pointer">
+                                        <button
+                                            type="button"
+                                            onClick={() => setLibrarySearch('')}
+                                            className={`cursor-pointer ${isSystemBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-zinc-400 hover:text-white'}`}
+                                        >
                                             <X size={12} />
                                         </button>
                                     )}
@@ -1372,23 +1567,40 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         key={preset.id}
                                         className={`p-5 rounded-2xl border flex flex-col justify-between transition-all duration-200 group relative ${
                                             isCurrentlyActive
-                                                ? (isSystemBright ? 'bg-accent/15 border-accent shadow-md' : 'bg-accent/10 border-accent/80 shadow-[0_0_25px_rgba(212,188,148,0.15)]')
-                                                : (isSystemBright ? 'bg-black/[0.03] border-black/10 hover:border-black/20 shadow-xs' : 'bg-white/[0.025] border-white/[0.08] hover:border-white/20 shadow-sm')
+                                                ? (isSystemBright ? 'bg-accent/15 border-accent/50' : 'bg-accent/10 border-accent/40')
+                                                : (isSystemBright ? 'bg-black/[0.02] border-black/[0.07] hover:border-black/[0.12]' : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.10]')
                                         }`}
                                     >
                                         <div>
-                                            {/* Card Top: Icon, Active Dot Indicator */}
-                                            <div className="flex items-start justify-between gap-2 mb-3">
+                                            {/* Card Top: Icon & Active Status */}
+                                            <div className="flex items-center justify-between gap-2 mb-3">
                                                 <div 
-                                                    className="w-10 h-10 rounded-2xl flex items-center justify-center border shadow-xs shrink-0"
+                                                    className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-xs shrink-0"
                                                     style={{
                                                         backgroundColor: `${preset.accentColor || '#d4bc94'}18`,
                                                         borderColor: `${preset.accentColor || '#d4bc94'}40`,
                                                         color: preset.accentColor || '#d4bc94'
                                                     }}
                                                 >
-                                                    <PresetIcon size={18} />
+                                                    <PresetIcon size={17} />
                                                 </div>
+
+                                                {isCurrentlyActive && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/20 text-accent border border-accent/30">
+                                                        <Check size={10} />
+                                                        <span>Active</span>
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Structural Wireframe Preview */}
+                                            <div className="mb-3">
+                                                <PresetLayoutWireframe
+                                                    preset={preset}
+                                                    isSelected={isCurrentlyActive}
+                                                    isBright={isSystemBright}
+                                                    compact
+                                                />
                                             </div>
 
                                             {/* Title & Tagline */}
@@ -1403,13 +1615,17 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             </p>
 
                                             {/* Subtle layout description line */}
-                                            <div className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate mb-3">
+                                            <div className={`text-[11px] font-mono truncate mb-1 ${
+                                                isSystemBright ? 'text-zinc-500' : 'text-white/45'
+                                            }`}>
                                                 {preset.layoutSummary || preset.layoutTag || `${preset.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${preset.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
                                             </div>
                                         </div>
 
                                         {/* Card Actions Footer */}
-                                        <div className="mt-4 pt-3.5 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-2">
+                                        <div className={`mt-4 pt-3.5 border-t flex items-center justify-between gap-2 ${
+                                            isSystemBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                                        }`}>
                                             <div className="flex items-center gap-2">
                                                 {/* Apply */}
                                                 <button
@@ -1435,7 +1651,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     type="button"
                                                     onClick={() => loadPresetIntoStudio(preset, !!preset.isCustom)}
                                                     className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                                                        isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-700' : 'border-white/10 hover:bg-white/5 text-zinc-300'
+                                                        isSystemBright
+                                                            ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-700'
+                                                            : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/5 text-zinc-300'
                                                     }`}
                                                     title={preset.isCustom ? 'Edit preset in studio' : 'Customize layout in studio'}
                                                 >
@@ -1451,7 +1669,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     onClick={() => handleDuplicate(preset)}
                                                     title="Duplicate preset"
                                                     className={`p-1.5 rounded-xl border transition cursor-pointer ${
-                                                        isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                                        isSystemBright
+                                                            ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600'
+                                                            : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/10 text-zinc-400 hover:text-white'
                                                     }`}
                                                 >
                                                     <Copy size={13} />
@@ -1485,9 +1705,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         if (e.target === e.currentTarget) setIsSaveModalOpen(false);
                     }}
                 >
-                    <div className={`w-full max-w-md p-6 rounded-[32px] border shadow-2xl flex flex-col space-y-4 animate-pop-in ${
-                        isSystemBright ? 'bg-zinc-100 text-zinc-900 border-black/10' : 'bg-[#090a0f] text-white border-white/[0.08]'
-                    }`}>
+                    <div
+                        className={`w-full max-w-md p-6 rounded-[32px] border flex flex-col space-y-4 animate-pop-in ${getLiquidGlassSurfaceClasses(isSystemBright)} ${
+                            isSystemBright ? 'text-zinc-900' : 'text-white'
+                        }`}
+                        style={getLiquidGlassInlineStyle(isSystemBright)}
+                    >
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-bold flex items-center gap-2">
                                 <Sparkles size={16} className="text-accent" />
@@ -1495,7 +1718,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             </h3>
                             <button 
                                 onClick={() => setIsSaveModalOpen(false)}
-                                className="p-1.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
+                                className={`p-1.5 rounded-full transition cursor-pointer ${
+                                    isSystemBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
+                                }`}
                             >
                                 <X size={16} />
                             </button>
@@ -1510,8 +1735,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     value={presetNameInput}
                                     onChange={(e) => setPresetNameInput(e.target.value)}
                                     placeholder="e.g. Ergonomic Workflow, Minimalist Arc"
-                                    className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none focus:border-accent ${
-                                        isSystemBright ? 'bg-black/[0.03] border-black/10 text-zinc-900' : 'bg-white/5 border-white/10 text-white'
+                                    className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none focus:border-accent/50 ${
+                                        isSystemBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-900' : 'bg-white/[0.02] border-white/[0.06] text-white'
                                     }`}
                                 />
                             </div>
@@ -1523,8 +1748,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     value={presetDescInput}
                                     onChange={(e) => setPresetDescInput(e.target.value)}
                                     placeholder="Short description of this configuration..."
-                                    className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none resize-none focus:border-accent ${
-                                        isSystemBright ? 'bg-black/[0.03] border-black/10 text-zinc-900' : 'bg-white/5 border-white/10 text-white'
+                                    className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none resize-none focus:border-accent/50 ${
+                                        isSystemBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-900' : 'bg-white/[0.02] border-white/[0.06] text-white'
                                     }`}
                                 />
                             </div>
@@ -1542,8 +1767,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 onClick={() => setPresetIconInput(iconName)}
                                                 className={`w-9 h-9 rounded-xl border flex items-center justify-center transition cursor-pointer ${
                                                     isSelected
-                                                        ? 'bg-accent/20 border-accent text-accent font-bold scale-105'
-                                                        : (isSystemBright ? 'border-black/10 hover:bg-black/5 text-zinc-600' : 'border-white/10 hover:bg-white/5 text-zinc-400 hover:text-white')
+                                                        ? (isSystemBright ? 'bg-accent/15 border-accent/50 text-accent font-bold scale-105' : 'bg-accent/10 border-accent/40 text-accent font-bold scale-105')
+                                                        : (isSystemBright ? 'bg-black/[0.02] border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600' : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.10] hover:bg-white/5 text-zinc-400 hover:text-white')
                                                 }`}
                                             >
                                                 <IconComp size={16} />
@@ -1558,7 +1783,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     type="button"
                                     onClick={() => setIsSaveModalOpen(false)}
                                     className={`px-4 py-2 rounded-2xl border text-xs font-semibold transition cursor-pointer ${
-                                        isSystemBright ? 'border-black/10 text-zinc-700' : 'border-white/10 text-zinc-300'
+                                        isSystemBright
+                                            ? 'border-black/[0.07] hover:border-black/[0.12] text-zinc-700'
+                                            : 'border-white/[0.06] hover:border-white/[0.10] text-zinc-300'
                                     }`}
                                 >
                                     Cancel
@@ -1583,9 +1810,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         if (e.target === e.currentTarget) setPresetToDelete(null);
                     }}
                 >
-                    <div className={`w-full max-w-sm p-6 rounded-[32px] border shadow-2xl flex flex-col space-y-4 animate-pop-in ${
-                        isSystemBright ? 'bg-zinc-100 text-zinc-900 border-black/10' : 'bg-[#090a0f] text-white border-white/[0.08]'
-                    }`}>
+                    <div
+                        className={`w-full max-w-sm p-6 rounded-[32px] border flex flex-col space-y-4 animate-pop-in ${getLiquidGlassSurfaceClasses(isSystemBright)} ${
+                            isSystemBright ? 'text-zinc-900' : 'text-white'
+                        }`}
+                        style={getLiquidGlassInlineStyle(isSystemBright)}
+                    >
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center shrink-0">
                                 <Trash2 size={20} />
@@ -1593,7 +1823,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             <div>
                                 <h3 className="text-sm font-bold">Delete Custom Preset?</h3>
                                 <p className={`text-xs ${isSystemBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Are you sure you want to delete <strong className="text-white">"{presetToDelete.name}"</strong>? This cannot be undone.
+                                    Are you sure you want to delete <strong className={isSystemBright ? 'text-zinc-950' : 'text-white'}>"{presetToDelete.name}"</strong>? This cannot be undone.
                                 </p>
                             </div>
                         </div>
@@ -1603,7 +1833,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 type="button"
                                 onClick={() => setPresetToDelete(null)}
                                 className={`px-4 py-1.5 rounded-2xl border text-xs font-semibold transition cursor-pointer ${
-                                    isSystemBright ? 'border-black/10 text-zinc-700' : 'border-white/10 text-zinc-300'
+                                    isSystemBright
+                                        ? 'border-black/[0.07] hover:border-black/[0.12] text-zinc-700'
+                                        : 'border-white/[0.06] hover:border-white/[0.10] text-zinc-300'
                                 }`}
                             >
                                 Cancel
@@ -1623,140 +1855,326 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     );
 }
 
+// Shared helper: Miniature Window Controls (macOS / Windows / Minimal)
+function MiniWindowControls({ draft, isBright, controlsOnRight = false, compact = false }) {
+    const isCloseFirst = (draft.windowControlsOrder === 'close-first')
+        ? true
+        : (draft.windowControlsOrder === 'minimize-first')
+            ? false
+            : !controlsOnRight;
+
+    const dotSize = compact ? 'w-2 h-2' : 'w-2.5 h-2.5';
+    const minDotSize = compact ? 'w-1.5 h-1.5' : 'w-2 h-2';
+
+    if (draft.windowControlsStyle === 'windows') {
+        const min = <Minus size={compact ? 8 : 9} strokeWidth={2.5} key="min" />;
+        const max = <Square size={compact ? 7 : 8} strokeWidth={2} key="max" />;
+        const cls = <X size={compact ? 8 : 9} strokeWidth={2.5} key="cls" />;
+        return (
+            <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'} shrink-0 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                {isCloseFirst ? [cls, min, max] : [min, max, cls]}
+            </div>
+        );
+    }
+
+    if (draft.windowControlsStyle === 'minimal') {
+        const min = <div key="min" className={`${minDotSize} rounded-full ${isBright ? 'bg-amber-400/60' : 'bg-amber-400/50'}`} />;
+        const max = <div key="max" className={`${minDotSize} rounded-full ${isBright ? 'bg-emerald-400/60' : 'bg-emerald-400/50'}`} />;
+        const cls = <div key="cls" className={`${minDotSize} rounded-full ${isBright ? 'bg-red-400/60' : 'bg-red-400/50'}`} />;
+        return (
+            <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'} shrink-0`}>
+                {isCloseFirst ? [cls, min, max] : [min, max, cls]}
+            </div>
+        );
+    }
+
+    const min = <div key="min" className={`${dotSize} rounded-full bg-[#ffbd2e] border border-[#dea123]/50 shadow-[0_0.5px_2px_rgba(255,189,46,0.3)]`} />;
+    const max = <div key="max" className={`${dotSize} rounded-full bg-[#27c93f] border border-[#1aab29]/50 shadow-[0_0.5px_2px_rgba(39,201,63,0.3)]`} />;
+    const cls = <div key="cls" className={`${dotSize} rounded-full bg-[#ff5f56] border border-[#e0443e]/50 shadow-[0_0.5px_2px_rgba(255,95,86,0.3)]`} />;
+    return (
+        <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'} shrink-0`}>
+            {isCloseFirst ? [cls, min, max] : [min, max, cls]}
+        </div>
+    );
+}
+
 // Subcomponent: Miniature Navigation Bar in Canvas
-function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright }) {
+function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewFont, previewSpacing }) {
     const isTop = draft.topBarPosition === 'top';
     const isRight = draft.sidebarPosition === 'right';
+    const isSidebarHidden = draft.sidebarStyle === 'hidden';
+    const isCompactScale = draft.uiScale === 'compact';
     const isSquare = draft.frameCurvature === 'square' || draft.frameCurvature === 'sharp';
+    const isCohesive = draft.frameCurvature === 'cohesive';
+
+    const navCluster = (
+        <div className={`flex items-center gap-1 shrink-0 ${isBright ? 'text-zinc-600' : 'text-zinc-300'}`}>
+            {!isRight && <PanelLeft size={10} className="opacity-80" />}
+            <ChevronLeft size={11} className="opacity-85" />
+            <ChevronRight size={11} className="opacity-40" />
+            {isRight && <PanelRight size={10} className="opacity-80" />}
+        </div>
+    );
+
+    const actionsCluster = (
+        <div className="flex items-center gap-1 shrink-0">
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 ${isSquare ? 'rounded-none' : 'rounded-full'} border ${
+                isBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-600' : 'bg-white/[0.03] border-white/[0.06] text-zinc-300'
+            }`}>
+                <Shield size={9} className="text-emerald-400" />
+                <Puzzle size={9} className="opacity-75" />
+            </div>
+            <button
+                type="button"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onSwap();
+                }}
+                title={`Move to ${isTop ? 'Bottom' : 'Top'}`}
+                className={`p-1 rounded transition cursor-pointer ${
+                    isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
+                }`}
+            >
+                <ArrowUpDown size={10} />
+            </button>
+            <div className="text-zinc-500 group-hover:text-accent cursor-grab">
+                <GripHorizontal size={12} />
+            </div>
+        </div>
+    );
 
     return (
         <div 
             draggable
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
-            className={`w-full h-8 px-2.5 ${isSquare ? 'rounded-none' : 'rounded-xl'} border shadow-sm flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing group select-none transition-all duration-300 ${
-                isRight ? 'flex-row-reverse' : 'flex-row'
-            } ${
+            style={{ fontFamily: previewFont, letterSpacing: previewSpacing }}
+            className={`w-full ${isCompactScale ? 'h-7 px-2' : 'h-8 px-2.5'} ${
+                isSquare ? 'rounded-none' : isCohesive ? 'rounded-xl' : 'rounded-xl'
+            } border shadow-sm flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing group select-none transition-all duration-300 ${
                 isBright
-                    ? 'bg-black/[0.03] border-black/10 text-zinc-800'
-                    : 'bg-white/[0.04] border-white/10 text-white'
+                    ? 'bg-black/[0.02] border-black/[0.07] text-zinc-800'
+                    : 'bg-white/[0.02] border-white/[0.06] text-white'
             }`}
             title="Draggable Navigation Bar: Drag to Top or Bottom zone, or click swap"
         >
-            {/* Window Controls Style */}
-            <div className="flex items-center gap-1.5 shrink-0">
-                {(() => {
-                    const isRight = draft.sidebarPosition === 'right';
-                    const isCloseFirst = (draft.windowControlsOrder === 'close-first') 
-                        ? true 
-                        : (draft.windowControlsOrder === 'minimize-first') 
-                        ? false 
-                        : !isRight;
-
-                    if (draft.windowControlsStyle === 'windows') {
-                        const min = <Minus size={9} strokeWidth={2.5} key="min" />;
-                        const max = <Square size={8} strokeWidth={2} key="max" />;
-                        const cls = <X size={9} strokeWidth={2.5} key="cls" />;
-                        return (
-                            <div className={`flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                {isCloseFirst ? [cls, min, max] : [min, max, cls]}
-                            </div>
-                        );
-                    }
-                    if (draft.windowControlsStyle === 'minimal') {
-                        const min = <div key="min" className={`w-2 h-2 rounded-full ${isBright ? 'bg-amber-400/60' : 'bg-amber-400/50'}`} />;
-                        const max = <div key="max" className={`w-2 h-2 rounded-full ${isBright ? 'bg-emerald-400/60' : 'bg-emerald-400/50'}`} />;
-                        const cls = <div key="cls" className={`w-2 h-2 rounded-full ${isBright ? 'bg-red-400/60' : 'bg-red-400/50'}`} />;
-                        return (
-                            <div className="flex items-center gap-1.5">
-                                {isCloseFirst ? [cls, min, max] : [min, max, cls]}
-                            </div>
-                        );
-                    }
-                    const min = <div key="min" className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] border border-[#dea123]/50 shadow-[0_0.5px_2px_rgba(255,189,46,0.3)]" />;
-                    const max = <div key="max" className="w-2.5 h-2.5 rounded-full bg-[#27c93f] border border-[#1aab29]/50 shadow-[0_0.5px_2px_rgba(39,201,63,0.3)]" />;
-                    const cls = <div key="cls" className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] border border-[#e0443e]/50 shadow-[0_0.5px_2px_rgba(255,95,86,0.3)]" />;
-                    return (
-                        <div className="flex items-center gap-1.5">
-                            {isCloseFirst ? [cls, min, max] : [min, max, cls]}
-                        </div>
-                    );
-                })()}
+            {/* Left Side: Nav cluster when left sidebar, Extensions/Actions when right sidebar */}
+            <div className="flex-1 flex items-center justify-start gap-1 min-w-0">
+                {isRight ? actionsCluster : navCluster}
             </div>
 
-            {/* Omnibox Preview */}
-            <div className={`flex items-center justify-center min-w-0 transition-all ${
-                draft.omniboxStyle === 'wide' 
-                    ? 'flex-1' 
-                    : draft.omniboxStyle === 'minimal' 
-                        ? 'w-36' 
-                        : 'w-48'
-            }`}>
-                <div className={`w-full h-5 px-2 ${isSquare ? 'rounded-none' : 'rounded-full'} border flex items-center justify-center gap-1.5 text-[9px] font-mono ${
-                    isBright 
-                        ? 'bg-black/[0.04] border-black/10 text-zinc-600' 
-                        : 'bg-black/30 border-white/10 text-white/60'
+            {/* Centered Omnibox Preview */}
+            <div className="shrink-0 w-[44%] max-w-[220px] flex items-center justify-center">
+                <div className={`transition-all max-w-full ${
+                    draft.omniboxStyle === 'wide'
+                        ? 'w-full'
+                        : draft.omniboxStyle === 'minimal'
+                            ? 'w-28 sm:w-32'
+                            : 'w-36 sm:w-44'
                 }`}>
-                    <Lock size={8} className="text-emerald-400" />
-                    <span className="truncate">qbrowse://studio</span>
+                    <div className={`w-full ${isCompactScale ? 'h-4 text-[8px]' : 'h-5 text-[9px]'} px-2 ${
+                        isSquare ? 'rounded-none' : 'rounded-full'
+                    } border flex items-center justify-center gap-1.5 ${
+                        isBright
+                            ? 'bg-black/[0.04] border-black/[0.07] text-zinc-600'
+                            : 'bg-black/30 border-white/[0.06] text-white/60'
+                    }`}>
+                        <Lock size={8} className="text-emerald-400 shrink-0" />
+                        <span className="truncate">qbrowse://studio</span>
+                    </div>
                 </div>
             </div>
 
-            {/* Drag Handle & Quick Swap */}
-            <div className="flex items-center gap-1 shrink-0">
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onSwap();
-                    }}
-                    title={`Move to ${isTop ? 'Bottom' : 'Top'}`}
-                    className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
-                >
-                    <ArrowUpDown size={10} />
-                </button>
-                <div className="text-zinc-500 group-hover:text-accent cursor-grab">
-                    <GripHorizontal size={12} />
-                </div>
+            {/* Right Side: Extensions/Actions when left sidebar, Nav cluster when right sidebar (+ Window Controls when sidebar is hidden) */}
+            <div className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
+                {isRight ? navCluster : actionsCluster}
+                {isSidebarHidden && (
+                    <div className={`pl-1.5 ml-0.5 border-l ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
+                        <MiniWindowControls draft={draft} isBright={isBright} controlsOnRight={true} compact={isCompactScale} />
+                    </div>
+                )}
             </div>
         </div>
     );
 }
 
 // Subcomponent: Miniature Sidebar in Canvas
-function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright }) {
+function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewFont, previewSpacing }) {
     const isLeft = draft.sidebarPosition === 'left';
+    const isRight = !isLeft;
+    const isCompactScale = draft.uiScale === 'compact';
+    const sidebarStyle = draft.sidebarStyle || 'classic';
+    const isSidebarCompact = sidebarStyle === 'compact';
+    const isSidebarFloating = sidebarStyle === 'floating';
+    const isSidebarAutoHide = sidebarStyle === 'auto-hide';
     const isSquare = draft.frameCurvature === 'square' || draft.frameCurvature === 'sharp';
-    const curvatureClass = draft.frameCurvature === 'cohesive' ? 'rounded-xl' : isSquare ? 'rounded-none' : 'rounded-2xl';
+    const curvatureClass = isSquare
+        ? 'rounded-none'
+        : draft.frameCurvature === 'cohesive'
+            ? 'rounded-[18px]'
+            : isSidebarFloating
+                ? 'rounded-2xl'
+                : 'rounded-2xl';
+
+    const surfaceClasses = isSidebarFloating
+        ? (isBright
+            ? 'bg-white/75 border-black/[0.10] shadow-lg text-zinc-800'
+            : 'bg-white/[0.07] border-white/[0.12] shadow-[0_8px_24px_rgba(0,0,0,0.4)] text-white')
+        : isSidebarAutoHide
+            ? (isBright
+                ? 'bg-black/[0.02] border-black/[0.12] border-dashed opacity-80 text-zinc-800'
+                : 'bg-white/[0.02] border-white/[0.12] border-dashed opacity-80 text-white')
+            : (isBright
+                ? 'bg-black/[0.02] border-black/[0.07] text-zinc-800'
+                : 'bg-white/[0.02] border-white/[0.06] text-white');
 
     return (
         <div 
             draggable
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
-            className={`h-full w-full p-2 ${curvatureClass} border shadow-sm flex flex-col justify-between cursor-grab active:cursor-grabbing group select-none transition-all duration-300 ${
-                isBright
-                    ? 'bg-black/[0.03] border-black/10 text-zinc-800'
-                    : 'bg-white/[0.03] border-white/10 text-white'
-            }`}
+            style={{ fontFamily: previewFont, letterSpacing: previewSpacing }}
+            className={`h-full w-full ${isSidebarCompact ? 'p-1.5 items-center' : isCompactScale ? 'p-1.5' : 'p-2'} ${curvatureClass} border shadow-sm flex flex-col justify-between cursor-grab active:cursor-grabbing group select-none transition-all duration-300 ${surfaceClasses}`}
             title="Draggable Sidebar: Drag between Left and Right dock zones"
         >
-            {/* Sidebar Top: Workspaces Strip */}
-            <div>
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1">
+            {/* Sidebar Top: Window Controls + Workspaces Strip */}
+            <div className={isSidebarCompact ? 'flex flex-col items-center w-full' : 'w-full'}>
+                {/* Window Controls Row (always at top of Sidebar when not hidden) */}
+                <div className={`flex items-center mb-2 ${
+                    isSidebarCompact
+                        ? 'justify-center w-full'
+                        : isRight
+                            ? 'flex-row-reverse justify-between'
+                            : 'flex-row justify-between'
+                }`}>
+                    <MiniWindowControls
+                        draft={draft}
+                        isBright={isBright}
+                        controlsOnRight={isRight}
+                        compact={isSidebarCompact || isCompactScale}
+                    />
+
+                    {!isSidebarCompact && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSwap();
+                            }}
+                            title={`Swap to ${isLeft ? 'Right' : 'Left'}`}
+                            className={`p-0.5 rounded transition cursor-pointer ${
+                                isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
+                            }`}
+                        >
+                            <ArrowLeftRight size={10} />
+                        </button>
+                    )}
+                </div>
+
+                {/* Workspaces Strip */}
+                {isSidebarCompact ? (
+                    <div className={`flex flex-col items-center gap-1 mb-2 pb-1.5 border-b w-full ${
+                        isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                    }`}>
                         <div 
-                            className={`w-4 h-4 ${isSquare ? 'rounded-none' : 'rounded-md'} flex items-center justify-center font-bold text-[8px]`}
+                            className={`w-5 h-5 ${isSquare ? 'rounded-none' : 'rounded-md'} flex items-center justify-center font-bold text-[8px]`}
                             style={{ backgroundColor: `${draft.accentColor}30`, color: draft.accentColor }}
                         >
                             P
                         </div>
-                        <div className={`w-4 h-4 ${isSquare ? 'rounded-none' : 'rounded-md'} bg-white/5 border border-white/10 flex items-center justify-center text-[8px] text-zinc-400`}>
+                    </div>
+                ) : (
+                    <div className={`flex items-center gap-1 mb-2 ${isRight ? 'justify-end' : 'justify-start'}`}>
+                        <div 
+                            className={`${isCompactScale ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${isSquare ? 'rounded-none' : 'rounded-md'} flex items-center justify-center font-bold text-[8px]`}
+                            style={{ backgroundColor: `${draft.accentColor}30`, color: draft.accentColor }}
+                        >
+                            P
+                        </div>
+                        <div className={`${isCompactScale ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${isSquare ? 'rounded-none' : 'rounded-md'} border flex items-center justify-center text-[8px] ${
+                            isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-500' : 'bg-white/5 border-white/[0.06] text-zinc-400'
+                        }`}>
                             W
                         </div>
                     </div>
+                )}
 
-                    {/* Swap button */}
+                {/* Tabs Presentation Preview */}
+                {isSidebarCompact ? (
+                    <div className="flex flex-col items-center gap-1.5 w-full">
+                        {[1, 2, 3].map(i => (
+                            <div
+                                key={i}
+                                className={`w-6 h-6 ${isSquare ? 'rounded-none' : 'rounded-lg'} border flex items-center justify-center ${
+                                    i === 1
+                                        ? (isBright ? 'bg-accent/15 border-accent/50' : 'bg-accent/10 border-accent/40')
+                                        : (isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]')
+                                }`}
+                            >
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: i === 1 ? draft.accentColor : '#888' }} />
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="space-y-1">
+                        {draft.tabPresentation === 'compact' ? (
+                            <div className="space-y-0.5">
+                                {[1, 2, 3].map(i => (
+                                    <div 
+                                        key={i} 
+                                        className={`h-3.5 px-1.5 ${isSquare ? 'rounded-none' : 'rounded'} flex items-center gap-1 text-[8px] ${
+                                            i === 1 
+                                                ? 'bg-accent/20 text-accent font-semibold' 
+                                                : (isBright ? 'bg-black/[0.03] text-zinc-600' : 'bg-white/5 text-zinc-400')
+                                        }`}
+                                    >
+                                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: i === 1 ? draft.accentColor : '#888' }} />
+                                        <span className="truncate">Tab #{i}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : draft.tabPresentation === 'cards' ? (
+                            <div className="space-y-1.5">
+                                {[1, 2].map(i => (
+                                    <div 
+                                        key={i}
+                                        className={`p-1 ${isSquare ? 'rounded-none' : 'rounded-lg'} border text-[8px] flex items-center gap-1.5 ${
+                                            i === 1 
+                                                ? (isBright ? 'bg-accent/15 border-accent/50 text-accent' : 'bg-accent/10 border-accent/40 text-accent')
+                                                : (isBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-600' : 'bg-white/[0.02] border-white/[0.06] text-zinc-400')
+                                        }`}
+                                    >
+                                        <div className={`w-4 h-4 ${isSquare ? 'rounded-none' : 'rounded'} bg-black/20 shrink-0`} />
+                                        <span className="truncate">Card View #{i}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="space-y-1">
+                                {[1, 2, 3].map(i => (
+                                    <div 
+                                        key={i} 
+                                        className={`${isCompactScale ? 'h-4' : 'h-5'} px-2 ${isSquare ? 'rounded-none' : 'rounded-xl'} flex items-center gap-1.5 text-[8px] font-medium transition ${
+                                            i === 1 
+                                                ? (isBright ? 'bg-accent/15 border border-accent/50 text-accent font-bold' : 'bg-accent/10 border border-accent/40 text-accent font-bold')
+                                                : (isBright ? 'bg-black/[0.03] text-zinc-600' : 'bg-white/5 text-zinc-400')
+                                        }`}
+                                    >
+                                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: i === 1 ? draft.accentColor : '#888' }} />
+                                        <span className="truncate">Active Space Tab</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Sidebar Bottom: Drag Handle */}
+            {isSidebarCompact ? (
+                <div className={`pt-1.5 border-t flex flex-col items-center gap-1 w-full text-zinc-500 ${
+                    isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                }`}>
                     <button
                         type="button"
                         onClick={(e) => {
@@ -1764,76 +2182,24 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright }) {
                             onSwap();
                         }}
                         title={`Swap to ${isLeft ? 'Right' : 'Left'}`}
-                        className="p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
+                        className={`p-0.5 rounded transition cursor-pointer ${
+                            isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
+                        }`}
                     >
                         <ArrowLeftRight size={10} />
                     </button>
+                    <GripVertical size={10} className="group-hover:text-accent cursor-grab" />
                 </div>
-
-                {/* Tabs Presentation Preview */}
-                <div className="space-y-1">
-                    {draft.tabPresentation === 'compact' ? (
-                        /* Compact Density Rows */
-                        <div className="space-y-0.5">
-                            {[1, 2, 3].map(i => (
-                                <div 
-                                    key={i} 
-                                    className={`h-3.5 px-1.5 ${isSquare ? 'rounded-none' : 'rounded'} flex items-center gap-1 text-[8px] ${
-                                        i === 1 
-                                            ? 'bg-accent/20 text-accent font-semibold' 
-                                            : (isBright ? 'bg-black/[0.03] text-zinc-600' : 'bg-white/5 text-zinc-400')
-                                    }`}
-                                >
-                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: i === 1 ? draft.accentColor : '#888' }} />
-                                    <span className="truncate">Tab #{i}</span>
-                                </div>
-                            ))}
-                        </div>
-                    ) : draft.tabPresentation === 'cards' ? (
-                        /* Card Tile Mode */
-                        <div className="space-y-1.5">
-                            {[1, 2].map(i => (
-                                <div 
-                                    key={i}
-                                    className={`p-1 ${isSquare ? 'rounded-none' : 'rounded-lg'} border text-[8px] flex items-center gap-1.5 ${
-                                        i === 1 
-                                            ? 'bg-accent/15 border-accent text-accent' 
-                                            : (isBright ? 'bg-black/[0.02] border-black/5 text-zinc-600' : 'bg-white/5 border-white/5 text-zinc-400')
-                                    }`}
-                                >
-                                    <div className={`w-4 h-4 ${isSquare ? 'rounded-none' : 'rounded'} bg-black/20 shrink-0`} />
-                                    <span className="truncate">Card View #{i}</span>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        /* Default Pills */
-                        <div className="space-y-1">
-                            {[1, 2, 3].map(i => (
-                                <div 
-                                    key={i} 
-                                    className={`h-5 px-2 ${isSquare ? 'rounded-none' : 'rounded-xl'} flex items-center gap-1.5 text-[8px] font-medium transition ${
-                                        i === 1 
-                                            ? 'bg-accent/20 border border-accent/40 text-accent font-bold' 
-                                            : (isBright ? 'bg-black/[0.03] text-zinc-600' : 'bg-white/5 text-zinc-400')
-                                    }`}
-                                >
-                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: i === 1 ? draft.accentColor : '#888' }} />
-                                    <span className="truncate">Active Space Tab</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+            ) : (
+                <div className={`pt-2 border-t flex items-center justify-between text-zinc-500 ${
+                    isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                }`}>
+                    <span className="text-[8px] opacity-70 truncate">Sidebar ({draft.sidebarPosition})</span>
+                    <div className="group-hover:text-accent cursor-grab shrink-0">
+                        <GripVertical size={11} />
+                    </div>
                 </div>
-            </div>
-
-            {/* Sidebar Bottom: Drag Handle */}
-            <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-zinc-500">
-                <span className="text-[8px] font-mono opacity-60">Sidebar ({draft.sidebarPosition})</span>
-                <div className="group-hover:text-accent cursor-grab">
-                    <GripVertical size={11} />
-                </div>
-            </div>
+            )}
         </div>
     );
 }

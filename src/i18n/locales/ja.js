@@ -64,6 +64,7 @@ export default {
         tabs: {
             appearance: "外観とテーマ",
             layout: "レイアウトとUI",
+            typography: "タイポグラフィとフォント",
             spaces: "ワークスペース",
             accessibility: "アクセシビリティ",
             privacy: "プライバシーとセキュリティ",

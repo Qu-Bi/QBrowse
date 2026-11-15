@@ -14,9 +14,11 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 let ipcMain = null;
+let webContents = null;
 try {
     const electron = require('electron');
     ipcMain = electron?.ipcMain || null;
+    webContents = electron?.webContents || null;
 } catch (_) {}
 
 // Reliable native HTTP downloader (bypasses Node undici assertion bugs and handles 301/302 redirects)
@@ -145,6 +147,69 @@ function getAllowlistSet(settings) {
     return cachedAllowlistSet;
 }
 
+function isHostInSet(host, domainSet) {
+    if (!host || !domainSet || domainSet.size === 0) return false;
+    let checkHost = host;
+    while (checkHost) {
+        if (domainSet.has(checkHost)) return true;
+        const dot = checkHost.indexOf('.');
+        if (dot === -1) break;
+        checkHost = checkHost.slice(dot + 1);
+    }
+    return false;
+}
+
+function isSubdomainOrExact(host, targetDomain) {
+    return host === targetDomain || host.endsWith('.' + targetDomain);
+}
+
+const YOUTUBE_PASS_THROUGH_DOMAINS = [
+    'youtube.com',
+    'youtu.be',
+    'googlevideo.com',
+    'ytimg.com',
+    'youtube-nocookie.com',
+    'yt3.ggpht.com'
+];
+
+function extractHostname(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed === 'null') return '';
+    try {
+        if (trimmed.includes('://')) {
+            return new URL(trimmed).hostname.toLowerCase().replace(/^www\./, '');
+        }
+        if (/^[a-z][a-z0-9+.-]*:(?!\d+(\/|$))/i.test(trimmed)) {
+            return '';
+        }
+        return trimmed.split('/')[0].split(':')[0].toLowerCase().replace(/^www\./, '');
+    } catch (_) {
+        return '';
+    }
+}
+
+function isYouTubeDomain(hostname) {
+    if (!hostname || typeof hostname !== 'string') return false;
+    const clean = hostname.toLowerCase().replace(/^www\./, '');
+    if (!clean) return false;
+    return YOUTUBE_PASS_THROUGH_DOMAINS.some((domain) => isSubdomainOrExact(clean, domain));
+}
+
+const YOUTUBE_COSMETIC_SELECTORS = [
+    'ytd-ad-slot-renderer',
+    'ytd-in-feed-ad-layout-renderer',
+    'ytd-banner-promo-renderer',
+    'ytd-statement-banner-renderer',
+    'ytd-display-ad-renderer',
+    'ytd-promoted-sparkles-web-renderer',
+    'ytd-compact-promoted-video-renderer',
+    'ytd-video-masthead-ad-v3-renderer',
+    '#masthead-ad',
+    'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-ads"]',
+    'ytd-merch-shelf-renderer'
+];
+
 function notifyBlocked(url) {
     pendingBlockedBatch++;
     lastBlockedUrl = url;
@@ -244,6 +309,8 @@ const BASELINE_FILTERS = `
 ||wpimg.pl/b-^
 ||wpimg.pl/rek/^
 ||wpimg.pl/banner^
+||2mdn.net^
+||innovid.com^
 ##.ad-banner
 ##.advertisement
 ##[id*="google_ads"]
@@ -262,12 +329,7 @@ const BASELINE_FILTERS = `
 ##[class*="ad-slot"]
 ##[id^="gpt-ad"]
 ##[class*="gpt-ad"]
-youtube.com##.ytp-ad-overlay-container
-youtube.com##.ytp-ad-message-container
-youtube.com##ytd-ad-slot-renderer
-youtube.com##ytd-in-feed-ad-layout-renderer
-youtube.com##ytd-banner-promo-renderer
-youtube.com###masthead-ad
+${YOUTUBE_COSMETIC_SELECTORS.map(sel => `youtube.com##${sel}`).join('\n')}
 wp.pl##.wp-header-panel
 wp.pl##[class*="wp-header-panel"]
 wp.pl##[class*="screeningWallpaper"]
@@ -279,7 +341,12 @@ const FILTER_SOURCES = [
     { id: 'easylist', name: 'EasyList', url: 'https://easylist.to/easylist/easylist.txt' },
     { id: 'easyprivacy', name: 'EasyPrivacy', url: 'https://easylist.to/easylist/easyprivacy.txt' },
     { id: 'annoyances', name: 'uBlock Annoyances', url: 'https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-cookies.txt' },
-    { id: 'peterlowe', name: "Peter Lowe's List", url: 'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext' }
+    { id: 'peterlowe', name: "Peter Lowe's List", url: 'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext' },
+    { id: 'ublock-filters', name: 'uBlock Filters', url: 'https://ublockorigin.github.io/uAssets/filters/filters.txt' },
+    { id: 'ublock-badware', name: 'uBlock Badware', url: 'https://ublockorigin.github.io/uAssets/filters/badware.txt' },
+    { id: 'ublock-privacy', name: 'uBlock Privacy', url: 'https://ublockorigin.github.io/uAssets/filters/privacy.txt' },
+    { id: 'ublock-quick-fixes', name: 'uBlock Quick Fixes', url: 'https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt' },
+    { id: 'ublock-unbreak', name: 'uBlock Unbreak', url: 'https://ublockorigin.github.io/uAssets/filters/unbreak.txt' }
 ];
 
 class AdblockEngine {
@@ -295,7 +362,7 @@ class AdblockEngine {
         isAdblockActive = settingsStore.adblockEnabled !== false;
 
         this.cacheDir = path.join(app.getPath('userData'), 'adblock_cache');
-        this.cacheFile = path.join(this.cacheDir, 'engine.bin');
+        this.cacheFile = path.join(this.cacheDir, 'engine-v4.bin');
 
         try {
             if (!fs.existsSync(this.cacheDir)) {
@@ -468,6 +535,22 @@ class AdblockEngine {
         ipcMain.handle('fetch-remote-blocklist', async (event, url) => {
             return await this.fetchRemoteBlocklist(url);
         });
+
+        ipcMain.handle('get-adblock-page-state', (event, pageUrl) => {
+            const currentSettings = settingsStoreRef || {};
+            const enabled = this.isActive() && currentSettings.adblockEnabled !== false;
+            const youtubeAds = currentSettings.adblockYoutubeAds !== false;
+            const cosmetic = currentSettings.cosmetic !== false;
+            const host = extractHostname(pageUrl);
+            const whitelisted = isHostInSet(host, getAllowlistSet(currentSettings));
+            return {
+                enabled,
+                youtubeAds,
+                cosmetic,
+                whitelisted,
+                effectiveEnabled: enabled && !whitelisted
+            };
+        });
     }
 
     async updateFilters(force = false) {
@@ -541,8 +624,36 @@ class AdblockEngine {
         if (!url) return false;
 
         const u = url.toLowerCase();
+        const reqHost = extractHostname(url);
+        const refHost = extractHostname(details.referrer);
+        const initHost = extractHostname(details.initiator != null ? String(details.initiator) : '');
 
-        // 1. Media Stream bypass (prevent YouTube / Twitch playback stutter or IPC serialization)
+        // 1. User Allowlist / Whitelist check (Sub-microsecond Set lookup)
+        const allowSet = getAllowlistSet(currentSettings);
+        if (isHostInSet(reqHost, allowSet) || isHostInSet(refHost, allowSet)) {
+            return false;
+        }
+
+        // 2. YouTube pass-through: never block requests targeting, referred/initiated by,
+        // or originating inside a YouTube tab (including no-referrer subrequests such as doubleclick/jnn-pa),
+        // so #movie_player's ad state machine never hangs; webview_preload.cjs handles ads via speedup + mute + skip.
+        if (isYouTubeDomain(reqHost) || isYouTubeDomain(refHost) || isYouTubeDomain(initHost)) {
+            return false;
+        }
+        let tabHost = '';
+        if (webContents && typeof details.webContentsId === 'number' && details.webContentsId > 0) {
+            try {
+                const wc = webContents.fromId(details.webContentsId);
+                if (wc && !wc.isDestroyed()) {
+                    tabHost = extractHostname(wc.getURL());
+                }
+            } catch (_) {}
+        }
+        if (isYouTubeDomain(tabHost)) {
+            return false;
+        }
+
+        // 3. Media Stream bypass (prevent YouTube / Twitch playback stutter or IPC serialization)
         if (
             u.includes('googlevideo.com/videoplayback') ||
             u.includes('manifest.googlevideo.com') ||
@@ -551,7 +662,7 @@ class AdblockEngine {
             return false;
         }
 
-        // 2. Essential Authentication, Identity & Security Bypass
+        // 4. Essential Authentication, Identity & Security Bypass
         const ref = (details.referrer || '').toLowerCase();
         const init = (details.initiator || '').toLowerCase();
         const isGmailTraffic = u.includes('mail.google.com') ||
@@ -581,11 +692,6 @@ class AdblockEngine {
             return false;
         }
 
-        let reqHost = '';
-        try {
-            reqHost = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-        } catch (_) {}
-
         // Core UI framework, stylesheets and essential bundles on wp.pl
         if (reqHost.endsWith('wp.pl') && (
             u.includes('dwiubwlu') || // ui.min
@@ -604,41 +710,7 @@ class AdblockEngine {
             return true;
         }
 
-        // 3. User Allowlist / Whitelist check (Sub-microsecond Set lookup)
-        const allowSet = getAllowlistSet(currentSettings);
-        if (allowSet.size > 0) {
-            let refHost = '';
-            try { if (details.referrer) refHost = new URL(details.referrer).hostname.toLowerCase().replace(/^www\./, ''); } catch (_) {}
-
-            let isAllowed = false;
-            let checkHost = reqHost;
-            while (checkHost) {
-                if (allowSet.has(checkHost)) {
-                    isAllowed = true;
-                    break;
-                }
-                const dot = checkHost.indexOf('.');
-                if (dot === -1) break;
-                checkHost = checkHost.slice(dot + 1);
-            }
-
-            if (!isAllowed && refHost) {
-                let checkRef = refHost;
-                while (checkRef) {
-                    if (allowSet.has(checkRef)) {
-                        isAllowed = true;
-                        break;
-                    }
-                    const dot = checkRef.indexOf('.');
-                    if (dot === -1) break;
-                    checkRef = checkRef.slice(dot + 1);
-                }
-            }
-
-            if (isAllowed) return false;
-        }
-
-        // 4. User Custom Blocked Domains & GitHub Lists (Native Rust DFA via Brave's adblock-rs)
+        // 5. User Custom Blocked Domains & GitHub Lists (Native Rust DFA via Brave's adblock-rs)
         if (customNativeEngine) {
             try {
                 const resourceType = mapResourceType(details.resourceType);
@@ -651,22 +723,9 @@ class AdblockEngine {
         } else {
             // High-throughput O(1) Set lookup fallback
             const customSet = getCustomBlockedSet(currentSettings);
-            if (customSet.size > 0 && reqHost) {
-                let checkHost = reqHost;
-                let isCustomMatched = false;
-                while (checkHost) {
-                    if (customSet.has(checkHost)) {
-                        isCustomMatched = true;
-                        break;
-                    }
-                    const dot = checkHost.indexOf('.');
-                    if (dot === -1) break;
-                    checkHost = checkHost.slice(dot + 1);
-                }
-                if (isCustomMatched) {
-                    notifyBlocked(url);
-                    return true;
-                }
+            if (isHostInSet(reqHost, customSet)) {
+                notifyBlocked(url);
+                return true;
             }
         }
 
@@ -707,16 +766,18 @@ class AdblockEngine {
         if (settingsStore && settingsStore.cosmetic === false) return { css: '', injectedScript: '' };
         if (!pageUrl || pageUrl === 'about:blank') return { css: '', injectedScript: '' };
 
-        let host = '';
-        try {
-            host = new URL(pageUrl).hostname.toLowerCase().replace(/^www\./, '');
-        } catch (_) {
+        const host = extractHostname(pageUrl);
+        if (!host) {
+            return { css: '', injectedScript: '' };
+        }
+
+        // Never inject cosmetic rules or scriptlets on YouTube pages (prevents anti-adblock bait/tamper stalls)
+        if (isYouTubeDomain(host)) {
             return { css: '', injectedScript: '' };
         }
 
         // Check whitelist
-        const allowlist = Array.isArray(settingsStore?.adblockAllowlist) ? settingsStore.adblockAllowlist : [];
-        if (allowlist.some(a => host === a || host.endsWith('.' + a))) {
+        if (isHostInSet(host, getAllowlistSet(settingsStore))) {
             return { css: '', injectedScript: '' };
         }
 
@@ -725,7 +786,11 @@ class AdblockEngine {
             return { css: '', injectedScript: '' };
         }
 
-        const isYouTube = host === 'youtube.com' || host.endsWith('.youtube.com');
+        // Skip generic aggressive cosmetic CSS on Librus so legitimate UI banners/buttons are never hidden
+        if (host === 'librus.pl' || host.endsWith('.librus.pl')) {
+            return { css: '', injectedScript: '' };
+        }
+
         let siteSelectors = [];
         let injectedScript = '';
 
@@ -750,7 +815,7 @@ class AdblockEngine {
             .taboola, .outbrain, [data-ad-unit], [data-ad-slot], .ad-container, .ad-placeholder,
             [class*="reklama"], [id*="reklama"], [id*="Reklama"], [class*="Reklama"],
             [class*="Billboard"], [id*="Billboard"], [class*="Wallpaper"], [id*="Wallpaper"],
-            [class*="Tapeta"], [id*="Tapeta"], [class*="Branding"], [id*="Branding"],
+            [class*="Tapeta"], [id*="Tapeta"],
             [id^="wp-ad-"], [class^="wp-ad-"], [class*=" wp-ad-"], [id^="gpt-ad"], [class*="gpt-ad"], [id^="ad-desktop"],
             [class*="ad-desktop"], [class*="AdSlot"], [class*="ad-slot"], [class*="ad_slot"] {
                 display: none !important;
@@ -780,20 +845,7 @@ class AdblockEngine {
             `;
         }
 
-        // 3. YouTube specific rules
-        let youtubeCSS = '';
-        if (isYouTube && settingsStore?.adblockYoutubeAds !== false) {
-            youtubeCSS = `
-                .ytp-ad-overlay-container, .ytp-ad-message-container,
-                ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer,
-                ytd-banner-promo-renderer, #masthead-ad {
-                    display: none !important;
-                    height: 0 !important;
-                }
-            `;
-        }
-
-        // 4. Cookie Annoyances rules
+        // 3. Cookie Annoyances rules
         let annoyancesCSS = '';
         if (settingsStore?.adblockAnnoyances !== false) {
             annoyancesCSS = `
@@ -806,11 +858,14 @@ class AdblockEngine {
             `;
         }
 
-        // 5. Site-specific rules from adblock-rs
+        // 4. Site-specific rules from adblock-rs
         let siteCSS = '';
         if (siteSelectors.length > 0) {
             // Deduplicate and filter out overly broad single tag selectors
-            const valid = siteSelectors.filter(s => s && s.length > 1 && s !== '*' && s !== 'body' && s !== 'html');
+            const valid = siteSelectors.filter(s => {
+                if (!s || s.length <= 1 || s === '*' || s === 'body' || s === 'html') return false;
+                return true;
+            });
             if (valid.length > 0) {
                 siteCSS = `
                     ${valid.join(',\n')} {
@@ -829,7 +884,7 @@ class AdblockEngine {
             }
         }
 
-        const combinedCSS = `${baseCollapseRules}\n${wpWallpaperCSS}\n${siteCSS}\n${youtubeCSS}\n${annoyancesCSS}`;
+        const combinedCSS = `${baseCollapseRules}\n${wpWallpaperCSS}\n${siteCSS}\n${annoyancesCSS}`;
         return { css: combinedCSS, injectedScript };
     }
 

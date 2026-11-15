@@ -400,6 +400,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         }
     }, [currentStep, checkDefaultStatus, showToast]);
 
+    const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
+    const defaultAppsLabel = osPlatform === 'darwin' ? 'System Settings' : osPlatform === 'linux' ? 'Default Applications' : 'Windows Default Apps';
+
     const handleSetDefault = async () => {
         setIsSettingDefault(true);
         try {
@@ -415,8 +418,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 setDefaultBrowserHint('');
                 showToast('QBrowse is now your default browser!');
             } else {
-                setDefaultBrowserHint('Windows Default Apps opened — select QBrowse in the system window to confirm.');
-                showToast('Opening Windows Default Apps. Click "Set default" for QBrowse.');
+                setDefaultBrowserHint(`${defaultAppsLabel} opened — select QBrowse in the system window to confirm.`);
+                showToast(osPlatform === 'win32' ? 'Opening Windows Default Apps. Click "Set default" for QBrowse.' : `Opening ${defaultAppsLabel}. Select QBrowse as your default browser.`);
 
                 if (defaultPollRef.current) clearInterval(defaultPollRef.current);
                 let attempts = 0;
@@ -1107,7 +1110,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             className="px-3.5 py-1.5 text-[11px] font-semibold rounded-xl bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 transition cursor-pointer flex items-center gap-1.5"
                                         >
                                             <Compass size={13} />
-                                            <span>Open Windows Default Apps</span>
+                                            <span>Open {defaultAppsLabel}</span>
                                         </button>
                                     </div>
                                 )}

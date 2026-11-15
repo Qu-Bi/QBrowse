@@ -5,6 +5,7 @@ import useTabStore from '../../store/useTabStore';
 import AuthModal from '../modals/AuthModal';
 import PresetStudioModal from '../modals/PresetStudioModal';
 import LiquidTooltip from './LiquidTooltip';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
 
 export default function Overlays() {
     const activeModal = useUIStore(state => state.activeModal);
@@ -51,22 +52,30 @@ export default function Overlays() {
             {activeCard && activeCard.tab && (
                 <div
                     className={`fixed z-[40000] w-64 flex flex-col ${
-                        isBright 
-                            ? (isEco ? 'bg-white border border-black/15 shadow-xl text-zinc-900' : 'bg-white/85 backdrop-blur-3xl border border-black/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.15)] text-zinc-900')
-                            : (isEco ? 'bg-[#0f1015] border border-white/15 shadow-2xl text-white' : 'bg-black/80 backdrop-blur-3xl border border-white/10 shadow-[0_30px_80px_rgba(0,0,0,0.7)] text-white')
+                        isEco
+                            ? (isBright ? 'bg-white border border-black/15 shadow-xl text-zinc-900' : 'bg-[#0f1015] border border-white/15 shadow-2xl text-white')
+                            : getLiquidGlassSurfaceClasses(isBright)
                     } rounded-2xl overflow-hidden pointer-events-none ${isExiting ? 'animate-dissolve-out' : 'animate-pop-in'}`}
-                    style={{ top: Math.min(activeCard.top || 0, window.innerHeight - 200), left: activeCard.left || 0 }}
+                    style={{
+                        top: Math.min(activeCard.top || 0, window.innerHeight - 200),
+                        left: activeCard.left || 0,
+                        ...(!isEco ? getLiquidGlassInlineStyle(isBright) : {})
+                    }}
                 >
-                    <div className={`flex items-center gap-3 p-3 ${isBright ? 'bg-black/[0.03] border-b border-black/5' : 'bg-white/5 border-b border-white/10'}`}>
+                    <div className={`flex items-center gap-3 p-3 ${isBright ? 'bg-black/[0.03] border-b border-black/[0.06]' : 'bg-white/5 border-b border-white/10'}`}>
                         {activeCard.tab?.url ? (
                             <img src={`https://www.google.com/s2/favicons?sz=64&domain=${activeCard.tab.url}`} alt="icon" className="w-4 h-4 rounded-sm flex-shrink-0" onError={(e) => e.target.style.display = 'none'} />
                         ) : (
-                            <Globe size={14} className={isBright ? "text-zinc-400" : "text-white/50"} />
+                            <Globe size={14} className={isBright ? "text-zinc-500" : "text-white/50"} />
                         )}
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
                             <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>{activeCard.tab?.title || 'Untitled'}</span>
                             {activeCard.tab?.suspended && (
-                                <span className="flex-shrink-0 px-1.5 py-0.2 rounded text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                <span className={`flex-shrink-0 px-1.5 py-0.2 rounded text-[9px] font-medium border ${
+                                    isBright
+                                        ? 'bg-amber-500/15 text-amber-800 border-amber-500/30'
+                                        : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                }`}>
                                     Sleeping
                                 </span>
                             )}

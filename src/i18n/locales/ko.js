@@ -64,6 +64,7 @@ export default {
         tabs: {
             appearance: "모양 및 테마",
             layout: "레이아웃 및 UI",
+            typography: "타이포그래피 및 글꼴",
             spaces: "워크스페이스 관리",
             accessibility: "접근성",
             privacy: "개인정보 및 보안",

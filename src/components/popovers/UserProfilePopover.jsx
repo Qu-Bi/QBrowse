@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
     User, ShieldCheck, RefreshCw, LogOut, Key, 
     Check, Camera, Edit3, Globe, Image as ImageIcon,
     Lock, ArrowRight, Sliders, Palette, Layers, History, 
     Cloud, UploadCloud, DownloadCloud, Trash2, Download, Upload,
     ChevronDown, ChevronUp, Plus, ExternalLink,
-    Laptop, Monitor,
+    Laptop, Monitor, Fingerprint, AlertCircle,
     Rocket, Zap, Sparkles, Terminal, Compass, Gem, Flame, Crown, Shield, Activity
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
@@ -14,6 +14,7 @@ import useTabStore, { isValidSyncTab, getCleanTabTitle } from '../../store/useTa
 import useVaultStore from '../../store/useVaultStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useProfileStore from '../../store/useProfileStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 
 export const AVATAR_PRESETS = [
     { id: 'rocket', icon: Rocket, name: 'Rocket' },
@@ -99,10 +100,23 @@ export default function UserProfilePopover({ isClosing }) {
     const refreshCloudTabs = useSyncStore(state => state.refreshCloudTabs);
     const [isRefreshingTabs, setIsRefreshingTabs] = useState(false);
 
+    const isVaultInitialized = useVaultStore(state => state.isInitialized);
     const isVaultUnlocked = useVaultStore(state => state.isUnlocked);
-    const vaultCount = useVaultStore(state => state.passwords?.length || 0);
+    const pinEnabled = useVaultStore(state => state.pinEnabled);
+    const biometricsEnabled = useVaultStore(state => state.biometricsEnabled);
+    const unlockWithPin = useVaultStore(state => state.unlockWithPin);
+    const unlockWithWindowsHello = useVaultStore(state => state.unlockWithWindowsHello);
+    const unlockVault = useVaultStore(state => state.unlock);
+    const vaultItemCount = useVaultStore(state => state.vaultItemCount);
+    const passwordsList = useVaultStore(state => state.passwords);
+    const syncVaultStatus = useVaultStore(state => state.syncVaultStatus);
+    const vaultCount = isVaultUnlocked ? (passwordsList?.length ?? vaultItemCount ?? 0) : (vaultItemCount || 0);
     const pinnedCount = useTabStore(state => state.pinnedTabs?.length || 0);
     const historyCount = useHistoryStore(state => state.history?.length || 0);
+
+    useEffect(() => {
+        syncVaultStatus?.();
+    }, [syncVaultStatus]);
 
     // Active Category Navigation: 'sync' | 'tabs' | 'backups' | 'profile'
     const [activeCategory, setActiveCategory] = useState('sync');
@@ -132,16 +146,33 @@ export default function UserProfilePopover({ isClosing }) {
     const [showAvatarPicker, setShowAvatarPicker] = useState(false);
     const [showSecuritySection, setShowSecuritySection] = useState(false);
 
-    // Manual Backup Input state
+    // Manual Backup Input state & inline QVault unlock states
     const [backupLabel, setBackupLabel] = useState('');
     const [showPushBackupForm, setShowPushBackupForm] = useState(false);
     const [isClosingPushBackup, setIsClosingPushBackup] = useState(false);
+    const [snapshotPin, setSnapshotPin] = useState('');
+    const [snapshotUnlockError, setSnapshotUnlockError] = useState('');
+    const [isUnlockingForSnapshot, setIsUnlockingForSnapshot] = useState(false);
+
+    const [pendingRestoreSnapshotId, setPendingRestoreSnapshotId] = useState(null);
+    const [restorePin, setRestorePin] = useState('');
+    const [restoreUnlockError, setRestoreUnlockError] = useState('');
+    const [isUnlockingForRestore, setIsUnlockingForRestore] = useState(false);
+
+    const [vaultUnlockMode, setVaultUnlockMode] = useState(() => (pinEnabled ? 'pin' : 'password'));
+    const [hoveredVaultUnlockMode, setHoveredVaultUnlockMode] = useState(null);
+
+    useEffect(() => {
+        setVaultUnlockMode(pinEnabled ? 'pin' : 'password');
+    }, [pinEnabled]);
 
     const handleClosePushBackup = () => {
         setIsClosingPushBackup(true);
         setTimeout(() => {
             setShowPushBackupForm(false);
             setIsClosingPushBackup(false);
+            setSnapshotPin('');
+            setSnapshotUnlockError('');
         }, 180);
     };
 
@@ -219,13 +250,258 @@ export default function UserProfilePopover({ isClosing }) {
         }).catch(() => {});
     };
 
+    const verifyAndUnlockVault = async (secretInput) => {
+        const effectiveMode = pinEnabled ? vaultUnlockMode : 'password';
+        const trimmed = (secretInput || '').trim();
+        if (!trimmed) {
+            return {
+                ok: false,
+                error: effectiveMode === 'pin' ? 'Please enter your QVault PIN.' : 'Please enter your QVault Master Password.'
+            };
+        }
+        const res = effectiveMode === 'pin' ? await unlockWithPin(trimmed) : await unlockVault(trimmed);
+        const unlockedOk = res === true || res?.success === true;
+        if (!unlockedOk) {
+            return {
+                ok: false,
+                error: res?.error || useVaultStore.getState().error || (effectiveMode === 'pin' ? 'Invalid QVault PIN' : 'Invalid Master Password')
+            };
+        }
+        return { ok: true, error: '' };
+    };
+
+    const handleBiometricSnapshotUnlock = async () => {
+        setSnapshotUnlockError('');
+        setIsUnlockingForSnapshot(true);
+        try {
+            const res = await unlockWithWindowsHello();
+            const unlockedOk = res === true || res?.success === true;
+            if (!unlockedOk) {
+                setSnapshotUnlockError(res?.error || useVaultStore.getState().error || 'Windows Hello unlock failed');
+            } else {
+                setSnapshotPin('');
+            }
+        } finally {
+            setIsUnlockingForSnapshot(false);
+        }
+    };
+
     const handlePushBackup = async (e) => {
         e.preventDefault();
-        const success = await pushManualBackup(backupLabel);
-        if (success) {
-            setBackupLabel('');
-            setShowPushBackupForm(false);
+        setSnapshotUnlockError('');
+        const vaultNow = useVaultStore.getState();
+        if (vaultNow.isInitialized && !vaultNow.isUnlocked) {
+            setIsUnlockingForSnapshot(true);
+            try {
+                const check = await verifyAndUnlockVault(snapshotPin);
+                if (!check.ok) {
+                    setSnapshotUnlockError(check.error);
+                    return;
+                }
+            } finally {
+                setIsUnlockingForSnapshot(false);
+            }
         }
+        try {
+            const success = await pushManualBackup(backupLabel);
+            if (success) {
+                setBackupLabel('');
+                setSnapshotPin('');
+                setSnapshotUnlockError('');
+                setShowPushBackupForm(false);
+            }
+        } catch (err) {
+            setSnapshotUnlockError(err?.message || 'Failed to create cloud snapshot.');
+        }
+    };
+
+    const handleSnapshotRestoreClick = async (bk) => {
+        const vaultNow = useVaultStore.getState();
+        if (vaultNow.isInitialized && !vaultNow.isUnlocked) {
+            setPendingRestoreSnapshotId(bk.id || bk.createdAt);
+            setRestorePin('');
+            setRestoreUnlockError('');
+            return;
+        }
+        await restoreCloudBackup(bk);
+    };
+
+    const handleConfirmRestoreWithUnlock = async (e, bk) => {
+        e.preventDefault();
+        setRestoreUnlockError('');
+        const vaultNow = useVaultStore.getState();
+        if (vaultNow.isInitialized && !vaultNow.isUnlocked) {
+            setIsUnlockingForRestore(true);
+            try {
+                const check = await verifyAndUnlockVault(restorePin);
+                if (!check.ok) {
+                    setRestoreUnlockError(check.error);
+                    return;
+                }
+            } finally {
+                setIsUnlockingForRestore(false);
+            }
+        }
+        setPendingRestoreSnapshotId(null);
+        setRestorePin('');
+        setRestoreUnlockError('');
+        await restoreCloudBackup(bk);
+    };
+
+    const handleBiometricRestoreUnlock = async (bk) => {
+        setRestoreUnlockError('');
+        setIsUnlockingForRestore(true);
+        try {
+            const res = await unlockWithWindowsHello();
+            const unlockedOk = res === true || res?.success === true;
+            if (!unlockedOk) {
+                setRestoreUnlockError(res?.error || useVaultStore.getState().error || 'Windows Hello unlock failed');
+                return;
+            }
+            setPendingRestoreSnapshotId(null);
+            setRestorePin('');
+            setRestoreUnlockError('');
+            await restoreCloudBackup(bk);
+        } finally {
+            setIsUnlockingForRestore(false);
+        }
+    };
+
+    const renderInlineVaultUnlockFields = ({ title, value, onChange, errorMsg, onBiometricClick, isBusy }) => {
+        const effectiveMode = pinEnabled ? vaultUnlockMode : 'password';
+        const bioPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || 'win32';
+        const bioShortLabel = bioPlatform === 'darwin' ? 'Touch ID' : bioPlatform === 'linux' ? 'Bio' : 'Hello';
+        const inputClasses = isBright
+            ? 'bg-white border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent shadow-xs'
+            : 'bg-black/20 border-white/10 text-white placeholder-white/40 focus:border-accent/50';
+
+        return (
+            <div className={`p-3 rounded-2xl border space-y-2.5 ${
+                isBright
+                    ? 'bg-black/[0.025] border-black/[0.06] text-zinc-900'
+                    : 'bg-white/[0.03] border-white/[0.08] text-white'
+            }`}>
+                <div className="flex items-center gap-2">
+                    <Shield size={13} className="text-accent shrink-0" />
+                    <span className={`text-[11px] font-semibold ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
+                        {title}
+                    </span>
+                </div>
+
+                {pinEnabled && (
+                    <div
+                        onMouseLeave={() => setHoveredVaultUnlockMode(null)}
+                        className={`relative grid grid-cols-2 p-0.5 rounded-full border shadow-xs transition-colors duration-200 select-none ${
+                            isBright ? 'bg-black/[0.03] border-black/[0.05]' : 'bg-black/25 border-white/[0.08]'
+                        }`}
+                    >
+                        {hoveredVaultUnlockMode && hoveredVaultUnlockMode !== vaultUnlockMode && (
+                            <div
+                                className={`absolute top-0.5 bottom-0.5 rounded-full pointer-events-none ${
+                                    isBright ? 'bg-black/[0.04]' : 'bg-white/[0.06]'
+                                }`}
+                                style={{
+                                    left: '2px',
+                                    width: 'calc((100% - 4px) / 2)',
+                                    transform: `translateX(${hoveredVaultUnlockMode === 'password' ? 100 : 0}%)`,
+                                    transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
+                                }}
+                            />
+                        )}
+                        <div
+                            className={`absolute top-0.5 bottom-0.5 rounded-full pointer-events-none ${
+                                isBright
+                                    ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                    : 'bg-white/[0.12] border border-white/20 shadow-xs'
+                            }`}
+                            style={{
+                                left: '2px',
+                                width: 'calc((100% - 4px) / 2)',
+                                transform: `translateX(${vaultUnlockMode === 'password' ? 100 : 0}%)`,
+                                transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)'
+                            }}
+                        />
+                        <button
+                            type="button"
+                            onMouseEnter={() => setHoveredVaultUnlockMode('pin')}
+                            onClick={() => {
+                                setVaultUnlockMode('pin');
+                                onChange('');
+                            }}
+                            className={`relative z-10 py-1 text-center text-[10px] font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer ${
+                                vaultUnlockMode === 'pin'
+                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
+                            }`}
+                        >
+                            Quick PIN
+                        </button>
+                        <button
+                            type="button"
+                            onMouseEnter={() => setHoveredVaultUnlockMode('password')}
+                            onClick={() => {
+                                setVaultUnlockMode('password');
+                                onChange('');
+                            }}
+                            className={`relative z-10 py-1 text-center text-[10px] font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer ${
+                                vaultUnlockMode === 'password'
+                                    ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
+                            }`}
+                        >
+                            Master Password
+                        </button>
+                    </div>
+                )}
+
+                <div className="flex items-center gap-1.5">
+                    {effectiveMode === 'pin' ? (
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={value}
+                            onChange={(e) => onChange(e.target.value)}
+                            disabled={isBusy}
+                            placeholder="••••"
+                            className={`flex-1 min-w-0 h-9 rounded-full px-4 text-center text-sm font-mono tracking-[0.45em] outline-none transition-all border disabled:opacity-50 ${inputClasses}`}
+                        />
+                    ) : (
+                        <input
+                            type="password"
+                            value={value}
+                            onChange={(e) => onChange(e.target.value)}
+                            disabled={isBusy}
+                            placeholder="Enter master password..."
+                            className={`flex-1 min-w-0 h-9 rounded-full px-3.5 text-xs font-mono outline-none transition-all border disabled:opacity-50 ${inputClasses}`}
+                        />
+                    )}
+                    {biometricsEnabled && (
+                        <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={onBiometricClick}
+                            title={`Unlock with ${bioShortLabel}`}
+                            className={`h-9 px-3 rounded-full border text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shrink-0 active:scale-95 ${
+                                isBright
+                                    ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-800 shadow-xs'
+                                    : 'bg-white/[0.08] hover:bg-white/[0.12] border-white/10 text-white'
+                            }`}
+                        >
+                            <Fingerprint size={13} className="text-accent" />
+                            <span>{bioShortLabel}</span>
+                        </button>
+                    )}
+                </div>
+
+                {errorMsg && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-xl font-mono font-medium">
+                        <AlertCircle size={11} className="shrink-0" />
+                        <span>{errorMsg}</span>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     const handleChangeAccountPassword = async (e) => {
@@ -339,17 +615,10 @@ export default function UserProfilePopover({ isClosing }) {
             id="user-profile-popover"
             className={`fixed top-[4.75rem] ${
                 sidebarPosition === 'right' ? 'right-10 md:right-16 origin-top-right' : 'left-10 md:left-16 origin-top-left'
-            } z-[70000] w-[420px] max-w-[calc(100vw-24px)] max-h-[85vh] flex flex-col overflow-hidden ${
-                isBright 
-                    ? 'liquid-glass-bright bg-white/80 border border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.9)]' 
-                    : 'liquid-glass-dark bg-[#141624]/65 border border-white/12 text-white shadow-[0_25px_80px_rgba(0,0,0,0.75),inset_0_1px_1px_rgba(255,255,255,0.22)]'
-            } rounded-3xl p-4 select-none ${
+            } z-[70000] w-[420px] max-w-[calc(100vw-24px)] max-h-[85vh] flex flex-col overflow-hidden ${getLiquidGlassSurfaceClasses(isBright)} rounded-3xl p-4 select-none ${
                 isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'
             }`}
-            style={{
-                backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
-                WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
-            }} 
+            style={getLiquidGlassInlineStyle(isBright)} 
             onClick={e => e.stopPropagation()}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
         >
@@ -395,7 +664,7 @@ export default function UserProfilePopover({ isClosing }) {
             {/* Spaces-Switcher Style Sliding Segmented Navigation */}
             <div 
                 onMouseLeave={() => setHoveredCategory(null)}
-                className={`relative flex p-1 rounded-full mb-3.5 border shadow-xs backdrop-blur-2xl transition-colors duration-200 select-none ${
+                className={`relative grid grid-cols-4 p-1 rounded-full mb-3.5 border shadow-xs backdrop-blur-2xl transition-colors duration-200 select-none ${
                 isBright 
                     ? 'bg-black/[0.04] border-black/[0.06]' 
                     : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
@@ -403,26 +672,30 @@ export default function UserProfilePopover({ isClosing }) {
                 {/* Subtle Hover Preview Pill */}
                 {hoveredCategory && hoveredCategory !== activeCategory && (
                     <div 
-                        className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full transition-all duration-200 pointer-events-none ${
+                        className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${
                             isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
                         }`}
                         style={{ 
                             left: '4px',
-                            transform: `translateX(${CATEGORIES.findIndex(c => c.id === hoveredCategory) * 100}%)`
+                            width: 'calc((100% - 8px) / 4)',
+                            transform: `translateX(${CATEGORIES.findIndex(c => c.id === hoveredCategory) * 100}%)`,
+                            transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
                         }}
                     />
                 )}
 
                 {/* Signature Liquid Glass Sliding Pill */}
                 <div 
-                    className={`absolute top-1 bottom-1 w-[calc(25%-2px)] rounded-full border transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none ${
+                    className={`absolute top-1 bottom-1 rounded-full border pointer-events-none ${
                         isBright
                             ? 'bg-white border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                             : 'shadow-xs'
                     }`}
                     style={{ 
                         left: '4px',
+                        width: 'calc((100% - 8px) / 4)',
                         transform: `translateX(${activeIndex * 100}%)`,
+                        transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
                         ...(!isBright ? {
                             borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
                             backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
@@ -439,13 +712,13 @@ export default function UserProfilePopover({ isClosing }) {
                             key={cat.id}
                             onClick={() => setActiveCategory(cat.id)}
                             onMouseEnter={() => setHoveredCategory(cat.id)}
-                            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer whitespace-nowrap select-none outline-none ${
+                            className={`relative z-10 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-full transition-colors duration-200 active:scale-95 cursor-pointer whitespace-nowrap select-none outline-none ${
                                 isActive 
                                     ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
-                                    : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/45 hover:text-white')
+                                    : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/45 hover:text-white')
                             }`}
                         >
-                            <Icon size={12} className={isActive ? (cat.id === 'sync' && isSyncing ? 'animate-spin text-accent' : (isBright ? 'text-zinc-950' : 'text-accent')) : (isBright ? 'text-zinc-400' : 'text-white/40')} />
+                            <Icon size={12} className={isActive ? (cat.id === 'sync' && isSyncing ? 'animate-spin text-accent' : (isBright ? 'text-zinc-950' : 'text-accent')) : (isBright ? 'text-zinc-500' : 'text-white/40')} />
                             <span>{cat.label}</span>
                         </button>
                     );
@@ -460,7 +733,7 @@ export default function UserProfilePopover({ isClosing }) {
                         {user ? (
                             <>
                                 {/* Action Card: Status, Sync Now & Auto-Sync */}
-                                <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-2.5`}>
+                                <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500 shadow-[0_0_6px_#10b981]' : 'bg-blue-500 animate-pulse'}`} />
@@ -513,9 +786,16 @@ export default function UserProfilePopover({ isClosing }) {
                                         </span>
                                     </div>
 
-                                    <div className={`rounded-2xl border ${isBright ? 'bg-white/60 border-black/[0.06] divide-black/[0.05]' : 'bg-white/[0.02] border-white/[0.05] divide-white/[0.04]'} divide-y overflow-hidden`}>
+                                    <div className={`rounded-2xl border ${getLiquidGlassCardClasses(isBright)} ${isBright ? 'divide-black/[0.05]' : 'divide-white/[0.04]'} divide-y overflow-hidden`}>
                                         {[
-                                            { key: 'vault', label: 'Passwords', count: isVaultUnlocked ? `${vaultCount} items` : 'Encrypted', icon: Key },
+                                            {
+                                                key: 'vault',
+                                                label: 'Passwords',
+                                                count: isVaultUnlocked
+                                                    ? `${vaultCount} items`
+                                                    : (vaultItemCount > 0 ? `${vaultItemCount} locked` : 'Locked'),
+                                                icon: Key
+                                            },
                                             { key: 'tabs', label: 'Open Tabs', count: `${totalLocalActiveTabs} local tabs`, icon: Layers },
                                             { key: 'settings', label: 'Settings & Theme', count: 'Preferences', icon: Palette },
                                             { key: 'history', label: 'Browsing History', count: `${historyCount} entries`, icon: History }
@@ -580,9 +860,9 @@ export default function UserProfilePopover({ isClosing }) {
                 {/* 2. TABS TAB (OTHER DEVICES) */}
                 {activeCategory === 'tabs' && (
                     <div className="animate-fade-in space-y-3 text-left">
-                        <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-3`}>
+                        <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-3`}>
                             {/* Section Header */}
-                            <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+                            <div className={`flex items-center justify-between pb-2 border-b ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
                                 <div className="flex items-center gap-2">
                                     <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                         <Layers size={13} className="text-accent" /> Tabs from Other Devices {totalCloudTabs > 0 && `(${totalCloudTabs})`}
@@ -679,7 +959,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                 }`}
                                             >
                                                 {/* Device Header */}
-                                                <div className="flex items-center justify-between gap-2 pb-1.5 mb-2 border-b border-white/[0.04]">
+                                                <div className={`flex items-center justify-between gap-2 pb-1.5 mb-2 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${
                                                             isBright ? 'bg-black/[0.05] text-accent' : 'bg-white/[0.06] text-accent'
@@ -817,28 +1097,41 @@ export default function UserProfilePopover({ isClosing }) {
                                                 : 'bg-white/[0.04] border-white/[0.08] text-white placeholder-white/35 backdrop-blur-md focus:border-accent/60 focus:bg-white/[0.07]'
                                         } border rounded-xl px-3 py-1.5 text-xs outline-none transition`}
                                     />
+                                    {isVaultInitialized && !isVaultUnlocked && renderInlineVaultUnlockFields({
+                                        title: 'Unlock QVault to include passwords',
+                                        value: snapshotPin,
+                                        onChange: (val) => {
+                                            setSnapshotPin(val);
+                                            if (snapshotUnlockError) setSnapshotUnlockError('');
+                                        },
+                                        errorMsg: snapshotUnlockError,
+                                        onBiometricClick: handleBiometricSnapshotUnlock,
+                                        isBusy: isCreatingBackup || isUnlockingForSnapshot
+                                    })}
                                     <button
                                         type="submit"
-                                        disabled={isCreatingBackup}
+                                        disabled={isCreatingBackup || isUnlockingForSnapshot}
                                         className="w-full py-1.5 bg-accent text-black font-bold rounded-full text-xs shadow-md transition hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"
                                     >
-                                        {isCreatingBackup ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
-                                        Save Snapshot
+                                        {(isCreatingBackup || isUnlockingForSnapshot) ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                                        {isVaultInitialized && !isVaultUnlocked ? 'Unlock & Save Snapshot' : 'Save Snapshot'}
                                     </button>
                                 </form>
                             </div>
                         )}
 
                         {/* Snapshots Version History */}
-                        <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-2.5`}>
-                            <div className="flex items-center justify-between pb-1.5 border-b border-white/[0.04]">
+                        <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
+                            <div className={`flex items-center justify-between pb-1.5 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                 <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                     <Cloud size={13} className="text-accent" /> Cloud Snapshots {cloudBackups.length > 0 && `(${cloudBackups.length})`}
                                 </span>
                                 <div className="flex items-center gap-2">
                                     <button 
                                         onClick={() => useSyncStore.getState().fetchCloudBackups()} 
-                                        className="hover:text-accent flex items-center gap-1 text-[11px] text-white/50 cursor-pointer p-1 rounded-full hover:bg-white/[0.05]"
+                                        className={`hover:text-accent flex items-center gap-1 text-[11px] cursor-pointer p-1 rounded-full ${
+                                            isBright ? 'text-zinc-500 hover:bg-black/[0.05]' : 'text-white/50 hover:bg-white/[0.05]'
+                                        }`}
                                         title="Refresh"
                                     >
                                         <RefreshCw size={11} />
@@ -855,7 +1148,7 @@ export default function UserProfilePopover({ isClosing }) {
                             </div>
 
                             {isLoadingBackups ? (
-                                <div className="text-center py-4 text-xs text-white/40">
+                                <div className={`text-center py-4 text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                     <RefreshCw size={13} className="animate-spin mx-auto mb-1 text-accent" />
                                     Loading snapshots...
                                 </div>
@@ -866,69 +1159,123 @@ export default function UserProfilePopover({ isClosing }) {
                                 </div>
                             ) : (
                                 <div className="space-y-1.5 max-h-[38vh] overflow-y-auto hide-scroll">
-                                    {cloudBackups.map((bk, bkIdx) => (
-                                        <div key={bk.id || bk.createdAt || bkIdx} className={`p-2.5 ${isBright ? 'bg-black/[0.02] border-black/[0.04]' : 'bg-white/[0.02] border-white/[0.04]'} border rounded-xl transition space-y-1`}>
-                                            <div className="flex items-center justify-between">
-                                                <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'} truncate flex-1 pr-2`}>
-                                                    {bk.label || 'Snapshot'}
-                                                </span>
-                                                <span className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/40'} font-mono`}>
-                                                    {bk.createdAt ? new Date(bk.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
-                                                </span>
-                                            </div>
-                                            {bk.stats && (
-                                                <div className={`flex gap-2.5 text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                                                    <span className="flex items-center gap-1"><Key size={9} className="text-accent/80" /> {bk.stats.passwords || 0}</span>
-                                                    <span className="flex items-center gap-1"><Layers size={9} className="text-accent/80" /> {bk.stats.tabs || 0}</span>
-                                                    <span className="flex items-center gap-1"><History size={9} className="text-accent/80" /> {bk.stats.history || 0}</span>
+                                    {cloudBackups.map((bk, bkIdx) => {
+                                        const bkMatchId = bk.id || bk.createdAt;
+                                        const isShowingRestoreUnlock = pendingRestoreSnapshotId === bkMatchId && isVaultInitialized && !isVaultUnlocked;
+                                        return (
+                                            <div key={bkMatchId || bkIdx} className={`p-2.5 ${isBright ? 'bg-black/[0.02] border-black/[0.04]' : 'bg-white/[0.02] border-white/[0.04]'} border rounded-xl transition space-y-1`}>
+                                                <div className="flex items-center justify-between">
+                                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'} truncate flex-1 pr-2`}>
+                                                        {bk.label || 'Snapshot'}
+                                                    </span>
+                                                    <span className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/40'} font-mono`}>
+                                                        {bk.createdAt ? new Date(bk.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                                                    </span>
                                                 </div>
-                                            )}
-                                            <div className={`flex gap-1.5 pt-1.5 border-t ${isBright ? 'border-black/[0.04]' : 'border-white/[0.04]'}`}>
-                                                <button
-                                                    disabled={isRestoringBackup}
-                                                    onClick={() => restoreCloudBackup(bk)}
-                                                    className="flex-1 py-1 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-full text-[10px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                                                >
-                                                    {restoringBackupId === bk.id ? (
-                                                        <>
-                                                            <RefreshCw size={10} className="animate-spin" /> Restoring...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <DownloadCloud size={10} /> Restore
-                                                        </>
-                                                    )}
-                                                </button>
-                                                <button
-                                                    disabled={isRestoringBackup}
-                                                    onClick={() => deleteCloudBackup(bk.id)}
-                                                    className="p-1 rounded-full text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition cursor-pointer disabled:opacity-40"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 size={11} />
-                                                </button>
+                                                {bk.stats && (
+                                                    <div className={`flex gap-2.5 text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
+                                                        <span className="flex items-center gap-1"><Key size={9} className="text-accent/80" /> {bk.stats.passwords || 0}</span>
+                                                        <span className="flex items-center gap-1"><Layers size={9} className="text-accent/80" /> {bk.stats.tabs || 0}</span>
+                                                        <span className="flex items-center gap-1"><History size={9} className="text-accent/80" /> {bk.stats.history || 0}</span>
+                                                    </div>
+                                                )}
+                                                {isShowingRestoreUnlock ? (
+                                                    <form
+                                                        onSubmit={(e) => handleConfirmRestoreWithUnlock(e, bk)}
+                                                        className={`pt-2 border-t space-y-2 ${isBright ? 'border-black/[0.04]' : 'border-white/[0.04]'}`}
+                                                    >
+                                                        {renderInlineVaultUnlockFields({
+                                                            title: 'Unlock QVault to restore passwords',
+                                                            value: restorePin,
+                                                            onChange: (val) => {
+                                                                setRestorePin(val);
+                                                                if (restoreUnlockError) setRestoreUnlockError('');
+                                                            },
+                                                            errorMsg: restoreUnlockError,
+                                                            onBiometricClick: () => handleBiometricRestoreUnlock(bk),
+                                                            isBusy: isUnlockingForRestore || isRestoringBackup
+                                                        })}
+                                                        <div className="flex gap-1.5">
+                                                            <button
+                                                                type="submit"
+                                                                disabled={isUnlockingForRestore || isRestoringBackup}
+                                                                className="flex-1 py-1 bg-accent text-black font-bold rounded-full text-[10px] transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                            >
+                                                                {isUnlockingForRestore ? (
+                                                                    <>
+                                                                        <RefreshCw size={10} className="animate-spin" /> Unlocking...
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <DownloadCloud size={10} /> Unlock & Restore
+                                                                    </>
+                                                                )}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isUnlockingForRestore || isRestoringBackup}
+                                                                onClick={() => {
+                                                                    setPendingRestoreSnapshotId(null);
+                                                                    setRestorePin('');
+                                                                    setRestoreUnlockError('');
+                                                                }}
+                                                                className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition cursor-pointer disabled:opacity-40 ${
+                                                                    isBright ? 'bg-black/[0.05] text-zinc-600 hover:bg-black/[0.09]' : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.12]'
+                                                                }`}
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    </form>
+                                                ) : (
+                                                    <div className={`flex gap-1.5 pt-1.5 border-t ${isBright ? 'border-black/[0.04]' : 'border-white/[0.04]'}`}>
+                                                        <button
+                                                            disabled={isRestoringBackup}
+                                                            onClick={() => handleSnapshotRestoreClick(bk)}
+                                                            className="flex-1 py-1 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-full text-[10px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        >
+                                                            {restoringBackupId === bk.id ? (
+                                                                <>
+                                                                    <RefreshCw size={10} className="animate-spin" /> Restoring...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <DownloadCloud size={10} /> Restore
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            disabled={isRestoringBackup}
+                                                            onClick={() => deleteCloudBackup(bk.id)}
+                                                            className="p-1 rounded-full text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition cursor-pointer disabled:opacity-40"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 size={11} />
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
 
                         {/* Offline Zero-Cloud File Sync (.qsync) */}
-                        <div className={`p-3 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl flex items-center justify-between`}>
+                        <div className={`p-3 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl flex items-center justify-between`}>
                             <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>Offline Archive</span>
                             <div className="flex gap-2">
                                 <button
                                     onClick={exportLocalBackup}
-                                    className={`px-3.5 py-1 ${
-                                        isBright ? 'bg-black/[0.04] text-zinc-800 hover:bg-black/[0.08]' : 'bg-white/[0.04] text-white hover:bg-white/[0.08]'
-                                    } border border-white/[0.06] rounded-full text-[10px] font-medium transition cursor-pointer hover:border-accent/40 flex items-center gap-1`}
+                                    className={`px-3.5 py-1 border rounded-full text-[10px] font-medium transition cursor-pointer hover:border-accent/40 flex items-center gap-1 ${
+                                        isBright ? 'bg-black/[0.04] text-zinc-800 border-black/[0.08] hover:bg-black/[0.08]' : 'bg-white/[0.04] text-white border-white/[0.06] hover:bg-white/[0.08]'
+                                    }`}
                                 >
                                     <Download size={11} className="text-accent" /> Export
                                 </button>
-                                <label className={`px-3.5 py-1 ${
-                                    isBright ? 'bg-black/[0.04] text-zinc-800 hover:bg-black/[0.08]' : 'bg-white/[0.04] text-white hover:bg-white/[0.08]'
-                                } border border-white/[0.06] rounded-full text-[10px] font-medium transition cursor-pointer hover:border-accent/40 flex items-center gap-1`}>
+                                <label className={`px-3.5 py-1 border rounded-full text-[10px] font-medium transition cursor-pointer hover:border-accent/40 flex items-center gap-1 ${
+                                    isBright ? 'bg-black/[0.04] text-zinc-800 border-black/[0.08] hover:bg-black/[0.08]' : 'bg-white/[0.04] text-white border-white/[0.06] hover:bg-white/[0.08]'
+                                }`}>
                                     <Upload size={11} className="text-accent" /> Import
                                     <input type="file" accept=".qsync,.json" onChange={handleImportFile} className="hidden" />
                                 </label>
@@ -941,8 +1288,8 @@ export default function UserProfilePopover({ isClosing }) {
                 {activeCategory === 'profile' && (
                     <div className="animate-fade-in space-y-3 text-left">
                         {/* Profile Details & Avatar Card */}
-                        <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-2.5`}>
-                            <div className="flex items-center justify-between pb-1.5 border-b border-white/[0.04]">
+                        <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
+                            <div className={`flex items-center justify-between pb-1.5 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                 <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                     <User size={13} className="text-accent" /> Active Profile
                                 </span>
@@ -978,9 +1325,9 @@ export default function UserProfilePopover({ isClosing }) {
                                                 type="text"
                                                 value={username}
                                                 onChange={(e) => setUsername(e.target.value)}
-                                                className={`flex-1 ${
-                                                    isBright ? 'bg-black/[0.04] text-zinc-900' : 'bg-white/[0.04] text-white'
-                                                } border border-white/10 rounded-xl px-2.5 py-1 text-xs font-medium outline-none focus:border-accent`}
+                                                className={`flex-1 border rounded-xl px-2.5 py-1 text-xs font-medium outline-none focus:border-accent ${
+                                                    isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900' : 'bg-white/[0.04] border-white/10 text-white'
+                                                }`}
                                             />
                                             <button
                                                 onClick={handleSaveProfile}
@@ -1024,7 +1371,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                     className={`h-7 rounded-xl border flex items-center justify-center text-xs transition cursor-pointer ${
                                                         avatarPreset === preset.id && !customAvatarUrl 
                                                             ? 'bg-accent/20 border-accent text-accent' 
-                                                            : 'bg-white/[0.02] border-white/8 hover:bg-white/[0.05]'
+                                                            : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-700 hover:bg-black/[0.06]' : 'bg-white/[0.02] border-white/8 hover:bg-white/[0.05]')
                                                     }`}
                                                     title={preset.name}
                                                 >
@@ -1038,15 +1385,17 @@ export default function UserProfilePopover({ isClosing }) {
                                         value={customAvatarUrl}
                                         onChange={(e) => setCustomAvatarUrl(e.target.value)}
                                         placeholder="Or paste image URL..."
-                                        className={`w-full ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'} border border-white/10 rounded-xl px-2.5 py-1 text-[10px] outline-none font-mono`}
+                                        className={`w-full border rounded-xl px-2.5 py-1 text-[10px] outline-none font-mono ${
+                                            isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-white/[0.04] border-white/10 text-white placeholder-white/40'
+                                        }`}
                                     />
                                 </div>
                             )}
                         </div>
 
                         {/* Browser Profiles Switcher */}
-                        <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-2.5`}>
-                            <div className="flex items-center justify-between pb-1.5 border-b border-white/[0.04]">
+                        <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
+                            <div className={`flex items-center justify-between pb-1.5 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                 <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                     <User size={13} className="text-accent" /> Profiles ({profiles.length})
                                 </span>
@@ -1119,15 +1468,17 @@ export default function UserProfilePopover({ isClosing }) {
                                             key={p.id}
                                             className={`flex items-center justify-between p-2 rounded-xl border transition ${
                                                 isCurrent 
-                                                    ? 'bg-accent/15 border-accent/40 text-accent font-semibold' 
-                                                    : 'bg-white/[0.02] border-white/[0.04] hover:border-accent/30'
+                                                    ? (isBright ? 'bg-accent/15 border-accent/45 text-zinc-950 font-semibold' : 'bg-accent/15 border-accent/40 text-accent font-semibold')
+                                                    : (isBright ? 'bg-black/[0.025] border-black/[0.06] text-zinc-800 hover:border-accent/40' : 'bg-white/[0.02] border-white/[0.04] hover:border-accent/30')
                                             }`}
                                         >
                                             <div 
                                                 className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
                                                 onClick={() => { if (!isCurrent) handleSwitchProfile(p.id); }}
                                             >
-                                                <span className="flex items-center justify-center w-5 h-5 rounded-lg bg-white/5 border border-white/10 shrink-0">
+                                                <span className={`flex items-center justify-center w-5 h-5 rounded-lg border shrink-0 ${
+                                                    isBright ? 'bg-black/[0.04] border-black/10' : 'bg-white/5 border-white/10'
+                                                }`}>
                                                     {renderProfileAvatar(p.avatar, 12, 'text-accent')}
                                                 </span>
                                                 <span className="text-xs truncate">{p.name}</span>
@@ -1136,7 +1487,9 @@ export default function UserProfilePopover({ isClosing }) {
                                             <div className="flex items-center gap-1.5 shrink-0">
                                                 <button
                                                     onClick={() => handleOpenInNewWindow(p.id)}
-                                                    className="p-1 rounded-full opacity-50 hover:opacity-100 transition cursor-pointer hover:bg-white/[0.05]"
+                                                    className={`p-1 rounded-full opacity-60 hover:opacity-100 transition cursor-pointer ${
+                                                        isBright ? 'hover:bg-black/[0.06]' : 'hover:bg-white/[0.05]'
+                                                    }`}
                                                     title="Open in new window"
                                                 >
                                                     <ExternalLink size={11} />
@@ -1144,7 +1497,9 @@ export default function UserProfilePopover({ isClosing }) {
                                                 {!isCurrent && (
                                                     <button
                                                         onClick={() => handleSwitchProfile(p.id)}
-                                                        className="px-2.5 py-0.5 bg-white/[0.06] hover:bg-accent/20 hover:text-accent rounded-full text-[10px] font-medium cursor-pointer"
+                                                        className={`px-2.5 py-0.5 hover:bg-accent/20 hover:text-accent rounded-full text-[10px] font-medium cursor-pointer ${
+                                                            isBright ? 'bg-black/[0.05] text-zinc-700' : 'bg-white/[0.06]'
+                                                        }`}
                                                     >
                                                         Switch
                                                     </button>
@@ -1165,7 +1520,7 @@ export default function UserProfilePopover({ isClosing }) {
                         </div>
 
                         {/* Security Accordion */}
-                        <div className={`p-3.5 ${isBright ? 'bg-white/70 border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.05]'} border rounded-2xl space-y-2.5`}>
+                        <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
                             <button
                                 onClick={() => setShowSecuritySection(!showSecuritySection)}
                                 className="w-full flex items-center justify-between text-xs font-semibold cursor-pointer"
@@ -1177,9 +1532,9 @@ export default function UserProfilePopover({ isClosing }) {
                             </button>
 
                             {showSecuritySection && (
-                                <div className="pt-2 border-t border-white/[0.04] space-y-2.5 animate-slide-down-fade">
+                                <div className={`pt-2 border-t space-y-2.5 animate-slide-down-fade ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                     {user && (
-                                        <form onSubmit={handleChangeAccountPassword} className="space-y-2 pb-2 border-b border-white/[0.04]">
+                                        <form onSubmit={handleChangeAccountPassword} className={`space-y-2 pb-2 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                             <span className="text-[10px] font-bold text-accent uppercase block">Change Password</span>
                                             {passMsg && (
                                                 <p className={`text-[10px] p-1.5 rounded-xl border ${passMsg.type === 'success' ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/30' : 'bg-red-500/20 text-red-500 border-red-500/30'}`}>
@@ -1191,14 +1546,18 @@ export default function UserProfilePopover({ isClosing }) {
                                                 value={currPass}
                                                 onChange={(e) => setCurrPass(e.target.value)}
                                                 placeholder="Current Password"
-                                                className={`w-full ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'} border border-white/10 rounded-xl px-2.5 py-1 text-xs outline-none`}
+                                                className={`w-full border rounded-xl px-2.5 py-1 text-xs outline-none ${
+                                                    isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-white/[0.04] border-white/10 text-white placeholder-white/40'
+                                                }`}
                                             />
                                             <input
                                                 type={showPassText ? "text" : "password"}
                                                 value={newPass}
                                                 onChange={(e) => setNewPass(e.target.value)}
                                                 placeholder="New Password (min 6 chars)"
-                                                className={`w-full ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'} border border-white/10 rounded-xl px-2.5 py-1 text-xs outline-none`}
+                                                className={`w-full border rounded-xl px-2.5 py-1 text-xs outline-none ${
+                                                    isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-white/[0.04] border-white/10 text-white placeholder-white/40'
+                                                }`}
                                             />
                                             <button
                                                 type="submit"
@@ -1213,7 +1572,7 @@ export default function UserProfilePopover({ isClosing }) {
                                     {/* Local AES-256 Key */}
                                     <div className="space-y-1.5">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-bold text-emerald-400 uppercase block">AES-256 Key</span>
+                                            <span className={`text-[10px] font-bold uppercase block ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>AES-256 Key</span>
                                             <button
                                                 type="button"
                                                 onClick={() => setShowPassText(!showPassText)}
@@ -1226,7 +1585,9 @@ export default function UserProfilePopover({ isClosing }) {
                                             type={showPassText ? "text" : "password"}
                                             value={masterPassword}
                                             onChange={(e) => setMasterPassword(e.target.value)}
-                                            className={`w-full ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'} border border-white/10 rounded-xl px-2.5 py-1 text-xs font-mono outline-none`}
+                                            className={`w-full border rounded-xl px-2.5 py-1 text-xs font-mono outline-none ${
+                                                isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900' : 'bg-white/[0.04] border-white/10 text-white'
+                                            }`}
                                         />
                                     </div>
                                 </div>

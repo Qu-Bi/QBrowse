@@ -61,9 +61,17 @@ let liveSmartDarkState = {
     darkExclusions: ['youtube.com', 'github.com', 'figma.com']
 };
 
-// Clean browser User-Agent: Standard desktop Chrome matching Chromium runtime
-const cleanChromeUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
-app.userAgentFallback = cleanChromeUA;
+// Clean browser User-Agent: Standard desktop Chrome matching Chromium runtime & host OS
+const chromePlatformToken =
+    process.platform === 'linux'
+        ? 'X11; Linux x86_64'
+        : process.platform === 'darwin'
+            ? 'Macintosh; Intel Mac OS X 10_15_7'
+            : 'Windows NT 10.0; Win64; x64';
+const CHROME_VERSION = (process.versions && process.versions.chrome) || '134.0.0.0';
+const CHROME_USER_AGENT = `Mozilla/5.0 (${chromePlatformToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_VERSION} Safari/537.36`;
+const cleanChromeUA = CHROME_USER_AGENT;
+app.userAgentFallback = CHROME_USER_AGENT;
 
 function isGoogleAuthUrl(targetUrl) {
     if (!targetUrl || typeof targetUrl !== 'string') return false;
@@ -1306,8 +1314,13 @@ function decrypt(text, key) {
     return res;
 }
 
-function extractVaultItemMeta(p) {
-    if (!p || typeof p !== 'object') {
+function extractVaultItemMeta(rawTitle, item = {}) {
+    if (rawTitle && typeof rawTitle === 'object') {
+        item = rawTitle;
+        rawTitle = item.title || '';
+    }
+    const baseItem = item && typeof item === 'object' ? item : {};
+    if (typeof rawTitle !== 'string' && (!item || typeof item !== 'object')) {
         return {
             cleanTitle: '',
             itemType: 'login',
@@ -1315,18 +1328,20 @@ function extractVaultItemMeta(p) {
             passkeyData: null,
             cardData: null,
             addressData: null,
-            notes: ''
+            notes: '',
+            totpSecret: null
         };
     }
 
-    let cleanTitle = p.title || '';
+    let cleanTitle = typeof rawTitle === 'string' ? rawTitle : (baseItem.title || '');
     let meta = {
-        itemType: p.itemType || 'login',
-        type: p.itemType || 'login',
-        passkeyData: p.passkeyData || null,
-        notes: p.notes || '',
-        cardData: p.cardData || null,
-        addressData: p.addressData || null
+        itemType: baseItem.itemType || 'login',
+        type: baseItem.itemType || 'login',
+        passkeyData: baseItem.passkeyData || null,
+        notes: baseItem.notes || '',
+        cardData: baseItem.cardData || null,
+        addressData: baseItem.addressData || null,
+        totpSecret: baseItem.totpSecret || null
     };
 
     if (cleanTitle.includes('|||')) {
@@ -1335,12 +1350,13 @@ function extractVaultItemMeta(p) {
         try {
             const parsed = JSON.parse(parts[1]);
             meta = {
-                itemType: parsed.type || meta.itemType,
-                type: parsed.type || meta.itemType,
+                itemType: parsed.type || parsed.itemType || meta.itemType,
+                type: parsed.type || parsed.itemType || meta.itemType,
                 notes: parsed.notes || meta.notes || '',
                 passkeyData: parsed.passkeyData || meta.passkeyData,
                 cardData: parsed.cardData || meta.cardData,
-                addressData: parsed.addressData || meta.addressData
+                addressData: parsed.addressData || meta.addressData,
+                totpSecret: parsed.totpSecret || baseItem.totpSecret || null
             };
         } catch (e) {}
     }
@@ -1352,7 +1368,8 @@ function extractVaultItemMeta(p) {
         passkeyData: meta.passkeyData,
         cardData: meta.cardData,
         addressData: meta.addressData,
-        notes: meta.notes
+        notes: meta.notes,
+        totpSecret: meta.totpSecret || null
     };
 }
 
@@ -1408,28 +1425,7 @@ function healAndDecryptVaultItems(vault, primaryKey, candidatePasswords = []) {
     for (const p of vault.passwords) {
         if (!p || typeof p !== 'object') continue;
 
-        let cleanTitle = p.title || '';
-        let meta = {
-            type: p.itemType || 'login',
-            passkeyData: p.passkeyData || null,
-            notes: p.notes || '',
-            cardData: p.cardData || null,
-            addressData: p.addressData || null
-        };
-        if (cleanTitle.includes('|||')) {
-            const parts = cleanTitle.split('|||');
-            cleanTitle = parts[0];
-            try {
-                const parsed = JSON.parse(parts[1]);
-                meta = {
-                    type: parsed.type || meta.type,
-                    notes: parsed.notes || meta.notes || '',
-                    passkeyData: parsed.passkeyData || meta.passkeyData,
-                    cardData: parsed.cardData || meta.cardData,
-                    addressData: parsed.addressData || meta.addressData
-                };
-            } catch (e) {}
-        }
+        const meta = extractVaultItemMeta(p.title, p);
 
         let rawDecryptedPassword = null;
         let needsReencrypt = false;
@@ -1496,24 +1492,28 @@ function healAndDecryptVaultItems(vault, primaryKey, candidatePasswords = []) {
             // Undecryptable item: NEVER return raw ciphertext to renderer
             decryptedResults.push({
                 ...p,
-                title: cleanTitle,
-                itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
+                title: meta.cleanTitle,
+                rawTitle: p.title,
+                itemType: meta.itemType || (meta.passkeyData ? 'passkey' : 'login'),
                 passkeyData: meta.passkeyData,
                 cardData: meta.cardData,
                 addressData: meta.addressData,
                 notes: meta.notes || '',
+                totpSecret: meta.totpSecret,
                 password: '',
                 decryptionFailed: true
             });
         } else {
             decryptedResults.push({
                 ...p,
-                title: cleanTitle,
-                itemType: meta.type || (meta.passkeyData ? 'passkey' : 'login'),
+                title: meta.cleanTitle,
+                rawTitle: p.title,
+                itemType: meta.itemType || (meta.passkeyData ? 'passkey' : 'login'),
                 passkeyData: meta.passkeyData,
                 cardData: meta.cardData,
                 addressData: meta.addressData,
                 notes: meta.notes || '',
+                totpSecret: meta.totpSecret,
                 password: rawDecryptedPassword
             });
         }
@@ -1949,36 +1949,78 @@ function createWindow(options = {}) {
             return Array.from(browserWindows).find(w => w && !w.isDestroyed()) || null;
         };
 
-        const isLikelyAuthOrOAuthPopupUrl = (targetUrl) => {
+        const STANDALONE_IDP_POPUP_HOSTS = [
+            'accounts.google.',
+            'appleid.apple.com',
+            'login.microsoftonline.com',
+            'login.live.com',
+            'auth0.com',
+            'accounts.spotify.com',
+            'checkout.stripe.com'
+        ];
+
+        const isLibrusDomain = (targetUrl) => {
             if (!targetUrl || typeof targetUrl !== 'string') return false;
-            const lower = targetUrl.toLowerCase();
-            return (
-                lower.includes('/oauth') ||
-                lower.includes('/authorize') ||
-                lower.includes('/auth/') ||
-                lower.includes('accounts.google.com') ||
-                lower.includes('appleid.apple.com') ||
-                lower.includes('github.com/login') ||
-                lower.includes('login.microsoftonline.com') ||
-                lower.includes('login.live.com') ||
-                lower.includes('discord.com/oauth2') ||
-                lower.includes('facebook.com/dialog/oauth') ||
-                lower.includes('api.twitter.com/oauth') ||
-                lower.includes('x.com/i/oauth2') ||
-                lower.includes('auth0.com') ||
-                lower.includes('clerk.') ||
-                lower.includes('firebaseapp.com/__/auth') ||
-                lower.includes('supabase.co/auth') ||
-                lower.includes('paypal.com/checkoutnow') ||
-                lower.includes('checkout.stripe.com') ||
-                lower.includes('accounts.spotify.com') ||
-                lower.includes('id.twitch.tv/oauth2') ||
-                lower.includes('linkedin.com/oauth') ||
-                lower.includes('slack.com/oauth') ||
-                lower.includes('openid') ||
-                lower.includes('saml') ||
-                lower.includes('sso.')
+            try {
+                const host = new URL(targetUrl).hostname.toLowerCase();
+                return host === 'librus.pl' || host.endsWith('.librus.pl');
+            } catch (_) {
+                return false;
+            }
+        };
+
+        const isLikelyAuthOrOAuthPopupUrl = (rawUrl, frameName = '') => {
+            if (!rawUrl || typeof rawUrl !== 'string') return false;
+            const trimmedFrame = typeof frameName === 'string' ? frameName.trim() : '';
+            const hasNamedPopupFrame = Boolean(trimmedFrame && !/^_(blank|self|parent|top)$/i.test(trimmedFrame));
+
+            if (rawUrl === 'about:blank') {
+                return hasNamedPopupFrame && /(auth|oauth|gsi|google|login|signin|popup|credential)/i.test(trimmedFrame);
+            }
+
+            // Never treat Librus portal/synergia/api/konto navigations as detached OAuth popups
+            if (isLibrusDomain(rawUrl)) {
+                return false;
+            }
+
+            let host = '';
+            let pathAndSearch = '';
+            const lower = rawUrl.toLowerCase();
+            try {
+                const parsed = new URL(rawUrl);
+                host = parsed.hostname.toLowerCase();
+                pathAndSearch = (parsed.pathname + parsed.search).toLowerCase();
+            } catch (_) {
+                pathAndSearch = lower;
+            }
+
+            const isKnownIdpPopup = (
+                STANDALONE_IDP_POPUP_HOSTS.some((idp) => host === idp || host.endsWith('.' + idp) || host.startsWith(idp)) ||
+                (host.endsWith('github.com') && pathAndSearch.includes('/login/oauth')) ||
+                (host.endsWith('discord.com') && pathAndSearch.includes('/oauth2')) ||
+                (host.endsWith('facebook.com') && (/\/v\d+(\.\d+)?\/dialog\/oauth/.test(pathAndSearch) || pathAndSearch.includes('/dialog/oauth'))) ||
+                ((host.endsWith('twitter.com') || host.endsWith('x.com')) && (pathAndSearch.includes('/oauth') || pathAndSearch.includes('/i/oauth2'))) ||
+                (host.endsWith('firebaseapp.com') && pathAndSearch.includes('/__/auth')) ||
+                (host.endsWith('supabase.co') && pathAndSearch.includes('/auth')) ||
+                (host.endsWith('paypal.com') && pathAndSearch.includes('/checkoutnow')) ||
+                (host === 'id.twitch.tv' && pathAndSearch.includes('/oauth2')) ||
+                (host.endsWith('linkedin.com') && pathAndSearch.includes('/oauth')) ||
+                (host.endsWith('slack.com') && pathAndSearch.includes('/oauth')) ||
+                host.startsWith('clerk.')
             );
+
+            if (isKnownIdpPopup) return true;
+
+            // Only treat generic /oauth, /authorize, or client_id= URLs as popup candidates when explicitly given a named popup frame
+            if (hasNamedPopupFrame && (
+                pathAndSearch.includes('/oauth') ||
+                pathAndSearch.includes('/authorize') ||
+                pathAndSearch.includes('client_id=')
+            )) {
+                return true;
+            }
+
+            return false;
         };
 
         // Handle window.open: Distinguish genuine OAuth/Auth popups from normal website link navigations
@@ -2000,12 +2042,34 @@ function createWindow(options = {}) {
 
             const featLower = (features || '').toLowerCase();
             const hasNoOpener = featLower.includes('noopener') || featLower.includes('noreferrer');
-            const isPopupWithDims = Boolean(featLower && (featLower.includes('width=') || featLower.includes('height=')));
-            const isExplicitPopupFlag = Boolean(featLower && (featLower.includes('popup=true') || featLower.includes('popup=1')));
-            const isAuthPopup = isLikelyAuthOrOAuthPopupUrl(url);
+            const hasPopupFeatures = typeof features === 'string' && /\b(width|height|popup)\s*=/i.test(features);
+            const isExplicitPopupDisposition = disposition === 'new-window' || disposition === 'new-popup' || hasPopupFeatures;
+            const isTabDisposition = (disposition === 'foreground-tab' || disposition === 'background-tab') && !hasPopupFeatures;
 
-            // Only open a separate child popup window for genuine OAuth/Auth flows or explicit dimensional popups without noopener
-            const shouldOpenAsPopupWindow = !hasNoOpener && (isAuthPopup || isExplicitPopupFlag || (isPopupWithDims && disposition === 'new-popup'));
+            const routeToNewTab = () => {
+                if (url && url !== 'about:blank') {
+                    const targetWin = getTargetWindow();
+                    if (targetWin && !targetWin.isDestroyed()) {
+                        targetWin.webContents.send('open-new-tab-url', { url, disposition });
+                    }
+                }
+                return { action: 'deny' };
+            };
+
+            // Tab dispositions (and noopener/noreferrer links) without explicit popup features ALWAYS open in a QBrowse tab
+            if (isTabDisposition || hasNoOpener) {
+                return routeToNewTab();
+            }
+
+            // Never hijack Librus navigations into a detached popup unless explicitly opened as a sized popup window
+            if (isLibrusDomain(url) && !((disposition === 'new-window' || disposition === 'new-popup') && hasPopupFeatures)) {
+                return routeToNewTab();
+            }
+
+            const isAuthPopup = isLikelyAuthOrOAuthPopupUrl(url, frameName);
+
+            // Only open a separate child popup window for explicit popup intents (explicit popup features or known auth/OAuth popup flows)
+            const shouldOpenAsPopupWindow = isExplicitPopupDisposition && (hasPopupFeatures || isAuthPopup);
 
             if (shouldOpenAsPopupWindow) {
                 let popupWidth = 800;
@@ -2043,7 +2107,7 @@ function createWindow(options = {}) {
                         hasShadow: true,
                         autoHideMenuBar: true,
                         backgroundColor: '#121214',
-                        userAgent: cleanChromeUA,
+                        userAgent: CHROME_USER_AGENT,
                         webPreferences: {
                             preload: path.join(__dirname, 'webview_preload.cjs'),
                             session: contents.session, // CRITICAL: share session with the caller webview for cookies & auth state
@@ -2056,13 +2120,7 @@ function createWindow(options = {}) {
             }
 
             // Normal browsing links (e.g. target="_blank" or general window.open) -> Route to a new tab in the caller's QBrowse window
-            if (url && url !== 'about:blank') {
-                const targetWin = getTargetWindow();
-                if (targetWin && !targetWin.isDestroyed()) {
-                    targetWin.webContents.send('open-new-tab-url', { url, disposition });
-                }
-            }
-            return { action: 'deny' };
+            return routeToNewTab();
         });
 
         // Handle child windows created via window.open (e.g. OAuth popup windows)
@@ -2322,21 +2380,8 @@ function createWindow(options = {}) {
                 contents.setBackgroundColor(effectiveScheme === 'dark' ? '#121212' : '#ffffff');
             } catch (_) {}
 
-            const currentMode = performanceEngine.getSettings().mode;
-            if (currentMode === 'ultra') {
-                contents.setBackgroundThrottling(false);
-            } else {
-                contents.setBackgroundThrottling(true);
-                contents.on('media-started-playing', () => {
-                    contents.setBackgroundThrottling(false);
-                });
-                contents.on('media-paused', () => {
-                    const latestMode = performanceEngine.getSettings().mode;
-                    if (latestMode !== 'ultra') {
-                        contents.setBackgroundThrottling(true);
-                    }
-                });
-            }
+            // Never throttle active guest webviews on media-paused so YouTube ad -> main video transitions never stall
+            contents.setBackgroundThrottling(false);
         } else {
             // Main application window stays unthrottled for UI responsiveness
             contents.setBackgroundThrottling(false);
@@ -2593,14 +2638,92 @@ app.on('browser-window-created', (event, win) => {
     }
 });
 
-function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl) {
+const RELATED_FIRST_PARTY_FAMILIES = [
+    ['librus.pl', 'konto.librus.pl', 'synergia.librus.pl', 'api.librus.pl', 'portal.librus.pl'],
+    ['google.com', 'youtube.com', 'youtu.be', 'googlevideo.com', 'ytimg.com', 'ggpht.com', 'youtube-nocookie.com', 'googleapis.com', 'gstatic.com', 'accounts.google.com', 'googleusercontent.com', 'gmail.com', 'doubleclick.net', 'googlesyndication.com', 'googleadservices.com'],
+    ['microsoft.com', 'live.com', 'microsoftonline.com', 'office.com', 'office365.com'],
+    ['allegro.pl', 'allegrostatic.com'],
+    ['gov.pl', 'login.gov.pl', 'pz.gov.pl']
+];
+
+function extractHostname(urlOrHost) {
+    if (!urlOrHost || typeof urlOrHost !== 'string') return '';
+    const trimmed = urlOrHost.trim();
+    if (!trimmed || trimmed === 'about:blank') return '';
+    try {
+        if (trimmed.includes('://')) {
+            return new URL(trimmed).hostname.toLowerCase().replace(/\.$/, '');
+        }
+        return trimmed.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+    } catch (_) {
+        return '';
+    }
+}
+
+function getBaseDomain(urlOrHost) {
+    const host = extractHostname(urlOrHost);
+    if (!host) return '';
+    const parts = host.split('.').filter(Boolean);
+    if (parts.length <= 2) return host;
+    const tld2 = parts.slice(-2).join('.');
+    if (['co.uk', 'com.au', 'co.nz', 'co.jp', 'com.br', 'com.pl', 'org.pl', 'edu.pl', 'gov.pl'].includes(tld2)) {
+        return parts.slice(-3).join('.');
+    }
+    return parts.slice(-2).join('.');
+}
+
+function areRelatedFirstPartyDomains(domainA, domainB) {
+    const hostA = extractHostname(domainA);
+    const hostB = extractHostname(domainB);
+    if (!hostA || !hostB) return false;
+    const baseA = getBaseDomain(hostA);
+    const baseB = getBaseDomain(hostB);
+    if (hostA === hostB || (baseA && baseA === baseB)) return true;
+
+    const matchesEntry = (host, base, entry) => (
+        host === entry || host.endsWith('.' + entry) || base === entry
+    );
+    return RELATED_FIRST_PARTY_FAMILIES.some((family) => (
+        family.some((entry) => matchesEntry(hostA, baseA, entry)) &&
+        family.some((entry) => matchesEntry(hostB, baseB, entry))
+    ));
+}
+
+function isAuthOrSsoFlowUrl(targetUrl) {
+    if (!targetUrl || typeof targetUrl !== 'string') return false;
+    const lower = targetUrl.toLowerCase();
+    return (
+        lower.includes('/oauth') ||
+        lower.includes('/authorize') ||
+        lower.includes('/auth/') ||
+        lower.includes('/signin') ||
+        lower.includes('/login') ||
+        lower.includes('/sso') ||
+        lower.includes('/saml') ||
+        lower.includes('/openid') ||
+        lower.includes('/callback') ||
+        lower.includes('login.gov.pl') ||
+        lower.includes('login.microsoftonline.com') ||
+        lower.includes('login.live.com') ||
+        lower.includes('appleid.apple.com')
+    );
+}
+
+function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl, initiatorUrl = '') {
     if (!requestUrl) return false;
     try {
-        const reqHost = new URL(requestUrl).hostname.toLowerCase();
-        
+        const reqHost = extractHostname(requestUrl);
+        if (!reqHost) return false;
+
         // Critical Auth, Identity & Platform domains - NEVER block cookies or tokens for authentication flows!
         if (
             reqHost.includes('google.com') ||
+            reqHost.includes('youtube.com') ||
+            reqHost.includes('youtu.be') ||
+            reqHost.includes('googlevideo.com') ||
+            reqHost.includes('ytimg.com') ||
+            reqHost.includes('ggpht.com') ||
+            reqHost.includes('youtube-nocookie.com') ||
             reqHost.includes('gstatic.com') ||
             reqHost.includes('googleapis.com') ||
             reqHost.includes('googleusercontent.com') ||
@@ -2613,7 +2736,9 @@ function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl) {
             reqHost.includes('twitter.com') ||
             reqHost.includes('x.com') ||
             reqHost.includes('microsoft.com') ||
+            reqHost.includes('microsoftonline.com') ||
             reqHost.includes('live.com') ||
+            reqHost.includes('office.com') ||
             reqHost.includes('voxmedia.com') ||
             reqHost.includes('cloudflare.com') ||
             reqHost.includes('challenges.cloudflare.com') ||
@@ -2624,36 +2749,21 @@ function isThirdPartyCookieRequest(requestUrl, referrerUrl, mainFrameUrl) {
             return false;
         }
 
-        const getBaseDomain = (host) => {
-            if (!host) return '';
-            const parts = host.split('.');
-            if (parts.length <= 2) return host;
-            const tld2 = parts.slice(-2).join('.');
-            if (['co.uk', 'com.au', 'co.nz', 'co.jp', 'com.br'].includes(tld2)) {
-                return parts.slice(-3).join('.');
-            }
-            return parts.slice(-2).join('.');
-        };
-
         const targetBase = getBaseDomain(reqHost);
+        const contextUrls = [referrerUrl, mainFrameUrl, initiatorUrl].filter(Boolean);
+        let hasKnownContext = false;
 
-        // Check against referrer
-        if (referrerUrl) {
-            try {
-                const refHost = new URL(referrerUrl).hostname.toLowerCase();
-                const refBase = getBaseDomain(refHost);
-                if (targetBase === refBase) return false; // First-party request
-            } catch (_) {}
+        for (const ctxUrl of contextUrls) {
+            const ctxHost = extractHostname(ctxUrl);
+            if (!ctxHost) continue;
+            hasKnownContext = true;
+            if (getBaseDomain(ctxHost) === targetBase || areRelatedFirstPartyDomains(reqHost, ctxHost)) {
+                return false; // First-party or related SSO family request
+            }
         }
 
-        // Check against active webview / main frame URL
-        if (mainFrameUrl) {
-            try {
-                const mfHost = new URL(mainFrameUrl).hostname.toLowerCase();
-                const mfBase = getBaseDomain(mfHost);
-                if (targetBase === mfBase) return false; // First-party request
-            } catch (_) {}
-        }
+        // If tab origin/referrer isn't established yet (e.g. early incognito navigation), do not strip
+        if (!hasKnownContext) return false;
 
         return true;
     } catch (_) {
@@ -2666,44 +2776,123 @@ app.setAppUserModelId('com.qbrowse.app');
 
 const configuredSessions = new WeakSet();
 
+function resolveCookieRequestContext(details) {
+    let ownerUrl = details.referrer || '';
+    if (typeof details.webContentsId === 'number' && details.webContentsId > 0) {
+        try {
+            const wc = webContents.fromId(details.webContentsId);
+            if (wc && !wc.isDestroyed()) {
+                const wcUrl = wc.getURL();
+                if (wcUrl && wcUrl !== 'about:blank') {
+                    ownerUrl = wcUrl;
+                }
+            }
+        } catch (_) {}
+    }
+    if (!ownerUrl) ownerUrl = latestActiveWebviewUrl;
+
+    const isGoogleAuth = (
+        isGoogleAuthUrl(details.url) ||
+        isGoogleAuthUrl(details.referrer) ||
+        isGoogleAuthUrl(ownerUrl)
+    );
+    return { ownerUrl, isGoogleAuth };
+}
+
+function isYouTubeOrigin(urlOrHost) {
+    const host = extractHostname(urlOrHost);
+    if (!host) return false;
+    return (
+        host === 'youtube.com' ||
+        host.endsWith('.youtube.com') ||
+        host === 'youtu.be' ||
+        host.endsWith('.youtu.be') ||
+        host === 'youtube-nocookie.com' ||
+        host.endsWith('.youtube-nocookie.com')
+    );
+}
+
+function shouldStripThirdPartyCookies(details, context) {
+    if (!settingsStore.block3rdParty) return false;
+    if (!details || details.resourceType === 'mainFrame') return false;
+    if (context.isGoogleAuth) return false;
+
+    const { ownerUrl } = context;
+    if (
+        isYouTubeOrigin(ownerUrl) ||
+        isYouTubeOrigin(details.referrer) ||
+        isYouTubeOrigin(details.initiator)
+    ) {
+        return false;
+    }
+    if (details.resourceType === 'subFrame' && (
+        isAuthOrSsoFlowUrl(details.url) ||
+        isAuthOrSsoFlowUrl(details.referrer) ||
+        isAuthOrSsoFlowUrl(ownerUrl)
+    )) {
+        return false;
+    }
+
+    if (details.statusCode >= 300 && details.statusCode < 400) {
+        return false;
+    }
+
+    const targetBase = getBaseDomain(details.url);
+    if (targetBase && (
+        targetBase === getBaseDomain(ownerUrl) ||
+        targetBase === getBaseDomain(details.referrer) ||
+        targetBase === getBaseDomain(details.initiator)
+    )) {
+        return false;
+    }
+
+    if (
+        areRelatedFirstPartyDomains(details.url, ownerUrl) ||
+        areRelatedFirstPartyDomains(details.url, details.referrer) ||
+        areRelatedFirstPartyDomains(details.url, details.initiator)
+    ) {
+        return false;
+    }
+
+    return isThirdPartyCookieRequest(details.url, details.referrer, ownerUrl, details.initiator);
+}
+
+function deleteHeadersCaseInsensitive(headersObj, targetLowerName) {
+    if (!headersObj) return;
+    for (const key of Object.keys(headersObj)) {
+        if (key.toLowerCase() === targetLowerName) {
+            delete headersObj[key];
+        }
+    }
+}
+
 function setupHeadersHandler(sess) {
     if (!sess || !sess.webRequest) return;
+
+    const secChUaPlatform = process.platform === 'linux' ? '"Linux"' : process.platform === 'darwin' ? '"macOS"' : '"Windows"';
 
     sess.webRequest.onBeforeSendHeaders((details, callback) => {
         delete details.requestHeaders['X-Electron-Version'];
 
-        let isGoogleAuth = isGoogleAuthUrl(details.url) || isGoogleAuthUrl(details.referrer);
-        if (!isGoogleAuth && details.webContentsId) {
-            try {
-                const wc = webContents.fromId(details.webContentsId);
-                if (wc && !wc.isDestroyed()) {
-                    const wcUrl = wc.getURL();
-                    if (isGoogleAuthUrl(wcUrl)) isGoogleAuth = true;
-                }
-            } catch (_) {}
-        }
+        const cookieCtx = resolveCookieRequestContext(details);
 
         // Provide clean Chrome desktop identity for all web browsing and OAuth
-        details.requestHeaders['User-Agent'] = cleanChromeUA;
-        const chromeMajor = (process.versions.chrome || '131').split('.')[0];
+        details.requestHeaders['User-Agent'] = CHROME_USER_AGENT;
+        const chromeMajor = (process.versions.chrome || '134').split('.')[0];
         details.requestHeaders['sec-ch-ua'] = `"Google Chrome";v="${chromeMajor}", "Chromium";v="${chromeMajor}", "Not_A Brand";v="24"`;
         details.requestHeaders['sec-ch-ua-mobile'] = '?0';
-        details.requestHeaders['sec-ch-ua-platform'] = '"Windows"';
+        details.requestHeaders['sec-ch-ua-platform'] = secChUaPlatform;
         if (details.requestHeaders['sec-ch-ua-full-version-list']) {
-            details.requestHeaders['sec-ch-ua-full-version-list'] = `"Google Chrome";v="${process.versions.chrome}", "Chromium";v="${process.versions.chrome}", "Not_A Brand";v="24.0.0.0"`;
+            details.requestHeaders['sec-ch-ua-full-version-list'] = `"Google Chrome";v="${CHROME_VERSION}", "Chromium";v="${CHROME_VERSION}", "Not_A Brand";v="24.0.0.0"`;
         }
 
         if (settingsStore.dnt !== false) {
             details.requestHeaders['DNT'] = '1';
         }
 
-        // Top-level document navigations and authentication flows must NEVER have cookies blocked
-        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame' && !isGoogleAuth) {
-            const is3rd = isThirdPartyCookieRequest(details.url, details.referrer, latestActiveWebviewUrl);
-            if (is3rd) {
-                delete details.requestHeaders['Cookie'];
-                delete details.requestHeaders['cookie'];
-            }
+        // Top-level document navigations, SSO redirects, and first-party/related families must NEVER have cookies stripped
+        if (shouldStripThirdPartyCookies(details, cookieCtx)) {
+            deleteHeadersCaseInsensitive(details.requestHeaders, 'cookie');
         }
 
         callback({ cancel: false, requestHeaders: details.requestHeaders });
@@ -2711,27 +2900,14 @@ function setupHeadersHandler(sess) {
 
     sess.webRequest.onHeadersReceived((details, callback) => {
         const responseHeaders = { ...details.responseHeaders };
-        let isGoogleAuth = isGoogleAuthUrl(details.url) || isGoogleAuthUrl(details.referrer);
-        if (!isGoogleAuth && details.webContentsId) {
-            try {
-                const wc = webContents.fromId(details.webContentsId);
-                if (wc && !wc.isDestroyed()) {
-                    const wcUrl = wc.getURL();
-                    if (isGoogleAuthUrl(wcUrl)) isGoogleAuth = true;
-                }
-            } catch (_) {}
-        }
+        const cookieCtx = resolveCookieRequestContext(details);
 
-        if (settingsStore.block3rdParty && details.resourceType !== 'mainFrame' && !isGoogleAuth) {
-            const is3rd = isThirdPartyCookieRequest(details.url, details.referrer, latestActiveWebviewUrl);
-            if (is3rd) {
-                delete responseHeaders['set-cookie'];
-                delete responseHeaders['Set-Cookie'];
-            }
+        if (shouldStripThirdPartyCookies(details, cookieCtx)) {
+            deleteHeadersCaseInsensitive(responseHeaders, 'set-cookie');
         }
 
         const isCloudflare = details.url && (details.url.includes('cloudflare.com') || details.url.includes('challenges.cloudflare.com'));
-        if (localDialogPort && !isGoogleAuth && !isCloudflare) {
+        if (localDialogPort && !cookieCtx.isGoogleAuth && !isCloudflare) {
             for (const headerKey of Object.keys(responseHeaders)) {
                 const lowerKey = headerKey.toLowerCase();
                 if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
@@ -3332,14 +3508,13 @@ app.whenReady().then(async () => {
           console.error('Components failed to load:', e);
       }
 
-      // Clean YouTube and Google login stuck/rejected state asynchronously
+      // Clean Google login stuck/rejected state asynchronously
       try {
           const sessionsToClean = [
               session.defaultSession,
               session.fromPartition('persist:profile_default')
           ];
           for (const s of sessionsToClean) {
-              s.clearStorageData({ origin: 'https://www.youtube.com', storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
               s.clearStorageData({ origin: 'https://accounts.google.com', storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
           }
       } catch (_) {}
@@ -5694,6 +5869,10 @@ ipcMain.handle('vault-change-password', async (event, oldPassword, newPassword) 
         // Re-encrypt every password item with newKey
         vault.passwords = decryptedItems.map(item => {
             const copy = { ...item };
+            if (copy.rawTitle !== undefined) {
+                copy.title = copy.rawTitle;
+                delete copy.rawTitle;
+            }
             delete copy.decryptionFailed;
             return {
                 ...copy,
@@ -6503,7 +6682,7 @@ ipcMain.handle('ai-web-search', async (event, query) => {
         // Use native fetch in the Node backend to bypass CORS
         const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': CHROME_USER_AGENT
             }
         });
         
@@ -6984,15 +7163,33 @@ function checkIsDefaultBrowserAsync(forceFresh = false) {
                 });
             } else if (process.platform === 'linux') {
                 const { exec } = require('child_process');
-                exec('xdg-settings get default-web-browser', {
-                    encoding: 'utf8',
-                    timeout: 2000
-                }, (err, stdout) => {
-                    const isDefault = !err && stdout ? /qbrowse/i.test(stdout.trim()) : false;
+                const runQuery = (cmd) => new Promise((res) => {
+                    exec(cmd, { encoding: 'utf8', timeout: 2000 }, (err, stdout) => {
+                        res(!err && stdout ? stdout.trim() : '');
+                    });
+                });
+
+                (async () => {
+                    let isDefault = false;
+                    const xdgSettingsOut = await runQuery('xdg-settings get default-web-browser');
+                    if (xdgSettingsOut && /qbrowse/i.test(xdgSettingsOut)) {
+                        isDefault = true;
+                    } else {
+                        const xdgMimeOut = await runQuery('xdg-mime query default x-scheme-handler/http');
+                        if (xdgMimeOut && /qbrowse/i.test(xdgMimeOut)) {
+                            isDefault = true;
+                        } else {
+                            const gioOut = await runQuery('gio mime x-scheme-handler/http');
+                            const gioFirstLine = gioOut.split(/\r?\n/)[0] || '';
+                            if (gioFirstLine && /qbrowse/i.test(gioFirstLine)) {
+                                isDefault = true;
+                            }
+                        }
+                    }
                     _cachedDefaultBrowserStatus = isDefault;
                     _cachedDefaultBrowserTimestamp = Date.now();
                     resolve(isDefault);
-                });
+                })();
             } else {
                 const isHttp = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('http');
                 const isHttps = typeof app.isDefaultProtocolClient === 'function' && app.isDefaultProtocolClient('https');
@@ -7021,14 +7218,84 @@ function checkIsDefaultBrowser() {
     return Boolean(isHttp && isHttps);
 }
 
+async function openMacDefaultBrowserSettings(preferGeneralFallback = false) {
+    try {
+        await shell.openExternal('x-apple.systempreferences:com.apple.Desktop-Settings.extension');
+        return true;
+    } catch (_) {
+        if (preferGeneralFallback) {
+            try {
+                await shell.openExternal('x-apple.systempreferences:com.apple.preference.general');
+                return true;
+            } catch (__) {}
+        }
+        try {
+            const { exec } = require('child_process');
+            await new Promise((resolve, reject) => {
+                exec('open -a "System Settings"', (err) => (err ? reject(err) : resolve()));
+            });
+            return true;
+        } catch (__) {
+            if (!preferGeneralFallback) {
+                try {
+                    await shell.openExternal('x-apple.systempreferences:com.apple.preference.general');
+                    return true;
+                } catch (___) {}
+            }
+            return false;
+        }
+    }
+}
+
+function tryLaunchLinuxSettingsCmd(cmd, args = []) {
+    return new Promise((resolve) => {
+        try {
+            const { spawn } = require('child_process');
+            const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+            let settled = false;
+            const settle = (ok) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve(ok);
+            };
+            const timer = setTimeout(() => {
+                try { child.unref(); } catch (_) {}
+                settle(true);
+            }, 600);
+            child.once('error', () => settle(false));
+            child.once('exit', (code) => settle(code === 0));
+        } catch (_) {
+            resolve(false);
+        }
+    });
+}
+
+async function openLinuxDefaultAppsSettings() {
+    const candidates = [
+        ['xdg-open', ['settings://applications']],
+        ['gnome-control-center', ['default-apps']],
+        ['gnome-control-center', ['applications']],
+        ['systemsettings', ['kcm_componentchooser']],
+        ['systemsettings5', ['kcm_componentchooser']],
+        ['xfce4-mime-settings', []]
+    ];
+    for (const [cmd, args] of candidates) {
+        if (await tryLaunchLinuxSettingsCmd(cmd, args)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Default Browser Handlers
 ipcMain.handle('system-check-default-browser', async (event, options = {}) => {
     try {
         const forceFresh = Boolean(options && options.force);
         const isDefault = await checkIsDefaultBrowserAsync(forceFresh);
-        return { isDefault };
+        return { isDefault, platform: process.platform };
     } catch (e) {
-        return { isDefault: false, error: e.message };
+        return { isDefault: false, platform: process.platform, error: e.message };
     }
 });
 
@@ -7068,18 +7335,40 @@ ipcMain.handle('system-set-default-browser', async () => {
                         await shell.openExternal('ms-settings:defaultapps');
                     } catch (_) {}
                 }
-                return { success: true, isDefault: false, openedSystemSettings: true };
+                return { success: true, isDefault: false, openedSystemSettings: true, platform: process.platform };
             }
-            return { success: true, isDefault: true, openedSystemSettings: false };
+            return { success: true, isDefault: true, openedSystemSettings: false, platform: process.platform };
         } else if (process.platform === 'linux') {
             ensureLinuxDesktopEntry();
-            try {
-                const { execSync } = require('child_process');
-                execSync('xdg-settings set default-web-browser qbrowse.desktop', { stdio: ['ignore', 'pipe', 'ignore'] });
-                execSync('xdg-mime default qbrowse.desktop x-scheme-handler/http x-scheme-handler/https text/html application/xhtml+xml', { stdio: ['ignore', 'pipe', 'ignore'] });
-            } catch (_) {}
+            const { execSync } = require('child_process');
+            const cmds = [
+                'xdg-settings set default-web-browser qbrowse.desktop',
+                'xdg-mime default qbrowse.desktop x-scheme-handler/http',
+                'xdg-mime default qbrowse.desktop x-scheme-handler/https',
+                'xdg-mime default qbrowse.desktop text/html',
+                'xdg-mime default qbrowse.desktop application/xhtml+xml',
+                'gio mime x-scheme-handler/http qbrowse.desktop',
+                'gio mime x-scheme-handler/https qbrowse.desktop'
+            ];
+            for (const cmd of cmds) {
+                try {
+                    execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 });
+                } catch (_) {}
+            }
             const isDefault = await checkIsDefaultBrowserAsync(true);
-            return { success: true, isDefault, openedSystemSettings: false };
+            return { success: true, isDefault, openedSystemSettings: false, platform: process.platform };
+        } else if (process.platform === 'darwin') {
+            if (typeof app.setAsDefaultProtocolClient === 'function') {
+                try { app.setAsDefaultProtocolClient('http'); } catch (_) {}
+                try { app.setAsDefaultProtocolClient('https'); } catch (_) {}
+                try { app.setAsDefaultProtocolClient('qbrowse'); } catch (_) {}
+            }
+            const isDefault = await checkIsDefaultBrowserAsync(true);
+            let openedSystemSettings = false;
+            if (!isDefault) {
+                openedSystemSettings = await openMacDefaultBrowserSettings(false);
+            }
+            return { success: true, isDefault, openedSystemSettings, platform: process.platform };
         } else {
             if (typeof app.setAsDefaultProtocolClient === 'function') {
                 try { app.setAsDefaultProtocolClient('http'); } catch (_) {}
@@ -7087,10 +7376,10 @@ ipcMain.handle('system-set-default-browser', async () => {
                 try { app.setAsDefaultProtocolClient('qbrowse'); } catch (_) {}
             }
             const isDefault = await checkIsDefaultBrowserAsync(true);
-            return { success: true, isDefault, openedSystemSettings: false };
+            return { success: true, isDefault, openedSystemSettings: false, platform: process.platform };
         }
     } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, platform: process.platform, error: e.message };
     }
 });
 
@@ -7106,12 +7395,11 @@ ipcMain.handle('system-open-default-apps-settings', async () => {
             return { success: true };
         } else if (process.platform === 'linux') {
             ensureLinuxDesktopEntry();
-            const { exec } = require('child_process');
-            exec('gnome-control-center default-apps || xfce4-mime-settings || kcmshell5 componentchooser || systemsettings5');
-            return { success: true };
+            const opened = await openLinuxDefaultAppsSettings();
+            return { success: opened };
         } else if (process.platform === 'darwin') {
-            await shell.openExternal('x-apple.systempreferences:com.apple.preference.general');
-            return { success: true };
+            const opened = await openMacDefaultBrowserSettings(true);
+            return { success: opened };
         }
         return { success: false };
     } catch (e) {

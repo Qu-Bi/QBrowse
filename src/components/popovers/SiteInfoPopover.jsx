@@ -4,6 +4,7 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import CustomSelect from '../common/CustomSelect';
 import usePopoverAnchor from '../../hooks/usePopoverAnchor';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 
 export default function SiteInfoPopover({ isClosing }) {
     const theme = useUIStore(state => state.theme);
@@ -115,12 +116,8 @@ export default function SiteInfoPopover({ isClosing }) {
         <div 
             id="site-info-popover"
             onClick={e => e.stopPropagation()} 
-            style={anchor.style}
-            className={`absolute z-[80] w-72 rounded-2xl backdrop-blur-3xl p-3.5 flex flex-col gap-3 transition-colors ${
-                isBright
-                    ? 'bg-white/85 border border-black/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.14)] text-zinc-900'
-                    : 'bg-[#0c0d14]/78 border border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.85)] text-white'
-            } ${
+            style={{ ...anchor.style, ...getLiquidGlassInlineStyle(isBright) }}
+            className={`absolute z-[80] w-72 rounded-2xl p-3.5 flex flex-col gap-3 transition-colors ${getLiquidGlassSurfaceClasses(isBright)} ${
                 isClosing ? 'animate-pop-out' : 'animate-pop-in'
             }`}
         >
@@ -149,7 +146,7 @@ export default function SiteInfoPopover({ isClosing }) {
                                     Secure
                                 </span>
                             )}
-                            <button onClick={closePopover} className={`p-0.5 rounded-md transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}>
+                            <button onClick={closePopover} className={`p-0.5 rounded-md transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}>
                                 <X size={12} />
                             </button>
                         </div>
@@ -158,11 +155,11 @@ export default function SiteInfoPopover({ isClosing }) {
             })()}
 
             {/* Cookies Info Row */}
-            <div className={`pt-2.5 border-t flex items-center justify-between text-xs ${isDark ? 'border-white/5' : 'border-black/5'}`}>
-                <div className={`flex items-center gap-2 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                    <Cookie size={13} className="text-amber-500/80" />
+            <div className={`pt-2.5 border-t flex items-center justify-between text-xs ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}>
+                <div className={`flex items-center gap-2 ${isBright ? 'text-zinc-700' : 'text-white/60'}`}>
+                    <Cookie size={13} className={isBright ? 'text-amber-600' : 'text-amber-500/80'} />
                     <span className="text-[11px] font-medium">Cookies in use</span>
-                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isBright ? 'bg-black/5 text-zinc-600' : 'text-white/40 bg-white/5'}`}>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isBright ? 'bg-black/5 text-zinc-700' : 'text-white/45 bg-white/5'}`}>
                         {cookiesCount}
                     </span>
                 </div>
@@ -178,7 +175,7 @@ export default function SiteInfoPopover({ isClosing }) {
                     <span className={isBright ? "text-zinc-300" : "text-white/20"}>|</span>
                     <button 
                         onClick={() => { closePopover(); openModal('cookies'); }} 
-                        className="text-[10px] text-accent hover:underline font-medium transition cursor-pointer"
+                        className={`text-[10px] hover:underline font-medium transition cursor-pointer ${isBright ? 'text-amber-700' : 'text-accent'}`}
                     >
                         Manage
                     </button>
@@ -186,8 +183,8 @@ export default function SiteInfoPopover({ isClosing }) {
             </div>
 
             {/* Permissions List */}
-            <div className={`pt-2.5 border-t flex flex-col gap-2 ${isDark ? 'border-white/5' : 'border-black/5'}`}>
-                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
+            <div className={`pt-2.5 border-t flex flex-col gap-2 ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}>
+                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                     Site Permissions
                 </span>
 
@@ -198,8 +195,8 @@ export default function SiteInfoPopover({ isClosing }) {
                         return (
                             <div key={item.key} className={`flex items-center justify-between py-1 px-1.5 rounded-lg transition ${isBright ? 'hover:bg-black/5' : 'hover:bg-white/5'}`}>
                                 <div className="flex items-center gap-2">
-                                    <Icon size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
-                                    <span className={`text-[11px] font-medium ${isDark ? 'text-white/80' : 'text-zinc-700'}`}>
+                                    <Icon size={13} className={isBright ? 'text-zinc-500' : 'text-white/45'} />
+                                    <span className={`text-[11px] font-medium ${isDark ? 'text-white/80' : 'text-zinc-800'}`}>
                                         {item.label}
                                     </span>
                                 </div>
@@ -221,10 +218,10 @@ export default function SiteInfoPopover({ isClosing }) {
             </div>
 
             {/* Footer Reset */}
-            <div className={`pt-2 border-t flex items-center justify-between ${isDark ? 'border-white/5' : 'border-black/5'}`}>
+            <div className={`pt-2 border-t flex items-center justify-between ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}>
                 <button 
                     onClick={handleResetPermissions} 
-                    className={`text-[10px] transition flex items-center gap-1 cursor-pointer ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white/80'}`}
+                    className={`text-[10px] transition flex items-center gap-1 cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-white/45 hover:text-white/80'}`}
                 >
                     <RotateCcw size={10} /> Reset all permissions
                 </button>

@@ -64,6 +64,7 @@ export default {
         tabs: {
             appearance: "Apariencia y Temas",
             layout: "Diseño y Barras",
+            typography: "Tipografía y Fuentes",
             spaces: "Espacios de trabajo",
             accessibility: "Accesibilidad",
             privacy: "Privacidad y Seguridad",

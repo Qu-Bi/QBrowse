@@ -96,10 +96,65 @@ const triggerVaultSync = () => {
 
 let inactivityTimer = null;
 
-// Immediately purge legacy plaintext PIN and session password keys
+// Immediately purge legacy plaintext PIN, session password, and pending cloud vault keys
+function purgeLegacyPendingCloudVault() {
+    try {
+        localStorage.removeItem('qbrowse_vault_cloud_pending');
+    } catch (_) {}
+}
+
+async function applyPendingCloudVault(get, set) {
+    const pendingRemote = get().cloudVaultBackup;
+    if (pendingRemote && Array.isArray(pendingRemote) && pendingRemote.length > 0) {
+        await get().mergeRemoteVault(pendingRemote);
+        set({ cloudVaultBackup: null });
+    }
+    purgeLegacyPendingCloudVault();
+}
+
+async function runPostUnlockSync(get, set) {
+    if (typeof window !== 'undefined' && window.__syncStore) {
+        const syncState = window.__syncStore.getState();
+        if (typeof syncState.syncVaultOnUnlock === 'function' && syncState.user && syncState.masterPassword && syncState.syncCategories?.vault !== false) {
+            syncState.syncVaultOnUnlock().catch(() => {});
+            return;
+        }
+        await applyPendingCloudVault(get, set);
+        if (typeof syncState.syncVaultOnUnlock !== 'function') {
+            triggerVaultSync();
+        }
+        return;
+    }
+    await applyPendingCloudVault(get, set);
+    triggerVaultSync();
+}
+
+function parseVaultTitleAndMeta(remoteItem) {
+    const rawTitle = typeof remoteItem?.title === 'string' ? remoteItem.title : '';
+    const idx = rawTitle.indexOf('|||');
+    let parsedMeta = {};
+    if (idx !== -1) {
+        try {
+            const candidate = JSON.parse(rawTitle.slice(idx + 3));
+            if (candidate && typeof candidate === 'object') parsedMeta = candidate;
+        } catch (_) {}
+    }
+    const cleanTitle = idx !== -1 ? rawTitle.slice(0, idx) : rawTitle;
+    return {
+        cleanTitle,
+        type: remoteItem?.itemType || remoteItem?.type || parsedMeta.type || parsedMeta.itemType || 'login',
+        notes: (remoteItem?.notes ?? parsedMeta.notes ?? '') || '',
+        totpSecret: (remoteItem?.totpSecret ?? parsedMeta.totpSecret ?? null) || null,
+        passkeyData: (remoteItem?.passkeyData ?? parsedMeta.passkeyData ?? null) || null,
+        cardData: (remoteItem?.cardData ?? parsedMeta.cardData ?? null) || null,
+        addressData: (remoteItem?.addressData ?? parsedMeta.addressData ?? null) || null,
+    };
+}
+
 try {
     localStorage.removeItem('qbrowse_vault_pin');
     sessionStorage.removeItem('qbrowse_vault_mp');
+    purgeLegacyPendingCloudVault();
     Object.keys(localStorage).forEach(k => {
         if (k.startsWith('qbrowse_vault_pin_')) {
             localStorage.removeItem(k);
@@ -114,23 +169,18 @@ const useVaultStore = create((set, get) => ({
     pinEnabled: localStorage.getItem('qbrowse_vault_pin_enabled') === 'true',
     biometricsEnabled: localStorage.getItem('qbrowse_vault_bio') === 'true',
     passwords: [],
+    vaultItemCount: 0,
     selectedItemId: null,
     failedAttempts: 0,
     lockoutUntil: null,
     autoLockMinutes: 15,
-    cloudVaultBackup: (() => {
-        try {
-            const pending = localStorage.getItem('qbrowse_vault_cloud_pending');
-            return pending ? JSON.parse(pending) : null;
-        } catch(e) {
-            return null;
-        }
-    })(),
+    cloudVaultBackup: null,
     isLoading: false,
     error: null,
 
     // Sync vault status with Electron main process
     syncVaultStatus: async () => {
+        purgeLegacyPendingCloudVault();
         try {
             if (!window.electronAPI?.getVaultStatus) return null;
             const status = await window.electronAPI.getVaultStatus();
@@ -139,6 +189,7 @@ const useVaultStore = create((set, get) => ({
                     isInitialized: Boolean(status.isInitialized),
                     pinEnabled: Boolean(status.hasPin),
                     biometricsEnabled: Boolean(status.hasWindowsHello),
+                    vaultItemCount: typeof status?.itemCount === 'number' ? status.itemCount : (get().passwords?.length || 0),
                     failedAttempts: status.failedPinAttempts || 0,
                     lockoutUntil: status.pinLockUntil || null
                 });
@@ -181,11 +232,13 @@ const useVaultStore = create((set, get) => ({
             const success = await unlockVault(password);
             if (success) {
                 const rawPasswords = await getPasswords(password);
+                const enriched = enrichPasswords(rawPasswords);
                 set({
                     isUnlocked: true,
                     isInitialized: true,
                     masterPassword: password,
-                    passwords: enrichPasswords(rawPasswords),
+                    passwords: enriched,
+                    vaultItemCount: enriched.length,
                     error: null,
                     failedAttempts: 0,
                     lockoutUntil: null,
@@ -198,18 +251,7 @@ const useVaultStore = create((set, get) => ({
                 syncMasterPasswordToCloud(password);
                 get().resetInactivityTimer();
 
-                const pendingRemote = get().cloudVaultBackup || (() => {
-                    try {
-                        const p = localStorage.getItem('qbrowse_vault_cloud_pending');
-                        return p ? JSON.parse(p) : null;
-                    } catch(e) { return null; }
-                })();
-                if (pendingRemote && Array.isArray(pendingRemote) && pendingRemote.length > 0) {
-                    await get().mergeRemoteVault(pendingRemote);
-                    set({ cloudVaultBackup: null });
-                    try { localStorage.removeItem('qbrowse_vault_cloud_pending'); } catch(e) {}
-                }
-                triggerVaultSync();
+                await runPostUnlockSync(get, set);
                 return true;
             } else {
                 set({ error: 'Invalid master password', isLoading: false });
@@ -228,40 +270,34 @@ const useVaultStore = create((set, get) => ({
             const ok = res === true || res?.success === true;
             if (ok) {
                 const rawPasswords = await getPasswords();
+                const enriched = enrichPasswords(rawPasswords);
                 const unwrappedMp = (typeof res === 'object' ? res.masterPassword : null) || get().masterPassword || '';
                 set({
                     isUnlocked: true,
                     isInitialized: true,
                     masterPassword: unwrappedMp,
-                    passwords: enrichPasswords(rawPasswords),
+                    passwords: enriched,
+                    vaultItemCount: enriched.length,
                     error: null,
                     failedAttempts: 0,
                     lockoutUntil: null,
                     isLoading: false
                 });
 
+                await get().syncVaultStatus();
                 if (unwrappedMp) {
                     syncMasterPasswordToCloud(unwrappedMp);
                 }
                 get().resetInactivityTimer();
 
-                const pendingRemote = get().cloudVaultBackup || (() => {
-                    try {
-                        const p = localStorage.getItem('qbrowse_vault_cloud_pending');
-                        return p ? JSON.parse(p) : null;
-                    } catch(e) { return null; }
-                })();
-                if (pendingRemote && Array.isArray(pendingRemote) && pendingRemote.length > 0) {
-                    await get().mergeRemoteVault(pendingRemote);
-                    set({ cloudVaultBackup: null });
-                    try { localStorage.removeItem('qbrowse_vault_cloud_pending'); } catch(e) {}
-                }
-                triggerVaultSync();
+                await runPostUnlockSync(get, set);
                 return true;
             } else {
+                const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
+                const bioLabel = osPlatform === 'darwin' ? 'Touch ID' : osPlatform === 'linux' ? 'System Biometrics' : 'Windows Hello';
                 const errMsg = (typeof res === 'object' && res?.error)
                     ? res.error
-                    : 'Windows Hello verification failed — unlock with Master Password first';
+                    : `${bioLabel} verification failed — unlock with Master Password first`;
                 set({ error: errMsg, isLoading: false });
                 return false;
             }
@@ -289,35 +325,27 @@ const useVaultStore = create((set, get) => ({
 
             if (res?.success) {
                 const rawPasswords = await getPasswords();
+                const enriched = enrichPasswords(rawPasswords);
                 const unwrappedMp = res.masterPassword || get().masterPassword || '';
                 set({
                     isUnlocked: true,
                     isInitialized: true,
                     masterPassword: unwrappedMp,
-                    passwords: enrichPasswords(rawPasswords),
+                    passwords: enriched,
+                    vaultItemCount: enriched.length,
                     error: null,
                     failedAttempts: 0,
                     lockoutUntil: null,
                     isLoading: false
                 });
 
+                await get().syncVaultStatus();
                 if (unwrappedMp) {
                     syncMasterPasswordToCloud(unwrappedMp);
                 }
                 get().resetInactivityTimer();
 
-                const pendingRemote = get().cloudVaultBackup || (() => {
-                    try {
-                        const p = localStorage.getItem('qbrowse_vault_cloud_pending');
-                        return p ? JSON.parse(p) : null;
-                    } catch(e) { return null; }
-                })();
-                if (pendingRemote && Array.isArray(pendingRemote) && pendingRemote.length > 0) {
-                    await get().mergeRemoteVault(pendingRemote);
-                    set({ cloudVaultBackup: null });
-                    try { localStorage.removeItem('qbrowse_vault_cloud_pending'); } catch(e) {}
-                }
-                triggerVaultSync();
+                await runPostUnlockSync(get, set);
                 return true;
             } else {
                 set({
@@ -410,9 +438,11 @@ const useVaultStore = create((set, get) => ({
             }
 
             const rawPasswords = await getPasswords(newPass);
+            const enriched = enrichPasswords(rawPasswords);
             set({
                 masterPassword: newPass,
-                passwords: enrichPasswords(rawPasswords),
+                passwords: enriched,
+                vaultItemCount: enriched.length,
                 error: null,
                 isLoading: false
             });
@@ -460,6 +490,7 @@ const useVaultStore = create((set, get) => ({
                 isUnlocked: false,
                 masterPassword: '',
                 passwords: [],
+                vaultItemCount: 0,
                 selectedItemId: null,
                 pinEnabled: false,
                 biometricsEnabled: false,
@@ -484,10 +515,12 @@ const useVaultStore = create((set, get) => ({
 
     loadProfileVault: () => {
         // Kept for backward compatibility
+        purgeLegacyPendingCloudVault();
         set({
             isUnlocked: false,
             masterPassword: '',
             passwords: [],
+            vaultItemCount: 0,
             cloudVaultBackup: null,
             error: null
         });
@@ -499,6 +532,7 @@ const useVaultStore = create((set, get) => ({
             clearTimeout(inactivityTimer);
             inactivityTimer = null;
         }
+        const prevCount = get().isUnlocked ? (get().passwords?.length ?? 0) : get().vaultItemCount;
         try {
             await window.electronAPI?.lockVault?.();
         } catch (_) {}
@@ -506,9 +540,11 @@ const useVaultStore = create((set, get) => ({
             isUnlocked: false,
             masterPassword: '',
             passwords: [],
+            vaultItemCount: prevCount,
             selectedItemId: null,
             error: null
         });
+        get().syncVaultStatus().catch(() => {});
     },
 
     fetchPasswords: async () => {
@@ -518,7 +554,8 @@ const useVaultStore = create((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             const list = await getPasswords(masterPassword);
-            set({ passwords: enrichPasswords(list || []), isLoading: false });
+            const enriched = enrichPasswords(list || []);
+            set({ passwords: enriched, vaultItemCount: enriched.length, isLoading: false });
         } catch (err) {
             set({ error: err.message, isLoading: false });
         }
@@ -538,9 +575,7 @@ const useVaultStore = create((set, get) => ({
 
         if (!isUnlocked) {
             set({ cloudVaultBackup: cleanRemote });
-            try {
-                localStorage.setItem('qbrowse_vault_cloud_pending', JSON.stringify(cleanRemote));
-            } catch(e) {}
+            purgeLegacyPendingCloudVault();
             return;
         }
 
@@ -548,15 +583,17 @@ const useVaultStore = create((set, get) => ({
         const norm = (s) => (s ? String(s).trim().toLowerCase() : '');
 
         for (const remoteItem of cleanRemote) {
+            const remoteParsed = parseVaultTitleAndMeta(remoteItem);
             const remoteUrl = norm(remoteItem.url);
             const remoteUser = norm(remoteItem.username);
-            const remoteTitle = norm(remoteItem.title);
+            const cleanRemoteTitle = remoteParsed.cleanTitle;
+            const remoteTitle = norm(cleanRemoteTitle);
 
             const existing = passwords.find(p => {
                 if (String(p.id) === String(remoteItem.id)) return true;
                 const pUrl = norm(p.url);
                 const pUser = norm(p.username);
-                const pTitle = norm(p.title);
+                const pTitle = norm(parseVaultTitleAndMeta(p).cleanTitle);
                 const sameUser = (pUser === remoteUser);
                 const sameUrl = (remoteUrl && pUrl && (pUrl === remoteUrl || matchDomains(pUrl, remoteUrl)));
                 const sameTitle = (remoteTitle && pTitle && pTitle === remoteTitle);
@@ -570,39 +607,39 @@ const useVaultStore = create((set, get) => ({
                     try {
                         await get().updateItem({
                             id: existing.id,
-                            type: remoteItem.itemType || 'login',
-                            title: remoteItem.title,
+                            type: remoteParsed.type || existing.itemType || 'login',
+                            title: cleanRemoteTitle || existing.title,
                             username: remoteItem.username || '',
                             password: remoteItem.password || '',
                             url: remoteItem.url || '',
-                            notes: remoteItem.notes || '',
-                            totpSecret: remoteItem.totpSecret || existing.totpSecret || null,
-                            passkeyData: remoteItem.passkeyData || null,
-                            cardData: remoteItem.cardData || null,
-                            addressData: remoteItem.addressData || null
+                            notes: remoteParsed.notes,
+                            totpSecret: remoteParsed.totpSecret || existing.totpSecret || null,
+                            passkeyData: remoteParsed.passkeyData,
+                            cardData: remoteParsed.cardData,
+                            addressData: remoteParsed.addressData
                         });
                         addedAny = true;
                     } catch (e) {
-                        console.warn("[VaultStore] Failed to update merged item:", remoteItem.title, e);
+                        console.warn("[VaultStore] Failed to update merged item:", cleanRemoteTitle, e);
                     }
                 }
             } else {
                 try {
                     await get().addNewItem({
-                        type: remoteItem.itemType || 'login',
-                        title: remoteItem.title || 'Synced Account',
+                        type: remoteParsed.type,
+                        title: cleanRemoteTitle || 'Synced Account',
                         username: remoteItem.username || '',
                         password: remoteItem.password || '',
                         url: remoteItem.url || '',
-                        notes: remoteItem.notes || '',
-                        totpSecret: remoteItem.totpSecret || null,
-                        passkeyData: remoteItem.passkeyData || null,
-                        cardData: remoteItem.cardData || null,
-                        addressData: remoteItem.addressData || null
+                        notes: remoteParsed.notes,
+                        totpSecret: remoteParsed.totpSecret,
+                        passkeyData: remoteParsed.passkeyData,
+                        cardData: remoteParsed.cardData,
+                        addressData: remoteParsed.addressData
                     });
                     addedAny = true;
                 } catch (e) {
-                    console.warn("[VaultStore] Failed to merge remote item:", remoteItem.title, e);
+                    console.warn("[VaultStore] Failed to merge remote item:", cleanRemoteTitle, e);
                 }
             }
         }
@@ -649,6 +686,7 @@ const useVaultStore = create((set, get) => ({
                 const updated = state.passwords.filter(p => String(p.id) !== String(id));
                 return {
                     passwords: updated,
+                    vaultItemCount: updated.length,
                     isLoading: false
                 };
             });

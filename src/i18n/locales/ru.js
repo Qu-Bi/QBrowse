@@ -64,6 +64,7 @@ export default {
         tabs: {
             appearance: "Внешний вид и темы",
             layout: "Макет и панели",
+            typography: "Типографика и шрифты",
             spaces: "Рабочие пространства",
             accessibility: "Специальные возможности",
             privacy: "Конфиденциальность и защита",

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { isVideoWallpaper, isGifWallpaper, isLiveWallpaper } from '../../utils/wallpaperHelpers';
-import { loadGifData } from '../../utils/gifParser';
+import { loadGifData, computeGifTransitionTimings, startGifLoopTransitions } from '../../utils/gifParser';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
@@ -11,8 +11,8 @@ const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636
  * for static images, animated GIFs, and looping video wallpapers (MP4/WebM).
  * Supports customizable live wallpaper loop transitions (Videos & Animated GIFs):
  * - 'crossfade' (Dual-player/Dual-slot A/B roll seamless cross-dissolve)
- * - 'dip' (Smooth ambient dip into backdrop dimming and return)
- * - 'cut' (Instant restart loop)
+ * - 'dip' (Smooth ambient dip to black with frame-0 reset and return)
+ * - 'cut' / 'loop' (Native instant restart loop)
  * Strictly guarantees ZERO residual stacking of wallpaper elements.
  */
 function WallpaperEngine() {
@@ -21,6 +21,7 @@ function WallpaperEngine() {
     const wallpaperBlur = useUIStore(state => state.settings?.wallpaperBlur ?? 24);
     const blurWallpaper = useUIStore(state => state.settings?.blurWallpaper ?? false);
     const pauseWallpaperInBackground = useUIStore(state => state.settings?.pauseWallpaperInBackground ?? true);
+    const pauseWallpaperOnWebview = useUIStore(state => state.settings?.pauseWallpaperOnWebview ?? false);
     const pauseWallpaperInEcoMode = useUIStore(state => state.settings?.pauseWallpaperInEcoMode ?? true);
     const wallpaperVideoLoopMode = useUIStore(state => state.settings?.wallpaperVideoLoopMode || 'crossfade');
     const wallpaperVideoCrossfadeDuration = useUIStore(state => state.settings?.wallpaperVideoCrossfadeDuration ?? 1.2);
@@ -29,12 +30,24 @@ function WallpaperEngine() {
     const isBooting = useUIStore(state => state.isBooting);
     const activeModal = useUIStore(state => state.activeModal);
     const isReaderOpen = useUIStore(state => state.isReaderOpen);
+    const isFullscreen = useUIStore((s) => s.isFullscreen);
+    const htmlFullscreenTabId = useUIStore((s) => s.htmlFullscreenTabId);
+    const isSplitView = useUIStore(state => state.isSplitView);
+    const splitRightTabId = useUIStore(state => state.splitRightTabId);
     const activeSpace = useTabStore(state => state.activeSpace);
+    const activeTabUrl = useTabStore(state => state.getActiveTab?.()?.url || '');
+    const splitRightTabUrl = useTabStore(state => {
+        if (!isSplitView || !splitRightTabId) return '';
+        const list = state.getActiveList?.();
+        return Array.isArray(list) ? (list.find(t => t.id === splitRightTabId)?.url || '') : '';
+    });
     const a11yReducedMotion = useUIStore(state => state.settings?.a11yReducedMotion);
     const isSystemReducedMotion = useUIStore(state => state.isSystemReducedMotion);
 
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const isReducedMotion = !!(a11yReducedMotion || isSystemReducedMotion);
+    const isWebUrl = (url) => Boolean(url && url !== '' && url !== 'about:blank');
+    const hasWebUrl = isWebUrl(activeTabUrl) || (isSplitView && isWebUrl(splitRightTabUrl));
 
     const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
 
@@ -43,8 +56,20 @@ function WallpaperEngine() {
 
     // Pausing states for live media (Videos & GIFs)
     const [isWindowFocused, setIsWindowFocused] = useState(true);
+    const [isWebviewFocused, setIsWebviewFocused] = useState(
+        () => hasWebUrl && document.activeElement?.tagName === 'WEBVIEW'
+    );
     const [isDocumentVisible, setIsDocumentVisible] = useState(true);
     const [isEcoMode, setIsEcoMode] = useState(false);
+
+    const hasWebUrlRef = useRef(hasWebUrl);
+    hasWebUrlRef.current = hasWebUrl;
+
+    useEffect(() => {
+        if (!hasWebUrl) {
+            setIsWebviewFocused(false);
+        }
+    }, [hasWebUrl]);
 
     // Video Dual-Player (A/B roll) state for smooth cross-dissolve looping
     const [activeVideoSlot, setActiveVideoSlot] = useState('A');
@@ -52,11 +77,12 @@ function WallpaperEngine() {
     const [hasFrozenGif, setHasFrozenGif] = useState(false);
 
     // GIF seamless transition state
-    const [gifData, setGifData] = useState(null); // { duration, rawBlob }
+    const [gifData, setGifData] = useState(null); // { duration, frames, buffer, singlePlayBuffer }
     const [activeGifSlot, setActiveGifSlot] = useState('A');
     const [gifSlotASrc, setGifSlotASrc] = useState(null);
     const [gifSlotBSrc, setGifSlotBSrc] = useState(null);
-    const [gifDipOpacity, setGifDipOpacity] = useState(1);
+    const [isGifCrossfading, setIsGifCrossfading] = useState(false);
+    const [gifDipOverlayOpacity, setGifDipOverlayOpacity] = useState(0);
 
     const playerRefA = useRef(null);
     const playerRefB = useRef(null);
@@ -64,33 +90,78 @@ function WallpaperEngine() {
     const isDippingRef = useRef(false);
     const crossfadeTimerRef = useRef(null);
     const dipTimerRef = useRef(null);
-    const gifLoopTimerRef = useRef(null);
-    const gifSubTimerRef = useRef(null);
     const gifSlotARef = useRef(null);
     const gifSlotBRef = useRef(null);
-    const crossfadeCanvasRef = useRef(null);
     const freezeCanvasRef = useRef(null);
     const transitionGenRef = useRef(0);
-    const activeBlobUrlsRef = useRef(new Set());
 
     const crossfadeDuration = Math.max(0.4, Math.min(2.5, Number(wallpaperVideoCrossfadeDuration) || 1.2));
-    const gifHalfFadeSec = Math.min(crossfadeDuration * 0.5, Math.max(0.25, (gifData?.duration ? (gifData.duration / 1000) * 0.25 : 0.6)));
+    const {
+        effectiveFadeMs: gifCrossfadeMs,
+        halfDipMs: gifDipHalfMs
+    } = computeGifTransitionTimings(gifData?.duration, crossfadeDuration);
 
-    // Track window focus/blur and visibility for power & GPU optimization
+    // Track window focus/blur, webview focus, and visibility for power & GPU optimization
     useEffect(() => {
-        const handleFocus = () => setIsWindowFocused(true);
-        const handleBlur = () => setIsWindowFocused(false);
+        let blurCheckTimer = null;
+
+        const syncWebviewFocusState = () => {
+            const onWebview = hasWebUrlRef.current && document.activeElement?.tagName === 'WEBVIEW';
+            setIsWebviewFocused(onWebview);
+            return onWebview;
+        };
+
+        const handleFocus = () => {
+            if (blurCheckTimer) {
+                clearTimeout(blurCheckTimer);
+                blurCheckTimer = null;
+            }
+            setIsWindowFocused(true);
+            syncWebviewFocusState();
+        };
+
+        const handleBlur = () => {
+            if (blurCheckTimer) clearTimeout(blurCheckTimer);
+            blurCheckTimer = setTimeout(() => {
+                blurCheckTimer = null;
+                if (hasWebUrlRef.current && document.activeElement?.tagName === 'WEBVIEW') {
+                    // Clicking an Electron <webview> blurs the outer renderer window while remaining in QBrowse
+                    setIsWebviewFocused(true);
+                    setIsWindowFocused(true);
+                    return;
+                }
+                if (!document.hasFocus()) {
+                    setIsWindowFocused(false);
+                    setIsWebviewFocused(false);
+                }
+            }, 20);
+        };
+
+        const handleFocusIn = (e) => {
+            const onWebview = hasWebUrlRef.current && (
+                e?.target?.tagName === 'WEBVIEW' ||
+                document.activeElement?.tagName === 'WEBVIEW'
+            );
+            setIsWebviewFocused(onWebview);
+            if (!onWebview) {
+                setIsWindowFocused(true);
+            }
+        };
+
         const handleVisibilityChange = () => {
             setIsDocumentVisible(!document.hidden);
         };
 
         window.addEventListener('focus', handleFocus);
         window.addEventListener('blur', handleBlur);
+        document.addEventListener('focusin', handleFocusIn);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
+            if (blurCheckTimer) clearTimeout(blurCheckTimer);
             window.removeEventListener('focus', handleFocus);
             window.removeEventListener('blur', handleBlur);
+            document.removeEventListener('focusin', handleFocusIn);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, []);
@@ -108,23 +179,26 @@ function WallpaperEngine() {
     }, []);
 
     // Calculate whether live media should be paused to preserve CPU, battery, and GPU
-    // Pauses when unfocused, in background, in Eco Mode, when reduced motion is enabled, or when Settings/modals/Reader Mode are open
+    // Pauses when unfocused, optionally when a webview is focused, in background, in Eco Mode, in F11/HTML fullscreen, when reduced motion is enabled, or when Settings/modals/Reader Mode are open
     const shouldPauseLiveMedia = Boolean(
         !isDocumentVisible ||
         (!isWindowFocused && pauseWallpaperInBackground) ||
+        (isWebviewFocused && pauseWallpaperOnWebview) ||
         (isEcoMode && pauseWallpaperInEcoMode) ||
+        Boolean(isFullscreen) ||
+        Boolean(htmlFullscreenTabId) ||
         Boolean(activeModal) ||
         Boolean(isReaderOpen) ||
         isReducedMotion
     );
+    const shouldPauseRef = useRef(shouldPauseLiveMedia);
+    shouldPauseRef.current = shouldPauseLiveMedia;
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
             if (crossfadeTimerRef.current) clearTimeout(crossfadeTimerRef.current);
             if (dipTimerRef.current) clearTimeout(dipTimerRef.current);
-            if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-            if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
         };
     }, []);
 
@@ -138,23 +212,12 @@ function WallpaperEngine() {
             clearTimeout(dipTimerRef.current);
             dipTimerRef.current = null;
         }
-        if (gifLoopTimerRef.current) {
-            clearTimeout(gifLoopTimerRef.current);
-            gifLoopTimerRef.current = null;
-        }
-        if (gifSubTimerRef.current) {
-            clearTimeout(gifSubTimerRef.current);
-            gifSubTimerRef.current = null;
-        }
         isCrossfadingRef.current = false;
         isDippingRef.current = false;
         setDipPhase('idle');
         setActiveGifSlot('A');
-        setGifDipOpacity(1);
-        if (crossfadeCanvasRef.current) {
-            crossfadeCanvasRef.current.style.transition = 'none';
-            crossfadeCanvasRef.current.style.opacity = '0';
-        }
+        setIsGifCrossfading(false);
+        setGifDipOverlayOpacity(0);
     }, [wallpaperVideoLoopMode, currentUrl]);
 
     // High-fidelity image frame render to canvas preserving cover aspect ratio
@@ -196,10 +259,14 @@ function WallpaperEngine() {
 
     // High-fidelity GIF frame freeze to offscreen canvas
     const captureGifFrame = useCallback(() => {
-        const activeImg = (wallpaperVideoLoopMode === 'crossfade' && activeGifSlot === 'B')
+        const primaryImg = (wallpaperVideoLoopMode === 'crossfade' && activeGifSlot === 'B')
             ? gifSlotBRef.current
             : gifSlotARef.current;
-        const res = drawCoverToCanvas(activeImg, freezeCanvasRef.current);
+        const fallbackImg = (primaryImg === gifSlotBRef.current)
+            ? gifSlotARef.current
+            : gifSlotBRef.current;
+        const res = drawCoverToCanvas(primaryImg, freezeCanvasRef.current)
+            || drawCoverToCanvas(fallbackImg, freezeCanvasRef.current);
         if (res) setHasFrozenGif(true);
         return res;
     }, [activeGifSlot, drawCoverToCanvas, wallpaperVideoLoopMode]);
@@ -215,20 +282,22 @@ function WallpaperEngine() {
         }
     }, [shouldPauseLiveMedia, currentUrl, captureGifFrame]);
 
-    // Fetch and parse GIF duration and raw buffer
+    // Fetch and parse GIF duration and single-play buffer
     useEffect(() => {
         if (!isGifWallpaper(currentUrl)) {
             setGifData(null);
             setGifSlotASrc(null);
             setGifSlotBSrc(null);
-            setGifDipOpacity(1);
+            setIsGifCrossfading(false);
+            setGifDipOverlayOpacity(0);
             return;
         }
 
         const clean = currentUrl.split('?')[0].split('#')[0];
         setGifSlotASrc(clean);
         setGifSlotBSrc(null);
-        setGifDipOpacity(1);
+        setIsGifCrossfading(false);
+        setGifDipOverlayOpacity(0);
         setActiveGifSlot('A');
 
         let isCancelled = false;
@@ -241,184 +310,35 @@ function WallpaperEngine() {
         return () => { isCancelled = true; };
     }, [currentUrl]);
 
-    // GIF seamless loop transition manager (Cross-Dissolve, Ambient Dip, or Instant Cut)
+    // GIF seamless loop transition manager (Cross-Dissolve, Ambient Dip, or Native Loop/Cut)
     useEffect(() => {
-        if (!isGifWallpaper(currentUrl) || !gifData || shouldPauseLiveMedia || isReducedMotion) {
-            if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-            if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-            setGifDipOpacity(1);
-            if (crossfadeCanvasRef.current) {
-                crossfadeCanvasRef.current.style.transition = 'none';
-                crossfadeCanvasRef.current.style.opacity = '0';
-            }
-            return;
-        }
-
-        if (wallpaperVideoLoopMode === 'cut') {
-            if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-            if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-            setGifDipOpacity(1);
-            if (crossfadeCanvasRef.current) {
-                crossfadeCanvasRef.current.style.transition = 'none';
-                crossfadeCanvasRef.current.style.opacity = '0';
-            }
-            return;
-        }
-
-        const duration = gifData.duration;
-        let isCancelled = false;
-
-        const createBlobUrl = () => {
-            const url = URL.createObjectURL(gifData.rawBlob);
-            activeBlobUrlsRef.current.add(url);
-            return url;
-        };
-
-        const revokeBlobUrl = (url) => {
-            if (url && activeBlobUrlsRef.current.has(url)) {
-                URL.revokeObjectURL(url);
-                activeBlobUrlsRef.current.delete(url);
-            }
-        };
-
-        if (wallpaperVideoLoopMode === 'dip') {
-            const halfFadeSec = Math.min(crossfadeDuration * 0.5, Math.max(0.25, (duration / 1000) * 0.25));
-            const halfFadeMs = Math.round(halfFadeSec * 1000);
-
-            setGifDipOpacity(1);
-
-            let cycle = 1;
-            const cycleStart = performance.now();
-
-            const scheduleDip = () => {
-                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-                const targetFadeDownTime = cycleStart + (cycle * duration) - halfFadeMs;
-                const delay = Math.max(10, targetFadeDownTime - performance.now());
-
-                gifLoopTimerRef.current = setTimeout(() => {
-                    if (isCancelled) return;
-
-                    // 1. Smoothly fade down to 0 over halfFadeSec
-                    setGifDipOpacity(0);
-
-                    // 2. Exactly at loop time (when opacity is 0 and GIF loops in dark):
-                    if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-                    const targetLoopTime = cycleStart + (cycle * duration);
-                    const fadeUpDelay = Math.max(10, targetLoopTime - performance.now());
-
-                    gifSubTimerRef.current = setTimeout(() => {
-                        if (isCancelled) return;
-
-                        // 3. Smoothly fade back up to 1
-                        setGifDipOpacity(1);
-
-                        // 4. Advance to next cycle
-                        cycle++;
-                        scheduleDip();
-                    }, fadeUpDelay);
-                }, delay);
-            };
-
-            scheduleDip();
-
-            return () => {
-                isCancelled = true;
-                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-                if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-                setGifDipOpacity(1);
-            };
-        }
-
-        if (wallpaperVideoLoopMode === 'crossfade') {
-            const effectiveFadeSec = Math.min(crossfadeDuration, Math.max(0.3, (duration / 1000) * 0.45));
-            const fadeMs = Math.round(effectiveFadeSec * 1000);
-            const leadTime = Math.max(100, duration - fadeMs);
-
-            let urlA = createBlobUrl();
-            let urlB = null;
-
-            setGifSlotASrc(urlA);
-            setGifSlotBSrc(null);
+        const clean = currentUrl ? currentUrl.split('?')[0].split('#')[0] : null;
+        if (
+            !isGifWallpaper(currentUrl) ||
+            !gifData ||
+            shouldPauseLiveMedia ||
+            isReducedMotion ||
+            (wallpaperVideoLoopMode !== 'dip' && wallpaperVideoLoopMode !== 'crossfade')
+        ) {
+            setIsGifCrossfading(false);
+            setGifDipOverlayOpacity(0);
             setActiveGifSlot('A');
-
-            let loopStartTime = performance.now();
-
-            const scheduleCrossfade = (slot) => {
-                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-                const targetTime = loopStartTime + leadTime;
-                const delay = Math.max(20, targetTime - performance.now());
-
-                gifLoopTimerRef.current = setTimeout(() => {
-                    if (isCancelled) return;
-
-                    const activeImg = slot === 'A' ? gifSlotARef.current : gifSlotBRef.current;
-                    const canvas = crossfadeCanvasRef.current;
-
-                    // Step 1: Capture the exact outgoing frame onto canvas
-                    const drawn = drawCoverToCanvas(activeImg, canvas);
-
-                    // Step 2: Show canvas at opacity 1 instantly with no transition
-                    if (canvas && drawn) {
-                        canvas.style.transition = 'none';
-                        canvas.style.opacity = '1';
-                        void canvas.offsetWidth; // Force layout reflow
-                    }
-
-                    // Step 3: Mount next slot starting from frame 0
-                    const nextSlot = slot === 'A' ? 'B' : 'A';
-                    const nextUrl = createBlobUrl();
-
-                    if (nextSlot === 'B') {
-                        urlB = nextUrl;
-                        setGifSlotBSrc(nextUrl);
-                    } else {
-                        urlA = nextUrl;
-                        setGifSlotASrc(nextUrl);
-                    }
-                    setActiveGifSlot(nextSlot);
-
-                    // Step 4: In the very next frame, fade canvas from 1 to 0 over effectiveFadeSec
-                    requestAnimationFrame(() => {
-                        if (isCancelled) return;
-                        if (canvas && drawn) {
-                            canvas.style.transition = isReducedMotion
-                                ? 'none'
-                                : `opacity ${effectiveFadeSec}s cubic-bezier(0.4, 0, 0.2, 1)`;
-                            canvas.style.opacity = '0';
-                        }
-                    });
-
-                    // Step 5: Once fade completes, clean up the old URL
-                    const outgoingUrl = nextSlot === 'B' ? urlA : urlB;
-                    if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-                    gifSubTimerRef.current = setTimeout(() => {
-                        if (isCancelled) return;
-                        revokeBlobUrl(outgoingUrl);
-                    }, fadeMs + 100);
-
-                    // Step 6: Schedule next crossfade from the new slot
-                    loopStartTime = performance.now();
-                    scheduleCrossfade(nextSlot);
-                }, delay);
-            };
-
-            scheduleCrossfade('A');
-
-            return () => {
-                isCancelled = true;
-                if (gifLoopTimerRef.current) clearTimeout(gifLoopTimerRef.current);
-                if (gifSubTimerRef.current) clearTimeout(gifSubTimerRef.current);
-                for (const u of activeBlobUrlsRef.current) {
-                    URL.revokeObjectURL(u);
-                }
-                activeBlobUrlsRef.current.clear();
-                if (crossfadeCanvasRef.current) {
-                    crossfadeCanvasRef.current.style.transition = 'none';
-                    crossfadeCanvasRef.current.style.opacity = '0';
-                }
-            };
+            setGifSlotASrc(clean);
+            setGifSlotBSrc(null);
+            return;
         }
-    }, [currentUrl, gifData, wallpaperVideoLoopMode, crossfadeDuration, shouldPauseLiveMedia, isReducedMotion, drawCoverToCanvas]);
+
+        return startGifLoopTransitions({
+            gifData,
+            loopMode: wallpaperVideoLoopMode,
+            crossfadeDurationSec: crossfadeDuration,
+            getSlotImg: (slot) => (slot === 'A' ? gifSlotARef.current : gifSlotBRef.current),
+            setSlotSrc: (slot, src) => (slot === 'A' ? setGifSlotASrc(src) : setGifSlotBSrc(src)),
+            setActiveSlot: setActiveGifSlot,
+            setCrossfading: setIsGifCrossfading,
+            setDipOverlayOpacity: setGifDipOverlayOpacity
+        });
+    }, [currentUrl, gifData, wallpaperVideoLoopMode, crossfadeDuration, shouldPauseLiveMedia, isReducedMotion]);
 
     // Wallpaper transition management - strictly prevents layer stacking
     useEffect(() => {
@@ -436,18 +356,12 @@ function WallpaperEngine() {
             clearTimeout(dipTimerRef.current);
             dipTimerRef.current = null;
         }
-        if (gifLoopTimerRef.current) {
-            clearTimeout(gifLoopTimerRef.current);
-            gifLoopTimerRef.current = null;
-        }
-        if (gifSubTimerRef.current) {
-            clearTimeout(gifSubTimerRef.current);
-            gifSubTimerRef.current = null;
-        }
 
-        // Reset video slots and states
+        // Reset video & GIF slots and states
         setActiveVideoSlot('A');
         setActiveGifSlot('A');
+        setIsGifCrossfading(false);
+        setGifDipOverlayOpacity(0);
         isCrossfadingRef.current = false;
         isDippingRef.current = false;
         setDipPhase('idle');
@@ -483,12 +397,30 @@ function WallpaperEngine() {
         const pB = playerRefB.current;
 
         if (shouldPauseLiveMedia) {
+            if (crossfadeTimerRef.current) {
+                clearTimeout(crossfadeTimerRef.current);
+                crossfadeTimerRef.current = null;
+            }
+            if (dipTimerRef.current) {
+                clearTimeout(dipTimerRef.current);
+                dipTimerRef.current = null;
+            }
+            isCrossfadingRef.current = false;
+            isDippingRef.current = false;
+            setDipPhase('idle');
             try { if (pA) pA.pause(); } catch (_) {}
             try { if (pB) pB.pause(); } catch (_) {}
         } else {
             try {
                 if (wallpaperVideoLoopMode === 'crossfade') {
                     const activePlayer = activeVideoSlot === 'A' ? pA : pB;
+                    const standbyPlayer = activeVideoSlot === 'A' ? pB : pA;
+                    if (standbyPlayer && !isCrossfadingRef.current) {
+                        try {
+                            standbyPlayer.pause();
+                            standbyPlayer.currentTime = 0;
+                        } catch (_) {}
+                    }
                     if (activePlayer) {
                         const prom = activePlayer.play();
                         if (prom) prom.catch(() => {});
@@ -558,6 +490,11 @@ function WallpaperEngine() {
 
                 if (dipTimerRef.current) clearTimeout(dipTimerRef.current);
                 dipTimerRef.current = setTimeout(() => {
+                    if (shouldPauseRef.current) {
+                        isDippingRef.current = false;
+                        setDipPhase('idle');
+                        return;
+                    }
                     // Video is now fully dipped to 0 opacity
                     if (activePlayer) {
                         try {
@@ -575,7 +512,7 @@ function WallpaperEngine() {
                 }, Math.round(halfFade * 1000));
             }
         } else {
-            // 'cut' (Instant restart loop)
+            // 'cut' / 'loop' (Instant restart loop)
             // Handled natively by loop={true} on the video element!
         }
     }, [activeVideoSlot, crossfadeDuration, shouldPauseLiveMedia, wallpaperVideoLoopMode]);
@@ -584,6 +521,13 @@ function WallpaperEngine() {
         const pA = playerRefA.current;
         const pB = playerRefB.current;
         const player = slot === 'A' ? pA : pB;
+
+        if (shouldPauseRef.current) {
+            if (player) {
+                try { player.pause(); } catch (_) {}
+            }
+            return;
+        }
 
         if (wallpaperVideoLoopMode === 'crossfade') {
             if (slot !== activeVideoSlot) {
@@ -632,7 +576,7 @@ function WallpaperEngine() {
             setDipPhase('idle');
             isDippingRef.current = false;
         } else {
-            // Fallback for 'cut'
+            // Fallback for 'cut' / 'loop'
             if (player) {
                 try {
                     player.currentTime = 0;
@@ -676,7 +620,7 @@ function WallpaperEngine() {
                             ref={playerRefA}
                             key={`${currentUrl}-slotA`}
                             src={currentUrl}
-                            autoPlay
+                            autoPlay={!shouldPauseLiveMedia}
                             muted
                             playsInline
                             preload="auto"
@@ -718,8 +662,8 @@ function WallpaperEngine() {
                         ref={playerRefA}
                         key={`${currentUrl}-${wallpaperVideoLoopMode}`}
                         src={currentUrl}
-                        autoPlay
-                        loop={wallpaperVideoLoopMode === 'cut'}
+                        autoPlay={!shouldPauseLiveMedia}
+                        loop={wallpaperVideoLoopMode === 'cut' || wallpaperVideoLoopMode === 'loop'}
                         muted
                         playsInline
                         preload="auto"
@@ -749,7 +693,7 @@ function WallpaperEngine() {
                         <img
                             ref={gifSlotARef}
                             key="wallpaper-gif-slot-A"
-                            src={gifSlotASrc || cleanUrl}
+                            src={gifSlotASrc || (activeGifSlot === 'A' ? cleanUrl : undefined)}
                             alt=""
                             loading="eager"
                             onLoad={() => {
@@ -764,13 +708,15 @@ function WallpaperEngine() {
                                 opacity: (shouldPauseLiveMedia && hasFrozenGif)
                                     ? 0
                                     : (activeGifSlot === 'A' ? 1 : 0),
-                                transition: 'none'
+                                transition: (isReducedMotion || !isGifCrossfading)
+                                    ? 'none'
+                                    : `opacity ${gifCrossfadeMs}ms cubic-bezier(0.4, 0, 0.2, 1)`
                             }}
                         />
                         <img
                             ref={gifSlotBRef}
                             key="wallpaper-gif-slot-B"
-                            src={gifSlotBSrc || cleanUrl}
+                            src={gifSlotBSrc || undefined}
                             alt=""
                             loading="eager"
                             onLoad={() => {
@@ -785,20 +731,12 @@ function WallpaperEngine() {
                                 opacity: (shouldPauseLiveMedia && hasFrozenGif)
                                     ? 0
                                     : (activeGifSlot === 'B' ? 1 : 0),
-                                transition: 'none'
+                                transition: (isReducedMotion || !isGifCrossfading)
+                                    ? 'none'
+                                    : `opacity ${gifCrossfadeMs}ms cubic-bezier(0.4, 0, 0.2, 1)`
                             }}
                         />
-                        {/* Hardware-accelerated Crossfade Frame Capture Canvas */}
-                        <canvas
-                            ref={crossfadeCanvasRef}
-                            className="absolute inset-0 w-full h-full object-cover pointer-events-none will-change-transform"
-                            style={{
-                                filter: visualFilter,
-                                transform: visualTransform,
-                                opacity: 0
-                            }}
-                        />
-                        {/* Frozen Frame Canvas when GIF is paused in background or eco mode */}
+                        {/* Frozen Frame Canvas when GIF is paused in background, fullscreen, or eco mode */}
                         <canvas
                             ref={freezeCanvasRef}
                             className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-200 ${
@@ -811,12 +749,12 @@ function WallpaperEngine() {
                         />
                     </>
                 ) : (
-                    /* Ambient Dip or Instant Cut mode */
+                    /* Ambient Dip or Instant Cut / Native Loop mode */
                     <>
                         <img
                             ref={gifSlotARef}
                             key="wallpaper-gif-single"
-                            src={cleanUrl}
+                            src={gifSlotASrc || cleanUrl}
                             alt=""
                             loading="eager"
                             onLoad={() => {
@@ -828,17 +766,22 @@ function WallpaperEngine() {
                             style={{
                                 filter: visualFilter,
                                 transform: visualTransform,
-                                opacity: (shouldPauseLiveMedia && hasFrozenGif)
-                                    ? 0
-                                    : (wallpaperVideoLoopMode === 'dip' ? gifDipOpacity : 1),
-                                transition: isReducedMotion
-                                    ? 'none'
-                                    : (wallpaperVideoLoopMode === 'dip'
-                                        ? `opacity ${gifHalfFadeSec}s cubic-bezier(0.4, 0, 0.2, 1)`
-                                        : 'none')
+                                opacity: (shouldPauseLiveMedia && hasFrozenGif) ? 0 : 1,
+                                transition: 'none'
                             }}
                         />
-                        {/* Frozen Frame Canvas when GIF is paused in background or eco mode */}
+                        {wallpaperVideoLoopMode === 'dip' && (
+                            <div
+                                className="absolute inset-0 bg-black pointer-events-none"
+                                style={{
+                                    opacity: (shouldPauseLiveMedia && hasFrozenGif) ? 0 : gifDipOverlayOpacity,
+                                    transition: isReducedMotion
+                                        ? 'none'
+                                        : `opacity ${gifDipHalfMs}ms cubic-bezier(0.4, 0, 0.2, 1)`
+                                }}
+                            />
+                        )}
+                        {/* Frozen Frame Canvas when GIF is paused in background, fullscreen, or eco mode */}
                         <canvas
                             ref={freezeCanvasRef}
                             className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-200 ${

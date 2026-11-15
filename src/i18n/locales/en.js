@@ -63,7 +63,8 @@ export default {
         clearSearch: "Clear Search",
         tabs: {
             appearance: "Appearance & Themes",
-            layout: "Layout & Chrome",
+            layout: "Layout & Interface",
+            typography: "Typography & Fonts",
             spaces: "Workspaces",
             accessibility: "Accessibility",
             privacy: "Privacy & Security",

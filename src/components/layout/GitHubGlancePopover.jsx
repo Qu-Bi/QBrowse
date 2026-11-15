@@ -6,6 +6,7 @@ import {
 import { useGitHubStore } from '../../store/useGitHubStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 
 export default function GitHubGlancePopover() {
     const isHoverGlanceOpen = useGitHubStore(state => state.isHoverGlanceOpen);
@@ -30,7 +31,8 @@ export default function GitHubGlancePopover() {
     } = useGitHubStore();
 
     const popoverRef = useRef(null);
-    const isLight = theme === 'light';
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const isLight = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     useEffect(() => {
         if (!isHoverGlanceOpen) return;
@@ -80,31 +82,26 @@ export default function GitHubGlancePopover() {
                 top: `${top}px`,
                 left: `${left}px`,
                 width: `${popoverWidth}px`,
-                backdropFilter: 'blur(var(--glass-blur, 32px)) saturate(190%)',
-                WebkitBackdropFilter: 'blur(var(--glass-blur, 32px)) saturate(190%)',
+                ...getLiquidGlassInlineStyle(isLight),
             }}
             onMouseEnter={() => cancelCloseHoverGlance()}
             onMouseLeave={() => scheduleCloseHoverGlance(150)}
-            className={`fixed z-[9999] pointer-events-auto rounded-2xl border p-3.5 space-y-3 transition-all duration-200 ease-out origin-top-left ${
-                isLight
-                    ? 'liquid-glass-bright bg-white/85 border-black/10 text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.18)]'
-                    : 'liquid-glass-dark bg-[#0c0d14]/82 border-white/[0.12] text-white shadow-[0_24px_60px_rgba(0,0,0,0.75)]'
-            } ${
+            className={`fixed z-[9999] pointer-events-auto rounded-2xl p-3.5 space-y-3 transition-all duration-200 ease-out origin-top-left ${getLiquidGlassSurfaceClasses(isLight)} ${
                 isHoverGlanceClosing
                     ? 'opacity-0 scale-95 translate-y-1 pointer-events-none'
                     : 'opacity-100 scale-100 translate-y-0 animate-pop-in'
             }`}
         >
             {/* Header */}
-            <div className={`flex items-center justify-between border-b pb-2.5 ${isLight ? 'border-black/10' : 'border-white/10'}`}>
+            <div className={`flex items-center justify-between border-b pb-2.5 ${isLight ? 'border-black/[0.08]' : 'border-white/10'}`}>
                 <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                        <GitPullRequest size={13} className="text-emerald-400" />
+                        <GitPullRequest size={13} className={isLight ? 'text-emerald-600' : 'text-emerald-400'} />
                     </div>
                     <div>
                         <h4 className={`text-xs font-bold flex items-center gap-1.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
                             GitHub Glance
-                            <span className={`text-[10px] font-mono font-normal ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                            <span className={`text-[10px] font-mono font-normal ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                 {username ? `@${username}` : ''}
                             </span>
                         </h4>
@@ -115,7 +112,7 @@ export default function GitHubGlancePopover() {
                     <button 
                         onClick={() => fetchData(true)}
                         className={`p-1 rounded transition-colors cursor-pointer ${
-                            isLight ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                            isLight ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-zinc-400 hover:text-white hover:bg-white/10'
                         } ${isLoading ? 'animate-spin text-accent' : ''}`}
                         title="Refresh"
                     >
@@ -138,27 +135,27 @@ export default function GitHubGlancePopover() {
                 <>
                     {/* Summary Badges */}
                     <div className="grid grid-cols-3 gap-1.5 text-center">
-                        <div className={`p-2 rounded-xl border ${isLight ? 'bg-black/[0.03] border-black/5' : 'bg-white/[0.04] border-white/[0.07]'}`}>
-                            <span className="block text-sm font-bold text-amber-400">
+                        <div className={`p-2 rounded-xl ${getLiquidGlassCardClasses(isLight)}`}>
+                            <span className={`block text-sm font-bold ${isLight ? 'text-amber-600' : 'text-amber-400'}`}>
                                 {(reviewRequests || []).length}
                             </span>
-                            <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                            <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                 Reviews
                             </span>
                         </div>
-                        <div className={`p-2 rounded-xl border ${isLight ? 'bg-black/[0.03] border-black/5' : 'bg-white/[0.04] border-white/[0.07]'}`}>
-                            <span className="block text-sm font-bold text-sky-400">
+                        <div className={`p-2 rounded-xl ${getLiquidGlassCardClasses(isLight)}`}>
+                            <span className={`block text-sm font-bold ${isLight ? 'text-sky-600' : 'text-sky-400'}`}>
                                 {(myPrs || []).length}
                             </span>
-                            <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                            <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                 My PRs
                             </span>
                         </div>
-                        <div className={`p-2 rounded-xl border ${isLight ? 'bg-black/[0.03] border-black/5' : 'bg-white/[0.04] border-white/[0.07]'}`}>
-                            <span className="block text-sm font-bold text-emerald-400">
+                        <div className={`p-2 rounded-xl ${getLiquidGlassCardClasses(isLight)}`}>
+                            <span className={`block text-sm font-bold ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
                                 {(assignedIssues || []).length}
                             </span>
-                            <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                            <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                 Issues
                             </span>
                         </div>

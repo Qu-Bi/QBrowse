@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, X, Crop } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
 
 export default function SnippingOverlay() {
     const isSnippingMode = useUIStore(state => state.isSnippingMode);
@@ -169,11 +170,10 @@ export default function SnippingOverlay() {
         >
             {/* Instruction Pill */}
             {!selection && !isDragging && (
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none ${
-                    isBright 
-                        ? 'bg-white/90 border-white/70 text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.15)]' 
-                        : 'bg-[#0e1015]/90 border-white/20 text-white/90 shadow-2xl'
-                } border backdrop-blur-xl rounded-full px-4 py-2 text-xs font-medium flex items-center gap-2 animate-bounce-subtle`}>
+                <div
+                    style={getLiquidGlassInlineStyle(isBright)}
+                    className={`absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none ${getLiquidGlassSurfaceClasses(isBright)} rounded-full px-4 py-2 text-xs font-medium flex items-center gap-2 animate-bounce-subtle`}
+                >
                     <Crop size={14} className="text-accent" />
                     <span>Click and drag to select an area to snip • Press <kbd className={`px-1.5 py-0.5 rounded ${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/90'} text-[10px] font-mono`}>Esc</kbd> to cancel</span>
                 </div>
@@ -208,12 +208,8 @@ export default function SnippingOverlay() {
             {/* Action Bar when Drag completes */}
             {selection && !isDragging && selection.width >= 15 && selection.height >= 15 && (
                 <div
-                    className={`absolute z-10 flex items-center gap-1.5 ${
-                        isBright 
-                            ? 'bg-white/95 border-white/70 shadow-[0_15px_35px_rgba(0,0,0,0.15)] text-zinc-900' 
-                            : 'bg-[#0e1015]/95 border-white/20 shadow-[0_15px_35px_rgba(0,0,0,0.8)] text-white'
-                    } border backdrop-blur-2xl rounded-xl p-1 pointer-events-auto animate-pop-in`}
-                    style={getActionBarStyle()}
+                    className={`absolute z-10 flex items-center gap-1.5 ${getLiquidGlassSurfaceClasses(isBright)} rounded-xl p-1 pointer-events-auto animate-pop-in`}
+                    style={{ ...getActionBarStyle(), ...getLiquidGlassInlineStyle(isBright) }}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
                     <button
@@ -228,7 +224,7 @@ export default function SnippingOverlay() {
                             setSelection(null);
                             setIsSnippingMode(false);
                         }}
-                        className={`p-1.5 rounded-lg ${isBright ? 'hover:bg-black/5 text-zinc-500' : 'hover:bg-white/10 text-white/60'} hover:text-red-500 transition cursor-pointer`}
+                        className={`p-1.5 rounded-lg ${isBright ? 'hover:bg-black/5 text-zinc-600' : 'hover:bg-white/10 text-white/60'} hover:text-red-500 transition cursor-pointer`}
                         title="Cancel (Esc)"
                     >
                         <X size={14} />

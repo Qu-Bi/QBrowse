@@ -4,6 +4,23 @@ import {
     ShieldAlert, ShieldCheck, AlertTriangle, Search, Compass, 
     ChevronDown, Terminal, Copy, Check, ExternalLink, Lock, Unlock
 } from 'lucide-react';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from './ContextMenuProvider';
+
+const getPlatformLabel = () => {
+    const p = (typeof window !== 'undefined' && (window.electronAPI?.platform || window.process?.platform))
+        || (typeof process !== 'undefined' && process?.platform)
+        || '';
+    if (p === 'darwin') return 'macOS';
+    if (p === 'linux') return 'Linux';
+    if (p === 'win32') return 'Windows';
+    const ua = typeof navigator !== 'undefined'
+        ? `${navigator.userAgentData?.platform || ''} ${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase()
+        : '';
+    if (ua.includes('mac') || ua.includes('darwin')) return 'macOS';
+    if (ua.includes('win')) return 'Windows';
+    if (ua.includes('linux')) return 'Linux';
+    return 'Windows';
+};
 
 const ERROR_METADATA = {
     // Insecure / HTTP warnings
@@ -400,7 +417,7 @@ export default function WebviewErrorOverlay({
             `Host: ${cleanQuery}`,
             `Insecure: ${isInsecure ? 'Yes' : 'No'}`,
             `Timestamp: ${new Date(error?.time || Date.now()).toISOString()}`,
-            `Platform: Windows / QBrowse Electron`
+            `Platform: ${getPlatformLabel()} / QBrowse Electron`
         ].join('\n');
 
         navigator.clipboard.writeText(report);
@@ -435,16 +452,15 @@ export default function WebviewErrorOverlay({
 
     return (
         <div 
-            className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-[#070709]/75 backdrop-blur-md select-none overflow-y-auto"
+            className={`absolute inset-0 z-30 flex items-center justify-center p-4 backdrop-blur-md select-none overflow-y-auto ${
+                isBright ? 'bg-zinc-950/25' : 'bg-[#070709]/75'
+            }`}
             onClick={(e) => e.stopPropagation()}
         >
             <div 
                 data-context-menu
-                className={`w-full max-w-[440px] rounded-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.65)] backdrop-blur-2xl border flex flex-col gap-3 select-none animate-pop-in ${
-                    isBright
-                        ? 'bg-white/90 border-black/[0.06] text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.12)]'
-                        : 'bg-[#0c0c0f]/94 border-white/[0.06] text-white/90'
-                }`}
+                style={getLiquidGlassInlineStyle(isBright)}
+                className={`w-full max-w-[440px] rounded-2xl p-4 flex flex-col gap-3 select-none animate-pop-in ${getLiquidGlassSurfaceClasses(isBright)}`}
             >
                 {/* Section Header (Matches ContextMenuProvider MenuSectionHeader) */}
                 <div className={`flex items-center justify-between pb-2 border-b ${
@@ -681,40 +697,38 @@ export default function WebviewErrorOverlay({
                     </button>
 
                     {isDiagOpen && (
-                        <div className={`mt-1.5 p-2.5 rounded-xl border flex flex-col gap-2 animate-fade-in ${
-                            isBright 
-                                ? 'bg-black/[0.02] border-black/[0.06] text-zinc-600' 
-                                : 'bg-white/[0.02] border-white/[0.06] text-white/60'
+                        <div className={`mt-1.5 p-2.5 rounded-xl border flex flex-col gap-2 animate-fade-in ${getLiquidGlassCardClasses(isBright)} ${
+                            isBright ? 'text-zinc-700' : 'text-white/65'
                         }`}>
                             {/* Checklist or Risk Items */}
                             <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
                                 {isInsecure ? (
                                     <>
                                         <div className="flex items-start gap-1.5">
-                                            <span className="text-amber-400">•</span>
+                                            <span className={isBright ? 'text-amber-600' : 'text-amber-400'}>•</span>
                                             <span>Passwords, credit cards, and cookies are transmitted in cleartext</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
-                                            <span className="text-amber-400">•</span>
+                                            <span className={isBright ? 'text-amber-600' : 'text-amber-400'}>•</span>
                                             <span>Intermediate Wi-Fi or ISP nodes can view and modify page content</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
-                                            <span className="text-amber-400">•</span>
+                                            <span className={isBright ? 'text-amber-600' : 'text-amber-400'}>•</span>
                                             <span>{meta.risk || 'Website authenticity cannot be cryptographically proven.'}</span>
                                         </div>
                                     </>
                                 ) : (
                                     <>
                                         <div className="flex items-start gap-1.5">
-                                            <span className="text-accent">•</span>
+                                            <span className={isBright ? 'text-amber-700' : 'text-accent'}>•</span>
                                             <span>Check your Wi-Fi, Ethernet, and router cables</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
-                                            <span className="text-accent">•</span>
+                                            <span className={isBright ? 'text-amber-700' : 'text-accent'}>•</span>
                                             <span>Verify the host spelling in the address bar</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
-                                            <span className="text-accent">•</span>
+                                            <span className={isBright ? 'text-amber-700' : 'text-accent'}>•</span>
                                             <span>Check VPN, proxy, and firewall security permissions</span>
                                         </div>
                                     </>
@@ -728,17 +742,21 @@ export default function WebviewErrorOverlay({
                                     : 'bg-black/40 border-white/[0.06] text-white/60'
                             }`}>
                                 <div className="flex justify-between">
-                                    <span className="opacity-50">Protocol:</span>
-                                    <span className={isInsecure ? 'text-amber-400 font-semibold' : 'text-white/80'}>
+                                    <span className="opacity-60">Protocol:</span>
+                                    <span className={isInsecure ? (isBright ? 'text-amber-700 font-semibold' : 'text-amber-400 font-semibold') : (isBright ? 'text-zinc-900 font-medium' : 'text-white/80')}>
                                         {isInsecure ? (errorCode === 'HTTP_INSECURE' ? 'HTTP (Port 80 Plaintext)' : 'HTTPS (Untrusted Handshake)') : 'TCP / IP'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="opacity-50">Status:</span>
-                                    <span className={`font-semibold ${isInsecure ? 'text-rose-400' : 'text-amber-400'}`}>{errorDesc} ({errorCode})</span>
+                                    <span className="opacity-60">Status:</span>
+                                    <span className={`font-semibold ${
+                                        isBright
+                                            ? (isInsecure ? 'text-rose-700' : 'text-amber-700')
+                                            : (isInsecure ? 'text-rose-400' : 'text-amber-400')
+                                    }`}>{errorDesc} ({errorCode})</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="opacity-50">Host:</span>
+                                    <span className="opacity-60">Host:</span>
                                     <span className="truncate max-w-[240px]">{cleanQuery || targetUrl || 'Unknown'}</span>
                                 </div>
                             </div>

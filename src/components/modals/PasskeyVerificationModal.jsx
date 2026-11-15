@@ -3,6 +3,7 @@ import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Glob
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useVaultStore, { enrichPasswords } from '../../store/useVaultStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 
 // Apple-style synthesized unlock chime using Web Audio API
 const playUnlockChime = () => {
@@ -47,6 +48,13 @@ const PasskeyVerificationModal = () => {
     const activeSpace = useTabStore(state => state.activeSpace);
     const { pinEnabled, biometricsEnabled, isUnlocked, lockoutUntil } = useVaultStore();
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+    const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
+    const biometricLabel = osPlatform === 'darwin' ? 'Touch ID' : osPlatform === 'linux' ? 'System Biometrics' : 'Windows Hello';
+    const biometricPinHint = osPlatform === 'darwin'
+        ? 'Touch the Touch ID sensor or enter your macOS password'
+        : osPlatform === 'linux'
+            ? 'Touch your fingerprint sensor or enter your system password'
+            : 'Touch your fingerprint sensor or enter your Windows PIN';
 
     const [passwordInput, setPasswordInput] = useState('');
     const [showPass, setShowPass] = useState(false);
@@ -256,17 +264,12 @@ const PasskeyVerificationModal = () => {
         >
             <div 
                 id="passkey-modal"
-                className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 border ${isClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'} ${
+                className={`w-full max-w-md rounded-3xl p-7 relative overflow-hidden transition-all duration-500 border ${isClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'} ${getLiquidGlassSurfaceClasses(isBright)} ${
                     authStatus === 'success' 
-                        ? 'border-emerald-500/40 shadow-[0_0_90px_rgba(16,185,129,0.35)]' 
-                        : (isBright 
-                            ? 'bg-white/85 border-black/[0.06] shadow-[0_20px_60px_rgba(0,0,0,0.12)] text-zinc-900' 
-                            : 'bg-[#12131a]/85 border-white/[0.06] shadow-[0_25px_80px_rgba(0,0,0,0.7)] text-white')
+                        ? '!border-emerald-500/40 !shadow-[0_0_90px_rgba(16,185,129,0.35)]' 
+                        : ''
                 }`} 
-                style={{
-                    backdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)',
-                    WebkitBackdropFilter: 'blur(var(--glass-blur, 28px)) saturate(180%)'
-                }}
+                style={getLiquidGlassInlineStyle(isBright)}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Ambient Glows */}
@@ -340,22 +343,20 @@ const PasskeyVerificationModal = () => {
                         {authStatus === 'success' 
                             ? 'Identity Verified!' 
                             : authStatus === 'scanning'
-                                ? 'Scanning Windows Hello...'
+                                ? `Scanning ${biometricLabel}...`
                                 : (activePrompt?.mode === 'autofill' ? 'Autofill Saved Password' : 'Passkey Authentication')}
                     </h2>
                     <p className={`text-xs mt-1 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
                         {authStatus === 'success'
                             ? (activePrompt?.mode === 'autofill' ? 'Vault unlocked and credentials autofilled' : 'Passkey released and signed successfully')
                             : authStatus === 'scanning'
-                                ? 'Touch your fingerprint sensor or enter your Windows PIN'
+                                ? biometricPinHint
                                 : (activePrompt?.mode === 'autofill' ? 'Verification required to unlock vault & autofill' : 'Verification required to sign in with your passkey')}
                     </p>
                 </div>
 
                 {/* Website & Account Card */}
-                <div className={`border rounded-2xl p-3.5 mb-5 flex items-center gap-3 ${
-                    isBright ? 'bg-black/[0.03] border-black/10' : 'bg-white/5 border-white/10'
-                }`}>
+                <div className={`border rounded-2xl p-3.5 mb-5 flex items-center gap-3 ${getLiquidGlassCardClasses(isBright)}`}>
                     <div className="w-10 h-10 rounded-xl bg-accent/15 text-accent border border-accent/30 flex items-center justify-center shrink-0">
                         <Globe size={18} />
                     </div>
@@ -376,7 +377,7 @@ const PasskeyVerificationModal = () => {
 
                 {/* Error Banner */}
                 {errorMessage && (
-                    <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-600 dark:text-rose-300 text-xs animate-shake">
+                    <div className={`mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-xs animate-shake ${isBright ? 'text-rose-600' : 'text-rose-300'}`}>
                         <AlertCircle size={14} className="shrink-0" />
                         <span className="flex-1">{errorMessage}</span>
                     </div>
@@ -384,7 +385,7 @@ const PasskeyVerificationModal = () => {
 
                 {/* Verification Actions */}
                 <div className="space-y-4">
-                    {/* Method 1: Windows Hello */}
+                    {/* Method 1: System Biometrics */}
                     <button
                         type="button"
                         onClick={handleWindowsHello}
@@ -398,7 +399,7 @@ const PasskeyVerificationModal = () => {
                         {authStatus === 'scanning' ? (
                             <>
                                 <Loader2 size={18} className="animate-spin" />
-                                <span>Verifying with Windows Hello...</span>
+                                <span>Verifying with {biometricLabel}...</span>
                             </>
                         ) : authStatus === 'success' ? (
                             <>
@@ -408,7 +409,7 @@ const PasskeyVerificationModal = () => {
                         ) : (
                             <>
                                 <Fingerprint size={20} />
-                                <span>Verify with Windows Hello</span>
+                                <span>Verify with {biometricLabel}</span>
                             </>
                         )}
                     </button>

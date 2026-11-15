@@ -140,6 +140,7 @@ const defaultSettings = {
     blurWallpaper: false,
     pauseWallpaperInBackground: true,
     pauseWallpaperInEcoMode: true,
+    pauseWallpaperOnWebview: false,
     wallpaperVideoLoopMode: 'crossfade', // 'crossfade' (Smooth Dissolve) | 'dip' (Ambient Dip) | 'cut' (Instant Restart)
     wallpaperVideoCrossfadeDuration: 1.2, // seconds (0.4 - 2.5)
     closeWindowOnLastTab: true,
@@ -209,6 +210,9 @@ const loadSettings = () => {
             }
             if (parsed.blurWallpaper === undefined) {
                 parsed.blurWallpaper = false;
+            }
+            if (typeof parsed.pauseWallpaperOnWebview !== 'boolean') {
+                parsed.pauseWallpaperOnWebview = false;
             }
             if (!parsed.wallpaperVideoLoopMode) {
                 parsed.wallpaperVideoLoopMode = 'crossfade';

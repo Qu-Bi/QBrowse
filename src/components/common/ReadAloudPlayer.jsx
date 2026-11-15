@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     Volume2, VolumeX, Play, Pause, SkipBack, SkipForward, 
     X, ChevronDown, GripVertical
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassMenuClasses } from './ContextMenuProvider';
 
 export default function ReadAloudPlayer() {
     const isReadAloudOpen = useUIStore(state => state.isReadAloudOpen);
@@ -27,6 +29,7 @@ export default function ReadAloudPlayer() {
     const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
     const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false);
     const [isSpeedDropdownOpen, setIsSpeedDropdownOpen] = useState(false);
+    const [speedMenuPos, setSpeedMenuPos] = useState(null);
     const [isMuted, setIsMuted] = useState(false);
 
     // Draggable & Centering State
@@ -35,6 +38,8 @@ export default function ReadAloudPlayer() {
     const dragRef = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0, parentWidth: 0, parentHeight: 0, playerWidth: 0, playerHeight: 0 });
     const hasUserDraggedRef = useRef(false);
     const playerRef = useRef(null);
+    const speedButtonRef = useRef(null);
+    const speedMenuRef = useRef(null);
 
     const synthRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis : null);
     const utteranceRef = useRef(null);
@@ -112,8 +117,62 @@ export default function ReadAloudPlayer() {
         };
 
         hasUserDraggedRef.current = true;
+        setIsSpeedDropdownOpen(false);
         setIsDragging(true);
     };
+
+    const updateSpeedMenuPosition = useCallback(() => {
+        if (!isSpeedDropdownOpen || !speedButtonRef.current || typeof window === 'undefined') return;
+        const rect = speedButtonRef.current.getBoundingClientRect();
+        const screenH = window.innerHeight || 800;
+        const screenW = window.innerWidth || 1200;
+        const estH = 165;
+        const spaceBelow = screenH - rect.bottom - 12;
+        const spaceAbove = rect.top - 12;
+        const flipUp = spaceBelow < estH && spaceAbove > spaceBelow;
+        const menuWidth = Math.max(82, rect.width);
+        const left = Math.max(12, Math.min(rect.left, screenW - menuWidth - 12));
+
+        const nextPos = {
+            position: 'fixed',
+            zIndex: 99999,
+            left: `${Math.round(left)}px`,
+            minWidth: `${Math.round(menuWidth)}px`
+        };
+        if (flipUp) {
+            nextPos.bottom = `${Math.round(screenH - rect.top + 8)}px`;
+        } else {
+            nextPos.top = `${Math.round(rect.bottom + 8)}px`;
+        }
+        setSpeedMenuPos(nextPos);
+    }, [isSpeedDropdownOpen]);
+
+    useLayoutEffect(() => {
+        if (!isSpeedDropdownOpen) {
+            setSpeedMenuPos(null);
+            return;
+        }
+        updateSpeedMenuPosition();
+    }, [isSpeedDropdownOpen, position, updateSpeedMenuPosition]);
+
+    useEffect(() => {
+        if (!isSpeedDropdownOpen) return;
+        const handleOutside = (e) => {
+            const inBtn = speedButtonRef.current && speedButtonRef.current.contains(e.target);
+            const inMenu = speedMenuRef.current && speedMenuRef.current.contains(e.target);
+            if (!inBtn && !inMenu) {
+                setIsSpeedDropdownOpen(false);
+            }
+        };
+        window.addEventListener('mousedown', handleOutside);
+        window.addEventListener('resize', updateSpeedMenuPosition);
+        window.addEventListener('scroll', updateSpeedMenuPosition, true);
+        return () => {
+            window.removeEventListener('mousedown', handleOutside);
+            window.removeEventListener('resize', updateSpeedMenuPosition);
+            window.removeEventListener('scroll', updateSpeedMenuPosition, true);
+        };
+    }, [isSpeedDropdownOpen, updateSpeedMenuPosition]);
 
     useEffect(() => {
         if (!isDragging) return;
@@ -317,8 +376,6 @@ export default function ReadAloudPlayer() {
 
     if (!isReadAloudOpen && !isReadAloudClosing) return null;
 
-    const isNearBottom = position && position.y > (dragRef.current.parentHeight || 500) - 170;
-
     return (
         <>
             {/* Fullscreen transparent mouse trap during dragging so underlying webview cannot swallow pointer focus */}
@@ -334,22 +391,17 @@ export default function ReadAloudPlayer() {
                     position: 'absolute',
                     top: position ? `${position.y}px` : '20px',
                     left: position ? `${position.x}px` : 'calc(50% - 175px)',
-                    backdropFilter: 'blur(28px) saturate(180%)', 
-                    WebkitBackdropFilter: 'blur(28px) saturate(180%)' 
+                    ...getLiquidGlassInlineStyle(isBright)
                 }}
-                className={`z-[60] flex items-center h-11 px-3.5 gap-2 backdrop-blur-2xl rounded-full select-none border transition-shadow cursor-grab active:cursor-grabbing ${
+                className={`z-[60] flex items-center h-11 px-3.5 gap-2 rounded-full select-none transition-shadow cursor-grab active:cursor-grabbing ${
                     isDragging ? 'shadow-[0_25px_60px_rgba(0,0,0,0.8)] ring-2 ring-accent/40' : ''
-                } ${
-                    isBright 
-                        ? 'bg-white/90 border-black/[0.06] text-zinc-900 shadow-[0_16px_40px_rgba(0,0,0,0.12)]' 
-                        : 'bg-[#181a24]/80 border-white/[0.08] text-white/90 shadow-[0_16px_40px_rgba(0,0,0,0.55)]'
-                } ${
+                } ${getLiquidGlassSurfaceClasses(isBright)} ${
                     isReadAloudClosing ? 'animate-slide-up-fade-out pointer-events-none' : (position ? '' : 'animate-pop-in')
                 }`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Drag Grip Handle */}
-                <GripVertical size={13} className="text-white/30 hover:text-white/60 transition-colors shrink-0 cursor-grab active:cursor-grabbing -ml-1 mr-0.5" title="Drag to move" />
+                <GripVertical size={13} className={`transition-colors shrink-0 cursor-grab active:cursor-grabbing -ml-1 mr-0.5 ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/30 hover:text-white/60'}`} title="Drag to move" />
 
                 {/* Status Icon */}
                 <div className="w-6 h-6 rounded-full bg-accent/15 border border-accent/25 flex items-center justify-center shrink-0">
@@ -411,6 +463,7 @@ export default function ReadAloudPlayer() {
                 {/* Speed Selector */}
                 <div className="relative shrink-0">
                     <button
+                        ref={speedButtonRef}
                         onClick={() => {
                             setIsSpeedDropdownOpen(!isSpeedDropdownOpen);
                             setIsVoiceDropdownOpen(false);
@@ -423,20 +476,19 @@ export default function ReadAloudPlayer() {
                         }`}
                     >
                         <span>{playbackSpeed}x</span>
-                        <ChevronDown size={10} className={`text-white/40 transition-transform duration-200 ${isSpeedDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={10} className={`transition-transform duration-200 ${isBright ? 'text-zinc-500' : 'text-white/40'} ${isSpeedDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
-                    {isSpeedDropdownOpen && (
+                    {isSpeedDropdownOpen && speedMenuPos && typeof document !== 'undefined' && createPortal(
                         <div 
+                            ref={speedMenuRef}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
                             style={{ 
-                                backdropFilter: 'blur(28px) saturate(180%)', 
-                                WebkitBackdropFilter: 'blur(28px) saturate(180%)' 
+                                ...speedMenuPos,
+                                ...getLiquidGlassInlineStyle(isBright)
                             }}
-                            className={`absolute ${isNearBottom ? 'bottom-full mb-2' : 'top-full mt-2'} left-0 p-1 rounded-2xl border backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.6)] z-50 flex flex-col min-w-[76px] animate-pop-in ${
-                                isBright 
-                                    ? 'bg-white/95 border-black/[0.06] text-zinc-900 shadow-[0_16px_40px_rgba(0,0,0,0.12)]' 
-                                    : 'bg-[#181a24]/90 border-white/[0.08] text-white shadow-[0_16px_40px_rgba(0,0,0,0.6)]'
-                            }`}
+                            className={`fixed p-1.5 rounded-2xl flex flex-col gap-0.5 animate-pop-in select-none ${getLiquidGlassMenuClasses(isBright)}`}
                         >
                             {[0.75, 1.0, 1.25, 1.5, 2.0].map((spd) => (
                                 <button
@@ -445,13 +497,14 @@ export default function ReadAloudPlayer() {
                                     className={`px-2.5 py-1 text-[11px] font-mono rounded-xl transition text-left cursor-pointer ${
                                         playbackSpeed === spd 
                                             ? 'bg-accent text-zinc-950 font-bold' 
-                                            : (isBright ? 'hover:bg-black/5 text-zinc-700' : 'hover:bg-white/10 text-white/70 hover:text-white')
+                                            : (isBright ? 'hover:bg-black/5 text-zinc-700 hover:text-zinc-950' : 'hover:bg-white/10 text-white/75 hover:text-white')
                                     }`}
                                 >
                                     {spd}x
                                 </button>
                             ))}
-                        </div>
+                        </div>,
+                        document.body
                     )}
                 </div>
 
@@ -461,7 +514,7 @@ export default function ReadAloudPlayer() {
                     title="Close Read Aloud (Escape)"
                     className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
                         isBright 
-                            ? 'text-zinc-400 hover:text-rose-600 hover:bg-black/5' 
+                            ? 'text-zinc-500 hover:text-rose-600 hover:bg-black/5' 
                             : 'text-white/50 hover:text-rose-400 hover:bg-white/10'
                     }`}
                 >
