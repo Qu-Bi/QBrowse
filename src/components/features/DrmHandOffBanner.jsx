@@ -3,6 +3,7 @@ import { ExternalLink, Tv, Monitor, X, Play, ShieldAlert } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 const getPlatformId = () => {
     const p = (typeof window !== 'undefined' && (window.electronAPI?.platform || window.process?.platform))
@@ -131,31 +132,35 @@ export default function DrmHandOffBanner({
     isDismissed = false,
     onDismiss
 }) {
+    const { t } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const platformId = getPlatformId();
     const appBtnTitle = platformId === 'win32'
-        ? 'Open in Windows Store App'
+        ? t('chrome.drmAppBtnWinTitle', null, 'Open in Windows Store App')
         : platformId === 'darwin'
-            ? 'Open in Native App'
-            : 'Open in Desktop App';
+            ? t('chrome.drmAppBtnMacTitle', null, 'Open in Native App')
+            : t('chrome.drmAppBtnDesktopTitle', null, 'Open in Desktop App');
     const appBtnLabel = platformId === 'win32'
-        ? 'Windows App'
+        ? t('chrome.drmAppBtnWinLabel', null, 'Windows App')
         : platformId === 'darwin'
-            ? 'Native App'
-            : 'Desktop App';
+            ? t('chrome.drmAppBtnMacLabel', null, 'Native App')
+            : t('chrome.drmAppBtnDesktopLabel', null, 'Desktop App');
     const openWithTitle = platformId === 'win32'
-        ? "Choose browser via Windows 'How do you want to open this?' dialog"
-        : 'Choose application to open this stream';
+        ? t('chrome.drmOpenWithWinTitle', null, "Choose browser via Windows 'How do you want to open this?' dialog")
+        : t('chrome.drmOpenWithOtherTitle', null, 'Choose application to open this stream');
 
     const platform = useMemo(() => detectVmpPlatform(url), [url]);
-    const info = platform || (genericDrmError ? {
-        name: 'Protected Stream',
+    const info = platform ? {
+        ...platform,
+        note: t(`chrome.drmNote_${platform.id}`, null, platform.note)
+    } : (genericDrmError ? {
+        name: t('chrome.drmProtectedStream', null, 'Protected Stream'),
         protocol: null,
         note: genericDrmError.keySystem
-            ? `Site requested ${genericDrmError.keySystem} which requires certified platform DRM.`
-            : 'Protected media playback requires certified Google Widevine VMP hardware DRM.'
+            ? t('chrome.drmKeySystemNote', { keySystem: genericDrmError.keySystem }, `Site requested ${genericDrmError.keySystem} which requires certified platform DRM.`)
+            : t('chrome.drmGenericNote', null, 'Protected media playback requires certified Google Widevine VMP hardware DRM.')
     } : null);
 
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -223,12 +228,12 @@ export default function DrmHandOffBanner({
                     onClick={() => {
                         setIsCollapsed(false);
                     }}
-                    title={`${info.name} requires certified DRM. Click to open hand-off options.`}
+                    title={t('chrome.drmCollapsedTooltip', { name: info.name }, `${info.name} requires certified DRM. Click to open hand-off options.`)}
                     style={getLiquidGlassInlineStyle(isBright)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs transition-all duration-200 group active:scale-95 cursor-pointer ${getLiquidGlassSurfaceClasses(isBright)}`}
                 >
                     <Tv className={`w-3.5 h-3.5 transition-colors ${isBright ? 'text-zinc-600 group-hover:text-zinc-900' : 'text-zinc-400 group-hover:text-white'}`} />
-                    <span className="font-medium text-[11px] tracking-tight">{info.name} Stream</span>
+                    <span className="font-medium text-[11px] tracking-tight">{t('chrome.drmStreamLabel', { name: info.name }, `${info.name} Stream`)}</span>
                     <ExternalLink className={`w-3 h-3 ${isBright ? 'text-zinc-500 group-hover:text-zinc-800' : 'text-zinc-400 group-hover:text-zinc-200'}`} />
                 </button>
             </div>
@@ -262,7 +267,7 @@ export default function DrmHandOffBanner({
                     <div className="min-w-0">
                         <div className="flex items-center gap-2">
                             <span className={`font-semibold text-xs tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                {info.name} Stream Detected
+                                {t('chrome.drmStreamDetected', { name: info.name }, `${info.name} Stream Detected`)}
                             </span>
                             <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono border ${
                                 isBright ? 'bg-black/5 border-black/10 text-zinc-600' : 'bg-white/[0.06] border-white/10 text-zinc-400'
@@ -302,12 +307,12 @@ export default function DrmHandOffBanner({
                         }`}
                     >
                         <ExternalLink className={`w-3 h-3 ${isBright ? 'text-zinc-600' : 'text-zinc-300'}`} />
-                        <span>Open With...</span>
+                        <span>{t('chrome.drmOpenWithBtn', null, 'Open With...')}</span>
                     </button>
 
                     <button
                         onClick={handleDismissClick}
-                        title="Dismiss for this tab"
+                        title={t('chrome.drmDismissTooltip', null, 'Dismiss for this tab')}
                         className={`p-1.5 rounded-lg transition cursor-pointer ${
                             isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-zinc-400 hover:text-white hover:bg-white/10'
                         }`}

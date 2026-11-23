@@ -16,6 +16,7 @@ import {
     cleanTotpSecret, isValidTotpSecret, parseOtpAuthUri,
     generateTotpCode, getTotpRemainingSeconds, formatTotpCode
 } from '../../utils/totp';
+import { useTranslation } from '../../i18n/index';
 
 const ADD_TYPE_TABS = ['login', 'totp', 'card', 'address', 'passkey'];
 const MAIN_PAGE_TABS = ['logins', '2fa', 'wallet', 'generator'];
@@ -44,7 +45,7 @@ const getAddTypePillStyle = (type, isBright) => {
         };
 };
 
-const getBiometricLabel = () => {
+const getBiometricLabel = (t) => {
     const raw = (
         (typeof window !== 'undefined' && window.electronAPI?.platform) ||
         (typeof process !== 'undefined' && process?.platform) ||
@@ -52,7 +53,7 @@ const getBiometricLabel = () => {
         ''
     ).toLowerCase();
     if (raw.includes('darwin') || raw.includes('mac')) return 'Touch ID';
-    if (raw.includes('linux')) return 'System Biometrics';
+    if (raw.includes('linux')) return t ? t('pop.vault.systemBiometrics', null, 'System Biometrics') : 'System Biometrics';
     return 'Windows Hello';
 };
 
@@ -101,6 +102,7 @@ function CountdownRing({ remaining, size = 26, strokeWidth = 2.5 }) {
 }
 
 export default function QVaultPopover({ isClosing }) {
+    const { t, intlLocale } = useTranslation();
     const {
         isUnlocked, isInitialized, masterPassword, pinEnabled, biometricsEnabled,
         unlock, unlockWithPin, unlockWithWindowsHello, enablePin, disablePin, setBiometrics,
@@ -113,7 +115,7 @@ export default function QVaultPopover({ isClosing }) {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
-    const biometricLabel = getBiometricLabel();
+    const biometricLabel = getBiometricLabel(t);
 
     // Live clock for TOTP updates
     const [now, setNow] = useState(Date.now());
@@ -248,17 +250,17 @@ export default function QVaultPopover({ isClosing }) {
             const { parsed, sourceName } = parseVaultContent(text, file.name);
 
             if (parsed.length === 0) {
-                showToast('No credentials found in file', 'error');
+                showToast(t('pop.vault.noCredsInFile', null, 'No credentials found in file'), 'error');
                 setIsImporting(false);
                 return;
             }
 
             const res = await importBatchItems(parsed);
-            showToast(`Imported ${res.total} items from ${sourceName}!`);
+            showToast(t('pop.vault.importedItems', { count: res.total, source: sourceName }, 'Imported {count} items from {source}!'));
             setViewMode('vault');
         } catch (err) {
             console.error("Import failed:", err);
-            showToast(`Import failed: ${err.message}`, 'error');
+            showToast(t('pop.vault.importFailed', { error: err.message }, 'Import failed: {error}'), 'error');
         } finally {
             setIsImporting(false);
             if (e.target) e.target.value = '';
@@ -296,7 +298,7 @@ export default function QVaultPopover({ isClosing }) {
         if (/^5[1-5]/.test(clean) || /^2[2-7]/.test(clean)) return 'Mastercard';
         if (/^3[47]/.test(clean)) return 'American Express';
         if (/^6(?:011|5)/.test(clean)) return 'Discover';
-        return 'Credit Card';
+        return t('pop.vault.creditCard', null, 'Credit Card');
     };
 
     const formatCardNumberInput = (val) => {
@@ -342,20 +344,20 @@ export default function QVaultPopover({ isClosing }) {
     const handleSavePin = async (e) => {
         e.preventDefault();
         if (!newPinInput || newPinInput.length < 4) {
-            showToast('PIN must be 4 to 6 digits', 'error');
+            showToast(t('pop.vault.pinRangeErr', null, 'PIN must be 4 to 6 digits'), 'error');
             return;
         }
         setIsSavingPin(true);
         try {
             const ok = await enablePin(newPinInput);
             if (ok) {
-                showToast('Quick PIN configured securely');
+                showToast(t('pop.vault.pinConfigured', null, 'Quick PIN configured securely'));
                 setNewPinInput('');
             } else {
-                showToast('Failed to configure PIN', 'error');
+                showToast(t('pop.vault.pinConfigFailed', null, 'Failed to configure PIN'), 'error');
             }
         } catch (err) {
-            showToast(err.message || 'Failed to save PIN', 'error');
+            showToast(err.message || t('pop.vault.pinSaveFailed', null, 'Failed to save PIN'), 'error');
         } finally {
             setIsSavingPin(false);
         }
@@ -365,11 +367,11 @@ export default function QVaultPopover({ isClosing }) {
         try {
             const ok = await disablePin();
             if (ok) {
-                showToast('Quick PIN removed');
+                showToast(t('pop.vault.pinRemoved', null, 'Quick PIN removed'));
                 setNewPinInput('');
             }
         } catch (err) {
-            showToast('Failed to remove PIN', 'error');
+            showToast(t('pop.vault.pinRemoveFailed', null, 'Failed to remove PIN'), 'error');
         }
     };
 
@@ -379,12 +381,14 @@ export default function QVaultPopover({ isClosing }) {
             const target = !biometricsEnabled;
             const ok = await setBiometrics(target);
             if (ok) {
-                showToast(target ? `${biometricLabel} biometric unlock enabled` : `${biometricLabel} biometric unlock disabled`);
+                showToast(target
+                    ? t('pop.vault.bioEnabled', { label: biometricLabel }, '{label} biometric unlock enabled')
+                    : t('pop.vault.bioDisabled', { label: biometricLabel }, '{label} biometric unlock disabled'));
             } else {
-                showToast(`${biometricLabel} verification cancelled or failed`, 'error');
+                showToast(t('pop.vault.bioFailed', { label: biometricLabel }, '{label} verification cancelled or failed'), 'error');
             }
         } catch (err) {
-            showToast(err.message || `${biometricLabel} error`, 'error');
+            showToast(err.message || t('pop.vault.bioError', { label: biometricLabel }, '{label} error'), 'error');
         } finally {
             setIsTogglingBio(false);
         }
@@ -393,27 +397,27 @@ export default function QVaultPopover({ isClosing }) {
     const handleChangeMasterPassword = async (e) => {
         e.preventDefault();
         if (!oldPassInput || !newMasterPass) {
-            showToast('All fields are required', 'error');
+            showToast(t('pop.vault.allFieldsReq', null, 'All fields are required'), 'error');
             return;
         }
         if (newMasterPass !== confirmMasterPass) {
-            showToast('New passwords do not match', 'error');
+            showToast(t('pop.vault.newPassMismatch', null, 'New passwords do not match'), 'error');
             return;
         }
         setIsChangingPass(true);
         try {
             const res = await useVaultStore.getState().changeMasterPassword(oldPassInput, newMasterPass);
             if (res?.success) {
-                showToast('Master Password updated & synced across QVault');
+                showToast(t('pop.vault.masterPassUpdated', null, 'Master Password updated & synced across QVault'));
                 setOldPassInput('');
                 setNewMasterPass('');
                 setConfirmMasterPass('');
                 setViewMode('vault');
             } else {
-                showToast(res?.error || 'Current master password is incorrect', 'error');
+                showToast(res?.error || t('pop.vault.currMasterIncorrect', null, 'Current master password is incorrect'), 'error');
             }
         } catch (err) {
-            showToast(err.message || 'Failed to change password', 'error');
+            showToast(err.message || t('pop.vault.changePassFailed', null, 'Failed to change password'), 'error');
         } finally {
             setIsChangingPass(false);
         }
@@ -424,9 +428,9 @@ export default function QVaultPopover({ isClosing }) {
             await resetVault();
             setConfirmReset(false);
             setViewMode('vault');
-            showToast('Local vault reset. You can now set a new Master Password.');
+            showToast(t('pop.vault.vaultResetToast', null, 'Local vault reset. You can now set a new Master Password.'));
         } catch (err) {
-            showToast(err.message || 'Failed to reset vault', 'error');
+            showToast(err.message || t('pop.vault.vaultResetFailed', null, 'Failed to reset vault'), 'error');
         }
     };
 
@@ -437,20 +441,23 @@ export default function QVaultPopover({ isClosing }) {
         setTotpSecret('');
         setShowNewItemPassword(false);
 
+        const defaultCardTitle = t('pop.vault.defaultCardTitle', null, 'My Card');
+        const defaultAddressTitle = t('pop.vault.defaultAddressTitle', null, 'Home Address');
+
         if (currentUrl && currentUrl !== 'about:blank') {
             try {
                 const u = new URL(currentUrl);
                 const hostClean = u.hostname.replace('www.', '');
-                setTitle(type === 'login' ? hostClean : (type === 'totp' ? `${hostClean} (2FA)` : (type === 'card' ? 'My Card' : (type === 'address' ? 'Home Address' : hostClean))));
+                setTitle(type === 'login' ? hostClean : (type === 'totp' ? `${hostClean} (2FA)` : (type === 'card' ? defaultCardTitle : (type === 'address' ? defaultAddressTitle : hostClean))));
                 setUrl(currentUrl);
                 setPasskeyRpId(u.hostname);
             } catch {
-                setTitle(type === 'card' ? 'My Card' : (type === 'address' ? 'Home Address' : ''));
+                setTitle(type === 'card' ? defaultCardTitle : (type === 'address' ? defaultAddressTitle : ''));
                 setUrl(currentUrl);
                 setPasskeyRpId('');
             }
         } else {
-            setTitle(type === 'card' ? 'My Card' : (type === 'address' ? 'Home Address' : ''));
+            setTitle(type === 'card' ? defaultCardTitle : (type === 'address' ? defaultAddressTitle : ''));
             setUrl('');
             setPasskeyRpId('');
         }
@@ -533,9 +540,9 @@ export default function QVaultPopover({ isClosing }) {
         try {
             setDeletingIds(prev => new Set(prev).add(id));
             await deleteItem(id);
-            showToast(`Deleted ${itemTitle} from QVault`);
+            showToast(t('pop.vault.deletedItem', { title: itemTitle }, 'Deleted {title} from QVault'));
         } catch (err) {
-            showToast(`Delete failed: ${err.message || err}`, 'error');
+            showToast(t('pop.vault.deleteFailed', { error: err.message || err }, 'Delete failed: {error}'), 'error');
         } finally {
             setDeletingIds(prev => {
                 const next = new Set(prev);
@@ -548,12 +555,12 @@ export default function QVaultPopover({ isClosing }) {
     const handleSaveNewItem = async (e) => {
         e.preventDefault();
         if (!title.trim()) {
-            showToast('Title / Nickname is required', 'error');
+            showToast(t('pop.vault.titleRequired', null, 'Title / Nickname is required'), 'error');
             return;
         }
 
         if (newItemType === 'totp' && !cleanTotpSecret(totpSecret || password)) {
-            showToast('A valid 2FA Secret Key is required', 'error');
+            showToast(t('pop.vault.totpRequired', null, 'A valid 2FA Secret Key is required'), 'error');
             return;
         }
 
@@ -570,7 +577,7 @@ export default function QVaultPopover({ isClosing }) {
                 if (!finalTotpSecret && password) {
                     finalTotpSecret = cleanTotpSecret(password);
                 }
-                finalUsername = username.trim() || '2FA Authenticator';
+                finalUsername = username.trim() || t('pop.vault.totpFallbackUsername', null, '2FA Authenticator');
                 finalPassword = password.trim() || finalTotpSecret;
             } else if (newItemType === 'passkey') {
                 const credId = passkeyCredId.trim() || ('pk_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36));
@@ -599,7 +606,7 @@ export default function QVaultPopover({ isClosing }) {
                     cvv: cardCvv.trim(),
                     cardBrand: cardBrand || detectCardBrand(cleanNumber)
                 };
-                finalUsername = cardholderName.trim() || `Card ending in ${cleanNumber.slice(-4)}`;
+                finalUsername = cardholderName.trim() || t('pop.vault.cardEndingIn', { last4: cleanNumber.slice(-4) }, 'Card ending in {last4}');
                 finalPassword = cleanNumber;
             } else if (newItemType === 'address') {
                 addressData = {
@@ -630,7 +637,7 @@ export default function QVaultPopover({ isClosing }) {
                     cardData,
                     addressData
                 });
-                showToast(`Updated ${title}!`);
+                showToast(t('pop.vault.updatedItem', { title }, 'Updated {title}!'));
             } else {
                 await addNewItem({
                     type: newItemType,
@@ -643,13 +650,13 @@ export default function QVaultPopover({ isClosing }) {
                     cardData,
                     addressData
                 });
-                showToast(`Saved ${title}!`);
+                showToast(t('pop.vault.savedItem', { title }, 'Saved {title}!'));
             }
 
             setEditingItemId(null);
             setViewMode('vault');
         } catch (err) {
-            showToast('Failed to save item: ' + err.message, 'error');
+            showToast(t('pop.vault.saveItemFailed', { error: err.message }, 'Failed to save item: {error}'), 'error');
         } finally {
             setIsSaving(false);
         }
@@ -796,11 +803,13 @@ export default function QVaultPopover({ isClosing }) {
                 }
 
                 wv.executeJavaScript(code).then((res) => {
-                    showToast(res ? `Autofilled ${entry.title}!` : `Autofill completed for ${entry.title}`);
+                    showToast(res
+                        ? t('pop.vault.autofilled', { title: entry.title }, 'Autofilled {title}!')
+                        : t('pop.vault.autofillCompleted', { title: entry.title }, 'Autofill completed for {title}'));
                 }).catch(() => {
                     if (entry.password) {
                         navigator.clipboard.writeText(entry.password);
-                        showToast(`Copied data for ${entry.title}!`);
+                        showToast(t('pop.vault.copiedDataFor', { title: entry.title }, 'Copied data for {title}!'));
                     }
                 });
             }
@@ -811,11 +820,11 @@ export default function QVaultPopover({ isClosing }) {
         setRevealedPasswords(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const copyToClipboard = (text, label, id) => {
+    const copyToClipboard = (text, labelKey, id, displayLabel) => {
         if (!text) return;
         navigator.clipboard.writeText(text);
-        setCopiedId(`${label}-${id}`);
-        showToast(`Copied ${label}!`);
+        setCopiedId(`${labelKey}-${id}`);
+        showToast(t('pop.vault.copiedLabel', { label: displayLabel || labelKey }, 'Copied {label}!'));
         setTimeout(() => setCopiedId(null), 2000);
     };
 
@@ -986,7 +995,7 @@ export default function QVaultPopover({ isClosing }) {
                     </div>
                     <div>
                         <h3 className={`text-xs font-bold tracking-tight ${isBright ? 'text-zinc-950' : 'text-white'}`}>QVault</h3>
-                        <p className={`text-[10px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>{isUnlocked ? `${passwords.length} saved items` : 'AES-256 Encrypted Vault'}</p>
+                        <p className={`text-[10px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>{isUnlocked ? t('pop.vault.savedItemsCount', { count: passwords.length }, '{count} saved items') : t('pop.vault.aesVaultSubtitle', null, 'AES-256 Encrypted Vault')}</p>
                     </div>
                 </div>
 
@@ -995,16 +1004,16 @@ export default function QVaultPopover({ isClosing }) {
                         <button onClick={() => setViewMode(viewMode === 'settings' ? 'vault' : 'settings')} className={`w-8 h-8 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${viewMode === 'settings'
                                 ? (isBright ? 'bg-accent/20 text-zinc-900 border-accent/40 font-bold' : 'bg-accent/20 text-accent border-accent/40')
                                 : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]' : 'bg-white/[0.06] border-white/[0.08] text-white/75 hover:text-white hover:bg-white/10')
-                            }`} title="Vault Settings">
+                            }`} title={t('pop.vault.vaultSettings', null, 'Vault Settings')}>
                             <Settings size={14} />
                         </button>
-                        <button onClick={() => handleOpenAddForm(activePage === '2fa' ? 'totp' : activePage === 'wallet' ? 'card' : 'login')} className="px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs" title="Add to Vault">
-                            <Plus size={13} strokeWidth={2.5} /> Add
+                        <button onClick={() => handleOpenAddForm(activePage === '2fa' ? 'totp' : activePage === 'wallet' ? 'card' : 'login')} className="px-3 py-1.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs" title={t('pop.vault.addToVault', null, 'Add to Vault')}>
+                            <Plus size={13} strokeWidth={2.5} /> {t('pop.vault.add', null, 'Add')}
                         </button>
                         <button onClick={lock} className={`w-8 h-8 rounded-full flex items-center justify-center border text-xs transition active:scale-95 cursor-pointer ${isBright
                                 ? 'bg-black/[0.03] border-black/10 text-zinc-600 hover:text-zinc-900 hover:bg-black/[0.06]'
                                 : 'bg-white/[0.06] border-white/[0.08] text-white/75 hover:text-white hover:bg-white/10'
-                            }`} title="Lock Vault">
+                            }`} title={t('pop.vault.lockVault', null, 'Lock Vault')}>
                             <Lock size={14} />
                         </button>
                     </div>
@@ -1054,7 +1063,7 @@ export default function QVaultPopover({ isClosing }) {
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                                     }`}
                             >
-                                Quick PIN
+                                {t('pop.vault.quickPin', null, 'Quick PIN')}
                             </button>
                             <button
                                 type="button"
@@ -1065,7 +1074,7 @@ export default function QVaultPopover({ isClosing }) {
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                                     }`}
                             >
-                                Master Password
+                                {t('pop.vault.masterPassword', null, 'Master Password')}
                             </button>
                         </div>
                     )}
@@ -1075,30 +1084,30 @@ export default function QVaultPopover({ isClosing }) {
                             <Shield size={18} className="text-accent shrink-0" />
                             <div className={`text-[11px] leading-relaxed ${isBright ? 'text-zinc-700 font-medium' : 'text-white/85 font-medium'}`}>
                                 {!isInitialized
-                                    ? 'Set a Master Password to initialize your encrypted QVault.'
+                                    ? t('pop.vault.initMasterDesc', null, 'Set a Master Password to initialize your encrypted QVault.')
                                     : unlockMode === 'pin'
-                                        ? 'Enter your quick PIN to unlock QVault.'
-                                        : 'Enter your Master Password to decrypt passwords, 2FA codes, cards, and addresses.'}
+                                        ? t('pop.vault.enterPinDesc', null, 'Enter your quick PIN to unlock QVault.')
+                                        : t('pop.vault.enterMasterDesc', null, 'Enter your Master Password to decrypt passwords, 2FA codes, cards, and addresses.')}
                             </div>
                         </div>
 
                         {unlockMode === 'password' ? (
                             <div className="flex flex-col gap-1.5">
                                 <label className={`text-[10px] font-mono uppercase tracking-wider px-1 font-bold ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>
-                                    {isInitialized ? 'Master Password' : 'Create Master Password'}
+                                    {isInitialized ? t('pop.vault.masterPassword', null, 'Master Password') : t('pop.vault.createMasterPassword', null, 'Create Master Password')}
                                 </label>
                                 <input
                                     type="password"
                                     autoFocus
                                     value={masterPassInput}
                                     onChange={(e) => setMasterPassInput(e.target.value)}
-                                    placeholder={isInitialized ? "Enter master password..." : "Create master password..."}
+                                    placeholder={isInitialized ? t('pop.vault.enterMasterPlaceholder', null, 'Enter master password...') : t('pop.vault.createMasterPlaceholder', null, 'Create master password...')}
                                     className={`w-full h-10 rounded-full px-4 text-xs font-mono outline-none transition-all border ${inputClass}`}
                                 />
                             </div>
                         ) : (
                             <div className="flex flex-col gap-1.5">
-                                <label className={`text-[10px] font-mono uppercase tracking-wider px-1 font-bold ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>PIN Code</label>
+                                <label className={`text-[10px] font-mono uppercase tracking-wider px-1 font-bold ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>{t('pop.vault.pinCode', null, 'PIN Code')}</label>
                                 <input
                                     type="password"
                                     autoFocus
@@ -1124,14 +1133,14 @@ export default function QVaultPopover({ isClosing }) {
                                             isBright ? 'text-zinc-500 hover:text-red-600' : 'text-white/65 hover:text-red-400'
                                         }`}
                                     >
-                                        Forgot password? Reset local vault
+                                        {t('pop.vault.forgotReset', null, 'Forgot password? Reset local vault')}
                                     </button>
                                 ) : (
                                     <div className={`p-3 rounded-2xl border flex flex-col gap-2 ${
                                         isBright ? 'bg-red-50/80 border-red-200 text-zinc-800' : 'bg-red-500/10 border-red-500/25 text-white/90'
                                     }`}>
                                         <p className="text-[11px] leading-relaxed text-center font-medium">
-                                            Erase locally stored credentials on this device and initialize a fresh vault?
+                                            {t('pop.vault.confirmResetPrompt', null, 'Erase locally stored credentials on this device and initialize a fresh vault?')}
                                         </p>
                                         <div className="flex items-center gap-2">
                                             <button
@@ -1141,18 +1150,18 @@ export default function QVaultPopover({ isClosing }) {
                                                     isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700' : 'bg-white/10 hover:bg-white/15 border-white/10 text-white/80'
                                                 }`}
                                             >
-                                                Cancel
+                                                {t('common.cancel', null, 'Cancel')}
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={async () => {
                                                     setConfirmReset(false);
                                                     await resetVault();
-                                                    showToast("Local vault reset. You can now set a new Master Password.");
+                                                    showToast(t('pop.vault.vaultResetToast', null, 'Local vault reset. You can now set a new Master Password.'));
                                                 }}
                                                 className="flex-1 h-8 rounded-full text-[11px] font-bold bg-red-500 hover:bg-red-600 text-white transition cursor-pointer active:scale-95"
                                             >
-                                                Confirm Reset
+                                                {t('pop.vault.confirmReset', null, 'Confirm Reset')}
                                             </button>
                                         </div>
                                     </div>
@@ -1166,7 +1175,7 @@ export default function QVaultPopover({ isClosing }) {
                             className="w-full h-10 mt-1 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 transition-all duration-200 active:scale-95 disabled:opacity-40 shadow-sm cursor-pointer border bg-accent hover:brightness-110 text-zinc-950 border-accent/40"
                         >
                             {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                            {!isInitialized ? 'Initialize Vault' : 'Unlock Vault'}
+                            {!isInitialized ? t('pop.vault.initializeVault', null, 'Initialize Vault') : t('pop.vault.unlockVault', null, 'Unlock Vault')}
                         </button>
 
                         {biometricsEnabled && (
@@ -1175,14 +1184,14 @@ export default function QVaultPopover({ isClosing }) {
                                 disabled={isLoading}
                                 onClick={async () => {
                                     const ok = await unlockWithWindowsHello();
-                                    if (ok) showToast(`Unlocked via ${biometricLabel}`);
+                                    if (ok) showToast(t('pop.vault.unlockedViaBio', { label: biometricLabel }, 'Unlocked via {label}'));
                                 }}
                                 className={`w-full h-10 rounded-full font-semibold text-xs flex items-center justify-center gap-2 transition-all duration-200 active:scale-95 cursor-pointer border ${isBright
                                         ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10 shadow-xs'
                                         : 'bg-white/[0.08] hover:bg-white/[0.12] text-white border-white/10'
                                     }`}
                             >
-                                <Fingerprint size={14} className="text-accent" /> Unlock with {biometricLabel}
+                                <Fingerprint size={14} className="text-accent" /> {t('pop.vault.unlockWithBio', { label: biometricLabel }, 'Unlock with {label}')}
                             </button>
                         )}
                     </form>
@@ -1195,14 +1204,14 @@ export default function QVaultPopover({ isClosing }) {
                         <button onClick={handleCloseSettings} className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition active:scale-95 cursor-pointer ${
                             isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.04]' : 'text-white/85 hover:text-white hover:bg-white/[0.06]'
                         }`}>
-                            <ArrowLeft size={13} /> Vault Settings
+                            <ArrowLeft size={13} /> {t('pop.vault.vaultSettings', null, 'Vault Settings')}
                         </button>
                     </div>
 
                     {/* Quick PIN Settings */}
                     <form onSubmit={handleSavePin} className={`p-3 border rounded-2xl flex flex-col gap-2 ${cardClass}`}>
                         <div className="flex items-center justify-between">
-                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>Quick PIN Unlock</span>
+                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.vault.quickPinUnlock', null, 'Quick PIN Unlock')}</span>
                             {pinEnabled && (
                                 <button
                                     type="button"
@@ -1211,16 +1220,16 @@ export default function QVaultPopover({ isClosing }) {
                                         isBright ? 'text-red-600 hover:text-red-700' : 'text-red-400 hover:text-red-300'
                                     }`}
                                 >
-                                    Remove PIN
+                                    {t('pop.vault.removePin', null, 'Remove PIN')}
                                 </button>
                             )}
                         </div>
-                        <p className={`text-[11px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>Set a 4-6 digit PIN for fast vault access.</p>
+                        <p className={`text-[11px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>{t('pop.vault.quickPinDesc', null, 'Set a 4-6 digit PIN for fast vault access.')}</p>
                         <div className="flex gap-2 mt-1">
                             <input
                                 type="password"
                                 maxLength={6}
-                                placeholder={pinEnabled ? "Change PIN (4-6 digits)" : "Set PIN (4-6 digits)"}
+                                placeholder={pinEnabled ? t('pop.vault.changePinPlaceholder', null, 'Change PIN (4-6 digits)') : t('pop.vault.setPinPlaceholder', null, 'Set PIN (4-6 digits)')}
                                 value={newPinInput}
                                 onChange={e => setNewPinInput(e.target.value.replace(/\D/g, ''))}
                                 className={`flex-1 h-9 border rounded-full px-3.5 text-center text-xs font-mono tracking-widest outline-none transition-colors ${inputClass}`}
@@ -1230,7 +1239,7 @@ export default function QVaultPopover({ isClosing }) {
                                 disabled={isSavingPin || !newPinInput}
                                 className="px-4 h-9 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-xs transition cursor-pointer disabled:opacity-40 shadow-xs"
                             >
-                                {isSavingPin ? 'Saving...' : 'Save PIN'}
+                                {isSavingPin ? t('pop.vault.saving', null, 'Saving...') : t('pop.vault.savePin', null, 'Save PIN')}
                             </button>
                         </div>
                     </form>
@@ -1239,9 +1248,9 @@ export default function QVaultPopover({ isClosing }) {
                     <div className={`p-3 border rounded-2xl flex items-center justify-between ${cardClass}`}>
                         <div className="flex flex-col gap-0.5">
                             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                <Fingerprint size={14} className="text-accent" /> {biometricLabel === 'System Biometrics' ? 'System Biometrics' : `${biometricLabel} Biometrics`}
+                                <Fingerprint size={14} className="text-accent" /> {biometricLabel === t('pop.vault.systemBiometrics', null, 'System Biometrics') ? biometricLabel : t('pop.vault.bioBiometrics', { label: biometricLabel }, '{label} Biometrics')}
                             </span>
-                            <p className={`text-[11px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>Use fingerprint, facial recognition, or PIN.</p>
+                            <p className={`text-[11px] font-mono ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>{t('pop.vault.bioDesc', null, 'Use fingerprint, facial recognition, or PIN.')}</p>
                         </div>
                         <button
                             type="button"
@@ -1253,17 +1262,17 @@ export default function QVaultPopover({ isClosing }) {
                                     : (isBright ? 'bg-black/[0.05] text-zinc-800 font-semibold border-black/10 hover:bg-black/[0.09]' : 'bg-white/10 text-white font-semibold border-white/15 hover:bg-white/15')
                             }`}
                         >
-                            {isTogglingBio ? 'Updating...' : (biometricsEnabled ? 'Enabled' : 'Enable')}
+                            {isTogglingBio ? t('pop.vault.updating', null, 'Updating...') : (biometricsEnabled ? t('common.enabled', null, 'Enabled') : t('pop.vault.enable', null, 'Enable'))}
                         </button>
                     </div>
 
                     {/* Master Password Settings */}
                     <form onSubmit={handleChangeMasterPassword} className={`p-3 border rounded-2xl flex flex-col gap-2.5 ${cardClass}`}>
-                        <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>Change Master Password</span>
+                        <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.vault.changeMasterPassword', null, 'Change Master Password')}</span>
                         <input
                             type="password"
                             required
-                            placeholder="Current Master Password"
+                            placeholder={t('pop.vault.currMasterPlaceholder', null, 'Current Master Password')}
                             value={oldPassInput}
                             onChange={e => setOldPassInput(e.target.value)}
                             className={`h-9 border rounded-full px-3.5 text-xs outline-none transition-colors ${inputClass}`}
@@ -1271,7 +1280,7 @@ export default function QVaultPopover({ isClosing }) {
                         <input
                             type="password"
                             required
-                            placeholder="New Master Password"
+                            placeholder={t('pop.vault.newMasterPlaceholder', null, 'New Master Password')}
                             value={newMasterPass}
                             onChange={e => setNewMasterPass(e.target.value)}
                             className={`h-9 border rounded-full px-3.5 text-xs outline-none transition-colors ${inputClass}`}
@@ -1279,13 +1288,13 @@ export default function QVaultPopover({ isClosing }) {
                         <input
                             type="password"
                             required
-                            placeholder="Confirm New Master Password"
+                            placeholder={t('pop.vault.confirmMasterPlaceholder', null, 'Confirm New Master Password')}
                             value={confirmMasterPass}
                             onChange={e => setConfirmMasterPass(e.target.value)}
                             className={`h-9 border rounded-full px-3.5 text-xs outline-none transition-colors ${inputClass}`}
                         />
                         <button type="submit" disabled={isChangingPass} className="w-full h-9 mt-1 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-xs transition cursor-pointer shadow-xs">
-                            {isChangingPass ? 'Updating...' : 'Update Master Password'}
+                            {isChangingPass ? t('pop.vault.updating', null, 'Updating...') : t('pop.vault.updateMasterPassword', null, 'Update Master Password')}
                         </button>
                     </form>
 
@@ -1293,14 +1302,14 @@ export default function QVaultPopover({ isClosing }) {
                     <div className={`p-3 rounded-2xl flex flex-col gap-2.5 border ${cardClass}`}>
                         <div className="flex items-center justify-between">
                             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                <UploadCloud size={13} className="text-accent" /> Vault Migration & Backups
+                                <UploadCloud size={13} className="text-accent" /> {t('pop.vault.migrationTitle', null, 'Vault Migration & Backups')}
                             </span>
                             <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
                                 Bitwarden • Proton Pass • Chrome
                             </span>
                         </div>
                         <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-white/75'}`}>
-                            Transition from external password managers by importing your CSV or JSON vault export directly into QVault.
+                            {t('pop.vault.migrationDesc', null, 'Transition from external password managers by importing your CSV or JSON vault export directly into QVault.')}
                         </p>
 
                         <input
@@ -1319,20 +1328,20 @@ export default function QVaultPopover({ isClosing }) {
                                 className="h-9 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-40 border bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs"
                             >
                                 {isImporting ? <RefreshCw size={12} className="animate-spin" /> : <UploadCloud size={12} />}
-                                <span>{isImporting ? 'Importing...' : 'Import Vault'}</span>
+                                <span>{isImporting ? t('pop.vault.importing', null, 'Importing...') : t('pop.vault.importVault', null, 'Import Vault')}</span>
                             </button>
                             <div className="flex gap-1.5">
                                 <button
                                     type="button"
                                     onClick={() => {
                                         exportVaultData('json');
-                                        showToast('Exported QVault backup (.JSON)');
+                                        showToast(t('pop.vault.exportedJson', null, 'Exported QVault backup (.JSON)'));
                                     }}
                                     className={`flex-1 h-9 rounded-full text-xs font-semibold flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer border ${isBright
                                             ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
                                             : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
                                         }`}
-                                    title="Export backup as JSON"
+                                    title={t('pop.vault.exportJsonTitle', null, 'Export backup as JSON')}
                                 >
                                     <Download size={11} /> .JSON
                                 </button>
@@ -1340,13 +1349,13 @@ export default function QVaultPopover({ isClosing }) {
                                     type="button"
                                     onClick={() => {
                                         exportVaultData('csv');
-                                        showToast('Exported QVault backup (.CSV)');
+                                        showToast(t('pop.vault.exportedCsv', null, 'Exported QVault backup (.CSV)'));
                                     }}
                                     className={`flex-1 h-9 rounded-full text-xs font-semibold flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer border ${isBright
                                             ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
                                             : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
                                         }`}
-                                    title="Export backup as CSV"
+                                    title={t('pop.vault.exportCsvTitle', null, 'Export backup as CSV')}
                                 >
                                     <Download size={11} /> .CSV
                                 </button>
@@ -1359,10 +1368,10 @@ export default function QVaultPopover({ isClosing }) {
                         isBright ? 'bg-red-500/[0.06] border-red-500/20' : 'bg-red-500/[0.07] border-red-500/25'
                     }`}>
                         <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-red-600' : 'text-red-400'}`}>
-                            <Trash2 size={13} /> Reset Local Vault
+                            <Trash2 size={13} /> {t('pop.vault.resetLocalVault', null, 'Reset Local Vault')}
                         </span>
                         <p className={`text-[11px] ${isBright ? 'text-zinc-600' : 'text-white/75'}`}>
-                            Permanently wipe locally cached credentials on this device.
+                            {t('pop.vault.resetVaultDesc', null, 'Permanently wipe locally cached credentials on this device.')}
                         </p>
                         {confirmReset ? (
                             <div className="flex items-center gap-2 mt-1">
@@ -1371,7 +1380,7 @@ export default function QVaultPopover({ isClosing }) {
                                     onClick={handleConfirmResetVault}
                                     className="flex-1 h-9 rounded-full bg-red-600 hover:bg-red-700 text-white font-semibold text-xs transition active:scale-95 cursor-pointer"
                                 >
-                                    Yes, Wipe Everything
+                                    {t('pop.vault.yesWipeAll', null, 'Yes, Wipe Everything')}
                                 </button>
                                 <button
                                     type="button"
@@ -1380,7 +1389,7 @@ export default function QVaultPopover({ isClosing }) {
                                         isBright ? 'bg-black/[0.05] hover:bg-black/[0.09] text-zinc-800 border-black/10' : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
                                     }`}
                                 >
-                                    Cancel
+                                    {t('common.cancel', null, 'Cancel')}
                                 </button>
                             </div>
                         ) : (
@@ -1391,7 +1400,7 @@ export default function QVaultPopover({ isClosing }) {
                                     isBright ? 'bg-red-500/10 hover:bg-red-500/20 border-red-500/25 text-red-600' : 'bg-red-500/15 hover:bg-red-500/25 border-red-500/30 text-red-400'
                                 }`}
                             >
-                                Reset Local Vault
+                                {t('pop.vault.resetLocalVault', null, 'Reset Local Vault')}
                             </button>
                         )}
                     </div>
@@ -1404,9 +1413,9 @@ export default function QVaultPopover({ isClosing }) {
                         <button type="button" onClick={handleCloseAdd} className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition active:scale-95 cursor-pointer ${
                             isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.04]' : 'text-white/85 hover:text-white hover:bg-white/[0.06]'
                         }`}>
-                            <ArrowLeft size={13} /> Back
+                            <ArrowLeft size={13} /> {t('common.back', null, 'Back')}
                         </button>
-                        <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{editingItemId ? 'Edit Item' : 'New Vault Item'}</span>
+                        <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{editingItemId ? t('pop.vault.editItem', null, 'Edit Item') : t('pop.vault.newVaultItem', null, 'New Vault Item')}</span>
                     </div>
 
                     {/* Type Selector (5 Types: login, totp, card, address, passkey) */}
@@ -1439,19 +1448,19 @@ export default function QVaultPopover({ isClosing }) {
                             }}
                         />
                         <button type="button" onMouseEnter={() => setHoveredNewItemType('login')} onClick={() => setNewItemType('login')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'login' ? (isBright ? 'text-zinc-950 font-bold' : 'text-sky-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
-                            <Globe size={11} className={newItemType === 'login' ? (isBright ? 'text-sky-600' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Login
+                            <Globe size={11} className={newItemType === 'login' ? (isBright ? 'text-sky-600' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> {t('pop.vault.typeLogin', null, 'Login')}
                         </button>
                         <button type="button" onMouseEnter={() => setHoveredNewItemType('totp')} onClick={() => setNewItemType('totp')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'totp' ? (isBright ? 'text-zinc-950 font-bold' : 'text-emerald-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
-                            <ShieldCheck size={11} className={newItemType === 'totp' ? (isBright ? 'text-emerald-600' : 'text-emerald-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> 2FA
+                            <ShieldCheck size={11} className={newItemType === 'totp' ? (isBright ? 'text-emerald-600' : 'text-emerald-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> {t('pop.vault.type2fa', null, '2FA')}
                         </button>
                         <button type="button" onMouseEnter={() => setHoveredNewItemType('card')} onClick={() => setNewItemType('card')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'card' ? (isBright ? 'text-zinc-950 font-bold' : 'text-blue-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
-                            <CreditCard size={11} className={newItemType === 'card' ? (isBright ? 'text-blue-600' : 'text-blue-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Card
+                            <CreditCard size={11} className={newItemType === 'card' ? (isBright ? 'text-blue-600' : 'text-blue-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> {t('pop.vault.typeCard', null, 'Card')}
                         </button>
                         <button type="button" onMouseEnter={() => setHoveredNewItemType('address')} onClick={() => setNewItemType('address')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'address' ? (isBright ? 'text-zinc-950 font-bold' : 'text-amber-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
-                            <MapPin size={11} className={newItemType === 'address' ? (isBright ? 'text-amber-600' : 'text-amber-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Address
+                            <MapPin size={11} className={newItemType === 'address' ? (isBright ? 'text-amber-600' : 'text-amber-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> {t('pop.vault.typeAddress', null, 'Address')}
                         </button>
                         <button type="button" onMouseEnter={() => setHoveredNewItemType('passkey')} onClick={() => setNewItemType('passkey')} className={`relative z-10 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1 cursor-pointer truncate ${newItemType === 'passkey' ? (isBright ? 'text-zinc-950 font-bold' : 'text-purple-300 font-bold') : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/70 hover:text-white')}`}>
-                            <Fingerprint size={11} className={newItemType === 'passkey' ? (isBright ? 'text-purple-600' : 'text-purple-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> Passkey
+                            <Fingerprint size={11} className={newItemType === 'passkey' ? (isBright ? 'text-purple-600' : 'text-purple-300') : (isBright ? 'text-zinc-500' : 'text-white/65')} /> {t('pop.vault.typePasskey', null, 'Passkey')}
                         </button>
                     </div>
 
@@ -1459,12 +1468,12 @@ export default function QVaultPopover({ isClosing }) {
                         {/* Title / Label */}
                         <div className="flex flex-col gap-1">
                             <label className={labelClass}>
-                                {newItemType === 'card' ? 'Card Nickname' : newItemType === 'address' ? 'Address Nickname' : newItemType === 'totp' ? 'Account / Service Title' : 'Title'}
+                                {newItemType === 'card' ? t('pop.vault.cardNickname', null, 'Card Nickname') : newItemType === 'address' ? t('pop.vault.addressNickname', null, 'Address Nickname') : newItemType === 'totp' ? t('pop.vault.serviceTitle', null, 'Account / Service Title') : t('pop.vault.titleLabel', null, 'Title')}
                             </label>
                             <input
                                 type="text"
                                 required
-                                placeholder={newItemType === 'card' ? 'e.g. Chase Sapphire' : newItemType === 'address' ? 'e.g. Home or Office' : newItemType === 'totp' ? 'e.g. GitHub or Google' : 'e.g. GitHub'}
+                                placeholder={newItemType === 'card' ? t('pop.vault.cardNicknamePh', null, 'e.g. Chase Sapphire') : newItemType === 'address' ? t('pop.vault.addressNicknamePh', null, 'e.g. Home or Office') : newItemType === 'totp' ? t('pop.vault.serviceTitlePh', null, 'e.g. GitHub or Google') : t('pop.vault.titlePh', null, 'e.g. GitHub')}
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
                                 className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
@@ -1475,7 +1484,7 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'totp' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Username / Email / Issuer (Optional)</label>
+                                    <label className={labelClass}>{t('pop.vault.totpUserLabel', null, 'Username / Email / Issuer (Optional)')}</label>
                                     <input
                                         type="text"
                                         placeholder="user@domain.com"
@@ -1486,21 +1495,21 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className={labelClass}>2FA Secret / Authenticator Key</label>
+                                        <label className={labelClass}>{t('pop.vault.totpSecretLabel', null, '2FA Secret / Authenticator Key')}</label>
                                         {totpSecret && (
                                             <button
                                                 type="button"
                                                 onClick={() => setTotpSecret('')}
                                                 className={`text-[10px] font-mono transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-white/60 hover:text-white'}`}
                                             >
-                                                Clear
+                                                {t('pop.vault.clear', null, 'Clear')}
                                             </button>
                                         )}
                                     </div>
                                     <input
                                         type="text"
                                         required
-                                        placeholder="e.g. JBSWY3DPEHPK3PXP or otpauth://..."
+                                        placeholder={t('pop.vault.totpSecretPh', null, 'e.g. JBSWY3DPEHPK3PXP or otpauth://...')}
                                         value={totpSecret}
                                         onChange={e => handleTotpSecretChange(e.target.value)}
                                         className={`h-8 border rounded-lg px-3 text-xs font-mono outline-none transition-colors ${inputClass}`}
@@ -1514,7 +1523,7 @@ export default function QVaultPopover({ isClosing }) {
                                             <CountdownRing remaining={totpRemaining} size={24} strokeWidth={2.5} />
                                             <div className="flex flex-col">
                                                 <span className="text-[10px] uppercase font-mono font-bold tracking-wider opacity-75">
-                                                    Live Code Preview
+                                                    {t('pop.vault.liveCodePreview', null, 'Live Code Preview')}
                                                 </span>
                                                 <span className="font-mono text-sm font-bold tracking-widest">
                                                     {formatTotpCode(previewTotpCode)}
@@ -1522,7 +1531,7 @@ export default function QVaultPopover({ isClosing }) {
                                             </div>
                                         </div>
                                         <span className="text-[10px] font-mono opacity-80">
-                                            {totpRemaining}s left
+                                            {t('pop.vault.secondsLeft', { s: totpRemaining }, '{s}s left')}
                                         </span>
                                     </div>
                                 )}
@@ -1533,7 +1542,7 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'login' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Website URL</label>
+                                    <label className={labelClass}>{t('pop.vault.websiteUrl', null, 'Website URL')}</label>
                                     <input
                                         type="text"
                                         placeholder="https://example.com"
@@ -1543,7 +1552,7 @@ export default function QVaultPopover({ isClosing }) {
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Username / Email</label>
+                                    <label className={labelClass}>{t('pop.vault.usernameEmail', null, 'Username / Email')}</label>
                                     <input
                                         type="text"
                                         placeholder="user@domain.com"
@@ -1554,16 +1563,16 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className={labelClass}>Password</label>
-                                        <button type="button" onClick={() => { generateCustomPassword(); setPassword(generatedResult); showToast('Generated password!'); }} className={`text-[10px] hover:brightness-110 font-mono font-semibold transition cursor-pointer ${isBright ? 'text-amber-700' : 'text-accent'}`}>
-                                            Generate Random
+                                        <label className={labelClass}>{t('pop.vault.passwordLabel', null, 'Password')}</label>
+                                        <button type="button" onClick={() => { generateCustomPassword(); setPassword(generatedResult); showToast(t('pop.vault.generatedPassToast', null, 'Generated password!')); }} className={`text-[10px] hover:brightness-110 font-mono font-semibold transition cursor-pointer ${isBright ? 'text-amber-700' : 'text-accent'}`}>
+                                            {t('pop.vault.generateRandom', null, 'Generate Random')}
                                         </button>
                                     </div>
                                     <div className="relative flex items-center">
                                         <input
                                             type={showNewItemPassword ? "text" : "password"}
                                             required
-                                            placeholder="Password"
+                                            placeholder={t('pop.vault.passwordLabel', null, 'Password')}
                                             value={password}
                                             onChange={e => setPassword(e.target.value)}
                                             className={`w-full h-8 border rounded-lg pl-3 pr-8 text-xs font-mono outline-none transition-colors ${inputClass}`}
@@ -1574,7 +1583,7 @@ export default function QVaultPopover({ isClosing }) {
                                             className={`absolute right-2 p-1 rounded transition cursor-pointer ${
                                                 isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/40 hover:text-white/80'
                                             }`}
-                                            title={showNewItemPassword ? "Hide password" : "Show password"}
+                                            title={showNewItemPassword ? t('pop.vault.hidePassword', null, 'Hide password') : t('pop.vault.showPassword', null, 'Show password')}
                                             tabIndex={-1}
                                         >
                                             {showNewItemPassword ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -1583,20 +1592,20 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className={labelClass}>2FA Secret / Authenticator Key (Optional)</label>
+                                        <label className={labelClass}>{t('pop.vault.totpSecretOptLabel', null, '2FA Secret / Authenticator Key (Optional)')}</label>
                                         {totpSecret && (
                                             <button
                                                 type="button"
                                                 onClick={() => setTotpSecret('')}
                                                 className={`text-[10px] font-mono transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-white/60 hover:text-white'}`}
                                             >
-                                                Clear
+                                                {t('pop.vault.clear', null, 'Clear')}
                                             </button>
                                         )}
                                     </div>
                                     <input
                                         type="text"
-                                        placeholder="e.g. JBSWY3DPEHPK3PXP or otpauth://..."
+                                        placeholder={t('pop.vault.totpSecretPh', null, 'e.g. JBSWY3DPEHPK3PXP or otpauth://...')}
                                         value={totpSecret}
                                         onChange={e => handleTotpSecretChange(e.target.value)}
                                         className={`h-8 border rounded-lg px-3 text-xs font-mono outline-none transition-colors ${inputClass}`}
@@ -1610,7 +1619,7 @@ export default function QVaultPopover({ isClosing }) {
                                             <CountdownRing remaining={totpRemaining} size={24} strokeWidth={2.5} />
                                             <div className="flex flex-col">
                                                 <span className="text-[10px] uppercase font-mono font-bold tracking-wider opacity-75">
-                                                    Live Code Preview
+                                                    {t('pop.vault.liveCodePreview', null, 'Live Code Preview')}
                                                 </span>
                                                 <span className="font-mono text-sm font-bold tracking-widest">
                                                     {formatTotpCode(previewTotpCode)}
@@ -1618,7 +1627,7 @@ export default function QVaultPopover({ isClosing }) {
                                             </div>
                                         </div>
                                         <span className="text-[10px] font-mono opacity-80">
-                                            {totpRemaining}s left
+                                            {t('pop.vault.secondsLeft', { s: totpRemaining }, '{s}s left')}
                                         </span>
                                     </div>
                                 )}
@@ -1629,10 +1638,10 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'card' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Cardholder Name</label>
+                                    <label className={labelClass}>{t('pop.vault.cardholderName', null, 'Cardholder Name')}</label>
                                     <input
                                         type="text"
-                                        placeholder="Name on card"
+                                        placeholder={t('pop.vault.cardholderPh', null, 'Name on card')}
                                         value={cardholderName}
                                         onChange={e => setCardholderName(e.target.value)}
                                         className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
@@ -1640,7 +1649,7 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex justify-between items-center">
-                                        <label className={labelClass}>Card Number</label>
+                                        <label className={labelClass}>{t('pop.vault.cardNumber', null, 'Card Number')}</label>
                                         <span className={`text-[10px] font-mono font-semibold ${isBright ? 'text-amber-700' : 'text-accent'}`}>{cardBrand}</span>
                                     </div>
                                     <input
@@ -1659,29 +1668,29 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>Exp Month</label>
+                                        <label className={labelClass}>{t('pop.vault.expMonth', null, 'Exp Month')}</label>
                                         <input
                                             type="text"
                                             maxLength={2}
-                                            placeholder="MM"
+                                            placeholder={t('pop.vault.expMonthPh', null, 'MM')}
                                             value={cardExpMonth}
                                             onChange={e => setCardExpMonth(e.target.value.replace(/\D/g, ''))}
                                             className={`h-8 border rounded-lg px-2 text-xs text-center font-mono outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>Exp Year</label>
+                                        <label className={labelClass}>{t('pop.vault.expYear', null, 'Exp Year')}</label>
                                         <input
                                             type="text"
                                             maxLength={4}
-                                            placeholder="YYYY"
+                                            placeholder={t('pop.vault.expYearPh', null, 'YYYY')}
                                             value={cardExpYear}
                                             onChange={e => setCardExpYear(e.target.value.replace(/\D/g, ''))}
                                             className={`h-8 border rounded-lg px-2 text-xs text-center font-mono outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>CVV</label>
+                                        <label className={labelClass}>{t('pop.vault.cvv', null, 'CVV')}</label>
                                         <input
                                             type="password"
                                             maxLength={4}
@@ -1699,21 +1708,21 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'address' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Full Name</label>
+                                    <label className={labelClass}>{t('pop.vault.fullName', null, 'Full Name')}</label>
                                     <input
                                         type="text"
-                                        placeholder="Full recipient name"
+                                        placeholder={t('pop.vault.fullNamePh', null, 'Full recipient name')}
                                         value={fullName}
                                         onChange={e => setFullName(e.target.value)}
                                         className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Street Address</label>
+                                    <label className={labelClass}>{t('pop.vault.streetAddress', null, 'Street Address')}</label>
                                     <input
                                         type="text"
                                         required
-                                        placeholder="Street name and number"
+                                        placeholder={t('pop.vault.streetAddressPh', null, 'Street name and number')}
                                         value={streetAddress}
                                         onChange={e => setStreetAddress(e.target.value)}
                                         className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
@@ -1721,21 +1730,21 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>Apt / Suite</label>
+                                        <label className={labelClass}>{t('pop.vault.aptSuite', null, 'Apt / Suite')}</label>
                                         <input
                                             type="text"
-                                            placeholder="Apt 4B"
+                                            placeholder={t('pop.vault.aptSuitePh', null, 'Apt 4B')}
                                             value={unit}
                                             onChange={e => setUnit(e.target.value)}
                                             className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>City</label>
+                                        <label className={labelClass}>{t('pop.vault.city', null, 'City')}</label>
                                         <input
                                             type="text"
                                             required
-                                            placeholder="City"
+                                            placeholder={t('pop.vault.city', null, 'City')}
                                             value={city}
                                             onChange={e => setCity(e.target.value)}
                                             className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
@@ -1744,20 +1753,20 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>State / Province</label>
+                                        <label className={labelClass}>{t('pop.vault.stateProvince', null, 'State / Province')}</label>
                                         <input
                                             type="text"
-                                            placeholder="State or Region"
+                                            placeholder={t('pop.vault.stateProvincePh', null, 'State or Region')}
                                             value={stateProvince}
                                             onChange={e => setStateProvince(e.target.value)}
                                             className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>ZIP / Postal Code</label>
+                                        <label className={labelClass}>{t('pop.vault.postalCode', null, 'ZIP / Postal Code')}</label>
                                         <input
                                             type="text"
-                                            placeholder="Postal code"
+                                            placeholder={t('pop.vault.postalCodePh', null, 'Postal code')}
                                             value={postalCode}
                                             onChange={e => setPostalCode(e.target.value)}
                                             className={`h-8 border rounded-lg px-3 text-xs outline-none transition-colors ${inputClass}`}
@@ -1766,7 +1775,7 @@ export default function QVaultPopover({ isClosing }) {
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>Phone Number</label>
+                                        <label className={labelClass}>{t('pop.vault.phoneNumber', null, 'Phone Number')}</label>
                                         <input
                                             type="text"
                                             placeholder="+1 (555) 000-0000"
@@ -1776,7 +1785,7 @@ export default function QVaultPopover({ isClosing }) {
                                         />
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className={labelClass}>Email</label>
+                                        <label className={labelClass}>{t('pop.vault.email', null, 'Email')}</label>
                                         <input
                                             type="email"
                                             placeholder="email@domain.com"
@@ -1793,7 +1802,7 @@ export default function QVaultPopover({ isClosing }) {
                         {newItemType === 'passkey' && (
                             <>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Domain / RP ID</label>
+                                    <label className={labelClass}>{t('pop.vault.rpId', null, 'Domain / RP ID')}</label>
                                     <input
                                         type="text"
                                         placeholder="github.com"
@@ -1803,7 +1812,7 @@ export default function QVaultPopover({ isClosing }) {
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <label className={labelClass}>Username / Account</label>
+                                    <label className={labelClass}>{t('pop.vault.usernameAccount', null, 'Username / Account')}</label>
                                     <input
                                         type="text"
                                         placeholder="user@domain.com"
@@ -1820,10 +1829,10 @@ export default function QVaultPopover({ isClosing }) {
                         <button type="button" onClick={() => setViewMode('vault')} className={`flex-1 h-9 rounded-full border text-xs font-semibold transition active:scale-95 cursor-pointer ${
                             isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/[0.07] hover:bg-white/[0.12] border-white/10 text-white/85 hover:text-white'
                         }`}>
-                            Cancel
+                            {t('common.cancel', null, 'Cancel')}
                         </button>
                         <button type="submit" disabled={isSaving} className="flex-1 h-9 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-xs transition cursor-pointer shadow-xs">
-                            {isSaving ? 'Saving...' : 'Save to Vault'}
+                            {isSaving ? t('pop.vault.saving', null, 'Saving...') : t('pop.vault.saveToVault', null, 'Save to Vault')}
                         </button>
                     </div>
                 </form>
@@ -1886,7 +1895,7 @@ export default function QVaultPopover({ isClosing }) {
                             }`}
                         >
                             <KeyRound size={11} className={activePage === 'logins' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
-                            <span>Logins</span>
+                            <span>{t('pop.vault.tabLogins', null, 'Logins')}</span>
                             <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold leading-none ${
                                 activePage === 'logins'
                                     ? (isBright ? 'bg-sky-500/20 text-sky-950' : 'bg-sky-400/25 text-sky-200')
@@ -1908,7 +1917,7 @@ export default function QVaultPopover({ isClosing }) {
                             }`}
                         >
                             <ShieldCheck size={11} className={activePage === '2fa' ? (isBright ? 'text-emerald-700' : 'text-emerald-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
-                            <span>2FA</span>
+                            <span>{t('pop.vault.tab2fa', null, '2FA')}</span>
                             <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold leading-none ${
                                 activePage === '2fa'
                                     ? (isBright ? 'bg-emerald-500/20 text-emerald-950' : 'bg-emerald-400/25 text-emerald-200')
@@ -1930,7 +1939,7 @@ export default function QVaultPopover({ isClosing }) {
                             }`}
                         >
                             <CreditCard size={11} className={activePage === 'wallet' ? (isBright ? 'text-blue-700' : 'text-blue-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
-                            <span>Wallet</span>
+                            <span>{t('pop.vault.tabWallet', null, 'Wallet')}</span>
                             <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold leading-none ${
                                 activePage === 'wallet'
                                     ? (isBright ? 'bg-blue-500/20 text-blue-950' : 'bg-blue-400/25 text-blue-200')
@@ -1952,7 +1961,7 @@ export default function QVaultPopover({ isClosing }) {
                             }`}
                         >
                             <Sparkles size={11} className={activePage === 'generator' ? (isBright ? 'text-amber-700' : 'text-amber-300') : (isBright ? 'text-zinc-500' : 'text-white/60')} />
-                            <span>Generator</span>
+                            <span>{t('pop.vault.tabGenerator', null, 'Generator')}</span>
                         </button>
                     </div>
 
@@ -1960,14 +1969,14 @@ export default function QVaultPopover({ isClosing }) {
                         /* GENERATOR TAB */
                         <div className="flex flex-col gap-3 py-1 animate-slide-down-fade">
                             <div className={`p-3 border rounded-2xl flex flex-col gap-1.5 relative ${cardClass}`}>
-                                <span className={`text-[10px] font-mono uppercase tracking-wider font-bold ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>Generated Password</span>
+                                <span className={`text-[10px] font-mono uppercase tracking-wider font-bold ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>{t('pop.vault.generatedPasswordTitle', null, 'Generated Password')}</span>
                                 <div className={`flex items-center justify-between font-mono text-sm font-bold break-all select-all tracking-wider ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                     <span>{generatedResult}</span>
-                                    <button onClick={() => copyToClipboard(generatedResult, 'generated password', 'gen')} className={`w-7 h-7 rounded-full flex items-center justify-center transition shrink-0 ml-2 border cursor-pointer active:scale-95 ${
+                                    <button onClick={() => copyToClipboard(generatedResult, 'generated password', 'gen', t('pop.vault.labelGeneratedPass', null, 'generated password'))} className={`w-7 h-7 rounded-full flex items-center justify-center transition shrink-0 ml-2 border cursor-pointer active:scale-95 ${
                                         isBright
                                             ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 border-emerald-500/30'
                                             : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30'
-                                    }`} title="Copy">
+                                    }`} title={t('common.copy', null, 'Copy')}>
                                         <Copy size={13} />
                                     </button>
                                 </div>
@@ -1975,7 +1984,7 @@ export default function QVaultPopover({ isClosing }) {
 
                             <div className={`flex flex-col gap-2.5 p-3 border rounded-2xl ${cardClass}`}>
                                 <div className="flex justify-between items-center">
-                                    <span className={`text-xs font-mono font-medium ${isBright ? 'text-zinc-900' : 'text-white'}`}>Length: {genLength}</span>
+                                    <span className={`text-xs font-mono font-medium ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.vault.lengthLabel', { length: genLength }, 'Length: {length}')}</span>
                                     <input
                                         type="range"
                                         min={8}
@@ -1988,16 +1997,16 @@ export default function QVaultPopover({ isClosing }) {
 
                                 <div className={`grid grid-cols-2 gap-2 text-xs font-mono pt-2 border-t ${isBright ? 'text-zinc-700 border-black/[0.06]' : 'text-white/85 border-white/[0.08]'}`}>
                                     <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
-                                        <input type="checkbox" checked={useUpper} onChange={e => setUseUpper(e.target.checked)} className="rounded accent-accent" /> A-Z (Upper)
+                                        <input type="checkbox" checked={useUpper} onChange={e => setUseUpper(e.target.checked)} className="rounded accent-accent" /> {t('pop.vault.upperOpt', null, 'A-Z (Upper)')}
                                     </label>
                                     <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
-                                        <input type="checkbox" checked={useLower} onChange={e => setUseLower(e.target.checked)} className="rounded accent-accent" /> a-z (Lower)
+                                        <input type="checkbox" checked={useLower} onChange={e => setUseLower(e.target.checked)} className="rounded accent-accent" /> {t('pop.vault.lowerOpt', null, 'a-z (Lower)')}
                                     </label>
                                     <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
-                                        <input type="checkbox" checked={useNumbers} onChange={e => setUseNumbers(e.target.checked)} className="rounded accent-accent" /> 0-9 (Numbers)
+                                        <input type="checkbox" checked={useNumbers} onChange={e => setUseNumbers(e.target.checked)} className="rounded accent-accent" /> {t('pop.vault.numbersOpt', null, '0-9 (Numbers)')}
                                     </label>
                                     <label className={`flex items-center gap-2 cursor-pointer ${isBright ? 'hover:text-zinc-950' : 'hover:text-white'}`}>
-                                        <input type="checkbox" checked={useSymbols} onChange={e => setUseSymbols(e.target.checked)} className="rounded accent-accent" /> !@#$ (Symbols)
+                                        <input type="checkbox" checked={useSymbols} onChange={e => setUseSymbols(e.target.checked)} className="rounded accent-accent" /> {t('pop.vault.symbolsOpt', null, '!@#$ (Symbols)')}
                                     </label>
                                 </div>
                             </div>
@@ -2010,7 +2019,7 @@ export default function QVaultPopover({ isClosing }) {
                                 <Search size={13} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isBright ? 'text-zinc-400' : 'text-white/60'}`} />
                                 <input
                                     type="text"
-                                    placeholder="Search 2FA authenticator codes..."
+                                    placeholder={t('pop.vault.search2faPh', null, 'Search 2FA authenticator codes...')}
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     className={`w-full h-9 pl-9 pr-4 rounded-full text-xs outline-none font-mono border transition-colors ${inputClass}`}
@@ -2021,13 +2030,13 @@ export default function QVaultPopover({ isClosing }) {
                             <div className="flex flex-col gap-2 max-h-[380px] overflow-y-auto hide-scroll pr-0.5">
                                 {currentTabFilteredItems.length === 0 ? (
                                     <div className={`text-center text-xs py-8 font-mono flex flex-col items-center gap-2.5 ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
-                                        <span>{searchQuery ? 'No matching 2FA codes.' : 'No two-factor authenticators stored.'}</span>
+                                        <span>{searchQuery ? t('pop.vault.noMatching2fa', null, 'No matching 2FA codes.') : t('pop.vault.no2faStored', null, 'No two-factor authenticators stored.')}</span>
                                         {!searchQuery && (
                                             <button
                                                 onClick={() => handleOpenAddForm('totp')}
                                                 className="px-4 py-2 rounded-full border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer active:scale-95 bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs"
                                             >
-                                                <Plus size={12} strokeWidth={2.5} /> Add 2FA Code
+                                                <Plus size={12} strokeWidth={2.5} /> {t('pop.vault.add2faCode', null, 'Add 2FA Code')}
                                             </button>
                                         )}
                                     </div>
@@ -2060,7 +2069,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                 {item.title}
                                                             </span>
                                                             <span className={`text-[11px] truncate font-mono leading-snug ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
-                                                                {item.username || item.url?.replace(/^https?:\/\//, '') || 'Authenticator'}
+                                                                {item.username || item.url?.replace(/^https?:\/\//, '') || t('pop.vault.authenticatorFallback', null, 'Authenticator')}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -2071,7 +2080,7 @@ export default function QVaultPopover({ isClosing }) {
                                                             className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
                                                                 isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
                                                             }`}
-                                                            title="Edit 2FA Item"
+                                                            title={t('pop.vault.edit2faTitle', null, 'Edit 2FA Item')}
                                                         >
                                                             <Pencil size={12} />
                                                         </button>
@@ -2080,7 +2089,7 @@ export default function QVaultPopover({ isClosing }) {
                                                             className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
                                                                 isBright ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-600' : 'hover:bg-red-500/25 text-white/70 hover:text-red-400'
                                                             }`}
-                                                            title="Delete 2FA Item"
+                                                            title={t('pop.vault.delete2faTitle', null, 'Delete 2FA Item')}
                                                         >
                                                             <Trash2 size={12} />
                                                         </button>
@@ -2101,7 +2110,7 @@ export default function QVaultPopover({ isClosing }) {
                                                             </span>
                                                         ) : (
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-xs text-amber-400 font-mono font-medium">Setup Key Needed</span>
+                                                                <span className="text-xs text-amber-400 font-mono font-medium">{t('pop.vault.setupKeyNeeded', null, 'Setup Key Needed')}</span>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleOpenEditForm(item)}
@@ -2110,9 +2119,9 @@ export default function QVaultPopover({ isClosing }) {
                                                                             ? 'bg-amber-500/15 text-amber-900 border-amber-500/30 hover:bg-amber-500/25'
                                                                             : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
                                                                     }`}
-                                                                    title="Add 2FA Secret Key"
+                                                                    title={t('pop.vault.add2faKeyTitle', null, 'Add 2FA Secret Key')}
                                                                 >
-                                                                    Edit
+                                                                    {t('common.edit', null, 'Edit')}
                                                                 </button>
                                                             </div>
                                                         )}
@@ -2122,7 +2131,7 @@ export default function QVaultPopover({ isClosing }) {
                                                         type="button"
                                                         onClick={() => {
                                                             if (code) {
-                                                                copyToClipboard(code, '2FA code', item.id);
+                                                                copyToClipboard(code, '2FA code', item.id, t('pop.vault.label2faCode', null, '2FA code'));
                                                             } else {
                                                                 handleOpenEditForm(item);
                                                             }
@@ -2134,22 +2143,22 @@ export default function QVaultPopover({ isClosing }) {
                                                                     ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
                                                                     : 'bg-white/[0.08] hover:bg-white/[0.14] text-white border-white/10'
                                                         }`}
-                                                        title={code ? "Copy 6-digit code" : "Configure 2FA key"}
+                                                        title={code ? t('pop.vault.copy6DigitTitle', null, 'Copy 6-digit code') : t('pop.vault.configure2faKeyTitle', null, 'Configure 2FA key')}
                                                     >
                                                         {copiedId === `2FA code-${item.id}` ? (
                                                             <>
                                                                 <Check size={12} className="text-emerald-500" />
-                                                                <span>Copied</span>
+                                                                <span>{t('pop.vault.copiedBtn', null, 'Copied')}</span>
                                                             </>
                                                         ) : code ? (
                                                             <>
                                                                 <Copy size={12} />
-                                                                <span>Copy</span>
+                                                                <span>{t('common.copy', null, 'Copy')}</span>
                                                             </>
                                                         ) : (
                                                             <>
                                                                 <Pencil size={12} />
-                                                                <span>Set Key</span>
+                                                                <span>{t('pop.vault.setKeyBtn', null, 'Set Key')}</span>
                                                             </>
                                                         )}
                                                     </button>
@@ -2178,7 +2187,7 @@ export default function QVaultPopover({ isClosing }) {
                                                 {matchingSiteItems[0].title}
                                             </span>
                                             <span className={`text-[10px] font-mono truncate shrink-0 ${isBright ? 'text-zinc-600' : 'text-white/65'}`}>
-                                                ({matchingSiteItems.length} saved for {currentDomain})
+                                                {t('pop.vault.savedForDomain', { count: matchingSiteItems.length, domain: currentDomain }, '({count} saved for {domain})')}
                                             </span>
                                         </div>
                                     </div>
@@ -2186,9 +2195,9 @@ export default function QVaultPopover({ isClosing }) {
                                         type="button"
                                         onClick={() => handleAutofillPage(matchingSiteItems[0])}
                                         className="px-3 py-1 rounded-full bg-accent hover:brightness-110 active:scale-95 text-zinc-950 font-bold border border-accent/40 text-[11px] flex items-center gap-1 transition shrink-0 cursor-pointer shadow-xs"
-                                        title={`Autofill ${matchingSiteItems[0].title}`}
+                                        title={t('pop.vault.autofillTitle', { title: matchingSiteItems[0].title }, 'Autofill {title}')}
                                     >
-                                        <Zap size={11} strokeWidth={2.5} /> Autofill
+                                        <Zap size={11} strokeWidth={2.5} /> {t('pop.vault.autofill', null, 'Autofill')}
                                     </button>
                                 </div>
                             )}
@@ -2198,7 +2207,7 @@ export default function QVaultPopover({ isClosing }) {
                                 <Search size={13} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isBright ? 'text-zinc-400' : 'text-white/60'}`} />
                                 <input
                                     type="text"
-                                    placeholder={activePage === 'logins' ? "Search logins & passkeys..." : "Search cards & addresses..."}
+                                    placeholder={activePage === 'logins' ? t('pop.vault.searchLoginsPh', null, 'Search logins & passkeys...') : t('pop.vault.searchWalletPh', null, 'Search cards & addresses...')}
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     className={`w-full h-9 pl-9 pr-4 rounded-full text-xs outline-none font-mono border transition-colors ${inputClass}`}
@@ -2249,7 +2258,7 @@ export default function QVaultPopover({ isClosing }) {
                                                 : (isBright ? 'text-zinc-600 hover:text-zinc-950' : 'text-white/60 hover:text-white')
                                         }`}
                                     >
-                                        <span>All</span>
+                                        <span>{t('pop.vault.filterAll', null, 'All')}</span>
                                         <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
                                             loginSubFilter === 'all' ? (isBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
                                         }`}>
@@ -2267,7 +2276,7 @@ export default function QVaultPopover({ isClosing }) {
                                         }`}
                                     >
                                         <KeyRound size={10} className={loginSubFilter === 'passwords' ? (isBright ? 'text-sky-700' : 'text-sky-300') : (isBright ? 'text-zinc-500' : 'text-white/50')} />
-                                        <span>Passwords</span>
+                                        <span>{t('pop.vault.filterPasswords', null, 'Passwords')}</span>
                                         <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
                                             loginSubFilter === 'passwords' ? (isBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
                                         }`}>
@@ -2285,7 +2294,7 @@ export default function QVaultPopover({ isClosing }) {
                                         }`}
                                     >
                                         <Fingerprint size={10} className={loginSubFilter === 'passkeys' ? (isBright ? 'text-purple-700' : 'text-purple-300') : (isBright ? 'text-zinc-500' : 'text-white/50')} />
-                                        <span>Passkeys</span>
+                                        <span>{t('pop.vault.filterPasskeys', null, 'Passkeys')}</span>
                                         <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
                                             loginSubFilter === 'passkeys' ? (isBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
                                         }`}>
@@ -2304,10 +2313,10 @@ export default function QVaultPopover({ isClosing }) {
                                     <div className={`text-center text-xs py-8 font-mono flex flex-col items-center gap-2.5 ${isBright ? 'text-zinc-500' : 'text-white/70'}`}>
                                         <span>
                                             {searchQuery
-                                                ? 'No matching vault items.'
+                                                ? t('pop.vault.noMatchingItems', null, 'No matching vault items.')
                                                 : activePage === 'logins'
-                                                    ? (loginSubFilter === 'passwords' ? 'No passwords saved.' : loginSubFilter === 'passkeys' ? 'No passkeys saved.' : (passwords.length === 0 ? 'Your vault is currently empty.' : 'No logins or passkeys saved.'))
-                                                    : (passwords.length === 0 ? 'Your vault is currently empty.' : 'No cards or addresses saved.')
+                                                    ? (loginSubFilter === 'passwords' ? t('pop.vault.noPasswordsSaved', null, 'No passwords saved.') : loginSubFilter === 'passkeys' ? t('pop.vault.noPasskeysSaved', null, 'No passkeys saved.') : (passwords.length === 0 ? t('pop.vault.vaultEmpty', null, 'Your vault is currently empty.') : t('pop.vault.noLoginsSaved', null, 'No logins or passkeys saved.')))
+                                                    : (passwords.length === 0 ? t('pop.vault.vaultEmpty', null, 'Your vault is currently empty.') : t('pop.vault.noWalletSaved', null, 'No cards or addresses saved.'))
                                             }
                                         </span>
                                         {!searchQuery && passwords.length === 0 && (
@@ -2319,7 +2328,7 @@ export default function QVaultPopover({ isClosing }) {
                                                         : 'bg-accent hover:brightness-110 text-zinc-950 border-accent/40 shadow-xs'
                                                     }`}
                                             >
-                                                <UploadCloud size={12} /> Import from Bitwarden or Proton Pass
+                                                <UploadCloud size={12} /> {t('pop.vault.importExternalBtn', null, 'Import from Bitwarden or Proton Pass')}
                                             </button>
                                         )}
                                     </div>
@@ -2339,27 +2348,27 @@ export default function QVaultPopover({ isClosing }) {
 
                                         // Subtitle calculation
                                         const subtitle = isCard
-                                            ? (item.cardData?.cardNumber ? `•••• ${item.cardData.cardNumber.slice(-4)}` : (item.cardData?.cardholderName || 'Payment Card'))
+                                            ? (item.cardData?.cardNumber ? `•••• ${item.cardData.cardNumber.slice(-4)}` : (item.cardData?.cardholderName || t('pop.vault.paymentCardFallback', null, 'Payment Card')))
                                             : isAddress
-                                                ? (item.addressData?.fullName || [item.addressData?.city, item.addressData?.country].filter(Boolean).join(', ') || 'Address')
+                                                ? (item.addressData?.fullName || [item.addressData?.city, item.addressData?.country].filter(Boolean).join(', ') || t('pop.vault.addressFallback', null, 'Address'))
                                                 : isPasskey
-                                                    ? (item.passkeyData?.rpId || item.url || 'WebAuthn Passkey')
-                                                    : (item.username || item.url || 'Login');
+                                                    ? (item.passkeyData?.rpId || item.url || t('pop.vault.passkeyFallback', null, 'WebAuthn Passkey'))
+                                                    : (item.username || item.url || t('pop.vault.loginFallback', null, 'Login'));
 
                                         // Quick copy action for the compact row
                                         const handleQuickCopy = (e) => {
                                             e.stopPropagation();
                                             if (isCard) {
                                                 const num = item.cardData?.cardNumber || item.password;
-                                                if (num) copyToClipboard(num, 'card number', item.id);
+                                                if (num) copyToClipboard(num, 'card number', item.id, t('pop.vault.labelCardNumber', null, 'card number'));
                                             } else if (isAddress && item.addressData) {
                                                 const fullAddr = `${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim();
-                                                copyToClipboard(fullAddr, 'address', item.id);
+                                                copyToClipboard(fullAddr, 'address', item.id, t('pop.vault.labelAddress', null, 'address'));
                                             } else if (isPasskey) {
                                                 const cred = item.passkeyData?.credentialId || item.id;
-                                                copyToClipboard(cred, 'passkey credential', item.id);
+                                                copyToClipboard(cred, 'passkey credential', item.id, t('pop.vault.labelPasskeyCred', null, 'passkey credential'));
                                             } else if (item.password) {
-                                                copyToClipboard(item.password, 'password', item.id);
+                                                copyToClipboard(item.password, 'password', item.id, t('pop.vault.labelPassword', null, 'password'));
                                             }
                                         };
 
@@ -2384,7 +2393,7 @@ export default function QVaultPopover({ isClosing }) {
                                                 <div
                                                     onClick={() => toggleItemExpanded(item.id)}
                                                     className="p-2.5 px-3 min-h-[52px] flex items-center justify-between gap-2.5 cursor-pointer select-none"
-                                                    title={isExpanded ? 'Click to collapse' : 'Click to view details'}
+                                                    title={isExpanded ? t('pop.vault.clickToCollapse', null, 'Click to collapse') : t('pop.vault.clickToExpand', null, 'Click to view details')}
                                                 >
                                                     {/* Left: Badge & Middle: Title/Subtitle */}
                                                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -2411,7 +2420,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                 </span>
                                                                 {isSiteMatch && (
                                                                     <span className="px-1.5 py-0.2 rounded-full text-[8px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
-                                                                        Site Match
+                                                                        {t('pop.vault.siteMatch', null, 'Site Match')}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -2433,10 +2442,10 @@ export default function QVaultPopover({ isClosing }) {
                                                                         ? 'bg-accent/20 hover:bg-accent/30 text-zinc-900 border-accent/40'
                                                                         : 'bg-accent hover:brightness-110 text-zinc-950 border border-accent/40 shadow-xs'
                                                                 }`}
-                                                                title="Autofill on active page"
+                                                                title={t('pop.vault.autofillPageTitle', null, 'Autofill on active page')}
                                                             >
                                                                 <Zap size={10} strokeWidth={2.5} />
-                                                                <span>Autofill</span>
+                                                                <span>{t('pop.vault.autofill', null, 'Autofill')}</span>
                                                             </button>
                                                         )}
 
@@ -2451,7 +2460,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                             ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10'
                                                                             : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
                                                                     }`}
-                                                                    title="Autofill on active page"
+                                                                    title={t('pop.vault.autofillPageTitle', null, 'Autofill on active page')}
                                                                 >
                                                                     <Zap size={11} strokeWidth={2} />
                                                                 </button>
@@ -2464,7 +2473,13 @@ export default function QVaultPopover({ isClosing }) {
                                                                         ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10'
                                                                         : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
                                                                 }`}
-                                                                title={`Copy ${isCard ? 'Card Number' : isAddress ? 'Address' : isPasskey ? 'Credential' : 'Password'}`}
+                                                                title={isCard
+                                                                    ? t('pop.vault.copyCardNumberTitle', null, 'Copy Card Number')
+                                                                    : isAddress
+                                                                        ? t('pop.vault.copyAddressTitle', null, 'Copy Address')
+                                                                        : isPasskey
+                                                                            ? t('pop.vault.copyCredTitle', null, 'Copy Credential')
+                                                                            : t('pop.vault.copyPasswordTitle', null, 'Copy Password')}
                                                             >
                                                                 {isQuickCopied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                                                             </button>
@@ -2474,7 +2489,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                 className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0 ${
                                                                     isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
                                                                 }`}
-                                                                title="Edit Item"
+                                                                title={t('pop.vault.editItemTitle', null, 'Edit Item')}
                                                             >
                                                                 <Pencil size={11} />
                                                             </button>
@@ -2484,7 +2499,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                 className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0 ${
                                                                     isBright ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-600' : 'hover:bg-red-500/25 text-white/70 hover:text-red-400'
                                                                 }`}
-                                                                title="Delete Item"
+                                                                title={t('pop.vault.deleteItemTitle', null, 'Delete Item')}
                                                             >
                                                                 <Trash2 size={11} />
                                                             </button>
@@ -2502,7 +2517,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                     ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900'
                                                                     : 'hover:bg-white/[0.12] text-white/60 hover:text-white'
                                                                 } ${isExpanded ? 'rotate-180 text-accent bg-accent/15' : ''}`}
-                                                            title={isExpanded ? 'Collapse' : 'Expand details'}
+                                                            title={isExpanded ? t('pop.vault.collapse', null, 'Collapse') : t('pop.vault.expandDetails', null, 'Expand details')}
                                                         >
                                                             <ChevronDown size={13} className="transition-transform duration-300" />
                                                         </button>
@@ -2524,7 +2539,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                         isBright ? 'bg-black/[0.03] border-black/5 text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-white/80'
                                                                     }`}>
                                                                         <div className="flex items-center gap-2 truncate flex-1 min-w-0">
-                                                                            <span className={`text-[10px] font-semibold opacity-60 shrink-0 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Password:</span>
+                                                                            <span className={`text-[10px] font-semibold opacity-60 shrink-0 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{t('pop.vault.passwordColon', null, 'Password:')}</span>
                                                                             <span className={`truncate select-all font-mono font-medium ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                                                                 {isRevealed ? item.password : '••••••••••••'}
                                                                             </span>
@@ -2536,17 +2551,17 @@ export default function QVaultPopover({ isClosing }) {
                                                                                 className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
                                                                                     isBright ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/[0.10] text-white/70 hover:text-white'
                                                                                 }`}
-                                                                                title={isRevealed ? 'Hide Password' : 'Show Password'}
+                                                                                title={isRevealed ? t('pop.vault.hidePassword', null, 'Hide Password') : t('pop.vault.showPassword', null, 'Show Password')}
                                                                             >
                                                                                 {isRevealed ? <EyeOff size={11} /> : <Eye size={11} />}
                                                                             </button>
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => copyToClipboard(item.password, 'password', item.id)}
+                                                                                onClick={() => copyToClipboard(item.password, 'password', item.id, t('pop.vault.labelPassword', null, 'password'))}
                                                                                 className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${
                                                                                     isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
                                                                                 }`}
-                                                                                title="Copy Password"
+                                                                                title={t('pop.vault.copyPasswordTitle', null, 'Copy Password')}
                                                                             >
                                                                                 {copiedId === `password-${item.id}` ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                                                                             </button>
@@ -2568,7 +2583,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                                 useTabStore.getState().addTab(targetUrl);
                                                                             }}
                                                                             className="flex items-center gap-1.5 text-[11px] font-mono text-sky-400 hover:text-sky-300 hover:underline truncate max-w-[230px] text-left cursor-pointer"
-                                                                            title={`Open ${item.url} in new tab`}
+                                                                            title={t('pop.vault.openUrlNewTab', { url: item.url }, 'Open {url} in new tab')}
                                                                         >
                                                                             <Globe size={11} className="shrink-0 text-sky-400" />
                                                                             <span className="truncate">{item.url.replace(/^https?:\/\//, '')}</span>
@@ -2576,11 +2591,11 @@ export default function QVaultPopover({ isClosing }) {
                                                                         </button>
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => copyToClipboard(item.url, 'url', item.id)}
+                                                                            onClick={() => copyToClipboard(item.url, 'url', item.id, t('pop.vault.labelUrl', null, 'URL'))}
                                                                             className={`w-6 h-6 rounded-full flex items-center justify-center border transition active:scale-95 cursor-pointer ${
                                                                                 isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900 border-black/10' : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/70 hover:text-white border-white/10'
                                                                             }`}
-                                                                            title="Copy URL"
+                                                                            title={t('pop.vault.copyUrlTitle', null, 'Copy URL')}
                                                                         >
                                                                             {copiedId === `url-${item.id}` ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                                                                         </button>
@@ -2596,7 +2611,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                     }`}>
                                                                         <div className="flex items-center gap-2 min-w-0">
                                                                             <ShieldCheck size={12} className={isBright ? 'text-emerald-700' : 'text-emerald-400'} />
-                                                                            <span className="font-semibold text-[10px] tracking-wide opacity-80">2FA:</span>
+                                                                            <span className="font-semibold text-[10px] tracking-wide opacity-80">{t('pop.vault.twoFaColon', null, '2FA:')}</span>
                                                                             {inlineTotpCode ? (
                                                                                 <span className={`font-mono font-bold tracking-widest text-[11px] select-all ${
                                                                                     isBright ? 'text-zinc-950 font-extrabold' : 'text-white'
@@ -2605,7 +2620,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                                 </span>
                                                                             ) : (
                                                                                 <div className="flex items-center gap-1.5">
-                                                                                    <span className="text-[10px] text-amber-400 font-mono font-medium">Setup Key Needed</span>
+                                                                                    <span className="text-[10px] text-amber-400 font-mono font-medium">{t('pop.vault.setupKeyNeeded', null, 'Setup Key Needed')}</span>
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => handleOpenEditForm(item)}
@@ -2614,9 +2629,9 @@ export default function QVaultPopover({ isClosing }) {
                                                                                                 ? 'bg-amber-500/15 text-amber-900 border-amber-500/30 hover:bg-amber-500/25'
                                                                                                 : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
                                                                                         }`}
-                                                                                        title="Add 2FA Secret Key"
+                                                                                        title={t('pop.vault.add2faKeyTitle', null, 'Add 2FA Secret Key')}
                                                                                     >
-                                                                                        Edit
+                                                                                        {t('common.edit', null, 'Edit')}
                                                                                     </button>
                                                                                 </div>
                                                                             )}
@@ -2627,7 +2642,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                                 type="button"
                                                                                 onClick={() => {
                                                                                     if (inlineTotpCode) {
-                                                                                        copyToClipboard(inlineTotpCode, '2FA code', item.id);
+                                                                                        copyToClipboard(inlineTotpCode, '2FA code', item.id, t('pop.vault.label2faCode', null, '2FA code'));
                                                                                     } else {
                                                                                         handleOpenEditForm(item);
                                                                                     }
@@ -2639,7 +2654,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                                             ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-700 border-black/10'
                                                                                             : 'bg-white/[0.08] hover:bg-white/[0.14] text-white border-white/10'
                                                                                 }`}
-                                                                                title={inlineTotpCode ? "Copy 2FA code" : "Configure 2FA key"}
+                                                                                title={inlineTotpCode ? t('pop.vault.copy2faCodeTitle', null, 'Copy 2FA code') : t('pop.vault.configure2faKeyTitle', null, 'Configure 2FA key')}
                                                                             >
                                                                                 {copiedId === `2FA code-${item.id}` ? (
                                                                                     <Check size={11} className="text-emerald-500" />
@@ -2661,30 +2676,30 @@ export default function QVaultPopover({ isClosing }) {
                                                                 isBright ? 'bg-purple-500/[0.06] border-purple-500/15 text-purple-900' : 'bg-purple-500/10 border-purple-500/20 text-purple-200'
                                                             }`}>
                                                                 <div className="flex items-center justify-between">
-                                                                    <span className="text-[10px] opacity-75">Relying Party:</span>
+                                                                    <span className="text-[10px] opacity-75">{t('pop.vault.relyingPartyColon', null, 'Relying Party:')}</span>
                                                                     <span className={`font-semibold ${isBright ? 'text-purple-700' : 'text-purple-300'}`}>
                                                                         {item.passkeyData?.rpId || item.url || 'WebAuthn'}
                                                                     </span>
                                                                 </div>
                                                                 <div className="flex items-center justify-between gap-2">
-                                                                    <span className="text-[10px] opacity-75 shrink-0">Credential ID:</span>
+                                                                    <span className="text-[10px] opacity-75 shrink-0">{t('pop.vault.credIdColon', null, 'Credential ID:')}</span>
                                                                     <span className="truncate text-[10px] opacity-80 max-w-[170px] select-all">
                                                                         {item.passkeyData?.credentialId || item.id}
                                                                     </span>
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id)}
+                                                                        onClick={() => copyToClipboard(item.passkeyData?.credentialId || item.id, 'passkey credential', item.id, t('pop.vault.labelPasskeyCred', null, 'passkey credential'))}
                                                                         className={`px-2 py-0.5 rounded-full border text-[9px] font-medium transition active:scale-95 cursor-pointer ${
                                                                             isBright ? 'text-purple-700 border-purple-300 hover:bg-purple-50' : 'text-purple-300 border-purple-500/35 hover:bg-purple-500/15'
                                                                         }`}
                                                                     >
-                                                                        {copiedId === `passkey credential-${item.id}` ? 'Copied' : 'Copy'}
+                                                                        {copiedId === `passkey credential-${item.id}` ? t('pop.vault.copiedBtn', null, 'Copied') : t('common.copy', null, 'Copy')}
                                                                     </button>
                                                                 </div>
                                                                 {item.createdAt && (
                                                                     <div className="flex items-center justify-between text-[9px] opacity-60 pt-0.5 border-t border-purple-500/15">
-                                                                        <span>Registered:</span>
-                                                                        <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                                                                        <span>{t('pop.vault.registeredColon', null, 'Registered:')}</span>
+                                                                        <span>{new Date(item.createdAt).toLocaleDateString(intlLocale)}</span>
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -2698,7 +2713,7 @@ export default function QVaultPopover({ isClosing }) {
                                                                 <div className="flex items-center justify-between">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className={`font-semibold ${isBright ? 'text-blue-700' : 'text-blue-300'}`}>
-                                                                            {item.cardData?.cardBrand || 'Card'}:
+                                                                            {item.cardData?.cardBrand || t('pop.vault.cardFallback', null, 'Card')}:
                                                                         </span>
                                                                         <span className="tracking-wider">
                                                                             •••• •••• •••• {item.cardData?.cardNumber?.slice(-4) || item.password?.slice(-4) || '••••'}
@@ -2707,31 +2722,31 @@ export default function QVaultPopover({ isClosing }) {
                                                                     {item.cardData?.cardNumber && (
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id)}
+                                                                            onClick={() => copyToClipboard(item.cardData.cardNumber, 'card number', item.id, t('pop.vault.labelCardNumber', null, 'card number'))}
                                                                             className={`px-2 py-0.5 rounded-full border text-[9px] font-medium transition active:scale-95 cursor-pointer ${
                                                                                 isBright ? 'border-black/10 hover:bg-black/5 text-zinc-700' : 'border-white/10 hover:bg-white/10 text-white'
                                                                             }`}
                                                                         >
-                                                                            {copiedId === `card number-${item.id}` ? 'Copied' : 'Copy Number'}
+                                                                            {copiedId === `card number-${item.id}` ? t('pop.vault.copiedBtn', null, 'Copied') : t('pop.vault.copyNumberBtn', null, 'Copy Number')}
                                                                         </button>
                                                                     )}
                                                                 </div>
                                                                 <div className="flex items-center justify-between pt-1 border-t border-black/5 dark:border-white/5 text-[10px]">
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="opacity-60">Expires:</span>
+                                                                        <span className="opacity-60">{t('pop.vault.expiresColon', null, 'Expires:')}</span>
                                                                         <span>{item.cardData?.expMonth || '••'}/{item.cardData?.expYear?.slice(-2) || '••'}</span>
                                                                     </div>
                                                                     {item.cardData?.cvv && (
                                                                         <div className="flex items-center gap-1.5">
-                                                                            <span className="opacity-60">CVV:</span>
+                                                                            <span className="opacity-60">{t('pop.vault.cvvColon', null, 'CVV:')}</span>
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id)}
+                                                                                onClick={() => copyToClipboard(item.cardData.cvv, 'CVV', item.id, t('pop.vault.labelCvv', null, 'CVV'))}
                                                                                 className={`px-2 py-0.5 rounded-full text-[9px] font-medium transition active:scale-95 cursor-pointer ${
                                                                                     isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/10 hover:bg-white/15 text-white'
                                                                                 }`}
                                                                             >
-                                                                                {copiedId === `CVV-${item.id}` ? 'Copied' : 'Copy CVV'}
+                                                                                {copiedId === `CVV-${item.id}` ? t('pop.vault.copiedBtn', null, 'Copied') : t('pop.vault.copyCvvBtn', null, 'Copy CVV')}
                                                                             </button>
                                                                         </div>
                                                                     )}
@@ -2756,18 +2771,18 @@ export default function QVaultPopover({ isClosing }) {
                                                                     {item.addressData && (
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id)}
+                                                                            onClick={() => copyToClipboard(`${item.addressData.streetAddress || ''} ${item.addressData.unit || ''}, ${item.addressData.city || ''}, ${item.addressData.state || ''} ${item.addressData.postalCode || ''}, ${item.addressData.country || ''}`.trim(), 'address', item.id, t('pop.vault.labelAddress', null, 'address'))}
                                                                             className={`px-2 py-0.5 rounded-full border text-[9px] font-medium shrink-0 transition active:scale-95 cursor-pointer ${
                                                                                 isBright ? 'border-black/10 hover:bg-black/5 text-zinc-700' : 'border-white/10 hover:bg-white/10 text-white'
                                                                             }`}
                                                                         >
-                                                                            {copiedId === `address-${item.id}` ? 'Copied' : 'Copy Address'}
+                                                                            {copiedId === `address-${item.id}` ? t('pop.vault.copiedBtn', null, 'Copied') : t('pop.vault.copyAddressBtn', null, 'Copy Address')}
                                                                         </button>
                                                                     )}
                                                                 </div>
                                                                 {(item.addressData?.phoneNumber || item.addressData?.email) && (
                                                                     <div className="flex items-center gap-3 pt-1 border-t border-black/5 dark:border-white/5 text-[10px] opacity-75">
-                                                                        {item.addressData?.phoneNumber && <span>Tel: {item.addressData.phoneNumber}</span>}
+                                                                        {item.addressData?.phoneNumber && <span>{t('pop.vault.telColon', null, 'Tel:')} {item.addressData.phoneNumber}</span>}
                                                                         {item.addressData?.email && <span>{item.addressData.email}</span>}
                                                                     </div>
                                                                 )}

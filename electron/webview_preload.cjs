@@ -1120,13 +1120,106 @@ if (typeof window !== 'undefined' && window === window.top) {
 
 // --- QVAULT PASSKEY INTEGRATION (MAIN WORLD INJECTION) ---
 try {
+    const normalizePasskeyCredIdToHex = (input) => {
+        if (!input) return '';
+        const str = String(input).trim();
+        if (!str) return '';
+        if (/^[0-9a-fA-F]+$/.test(str) && str.length % 2 === 0) {
+            return str.toLowerCase();
+        }
+        try {
+            const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=');
+            const binary = atob(padded);
+            let hex = '';
+            for (let i = 0; i < binary.length; i++) {
+                hex += binary.charCodeAt(i).toString(16).padStart(2, '0');
+            }
+            return hex.toLowerCase();
+        } catch (_) {
+            return str.toLowerCase();
+        }
+    };
+
     contextBridge.exposeInMainWorld('__qbrowse_passkey_bridge', {
+        getConfig: () => {
+            try {
+                const cfg = ipcRenderer.sendSync('vault-get-passkey-config-sync');
+                if (cfg && typeof cfg === 'object') {
+                    return {
+                        passkeyProviderMode: cfg.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault',
+                        passkeyHardwareFallback: cfg.passkeyHardwareFallback !== false,
+                        isEphemeral: Boolean(cfg.isEphemeral)
+                    };
+                }
+            } catch (_) {}
+            return {
+                passkeyProviderMode: 'qvault',
+                passkeyHardwareFallback: true,
+                isEphemeral: false
+            };
+        },
+        cancelVerification: async (requestId) => {
+            try {
+                if (!requestId) return false;
+                return await ipcRenderer.invoke('vault-cancel-passkey-verification', { requestId });
+            } catch (_) {
+                return false;
+            }
+        },
         create: async (data) => {
             try {
-                const hostname = window.location.hostname;
-                const rpId = data?.rpId || hostname;
-                const username = data?.username || 'user';
-                
+                const hostname = (window.location.hostname || '').toLowerCase().replace(/\.$/, '');
+                const rpId = String(data?.rpId || hostname).trim().toLowerCase().replace(/\.$/, '');
+                const rpName = String(data?.rpName || '').trim();
+                const username = String(data?.username || data?.displayName || 'user').trim();
+                const displayName = String(data?.displayName || username).trim();
+                const userHandleHex = typeof data?.userHandleHex === 'string' ? data.userHandleHex.toLowerCase() : '';
+                const excludeIds = Array.isArray(data?.excludeCredentials)
+                    ? data.excludeCredentials.map(normalizePasskeyCredIdToHex).filter(Boolean)
+                    : [];
+
+                // 1. WebAuthn excludeCredentials check: reject with InvalidStateError if already registered
+                if (excludeIds.length > 0) {
+                    const existingMatches = await ipcRenderer.invoke('vault-get-matching', {
+                        hostname,
+                        rpId,
+                        allowCredentials: excludeIds
+                    });
+                    const existingPasskeys = (existingMatches || []).filter(m =>
+                        m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId))
+                    );
+                    const hasExcluded = existingPasskeys.some(p => {
+                        const cid = normalizePasskeyCredIdToHex(p.passkeyData?.credentialId);
+                        return cid && excludeIds.includes(cid);
+                    });
+                    if (hasExcluded) {
+                        console.log("[QVault WebAuthn] Excluded credential already exists in QVault for", rpId);
+                        return { excluded: true };
+                    }
+                }
+
+                // 2. Perform explicit User Verification (UV) before generating & saving passkey
+                console.log("[QVault WebAuthn] Requesting user verification to create passkey for", rpId, username);
+                const verifyRes = await ipcRenderer.invoke('vault-verify-passkey-usage', {
+                    requestId: data?.requestId || undefined,
+                    hostname,
+                    rpId,
+                    username,
+                    credentialId: '',
+                    mode: 'passkey-create',
+                    hardwareFallbackAvailable: true,
+                    timeout: data?.timeout
+                });
+
+                if (!verifyRes || !verifyRes.verified) {
+                    console.warn("[QVault WebAuthn] Passkey creation verification cancelled or handed off:", verifyRes?.error || (verifyRes?.fallbackToNative ? 'fallbackToNative' : 'denied'));
+                    if (verifyRes?.aborted) return { aborted: true };
+                    if (verifyRes?.fallbackToNative) return { fallbackToNative: true };
+                    return { denied: true };
+                }
+
+                // 3. Generate ECDSA P-256 keypair and 32-byte credential ID
                 const keyPair = await window.crypto.subtle.generateKey(
                     { name: "ECDSA", namedCurve: "P-256" },
                     true,
@@ -1136,24 +1229,38 @@ try {
                 const privJwk = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
                 const pubSpki = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
                 const pubSpkiHex = Array.from(new Uint8Array(pubSpki)).map(b => b.toString(16).padStart(2, '0')).join('');
-                
-                const randomBytes = new Uint8Array(16);
+
+                const randomBytes = new Uint8Array(32);
                 window.crypto.getRandomValues(randomBytes);
                 const credIdHex = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-                
-                console.log("[QVault WebAuthn] Generating QVault passkey for", hostname, "Cred ID:", credIdHex);
-                
-                ipcRenderer.sendToHost('webauthn-credential-created', {
+
+                console.log("[QVault WebAuthn] Saving QVault passkey for", rpId, "(host:", hostname, ") Cred ID:", credIdHex);
+
+                // 4. Persist passkey directly in main process (works in both <webview> tabs AND OAuth popups)
+                const saveRes = await ipcRenderer.invoke('vault-save-passkey', {
                     hostname,
                     rpId,
+                    rpName,
                     username,
+                    displayName,
+                    userHandle: userHandleHex || null,
                     credentialId: credIdHex,
                     publicKey: pubJwk,
                     privateKey: privJwk,
-                    autoOpen: true
+                    backupEligible: true,
+                    transports: ['hybrid', 'internal'],
+                    created: Date.now()
                 });
-                
-                return { credIdHex, pubJwk, pubSpkiHex };
+
+                if (!saveRes || !saveRes.success) {
+                    console.warn("[QVault WebAuthn] Failed to persist passkey to QVault:", saveRes?.error);
+                    if (saveRes?.ephemeral) {
+                        return { ephemeral: true, saveFailed: true, error: saveRes?.error || 'Ephemeral session' };
+                    }
+                    return { saveFailed: true, error: saveRes?.error || 'Failed to save passkey' };
+                }
+
+                return { credIdHex, pubJwk, pubSpkiHex, backupEligible: true };
             } catch (err) {
                 console.warn("[QVault WebAuthn] Bridge create error:", err);
                 return null;
@@ -1165,32 +1272,57 @@ try {
                     // Never trigger OS or modal passkey prompts on automatic background conditional mediation probes
                     return { conditionalIgnored: true };
                 }
-                const hostname = window.location.hostname;
+                const hostname = (window.location.hostname || '').toLowerCase().replace(/\.$/, '');
+                const requestedRpId = String(data?.rpId || hostname).trim().toLowerCase().replace(/\.$/, '');
+                const allowIds = Array.isArray(data?.allowCredentials)
+                    ? data.allowCredentials.map(normalizePasskeyCredIdToHex).filter(Boolean)
+                    : [];
+
                 const matches = await ipcRenderer.invoke('vault-get-matching', {
                     hostname,
-                    rpId: data?.rpId || '',
-                    allowCredentials: data?.allowCredentials || []
+                    rpId: requestedRpId,
+                    allowCredentials: allowIds
                 });
-                const passkeys = (matches || []).filter(m => m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId)));
+                let passkeys = (matches || []).filter(m =>
+                    m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId))
+                );
+
+                // Per WebAuthn §6.3.3: if allowCredentials is non-empty, ONLY credentials in allowCredentials are eligible
+                if (allowIds.length > 0) {
+                    passkeys = passkeys.filter(p => {
+                        const cid = normalizePasskeyCredIdToHex(p.passkeyData?.credentialId);
+                        return cid && allowIds.includes(cid);
+                    });
+                }
+
                 if (passkeys.length > 0) {
+                    // Prefer passkeys with a valid privateKey and most recent timestamp
+                    passkeys.sort((a, b) => {
+                        const aHasKey = a.passkeyData?.privateKey ? 1 : 0;
+                        const bHasKey = b.passkeyData?.privateKey ? 1 : 0;
+                        if (bHasKey !== aHasKey) return bHasKey - aHasKey;
+                        const aTs = Number(a.updatedAt || a.passkeyData?.created || 0);
+                        const bTs = Number(b.updatedAt || b.passkeyData?.created || 0);
+                        return bTs - aTs;
+                    });
+
                     let chosen = passkeys[0];
-                    if (data?.allowCredentials && Array.isArray(data.allowCredentials) && data.allowCredentials.length > 0) {
-                        const matched = passkeys.find(p => {
-                            const cid = String(p.passkeyData?.credentialId || '').toLowerCase();
-                            return cid && data.allowCredentials.some(a => String(a).toLowerCase() === cid);
-                        });
-                        if (matched) chosen = matched;
-                    }
-                    console.log("[QVault WebAuthn] Requesting user verification for passkey on", hostname, chosen.username);
+                    console.log("[QVault WebAuthn] Requesting user verification for passkey on", requestedRpId, chosen.username);
                     const verifyRes = await ipcRenderer.invoke('vault-verify-passkey-usage', {
+                        requestId: data?.requestId || undefined,
                         hostname,
-                        rpId: chosen.passkeyData?.rpId || data?.rpId || hostname,
-                        username: chosen.username || '',
-                        credentialId: chosen.passkeyData?.credentialId || ''
+                        rpId: requestedRpId,
+                        username: chosen.username || chosen.passkeyData?.displayName || '',
+                        credentialId: chosen.passkeyData?.credentialId || '',
+                        mode: 'passkey',
+                        hardwareFallbackAvailable: true,
+                        timeout: data?.timeout
                     });
 
                     if (!verifyRes || !verifyRes.verified) {
-                        console.warn("[QVault WebAuthn] Passkey user verification cancelled or failed.");
+                        console.warn("[QVault WebAuthn] Passkey user verification cancelled or handed off:", verifyRes?.error || (verifyRes?.fallbackToNative ? 'fallbackToNative' : 'denied'));
+                        if (verifyRes?.aborted) return { aborted: true };
+                        if (verifyRes?.fallbackToNative) return { fallbackToNative: true };
                         return { denied: true };
                     }
 
@@ -1199,27 +1331,50 @@ try {
                         try {
                             const unlockedMatches = await ipcRenderer.invoke('vault-get-matching', {
                                 hostname,
-                                rpId: data?.rpId || '',
-                                allowCredentials: data?.allowCredentials || []
+                                rpId: requestedRpId,
+                                allowCredentials: allowIds
                             });
-                            const unlockedPasskeys = (unlockedMatches || []).filter(m => m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId)));
-                            const freshChosen = unlockedPasskeys.find(p => String(p.id) === String(chosen.id) || (chosen.passkeyData?.credentialId && p.passkeyData?.credentialId === chosen.passkeyData.credentialId)) || unlockedPasskeys[0];
+                            const unlockedPasskeys = (unlockedMatches || []).filter(m =>
+                                m.itemType === 'passkey' || (m.passkeyData && (m.passkeyData.credentialId || m.passkeyData.rpId))
+                            );
+                            const chosenCid = normalizePasskeyCredIdToHex(chosen.passkeyData?.credentialId);
+                            const freshChosen = unlockedPasskeys.find(p =>
+                                String(p.id) === String(chosen.id) ||
+                                (chosenCid && normalizePasskeyCredIdToHex(p.passkeyData?.credentialId) === chosenCid)
+                            ) || unlockedPasskeys[0];
                             if (freshChosen) chosen = freshChosen;
                         } catch (_) {}
                     }
 
-                    console.log("[QVault WebAuthn] User verified! Using QVault passkey for", hostname, chosen);
-                    const hex = chosen.passkeyData?.credentialId || '0123456789abcdef0123456789abcdef';
-                    ipcRenderer.sendToHost('webauthn-used', { hostname, username: chosen.username || '' });
+                    if (!chosen.passkeyData?.privateKey) {
+                        console.warn("[QVault WebAuthn] Verified passkey is missing privateKey for", requestedRpId);
+                        return { noKey: true };
+                    }
+
+                    const credIdHex = normalizePasskeyCredIdToHex(chosen.passkeyData?.credentialId);
+                    if (!credIdHex) {
+                        return { noKey: true };
+                    }
+
+                    const userHandleHex = chosen.passkeyData?.userHandle
+                        ? normalizePasskeyCredIdToHex(chosen.passkeyData.userHandle)
+                        : null;
+
+                    console.log("[QVault WebAuthn] User verified! Using QVault passkey for", requestedRpId, chosen.username);
+                    ipcRenderer.sendToHost('webauthn-used', { hostname: requestedRpId || hostname, username: chosen.username || '' });
                     return {
-                        credIdHex: hex,
+                        credIdHex,
                         username: chosen.username || '',
-                        privateKey: chosen.passkeyData?.privateKey || null,
-                        rpId: chosen.passkeyData?.rpId || data?.rpId || hostname
+                        userHandleHex: userHandleHex || null,
+                        privateKey: chosen.passkeyData.privateKey,
+                        backupEligible: Boolean(chosen.passkeyData?.backupEligible),
+                        rpId: requestedRpId
                     };
                 } else {
-                    ipcRenderer.sendToHost('webauthn-no-passkey', { hostname });
-                    return { noPasskey: true };
+                    if (!data?.hardwareFallback) {
+                        ipcRenderer.sendToHost('webauthn-no-passkey', { hostname: requestedRpId || hostname });
+                    }
+                    return { noPasskey: true, hardwareOnlyTransports: Boolean(data?.hardwareOnlyTransports) };
                 }
             } catch (err) {
                 console.warn("[QVault WebAuthn] Bridge get error:", err);
@@ -1253,78 +1408,390 @@ const injectMainWorldPasskeyOverride = () => {
                     }
                 } catch (_) {}
 
-                // Disable automatic conditional passkey mediation probes on page load so websites don't trigger Windows Security popups
-                try {
-                    if (typeof window.PublicKeyCredential !== 'undefined') {
-                        window.PublicKeyCredential.isConditionalMediationAvailable = async function() {
-                            return false;
-                        };
-                    }
-                } catch (_) {}
-
                 const origGet = navigator.credentials.get.bind(navigator.credentials);
                 const origCreate = navigator.credentials.create.bind(navigator.credentials);
+                const origGetCapabilities = (typeof window.PublicKeyCredential !== 'undefined' && typeof window.PublicKeyCredential.getClientCapabilities === 'function')
+                    ? window.PublicKeyCredential.getClientCapabilities.bind(window.PublicKeyCredential)
+                    : null;
+                const origIsUVPAA = (typeof window.PublicKeyCredential !== 'undefined' && typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function')
+                    ? window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable.bind(window.PublicKeyCredential)
+                    : null;
+                const origIsConditionalAvailable = (typeof window.PublicKeyCredential !== 'undefined' && typeof window.PublicKeyCredential.isConditionalMediationAvailable === 'function')
+                    ? window.PublicKeyCredential.isConditionalMediationAvailable.bind(window.PublicKeyCredential)
+                    : null;
+
+                // Preserve native WebAuthn entrypoints cleanly for hardware security key & OS authenticator fallback
+                try {
+                    Object.defineProperty(window, '__qbrowse_native_credentials', {
+                        value: Object.freeze({ get: origGet, create: origCreate }),
+                        enumerable: false,
+                        configurable: true,
+                        writable: false
+                    });
+                } catch (_) {}
+
+                const HARDWARE_ONLY_TRANSPORTS = new Set(['usb', 'nfc', 'ble', 'hybrid']);
+
+                const getPasskeyConfig = () => {
+                    try {
+                        const bridge = window.__qbrowse_passkey_bridge;
+                        if (bridge && typeof bridge.getConfig === 'function') {
+                            const cfg = bridge.getConfig();
+                            if (cfg && typeof cfg === 'object') {
+                                return {
+                                    passkeyProviderMode: cfg.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault',
+                                    passkeyHardwareFallback: cfg.passkeyHardwareFallback !== false,
+                                    isEphemeral: Boolean(cfg.isEphemeral)
+                                };
+                            }
+                        }
+                    } catch (_) {}
+                    return {
+                        passkeyProviderMode: 'qvault',
+                        passkeyHardwareFallback: true,
+                        isEphemeral: false
+                    };
+                };
+
+                const isHardwareOnlyAllowCredentials = (allowCredentials) => {
+                    if (!Array.isArray(allowCredentials) || allowCredentials.length === 0) return false;
+                    let sawAnyTransport = false;
+                    for (let i = 0; i < allowCredentials.length; i++) {
+                        const cred = allowCredentials[i];
+                        const transports = cred && Array.isArray(cred.transports) ? cred.transports : null;
+                        if (!transports || transports.length === 0) return false;
+                        sawAnyTransport = true;
+                        const normalized = transports.map(t => String(t || '').toLowerCase());
+                        if (normalized.includes('internal')) return false;
+                        if (!normalized.some(t => HARDWARE_ONLY_TRANSPORTS.has(t))) return false;
+                    }
+                    return sawAnyTransport;
+                };
+
+                const invokeNativeCreate = async (options) => {
+                    if (options && options.signal && options.signal.aborted) {
+                        throw makeAbortError(options.signal);
+                    }
+                    const nativeCreds = window.__qbrowse_native_credentials;
+                    const fn = (nativeCreds && typeof nativeCreds.create === 'function') ? nativeCreds.create : origCreate;
+                    return await fn.call(navigator.credentials, options);
+                };
+
+                const invokeNativeGet = async (options) => {
+                    if (options && options.signal && options.signal.aborted) {
+                        throw makeAbortError(options.signal);
+                    }
+                    const nativeCreds = window.__qbrowse_native_credentials;
+                    const fn = (nativeCreds && typeof nativeCreds.get === 'function') ? nativeCreds.get : origGet;
+                    return await fn.call(navigator.credentials, options);
+                };
+
+                // Byte/Buffer conversion helpers (strictly respect ArrayBufferView byteOffset & byteLength!)
+                const base64urlToBytes = (str) => {
+                    if (!str || typeof str !== 'string') return new Uint8Array(0);
+                    const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+                    const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+                    const binary = atob(padded);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    return bytes;
+                };
+
+                const toUint8Array = (input) => {
+                    if (!input) return new Uint8Array(0);
+                    if (input instanceof Uint8Array) {
+                        return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+                    }
+                    if (ArrayBuffer.isView(input)) {
+                        return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+                    }
+                    if (input instanceof ArrayBuffer) {
+                        return new Uint8Array(input);
+                    }
+                    if (typeof input === 'string') {
+                        return base64urlToBytes(input);
+                    }
+                    if (Array.isArray(input)) {
+                        return new Uint8Array(input);
+                    }
+                    return new Uint8Array(0);
+                };
 
                 const base64url = (buf) => {
-                    const bytes = new Uint8Array(buf.buffer || buf);
+                    const bytes = toUint8Array(buf);
                     let binary = '';
                     for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
                     return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
                 };
 
-                const hexToBytes = (hex) => new Uint8Array((hex.match(/.{1,2}/g) || []).map(b => parseInt(b, 16)));
+                const bytesToHex = (buf) => {
+                    const bytes = toUint8Array(buf);
+                    let hex = '';
+                    for (let i = 0; i < bytes.byteLength; i++) hex += bytes[i].toString(16).padStart(2, '0');
+                    return hex;
+                };
 
-                const buildAttestationObject = async (rpId, credIdBytes, pubJwk) => {
+                const hexToBytes = (hex) => {
+                    if (!hex || typeof hex !== 'string') return new Uint8Array(0);
+                    const clean = hex.trim();
+                    if (!clean) return new Uint8Array(0);
+                    const pairs = clean.match(/.{1,2}/g) || [];
+                    const out = new Uint8Array(pairs.length);
+                    for (let i = 0; i < pairs.length; i++) out[i] = parseInt(pairs[i], 16);
+                    return out;
+                };
+
+                const padTo32Bytes = (bytes) => {
+                    if (bytes.length === 32) return bytes;
+                    const out = new Uint8Array(32);
+                    if (bytes.length < 32) {
+                        out.set(bytes, 32 - bytes.length);
+                    } else {
+                        out.set(bytes.slice(bytes.length - 32), 0);
+                    }
+                    return out;
+                };
+
+                const encodeCborBstrHeader = (len) => {
+                    if (len < 24) return new Uint8Array([0x40 | len]);
+                    if (len <= 0xff) return new Uint8Array([0x58, len]);
+                    return new Uint8Array([0x59, (len >> 8) & 0xff, len & 0xff]);
+                };
+
+                const isValidRpIdForHost = (rpId, host) => {
+                    if (!rpId || !host) return false;
+                    const r = String(rpId).trim().toLowerCase().replace(/\\.$/, '');
+                    const h = String(host).trim().toLowerCase().replace(/\\.$/, '');
+                    if (!r || !h) return false;
+                    if (r === h) return true;
+                    // Registrable domain suffix match (e.g. google.com for accounts.google.com)
+                    if (h.endsWith('.' + r) && r.includes('.')) return true;
+                    return false;
+                };
+
+                const isCrossOriginContext = () => {
+                    try {
+                        if (window.self === window.top) return false;
+                        return window.top.location.origin !== window.location.origin;
+                    } catch (_) {
+                        return true;
+                    }
+                };
+
+                const makeAbortError = (signal) => {
+                    if (signal && signal.reason && (signal.reason instanceof DOMException || signal.reason instanceof Error)) {
+                        return signal.reason;
+                    }
+                    return new DOMException('The operation was aborted.', 'AbortError');
+                };
+
+                // Advertise QVault + Hardware/Hybrid authenticator capabilities accurately
+                // and delegate directly to Chromium native WebAuthn when passkeyProviderMode === 'hardware'
+                try {
+                    if (typeof window.PublicKeyCredential !== 'undefined') {
+                        window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async function() {
+                            const cfg = getPasskeyConfig();
+                            if (cfg.passkeyProviderMode === 'hardware' && origIsUVPAA) {
+                                try { return await origIsUVPAA(); } catch (_) {}
+                            }
+                            return true;
+                        };
+                        window.PublicKeyCredential.isConditionalMediationAvailable = async function() {
+                            const cfg = getPasskeyConfig();
+                            if (cfg.passkeyProviderMode === 'hardware' && origIsConditionalAvailable) {
+                                try { return await origIsConditionalAvailable(); } catch (_) { return false; }
+                            }
+                            return false;
+                        };
+                        window.PublicKeyCredential.getClientCapabilities = async function() {
+                            const cfg = getPasskeyConfig();
+                            if (cfg.passkeyProviderMode === 'hardware' && origGetCapabilities) {
+                                try {
+                                    const nativeCaps = await origGetCapabilities();
+                                    if (nativeCaps && typeof nativeCaps === 'object') {
+                                        return nativeCaps;
+                                    }
+                                } catch (_) {}
+                            }
+                            return {
+                                conditionalCreate: false,
+                                conditionalGet: false,
+                                hybridTransport: true,
+                                passkeyPlatformAuthenticator: true,
+                                relatedOrigins: false,
+                                signalAllAcceptedCredentials: false,
+                                signalCurrentUserDetails: false,
+                                signalUnknownCredential: false,
+                                userVerifyingPlatformAuthenticator: true,
+                                'extension:credProps': true
+                            };
+                        };
+                        if (typeof window.PublicKeyCredential.parseCreationOptionsFromJSON !== 'function') {
+                            window.PublicKeyCredential.parseCreationOptionsFromJSON = function(json) {
+                                if (!json || typeof json !== 'object') {
+                                    throw new TypeError('Invalid PublicKeyCredentialCreationOptionsJSON');
+                                }
+                                const out = Object.assign({}, json);
+                                if (typeof json.challenge === 'string') {
+                                    out.challenge = base64urlToBytes(json.challenge).buffer;
+                                }
+                                if (json.user && typeof json.user === 'object') {
+                                    out.user = Object.assign({}, json.user);
+                                    if (typeof json.user.id === 'string') {
+                                        out.user.id = base64urlToBytes(json.user.id).buffer;
+                                    }
+                                }
+                                if (Array.isArray(json.excludeCredentials)) {
+                                    out.excludeCredentials = json.excludeCredentials.map(c => Object.assign({}, c, {
+                                        id: typeof c.id === 'string' ? base64urlToBytes(c.id).buffer : c.id
+                                    }));
+                                }
+                                return out;
+                            };
+                        }
+                        if (typeof window.PublicKeyCredential.parseRequestOptionsFromJSON !== 'function') {
+                            window.PublicKeyCredential.parseRequestOptionsFromJSON = function(json) {
+                                if (!json || typeof json !== 'object') {
+                                    throw new TypeError('Invalid PublicKeyCredentialRequestOptionsJSON');
+                                }
+                                const out = Object.assign({}, json);
+                                if (typeof json.challenge === 'string') {
+                                    out.challenge = base64urlToBytes(json.challenge).buffer;
+                                }
+                                if (Array.isArray(json.allowCredentials)) {
+                                    out.allowCredentials = json.allowCredentials.map(c => Object.assign({}, c, {
+                                        id: typeof c.id === 'string' ? base64urlToBytes(c.id).buffer : c.id
+                                    }));
+                                }
+                                return out;
+                            };
+                        }
+                    }
+                } catch (_) {}
+
+                // Build prototype-backed WebAuthn objects so instanceof & Symbol.toStringTag pass without WebIDL Illegal invocation
+                const defineOwnProps = (target, props) => {
+                    const descriptors = {};
+                    const keys = Object.keys(props);
+                    for (let i = 0; i < keys.length; i++) {
+                        const k = keys[i];
+                        descriptors[k] = {
+                            value: props[k],
+                            enumerable: true,
+                            configurable: true,
+                            writable: false
+                        };
+                    }
+                    Object.defineProperties(target, descriptors);
+                    return target;
+                };
+
+                const createAttestationResponseInstance = (props) => {
+                    let obj;
+                    try {
+                        obj = (typeof window.AuthenticatorAttestationResponse === 'function' && window.AuthenticatorAttestationResponse.prototype)
+                            ? Object.create(window.AuthenticatorAttestationResponse.prototype)
+                            : {};
+                    } catch (_) {
+                        obj = {};
+                    }
+                    return defineOwnProps(obj, props);
+                };
+
+                const createAssertionResponseInstance = (props) => {
+                    let obj;
+                    try {
+                        obj = (typeof window.AuthenticatorAssertionResponse === 'function' && window.AuthenticatorAssertionResponse.prototype)
+                            ? Object.create(window.AuthenticatorAssertionResponse.prototype)
+                            : {};
+                    } catch (_) {
+                        obj = {};
+                    }
+                    return defineOwnProps(obj, props);
+                };
+
+                const createPublicKeyCredentialInstance = (props) => {
+                    let obj;
+                    try {
+                        obj = (typeof window.PublicKeyCredential === 'function' && window.PublicKeyCredential.prototype)
+                            ? Object.create(window.PublicKeyCredential.prototype)
+                            : {};
+                    } catch (_) {
+                        obj = {};
+                    }
+                    return defineOwnProps(obj, props);
+                };
+
+                const buildAttestationObject = async (rpId, credIdBytes, pubJwk, backupEligible = true) => {
                     const rpIdHash = new Uint8Array(await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(rpId)));
-                    const credIdLen = new Uint8Array([credIdBytes.length >> 8, credIdBytes.length & 0xff]);
+                    const credIdLen = new Uint8Array([(credIdBytes.length >> 8) & 0xff, credIdBytes.length & 0xff]);
 
-                    const base64urlToBytes = (str) => {
-                        const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-                        const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
-                        const binary = atob(padded);
-                        const bytes = new Uint8Array(binary.length);
-                        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                        return bytes;
-                    };
-                    const xBytes = base64urlToBytes(pubJwk.x);
-                    const yBytes = base64urlToBytes(pubJwk.y);
+                    const xBytes = padTo32Bytes(base64urlToBytes(pubJwk.x));
+                    const yBytes = padTo32Bytes(base64urlToBytes(pubJwk.y));
 
+                    // Canonical CBOR COSE_Key (EC2, ES256, P-256): {1: 2, 3: -7, -1: 1, -2: x(32B), -3: y(32B)}
                     const coseKey = new Uint8Array(77);
                     let offset = 0;
                     coseKey.set([0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01], offset); offset += 7;
                     coseKey.set([0x21, 0x58, 0x20], offset); offset += 3;
-                    coseKey.set(xBytes, offset); offset += xBytes.length;
+                    coseKey.set(xBytes, offset); offset += 32;
                     coseKey.set([0x22, 0x58, 0x20], offset); offset += 3;
-                    coseKey.set(yBytes, offset); offset += yBytes.length;
+                    coseKey.set(yBytes, offset); offset += 32;
 
-                    const authData = new Uint8Array(132 + credIdBytes.length);
+                    const authData = new Uint8Array(32 + 1 + 4 + 16 + 2 + credIdBytes.length + coseKey.length);
                     offset = 0;
                     authData.set(rpIdHash, offset); offset += 32;
-                    authData[offset++] = 0x45; // flags: UP | UV | AT
-                    authData.set([0, 0, 0, 0], offset); offset += 4; // signCount
-                    authData.set(new Uint8Array(16), offset); offset += 16; // aaguid
+                    // Flags: UP(0x01) | UV(0x04) | BE(0x08) | BS(0x10) | AT(0x40) = 0x5d for synced passkeys
+                    authData[offset++] = backupEligible ? 0x5d : 0x45;
+                    authData.set([0, 0, 0, 0], offset); offset += 4; // signCount = 0 for synced multi-device passkeys
+                    authData.set(new Uint8Array(16), offset); offset += 16; // aaguid (all-zero for "none" attestation)
                     authData.set(credIdLen, offset); offset += 2;
                     authData.set(credIdBytes, offset); offset += credIdBytes.length;
                     authData.set(coseKey, offset);
 
-                    const header = new Uint8Array([
+                    // Canonical CBOR map: {"fmt": "none", "attStmt": {}, "authData": bstr}
+                    const mapPrefix = new Uint8Array([
                         0xa3,
                         0x63, 0x66, 0x6d, 0x74, 0x64, 0x6e, 0x6f, 0x6e, 0x65,
                         0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0,
-                        0x68, 0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
-                        0x58, authData.length
+                        0x68, 0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61
                     ]);
-                    const attestationObject = new Uint8Array(header.length + authData.length);
-                    attestationObject.set(header, 0);
-                    attestationObject.set(authData, header.length);
+                    const authDataLenHeader = encodeCborBstrHeader(authData.length);
+                    const attestationObject = new Uint8Array(mapPrefix.length + authDataLenHeader.length + authData.length);
+                    attestationObject.set(mapPrefix, 0);
+                    attestationObject.set(authDataLenHeader, mapPrefix.length);
+                    attestationObject.set(authData, mapPrefix.length + authDataLenHeader.length);
 
                     return { attestationObject: attestationObject.buffer, authData: authData.buffer };
                 };
 
+                // Convert WebCrypto IEEE P1363 ECDSA P-256 signature (r || s) to canonical Low-S ASN.1 DER
+                const P256_N = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
+                const P256_HALF_N = P256_N >> 1n;
+
                 const p1363ToDER = (sigBuffer) => {
-                    const sig = new Uint8Array(sigBuffer);
+                    const sig = toUint8Array(sigBuffer);
+                    if (sig.length !== 64) {
+                        throw new Error('Unexpected ECDSA P-256 signature length: ' + sig.length);
+                    }
                     const rBytes = sig.slice(0, 32);
-                    const sBytes = sig.slice(32, 64);
+                    let sBytes = sig.slice(32, 64);
+
+                    // Canonical Low-S normalization
+                    try {
+                        let sVal = 0n;
+                        for (let i = 0; i < 32; i++) sVal = (sVal << 8n) | BigInt(sBytes[i]);
+                        if (sVal > P256_HALF_N) {
+                            sVal = P256_N - sVal;
+                            const lowS = new Uint8Array(32);
+                            for (let i = 31; i >= 0; i--) {
+                                lowS[i] = Number(sVal & 0xffn);
+                                sVal >>= 8n;
+                            }
+                            sBytes = lowS;
+                        }
+                    } catch (_) {}
+
                     const toDerInt = (bytes) => {
                         let i = 0;
                         while (i < bytes.length - 1 && bytes[i] === 0) i++;
@@ -1352,55 +1819,198 @@ const injectMainWorldPasskeyOverride = () => {
                     return der.buffer;
                 };
 
+                const runWithAbortSignal = (promise, signal, requestId) => {
+                    if (!signal) return promise;
+                    if (signal.aborted) {
+                        if (requestId && window.__qbrowse_passkey_bridge?.cancelVerification) {
+                            window.__qbrowse_passkey_bridge.cancelVerification(requestId).catch(() => {});
+                        }
+                        return Promise.reject(makeAbortError(signal));
+                    }
+                    return new Promise((resolve, reject) => {
+                        const onAbort = () => {
+                            if (requestId && window.__qbrowse_passkey_bridge?.cancelVerification) {
+                                window.__qbrowse_passkey_bridge.cancelVerification(requestId).catch(() => {});
+                            }
+                            reject(makeAbortError(signal));
+                        };
+                        signal.addEventListener('abort', onAbort, { once: true });
+                        promise.then(
+                            (val) => {
+                                signal.removeEventListener('abort', onAbort);
+                                resolve(val);
+                            },
+                            (err) => {
+                                signal.removeEventListener('abort', onAbort);
+                                reject(err);
+                            }
+                        );
+                    });
+                };
+
                 navigator.credentials.create = async function(options) {
                     if (options && options.publicKey) {
+                        if (options.signal && options.signal.aborted) {
+                            throw makeAbortError(options.signal);
+                        }
+
+                        const cfg = getPasskeyConfig();
+                        const pk = options.publicKey;
+
+                        // Rule 1: User configured Hardware / System Key as primary provider
+                        if (cfg.passkeyProviderMode === 'hardware') {
+                            return await invokeNativeCreate(options);
+                        }
+
+                        // Rule 2: Site explicitly requests a cross-platform / roaming hardware security key (YubiKey, FIDO2, NFC/USB/BLE)
+                        if (pk.authenticatorSelection && pk.authenticatorSelection.authenticatorAttachment === 'cross-platform') {
+                            console.log("[QVault Passkey] cross-platform authenticator requested — routing directly to native Hardware WebAuthn");
+                            return await invokeNativeCreate(options);
+                        }
+
+                        // Rule 6: Ephemeral Ghost/Tor session where QVault cannot persist passkeys -> route to native hardware/OS authenticator when fallback enabled
+                        if (cfg.isEphemeral && cfg.passkeyHardwareFallback) {
+                            console.log("[QVault Passkey] Ephemeral session — routing passkey creation to native Hardware / System WebAuthn");
+                            return await invokeNativeCreate(options);
+                        }
+
                         if (!window.__qbrowse_passkey_bridge) {
+                            if (cfg.passkeyHardwareFallback) {
+                                return await invokeNativeCreate(options);
+                            }
                             throw new DOMException("Passkey creation is unavailable.", "NotAllowedError");
                         }
-                        console.log("[QVault Passkey] Intercepted credentials.create in Main World!");
-                        const rpId = options.publicKey.rp?.id || window.location.hostname;
-                        const username = options.publicKey.user?.name || options.publicKey.user?.displayName || 'user';
-                        const res = await window.__qbrowse_passkey_bridge.create({ rpId, username });
-                        if (res && res.credIdHex && res.pubJwk) {
-                            const rawIdBytes = hexToBytes(res.credIdHex);
-                            const { attestationObject, authData } = await buildAttestationObject(rpId, rawIdBytes, res.pubJwk);
-                            const spkiBuffer = res.pubSpkiHex ? hexToBytes(res.pubSpkiHex).buffer : null;
 
-                            const challenge = options.publicKey.challenge;
-                            let challengeStr = "";
-                            if (challenge) {
-                                if (typeof challenge === 'string') challengeStr = challenge;
-                                else challengeStr = base64url(challenge);
+                        const currentHost = String(window.location.hostname || '').trim().toLowerCase().replace(/\\.$/, '');
+                        const effectiveRpId = String(pk.rp?.id || currentHost).trim().toLowerCase().replace(/\\.$/, '');
+                        if (!isValidRpIdForHost(effectiveRpId, currentHost)) {
+                            throw new DOMException("The relying party ID is not a registrable domain suffix of, nor equal to the current domain.", "SecurityError");
+                        }
+
+                        // Rule 3: Verify ES256 (-7) is accepted by pubKeyCredParams; if not and fallback enabled, delegate to hardware key (e.g. RS256/Ed25519)
+                        if (Array.isArray(pk.pubKeyCredParams) && pk.pubKeyCredParams.length > 0) {
+                            const acceptsEs256 = pk.pubKeyCredParams.some(p => p && p.type === 'public-key' && Number(p.alg) === -7);
+                            if (!acceptsEs256) {
+                                if (cfg.passkeyHardwareFallback) {
+                                    console.log("[QVault Passkey] Non-ES256 pubKeyCredParams — falling back to native Hardware / System WebAuthn");
+                                    return await invokeNativeCreate(options);
+                                }
+                                throw new DOMException("None of the requested publicKeyCredParams algorithms are supported.", "NotSupportedError");
                             }
-                            const clientDataObj = {
-                                type: "webauthn.create",
-                                challenge: challengeStr,
-                                origin: window.location.origin,
-                                crossOrigin: false
-                            };
-                            const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
-                            const id = base64url(rawIdBytes);
+                        }
 
-                            return {
+                        const username = String(pk.user?.name || pk.user?.displayName || 'user');
+                        const displayName = String(pk.user?.displayName || username);
+                        const userHandleBytes = pk.user?.id ? toUint8Array(pk.user.id) : new Uint8Array(0);
+                        const userHandleHex = userHandleBytes.byteLength > 0 ? bytesToHex(userHandleBytes) : '';
+                        const excludeCredIds = Array.isArray(pk.excludeCredentials)
+                            ? pk.excludeCredentials.map(c => {
+                                try { return c && c.id ? bytesToHex(c.id) : null; } catch (_) { return null; }
+                            }).filter(Boolean)
+                            : [];
+
+                        const requestId = 'pkc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                        console.log("[QVault Passkey] Intercepted credentials.create in Main World! rpId:", effectiveRpId, "user:", username);
+
+                        const res = await runWithAbortSignal(
+                            window.__qbrowse_passkey_bridge.create({
+                                requestId,
+                                rpId: effectiveRpId,
+                                rpName: pk.rp?.name || '',
+                                username,
+                                displayName,
+                                userHandleHex,
+                                excludeCredentials: excludeCredIds,
+                                timeout: pk.timeout
+                            }),
+                            options.signal,
+                            requestId
+                        );
+
+                        if (options.signal && options.signal.aborted) {
+                            throw makeAbortError(options.signal);
+                        }
+                        if (res && res.excluded) {
+                            throw new DOMException("The user attempted to register an authenticator that contains one of the credentials already registered with the relying party.", "InvalidStateError");
+                        }
+                        if (res && res.aborted) {
+                            throw makeAbortError(options.signal);
+                        }
+                        if (res && res.fallbackToNative) {
+                            console.log("[QVault Passkey] User selected Hardware / System Key — handing off credentials.create to native WebAuthn");
+                            return await invokeNativeCreate(options);
+                        }
+                        if (res && res.ephemeral && cfg.passkeyHardwareFallback) {
+                            console.log("[QVault Passkey] Ephemeral vault cannot persist passkey — falling back to native Hardware WebAuthn");
+                            return await invokeNativeCreate(options);
+                        }
+                        if (!res || res.denied || res.saveFailed || !res.credIdHex || !res.pubJwk) {
+                            throw new DOMException("The operation either timed out or was not allowed.", "NotAllowedError");
+                        }
+
+                        const rawIdBytes = hexToBytes(res.credIdHex);
+                        const { attestationObject, authData } = await buildAttestationObject(
+                            effectiveRpId,
+                            rawIdBytes,
+                            res.pubJwk,
+                            res.backupEligible !== false
+                        );
+                        const spkiBuffer = res.pubSpkiHex ? hexToBytes(res.pubSpkiHex).buffer : null;
+
+                        const challenge = pk.challenge;
+                        const challengeStr = typeof challenge === 'string'
+                            ? challenge
+                            : (challenge ? base64url(challenge) : '');
+
+                        const clientDataObj = {
+                            type: "webauthn.create",
+                            challenge: challengeStr,
+                            origin: window.location.origin,
+                            crossOrigin: isCrossOriginContext()
+                        };
+                        const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
+                        const id = base64url(rawIdBytes);
+                        const transports = ["hybrid", "internal"];
+
+                        const clientExtResults = {};
+                        if (pk.extensions && pk.extensions.credProps) {
+                            clientExtResults.credProps = { rk: true };
+                        }
+
+                        const responseObj = createAttestationResponseInstance({
+                            clientDataJSON,
+                            attestationObject,
+                            getPublicKey: () => spkiBuffer ? spkiBuffer.slice(0) : null,
+                            getPublicKeyAlgorithm: () => -7,
+                            getTransports: () => transports.slice(),
+                            getAuthenticatorData: () => authData.slice(0)
+                        });
+
+                        return createPublicKeyCredentialInstance({
+                            id,
+                            rawId: rawIdBytes.buffer,
+                            type: "public-key",
+                            authenticatorAttachment: "platform",
+                            response: responseObj,
+                            getClientExtensionResults: () => Object.assign({}, clientExtResults),
+                            toJSON: () => ({
                                 id,
-                                rawId: rawIdBytes.buffer,
+                                rawId: id,
                                 type: "public-key",
                                 authenticatorAttachment: "platform",
+                                clientExtensionResults: Object.assign({}, clientExtResults),
                                 response: {
-                                    clientDataJSON,
-                                    attestationObject,
-                                    getPublicKey: () => spkiBuffer,
-                                    getPublicKeyAlgorithm: () => -7,
-                                    getTransports: () => ["internal", "hybrid"],
-                                    getAuthenticatorData: () => authData
-                                },
-                                getClientExtensionResults: () => ({}),
-                                toJSON: () => ({ id, rawId: id, type: "public-key", response: { clientDataJSON: base64url(clientDataJSON), attestationObject: base64url(attestationObject) } })
-                            };
-                        }
-                        throw new DOMException("Failed to save passkey in QVault.", "NotAllowedError");
+                                    clientDataJSON: base64url(clientDataJSON),
+                                    attestationObject: base64url(attestationObject),
+                                    authenticatorData: base64url(authData),
+                                    transports: transports.slice(),
+                                    publicKey: spkiBuffer ? base64url(spkiBuffer) : null,
+                                    publicKeyAlgorithm: -7
+                                }
+                            })
+                        });
                     }
-                    return await origCreate(options);
+                    return await invokeNativeCreate(options);
                 };
 
                 navigator.credentials.get = async function(options) {
@@ -1409,17 +2019,28 @@ const injectMainWorldPasskeyOverride = () => {
                         return Promise.reject(new DOMException('FedCM is not supported in this environment', 'NotSupportedError'));
                     }
                     if (options && options.publicKey) {
+                        if (options.signal && options.signal.aborted) {
+                            throw makeAbortError(options.signal);
+                        }
+
+                        const cfg = getPasskeyConfig();
+
+                        // Rule 1 & Rule 7: When provider mode is 'hardware', forward all get calls (including mediation: 'conditional') directly to native WebAuthn
+                        if (cfg.passkeyProviderMode === 'hardware') {
+                            return await invokeNativeGet(options);
+                        }
+
                         const isConditional = options.publicKey.mediation === 'conditional' || options.mediation === 'conditional';
                         if (isConditional) {
-                            // Never invoke native Windows WebAuthn (origGet) on background conditional mediation probes!
+                            // Never invoke native Windows WebAuthn (origGet) or modals on background conditional mediation probes in QVault mode!
                             // If an AbortSignal was passed, wait quietly until aborted; otherwise reject quietly with NotAllowedError.
                             if (options.signal) {
                                 if (options.signal.aborted) {
-                                    throw new DOMException('The operation was aborted.', 'AbortError');
+                                    throw makeAbortError(options.signal);
                                 }
                                 return await new Promise((_, reject) => {
                                     options.signal.addEventListener('abort', () => {
-                                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                                        reject(makeAbortError(options.signal));
                                     }, { once: true });
                                 });
                             }
@@ -1427,86 +2048,151 @@ const injectMainWorldPasskeyOverride = () => {
                         }
 
                         if (!window.__qbrowse_passkey_bridge) {
+                            if (cfg.passkeyHardwareFallback) {
+                                return await invokeNativeGet(options);
+                            }
                             throw new DOMException('No passkey available in QVault.', 'NotAllowedError');
                         }
 
-                        const rpIdFromOptions = options.publicKey.rpId || window.location.hostname;
-                        let allowCredIds = [];
-                        if (options.publicKey.allowCredentials && Array.isArray(options.publicKey.allowCredentials)) {
-                            allowCredIds = options.publicKey.allowCredentials.map(c => {
-                                try {
-                                    const b = new Uint8Array(c.id);
-                                    return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
-                                } catch {
-                                    return null;
-                                }
-                            }).filter(Boolean);
+                        const pk = options.publicKey;
+                        const currentHost = String(window.location.hostname || '').trim().toLowerCase().replace(/\\.$/, '');
+                        const effectiveRpId = String(pk.rpId || currentHost).trim().toLowerCase().replace(/\\.$/, '');
+                        if (!isValidRpIdForHost(effectiveRpId, currentHost)) {
+                            throw new DOMException("The relying party ID is not a registrable domain suffix of, nor equal to the current domain.", "SecurityError");
                         }
-                        console.log("[QVault Passkey] Intercepted credentials.get in Main World! rpId:", rpIdFromOptions, "allowCreds:", allowCredIds);
-                        const res = await window.__qbrowse_passkey_bridge.get({
-                            conditional: false,
-                            rpId: rpIdFromOptions,
-                            allowCredentials: allowCredIds
-                        });
-                        if (!res || res.denied || res.noPasskey || res.conditionalIgnored) {
+
+                        const allowCredIds = Array.isArray(pk.allowCredentials)
+                            ? pk.allowCredentials.map(c => {
+                                try { return c && c.id ? bytesToHex(c.id) : null; } catch (_) { return null; }
+                            }).filter(Boolean)
+                            : [];
+                        const hardwareOnlyTransports = isHardwareOnlyAllowCredentials(pk.allowCredentials);
+
+                        const requestId = 'pkg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                        console.log("[QVault Passkey] Intercepted credentials.get in Main World! rpId:", effectiveRpId, "allowCreds:", allowCredIds.length, "hwOnlyTransports:", hardwareOnlyTransports);
+
+                        const res = await runWithAbortSignal(
+                            window.__qbrowse_passkey_bridge.get({
+                                requestId,
+                                conditional: false,
+                                rpId: effectiveRpId,
+                                allowCredentials: allowCredIds,
+                                hardwareOnlyTransports,
+                                hardwareFallback: cfg.passkeyHardwareFallback,
+                                timeout: pk.timeout
+                            }),
+                            options.signal,
+                            requestId
+                        );
+
+                        if (options.signal && options.signal.aborted) {
+                            throw makeAbortError(options.signal);
+                        }
+                        if (res && res.aborted) {
+                            throw makeAbortError(options.signal);
+                        }
+                        // User explicitly clicked "Use Hardware / System Key" in PasskeyVerificationModal
+                        if (res && res.fallbackToNative) {
+                            console.log("[QVault Passkey] User selected Hardware / System Key — handing off credentials.get to native WebAuthn");
+                            return await invokeNativeGet(options);
+                        }
+                        // User explicitly clicked Cancel -> NEVER invoke native fallback
+                        if (res && res.denied) {
                             throw new DOMException("The operation either timed out or was not allowed.", "NotAllowedError");
                         }
-                        if (res && res.credIdHex) {
-                            const rawIdBytes = hexToBytes(res.credIdHex);
-                            const rpId = res.rpId || options.publicKey.rpId || window.location.hostname;
-                            const challenge = options.publicKey.challenge;
-                            let challengeStr = "";
-                            if (challenge) {
-                                if (typeof challenge === 'string') challengeStr = challenge;
-                                else challengeStr = base64url(challenge);
-                            }
-                            const clientDataObj = {
-                                type: "webauthn.get",
-                                challenge: challengeStr,
-                                origin: window.location.origin,
-                                crossOrigin: false
-                            };
-                            const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
-                            const id = base64url(rawIdBytes);
+                        // Rules 4, 5, 6: No matching QVault passkey (including hardware-only transports or Ghost/Tor without vault key) -> seamlessly fall back to native WebAuthn when enabled
+                        if (cfg.passkeyHardwareFallback && (!res || res.noPasskey || res.noKey)) {
+                            console.log("[QVault Passkey] No matching QVault passkey — falling back to native Hardware / System WebAuthn for", effectiveRpId);
+                            return await invokeNativeGet(options);
+                        }
+                        if (!res || res.noPasskey || res.noKey || res.conditionalIgnored || !res.credIdHex || !res.privateKey) {
+                            throw new DOMException("The operation either timed out or was not allowed.", "NotAllowedError");
+                        }
 
-                            const authData = new Uint8Array(37);
-                            authData.set(new Uint8Array(await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(rpId))), 0);
-                            authData[32] = 0x05; // UP | UV
+                        const rawIdBytes = hexToBytes(res.credIdHex);
+                        const challenge = pk.challenge;
+                        const challengeStr = typeof challenge === 'string'
+                            ? challenge
+                            : (challenge ? base64url(challenge) : '');
 
-                            let signatureBuffer = new Uint8Array(64).buffer;
-                            if (res.privateKey) {
-                                try {
-                                    const privKey = await window.crypto.subtle.importKey("jwk", res.privateKey, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
-                                    const clientDataHash = await window.crypto.subtle.digest("SHA-256", clientDataJSON);
-                                    const signedData = new Uint8Array(authData.length + clientDataHash.byteLength);
-                                    signedData.set(authData, 0);
-                                    signedData.set(new Uint8Array(clientDataHash), authData.length);
-                                    const rawSig = await window.crypto.subtle.sign({ name: "ECDSA", hash: { name: "SHA-256" } }, privKey, signedData);
-                                    signatureBuffer = p1363ToDER(rawSig);
-                                } catch(err) {
-                                    console.warn("[QVault Passkey] sign error:", err);
-                                }
-                            }
+                        const clientDataObj = {
+                            type: "webauthn.get",
+                            challenge: challengeStr,
+                            origin: window.location.origin,
+                            crossOrigin: isCrossOriginContext()
+                        };
+                        const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientDataObj)).buffer;
+                        const id = base64url(rawIdBytes);
 
-                            return {
+                        // Always hash effectiveRpId (e.g. "google.com" when on accounts.google.com)
+                        const authData = new Uint8Array(37);
+                        authData.set(new Uint8Array(await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(effectiveRpId))), 0);
+                        // Flags: UP|UV|BE|BS (0x1d) for synced passkeys; preserve UP|UV (0x05) for legacy passkeys created with BE=0
+                        authData[32] = res.backupEligible ? 0x1d : 0x05;
+
+                        let signatureBuffer;
+                        try {
+                            const privKey = await window.crypto.subtle.importKey(
+                                "jwk",
+                                res.privateKey,
+                                { name: "ECDSA", namedCurve: "P-256" },
+                                false,
+                                ["sign"]
+                            );
+                            const clientDataHash = await window.crypto.subtle.digest("SHA-256", clientDataJSON);
+                            const signedData = new Uint8Array(authData.length + clientDataHash.byteLength);
+                            signedData.set(authData, 0);
+                            signedData.set(new Uint8Array(clientDataHash), authData.length);
+                            const rawSig = await window.crypto.subtle.sign(
+                                { name: "ECDSA", hash: { name: "SHA-256" } },
+                                privKey,
+                                signedData
+                            );
+                            signatureBuffer = p1363ToDER(rawSig);
+                        } catch (err) {
+                            console.warn("[QVault Passkey] ECDSA sign error:", err);
+                            throw new DOMException("Failed to sign WebAuthn assertion.", "NotAllowedError");
+                        }
+
+                        const userHandleBuffer = (res.userHandleHex && res.userHandleHex.length > 0)
+                            ? hexToBytes(res.userHandleHex).buffer
+                            : null;
+
+                        const clientExtResults = {};
+                        const responseObj = createAssertionResponseInstance({
+                            clientDataJSON,
+                            authenticatorData: authData.buffer,
+                            signature: signatureBuffer,
+                            userHandle: userHandleBuffer
+                        });
+
+                        const jsonResponse = {
+                            clientDataJSON: base64url(clientDataJSON),
+                            authenticatorData: base64url(authData.buffer),
+                            signature: base64url(signatureBuffer)
+                        };
+                        if (userHandleBuffer) {
+                            jsonResponse.userHandle = base64url(userHandleBuffer);
+                        }
+
+                        return createPublicKeyCredentialInstance({
+                            id,
+                            rawId: rawIdBytes.buffer,
+                            type: "public-key",
+                            authenticatorAttachment: "platform",
+                            response: responseObj,
+                            getClientExtensionResults: () => Object.assign({}, clientExtResults),
+                            toJSON: () => ({
                                 id,
-                                rawId: rawIdBytes.buffer,
+                                rawId: id,
                                 type: "public-key",
                                 authenticatorAttachment: "platform",
-                                response: {
-                                    clientDataJSON,
-                                    authenticatorData: authData.buffer,
-                                    signature: signatureBuffer,
-                                    userHandle: new Uint8Array(0).buffer,
-                                    getAuthenticatorData: () => authData.buffer
-                                },
-                                getClientExtensionResults: () => ({}),
-                                toJSON: () => ({ id, rawId: id, type: "public-key", response: { clientDataJSON: base64url(clientDataJSON), authenticatorData: base64url(authData.buffer), signature: base64url(signatureBuffer) } })
-                            };
-                        }
-                        throw new DOMException("No passkey available in QVault.", "NotAllowedError");
+                                clientExtensionResults: Object.assign({}, clientExtResults),
+                                response: jsonResponse
+                            })
+                        });
                     }
-                    return await origGet(options);
+                    return await invokeNativeGet(options);
                 };
 
                 try {
@@ -1527,108 +2213,370 @@ if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', i
 
 // --- LIVE MEDIA SESSION & PLAYBACK MONITOR ---
 let lastMediaStateKey = '';
+let hasReportedActiveMedia = false;
+let lastActiveMediaEl = null;
 
-function sendMediaState() {
+function isYouTubeHost() {
     try {
-        let isPlaying = false;
-        let title = '';
-        let artist = '';
-        let albumArt = '';
-        let currentTime = 0;
-        let duration = 0;
+        const h = (window.location && window.location.hostname ? window.location.hostname : '').toLowerCase();
+        return h === 'youtube.com' || h.endsWith('.youtube.com') || h === 'youtu.be';
+    } catch (_) {
+        return false;
+    }
+}
+
+function getYouTubePlayerIfWatch() {
+    try {
+        if (!isYouTubeHost()) return null;
+        const ytPlayer = document.querySelector('#movie_player');
+        if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+            return ytPlayer;
+        }
+    } catch (_) {}
+    return null;
+}
+
+function isMediaElementVisuallyHidden(el) {
+    try {
+        if (!el || !el.isConnected) return true;
+        if (document.pictureInPictureElement === el) return false;
+        if (el.hidden) return true;
+        const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        if (style) {
+            if (style.display === 'none' || style.visibility === 'hidden') return true;
+            if (parseFloat(style.opacity) === 0) return true;
+        }
+        const rect = typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+        if (rect && rect.width <= 1 && rect.height <= 1) return true;
+    } catch (_) {}
+    return false;
+}
+
+function isGenuineActiveMediaElement(el) {
+    try {
+        if (!el || !el.isConnected) return false;
+        const tag = String(el.tagName || '').toUpperCase();
+        if (tag !== 'VIDEO' && tag !== 'AUDIO') return false;
+        if (el.paused || el.ended) return false;
+        if (typeof el.readyState === 'number' && el.readyState < 2) return false;
+
+        // Strictly reject muted autoplay / zero-volume media elements
+        if (el.muted === true) return false;
+        if (typeof el.volume === 'number' && el.volume <= 0) return false;
+
+        // Check YouTube player mute state if this video belongs to YouTube's player
+        const ytContainer = el.closest ? el.closest('#movie_player, .html5-video-player') : null;
+        if (ytContainer && typeof ytContainer.isMuted === 'function' && ytContainer.isMuted()) {
+            return false;
+        }
+
+        const duration = el.duration;
+        const hasFiniteDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0;
+        // Reject ultra-short sound effects / micro-clips (live streams have Infinity/NaN and pass)
+        if (hasFiniteDuration && duration <= 3) return false;
+
+        if (tag === 'VIDEO') {
+            // Reject looping GIF-like / ambient background videos
+            if (el.loop === true && hasFiniteDuration && duration <= 15) return false;
+            // Reject tiny / spacer / tracking / preview-icon videos
+            if ((el.videoWidth || 0) < 160 || (el.videoHeight || 0) < 90) return false;
+            // Reject hidden or 0x0 videos (unless currently popped out into native PiP)
+            if (isMediaElementVisuallyHidden(el)) return false;
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function isEligiblePipVideo(el, allowPaused = false) {
+    try {
+        if (!el || !el.isConnected) return false;
+        if (String(el.tagName || '').toUpperCase() !== 'VIDEO') return false;
+        if (typeof el.readyState === 'number' && el.readyState < 2) return false;
+
+        const vw = el.videoWidth || 0;
+        const vh = el.videoHeight || 0;
+        if (vw < 160 || vh < 90) return false;
+        if (isMediaElementVisuallyHidden(el)) return false;
+
+        const duration = el.duration;
+        const hasFiniteDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0;
+        if (hasFiniteDuration && duration <= 3) return false;
+        if (el.loop === true && hasFiniteDuration && duration <= 15) return false;
+
+        // Never PiP muted autoplay / background videos
+        if (el.muted === true || (typeof el.volume === 'number' && el.volume <= 0)) return false;
+        const ytContainer = el.closest ? el.closest('#movie_player, .html5-video-player') : null;
+        if (ytContainer && typeof ytContainer.isMuted === 'function' && ytContainer.isMuted()) {
+            return false;
+        }
+
+        if (!el.paused && !el.ended) return true;
+        if (!allowPaused) return false;
+
+        // For explicit manual PiP click on a paused main player video, require a large non-looping player
+        if (el.ended || el.loop === true) return false;
+        if (vw < 320 || vh < 180) return false;
+        if (hasFiniteDuration && duration <= 15) return false;
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function pickBestEligiblePipVideo(allowPaused = false) {
+    try {
+        const videoEls = Array.from(document.querySelectorAll('video'));
+        const score = (v) => (v.videoWidth || 0) * (v.videoHeight || 0);
+        const playing = videoEls
+            .filter(v => isEligiblePipVideo(v, false))
+            .sort((a, b) => score(b) - score(a));
+        if (playing.length > 0) return playing[0];
+
+        if (allowPaused) {
+            const paused = videoEls
+                .filter(v => isEligiblePipVideo(v, true))
+                .sort((a, b) => score(b) - score(a));
+            if (paused.length > 0) return paused[0];
+        }
+    } catch (_) {}
+    return null;
+}
+
+function extractMediaMetadata(activeMedia) {
+    let title = '';
+    let artist = '';
+    let albumArt = '';
+    try {
+        const ytTitle = document.querySelector('h1.ytd-watch-metadata, yt-formatted-string.ytd-video-primary-info-renderer, div[data-testid="now-playing-widget"]');
+        if (ytTitle && ytTitle.textContent) {
+            title = ytTitle.textContent.trim();
+        } else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.title) {
+            title = navigator.mediaSession.metadata.title;
+        } else if (document.title) {
+            title = document.title.replace(/^\([0-9]+\)\s*/, '').replace(/ - YouTube$/, '').replace(/ - Spotify$/, '').replace(/ \| TIDAL$/, '');
+        }
+
+        const ytChannel = document.querySelector('#owner #channel-name, #upload-info #channel-name, a[data-testid="context-item-author"]');
+        if (ytChannel && ytChannel.textContent) {
+            artist = ytChannel.textContent.trim();
+        } else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.artist) {
+            artist = navigator.mediaSession.metadata.artist;
+        } else {
+            artist = window.location.hostname || '';
+        }
+
+        const ogImage = document.querySelector('meta[property="og:image"]');
+        if (ogImage && ogImage.content) {
+            albumArt = ogImage.content;
+        } else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.artwork && navigator.mediaSession.metadata.artwork.length > 0) {
+            albumArt = navigator.mediaSession.metadata.artwork[navigator.mediaSession.metadata.artwork.length - 1].src;
+        } else {
+            const spCover = document.querySelector('img[data-testid="cover-art-image"]');
+            if (spCover) albumArt = spCover.src;
+        }
+    } catch (_) {}
+    return {
+        title: title || document.title || 'Playing Media',
+        artist: artist || (window.location ? window.location.hostname : '') || '',
+        albumArt: albumArt || ''
+    };
+}
+
+function sendMediaState(forceClear = false) {
+    try {
+        const href = (typeof window !== 'undefined' && window.location && window.location.href) ? window.location.href : '';
+        if (forceClear || !href || href === 'about:blank' || href.startsWith('about:')) {
+            if (hasReportedActiveMedia) {
+                hasReportedActiveMedia = false;
+                lastActiveMediaEl = null;
+                lastMediaStateKey = '';
+                ipcRenderer.sendToHost('media-state-changed', {
+                    isPlaying: false,
+                    hasMedia: false,
+                    cleared: true,
+                    hasVideo: false,
+                    isPipActive: false,
+                    title: '',
+                    artist: '',
+                    albumArt: '',
+                    currentTime: 0,
+                    duration: 0,
+                    url: href
+                });
+            }
+            return;
+        }
 
         const mediaEls = Array.from(document.querySelectorAll('video, audio'));
-        const activeMedia = mediaEls.find(el => !el.paused && !el.ended && el.readyState > 1) || mediaEls[0];
+        const genuinePlayingEls = mediaEls.filter(isGenuineActiveMediaElement);
 
-        if (activeMedia) {
-            isPlaying = !activeMedia.paused && !activeMedia.ended;
-            currentTime = activeMedia.currentTime || 0;
-            duration = activeMedia.duration || 0;
+        // Prefer the largest actively playing video, otherwise the first playing audio
+        let activeMedia = null;
+        if (genuinePlayingEls.length > 0) {
+            const playingVideos = genuinePlayingEls
+                .filter(el => el.tagName === 'VIDEO')
+                .sort((a, b) => ((b.videoWidth || 0) * (b.videoHeight || 0)) - ((a.videoWidth || 0) * (a.videoHeight || 0)));
+            activeMedia = playingVideos[0] || genuinePlayingEls[0];
+        }
 
-            // Check YouTube player state if on YouTube
-            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
-            if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
-                const s = ytPlayer.getPlayerState();
-                if (s === 1 || s === 3) isPlaying = true;
-                else if (s === 2 || s === 0) isPlaying = false;
-            }
-
-            if (!title) {
-                const ytTitle = document.querySelector('h1.ytd-watch-metadata, yt-formatted-string.ytd-video-primary-info-renderer, div[data-testid="now-playing-widget"]');
-                if (ytTitle) {
-                    title = ytTitle.textContent.trim();
-                } else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.title) {
-                    title = navigator.mediaSession.metadata.title;
-                } else if (document.title) {
-                    title = document.title.replace(/^\([0-9]+\)\s*/, '').replace(/ - YouTube$/, '').replace(/ - Spotify$/, '').replace(/ \| TIDAL$/, '');
-                }
-            }
-
-            if (!artist) {
-                const ytChannel = document.querySelector('#owner #channel-name, #upload-info #channel-name, a[data-testid="context-item-author"]');
-                if (ytChannel) artist = ytChannel.textContent.trim();
-                else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.artist) {
-                    artist = navigator.mediaSession.metadata.artist;
-                } else {
-                    artist = window.location.hostname;
-                }
-            }
-
-            if (!albumArt) {
-                const ogImage = document.querySelector('meta[property="og:image"]');
-                if (ogImage && ogImage.content) albumArt = ogImage.content;
-                else if (navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.artwork && navigator.mediaSession.metadata.artwork.length > 0) {
-                    albumArt = navigator.mediaSession.metadata.artwork[navigator.mediaSession.metadata.artwork.length - 1].src;
-                } else {
-                    const spCover = document.querySelector('img[data-testid="cover-art-image"]');
-                    if (spCover) albumArt = spCover.src;
-                }
+        // Cross-check YouTube main watch player so paused/muted state is never misrepresented
+        const ytPlayer = getYouTubePlayerIfWatch();
+        if (activeMedia && ytPlayer && activeMedia.closest && activeMedia.closest('#movie_player')) {
+            const ytState = ytPlayer.getPlayerState();
+            const ytMuted = typeof ytPlayer.isMuted === 'function' ? ytPlayer.isMuted() : false;
+            if (ytMuted || ytState === 2 || ytState === 0 || ytState === -1) {
+                activeMedia = null;
             }
         }
 
-        if (title || isPlaying || mediaEls.length > 0) {
-            const stateKey = `${isPlaying}:${title}:${artist}:${Math.floor(currentTime)}:${Math.floor(duration)}`;
+        const isPipActive = Boolean(document.pictureInPictureElement);
+
+        if (activeMedia) {
+            hasReportedActiveMedia = true;
+            lastActiveMediaEl = activeMedia;
+            const currentTime = Number.isFinite(activeMedia.currentTime) ? activeMedia.currentTime : 0;
+            const duration = Number.isFinite(activeMedia.duration) ? activeMedia.duration : 0;
+            const { title, artist, albumArt } = extractMediaMetadata(activeMedia);
+            const hasVideo = Boolean(pickBestEligiblePipVideo(false));
+
+            const stateKey = `1:${hasVideo ? 1 : 0}:${isPipActive ? 1 : 0}:${title}:${artist}:${Math.floor(currentTime)}:${Math.floor(duration)}`;
             if (stateKey !== lastMediaStateKey) {
                 lastMediaStateKey = stateKey;
                 ipcRenderer.sendToHost('media-state-changed', {
-                    isPlaying,
-                    title: title || document.title || 'Playing Media',
-                    artist: artist || window.location.hostname,
-                    albumArt: albumArt || '',
+                    isPlaying: true,
+                    hasMedia: true,
+                    cleared: false,
+                    hasVideo,
+                    isPipActive,
+                    title,
+                    artist,
+                    albumArt,
                     currentTime,
                     duration,
-                    url: window.location.href
+                    url: href
+                });
+            }
+            return;
+        }
+
+        // Nothing is genuinely playing right now.
+        // Only emit an update if this page previously reported active media!
+        if (hasReportedActiveMedia) {
+            const canResumeLast = Boolean(
+                lastActiveMediaEl &&
+                lastActiveMediaEl.isConnected &&
+                !lastActiveMediaEl.ended &&
+                !lastActiveMediaEl.muted &&
+                (typeof lastActiveMediaEl.volume !== 'number' || lastActiveMediaEl.volume > 0) &&
+                lastActiveMediaEl.readyState >= 2
+            );
+
+            if (canResumeLast) {
+                const currentTime = Number.isFinite(lastActiveMediaEl.currentTime) ? lastActiveMediaEl.currentTime : 0;
+                const duration = Number.isFinite(lastActiveMediaEl.duration) ? lastActiveMediaEl.duration : 0;
+                const { title, artist, albumArt } = extractMediaMetadata(lastActiveMediaEl);
+                const hasVideo = Boolean(pickBestEligiblePipVideo(true));
+                const stateKey = `0:${hasVideo ? 1 : 0}:${isPipActive ? 1 : 0}:${title}:${artist}:${Math.floor(currentTime)}:${Math.floor(duration)}`;
+                if (stateKey !== lastMediaStateKey) {
+                    lastMediaStateKey = stateKey;
+                    ipcRenderer.sendToHost('media-state-changed', {
+                        isPlaying: false,
+                        hasMedia: true,
+                        cleared: false,
+                        hasVideo,
+                        isPipActive,
+                        title,
+                        artist,
+                        albumArt,
+                        currentTime,
+                        duration,
+                        url: href
+                    });
+                }
+            } else {
+                hasReportedActiveMedia = false;
+                lastActiveMediaEl = null;
+                lastMediaStateKey = '';
+                ipcRenderer.sendToHost('media-state-changed', {
+                    isPlaying: false,
+                    hasMedia: false,
+                    cleared: true,
+                    hasVideo: false,
+                    isPipActive: false,
+                    title: '',
+                    artist: '',
+                    albumArt: '',
+                    currentTime: 0,
+                    duration: 0,
+                    url: href
                 });
             }
         }
-    } catch(e) {}
+    } catch (_) {}
 }
 
 let mediaPollTimer = null;
 
 function syncMediaPolling() {
-    sendMediaState();
-    const anyPlaying = Array.from(document.querySelectorAll('video, audio')).some(el => !el.paused && !el.ended);
-    if (anyPlaying && !mediaPollTimer) {
-        mediaPollTimer = setInterval(sendMediaState, 800);
-    } else if (!anyPlaying && mediaPollTimer) {
+    sendMediaState(false);
+    const anyGenuinePlaying = Array.from(document.querySelectorAll('video, audio')).some(isGenuineActiveMediaElement);
+    if (anyGenuinePlaying && !mediaPollTimer) {
+        mediaPollTimer = setInterval(() => sendMediaState(false), 800);
+    } else if (!anyGenuinePlaying && mediaPollTimer) {
         clearInterval(mediaPollTimer);
         mediaPollTimer = null;
     }
 }
 
-['play', 'playing', 'pause', 'ended', 'loadedmetadata', 'emptied', 'ratechange', 'seeked'].forEach(ev => {
+['play', 'playing', 'pause', 'ended', 'emptied', 'ratechange', 'seeked', 'volumechange', 'abort', 'stalled'].forEach(ev => {
     document.addEventListener(ev, syncMediaPolling, true);
 });
+
+document.addEventListener('enterpictureinpicture', () => {
+    try {
+        ipcRenderer.sendToHost('media-pip-changed', { isPipActive: true });
+        sendMediaState(false);
+    } catch (_) {}
+}, true);
+
+document.addEventListener('leavepictureinpicture', () => {
+    try {
+        ipcRenderer.sendToHost('media-pip-changed', { isPipActive: false });
+        sendMediaState(false);
+    } catch (_) {}
+}, true);
+
 if (typeof window !== 'undefined') {
-    window.addEventListener('DOMContentLoaded', syncMediaPolling);
-    window.addEventListener('load', syncMediaPolling);
+    const handleUnloadMediaCleanup = () => {
+        if (mediaPollTimer) {
+            clearInterval(mediaPollTimer);
+            mediaPollTimer = null;
+        }
+        try {
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture().catch(() => {});
+            }
+        } catch (_) {}
+        sendMediaState(true);
+    };
+    window.addEventListener('pagehide', handleUnloadMediaCleanup);
+    window.addEventListener('beforeunload', handleUnloadMediaCleanup);
 }
 
 ipcRenderer.on('media-control-command', (event, cmdData) => {
     try {
         const cmd = typeof cmdData === 'string' ? cmdData : (cmdData ? cmdData.action : '');
         console.log('[Preload MediaControl] Received IPC command in page:', cmd, cmdData);
+
+        if (cmd === 'exit-pip') {
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture().catch(() => {});
+            }
+            ipcRenderer.sendToHost('media-pip-changed', { isPipActive: false });
+            return;
+        }
 
         if (window.__qbrowse_last_media_cmd && Date.now() - window.__qbrowse_last_media_cmd < 350) {
             console.log('[Preload MediaControl] Debounced duplicate command:', cmd);
@@ -1637,24 +2585,26 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
         window.__qbrowse_last_media_cmd = Date.now();
 
         const mediaEls = Array.from(document.querySelectorAll('video, audio'));
-        console.log(`[Preload MediaControl] Found ${mediaEls.length} media element(s) in document`);
-        const activeMedia = mediaEls.find(el => !el.paused) || mediaEls[0];
+        const genuinePlaying = mediaEls.find(isGenuineActiveMediaElement);
+        const activeMedia = genuinePlaying || (lastActiveMediaEl && lastActiveMediaEl.isConnected ? lastActiveMediaEl : null) || mediaEls.find(el => !el.paused && !el.muted) || mediaEls.find(el => el.readyState >= 2 && !el.muted);
 
         if (cmd === 'toggle-play' || cmd === 'play-pause') {
-            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
-            if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+            const ytPlayer = getYouTubePlayerIfWatch();
+            if (ytPlayer) {
                 const s = ytPlayer.getPlayerState();
                 if (s === 1 || s === 3) {
                     if (typeof ytPlayer.pauseVideo === 'function') ytPlayer.pauseVideo();
                 } else {
                     if (typeof ytPlayer.playVideo === 'function') ytPlayer.playVideo();
                 }
+                syncMediaPolling();
                 return;
             }
 
             const playBtn = document.querySelector('.ytp-play-button, button[data-testid="control-button-playpause"], button[data-testid="play-pause-button"], button[data-a-target="player-play-pause-button"], .playControl, #play-pause-button');
             if (playBtn) {
                 playBtn.click();
+                syncMediaPolling();
                 return;
             }
 
@@ -1665,26 +2615,25 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
                 } else {
                     activeMedia.pause();
                 }
-            } else {
-                const keyEv = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', keyCode: 75, which: 75, bubbles: true });
-                document.dispatchEvent(keyEv);
             }
         } else if (cmd === 'next-track') {
-            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            const ytPlayer = getYouTubePlayerIfWatch();
             if (ytPlayer && typeof ytPlayer.nextVideo === 'function') {
                 ytPlayer.nextVideo();
+                syncMediaPolling();
                 return;
             }
             const nextBtn = document.querySelector('.ytp-next-button, button[data-testid="control-button-skip-forward"], .skipControl__next, .next-button');
             if (nextBtn) {
                 nextBtn.click();
-            } else if (activeMedia && activeMedia.duration) {
+            } else if (activeMedia && Number.isFinite(activeMedia.duration)) {
                 activeMedia.currentTime = Math.min(activeMedia.duration, activeMedia.currentTime + 10);
             }
         } else if (cmd === 'prev-track') {
-            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            const ytPlayer = getYouTubePlayerIfWatch();
             if (ytPlayer && typeof ytPlayer.previousVideo === 'function') {
                 ytPlayer.previousVideo();
+                syncMediaPolling();
                 return;
             }
             const prevBtn = document.querySelector('.ytp-prev-button, button[data-testid="control-button-skip-back"], .skipControl__previous, .previous-button');
@@ -1695,76 +2644,55 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
             }
         } else if (cmd === 'seek') {
             const seekTime = typeof cmdData.time === 'number' ? cmdData.time : 0;
-            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            const ytPlayer = getYouTubePlayerIfWatch();
             if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
                 ytPlayer.seekTo(seekTime, true);
             } else if (activeMedia) {
                 activeMedia.currentTime = seekTime;
             }
         } else if (cmd === 'mute-toggle') {
-            const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+            const ytPlayer = getYouTubePlayerIfWatch();
             if (ytPlayer && typeof ytPlayer.isMuted === 'function') {
                 if (ytPlayer.isMuted()) ytPlayer.unMute?.();
                 else ytPlayer.mute?.();
-            } else {
-                mediaEls.forEach(el => el.muted = !el.muted);
+            } else if (activeMedia) {
+                activeMedia.muted = !activeMedia.muted;
             }
         } else if (cmd === 'toggle-pip' || cmd === 'pip') {
-            console.log('[Preload MediaControl] Executing toggle-pip action');
             try {
                 if (document.pictureInPictureElement) {
-                    console.log('[Preload MediaControl] Exiting Picture-in-Picture mode');
                     document.exitPictureInPicture().catch(() => {});
                 } else {
-                    const videoEls = Array.from(document.querySelectorAll('video'));
-                    const activeVideo = videoEls.find(v => !v.paused && v.readyState > 1) || videoEls[0];
+                    const activeVideo = pickBestEligiblePipVideo(true);
 
                     if (activeVideo) {
-                        // CRITICAL: Remove disablepictureinpicture attribute if site set it
                         activeVideo.removeAttribute('disablepictureinpicture');
                         activeVideo.disablePictureInPicture = false;
 
-                        console.log('[Preload MediaControl] Requesting OS Picture-in-Picture window on:', activeVideo);
-                        
                         activeVideo.requestPictureInPicture()
-                            .then((pipWin) => {
-                                console.log('[Preload MediaControl] Native OS Picture-in-Picture window opened successfully!', pipWin);
+                            .then(() => {
+                                ipcRenderer.sendToHost('media-pip-changed', { isPipActive: true });
                             })
                             .catch((err) => {
                                 console.warn('[Preload MediaControl] Direct requestPictureInPicture failed:', err);
-                                // Fallback A: YouTube movie player / button
-                                const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+                                const ytPlayer = getYouTubePlayerIfWatch();
                                 const pipBtn = document.querySelector('.ytp-pip-button, button[title*="Picture-in-picture"], button[aria-label*="Picture-in-Picture"]');
-                                
                                 if (pipBtn) {
-                                    console.log('[Preload MediaControl] Clicking site PiP button:', pipBtn);
                                     pipBtn.click();
                                 } else if (ytPlayer && typeof ytPlayer.togglePictureInPicture === 'function') {
-                                    console.log('[Preload MediaControl] Calling ytPlayer.togglePictureInPicture()');
                                     ytPlayer.togglePictureInPicture();
-                                } else {
-                                    console.log('[Preload MediaControl] Dispatching YouTube "i" key shortcut event');
-                                    const keyEvent = new KeyboardEvent('keydown', {
-                                        key: 'i',
-                                        code: 'KeyI',
-                                        keyCode: 73,
-                                        which: 73,
-                                        bubbles: true,
-                                        cancelable: true
-                                    });
-                                    document.dispatchEvent(keyEvent);
                                 }
                             });
                     } else {
-                        console.warn('[Preload MediaControl] No video element found in DOM.');
+                        console.log('[Preload MediaControl] No eligible user-facing video found for PiP.');
                     }
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error('[Preload MediaControl] Error during PiP toggle:', e);
             }
         }
-        sendMediaState();
-    } catch(e) {
+        syncMediaPolling();
+    } catch (e) {
         console.error('[Preload MediaControl] Exception in command handler:', e);
     }
 });
@@ -1772,11 +2700,8 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
 let smartDarkObserver = null;
 let currentSmartDarkConfig = {
     isForceDark: false,
-    isExcluded: typeof window !== 'undefined' && window.location && (
-        window.location.hostname.includes('youtube.com') ||
-        window.location.hostname.includes('github.com') ||
-        window.location.hostname.includes('figma.com')
-    )
+    isExcluded: false,
+    excludeMedia: true
 };
 let smartDarkTimer = null;
 let isApplyingSmartDark = false;
@@ -1784,36 +2709,112 @@ let observedDocEl = false;
 let observedBody = false;
 let updateOAuthThemeGlobal = null;
 
+function isInternalSmartDarkScheme(protocol) {
+    const p = String(protocol || '').toLowerCase();
+    return p === 'about:' || p === 'qbrowse:' || p === 'chrome:' || p === 'chrome-extension:' || p === 'devtools:' || p === 'data:' || p === 'blob:' || p === 'view-source:';
+}
+
+function teardownSmartDark(docEl) {
+    if (smartDarkTimer) {
+        clearTimeout(smartDarkTimer);
+        smartDarkTimer = null;
+    }
+    if (smartDarkObserver) {
+        smartDarkObserver.disconnect();
+        smartDarkObserver = null;
+        observedDocEl = false;
+        observedBody = false;
+    }
+    const styleEl = document.getElementById('qbrowse-smart-dark-style');
+    if (styleEl) styleEl.remove();
+
+    try {
+        const tagged = document.querySelectorAll('.qbrowse-counter-invert');
+        for (let i = 0; i < tagged.length; i++) {
+            tagged[i].classList.remove('qbrowse-counter-invert');
+        }
+    } catch (_) {}
+
+    if (docEl) {
+        if (docEl.classList.contains('qbrowse-smart-dark-active') || docEl.classList.contains('qbrowse-smart-dark-exclude-media')) {
+            isApplyingSmartDark = true;
+            docEl.classList.remove('qbrowse-smart-dark-active');
+            docEl.classList.remove('qbrowse-smart-dark-exclude-media');
+            setTimeout(() => { isApplyingSmartDark = false; }, 50);
+        }
+    }
+}
+
+function parseSmartDarkCssColor(str) {
+    if (!str || typeof str !== 'string') return null;
+    const trimmed = str.trim().toLowerCase();
+    if (!trimmed || trimmed === 'transparent' || trimmed === 'none') return null;
+
+    // CSS Color 4: color(srgb r g b [/ a])
+    const srgbMatch = trimmed.match(/^color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\s*\)$/);
+    if (srgbMatch) {
+        let a = 1;
+        if (srgbMatch[4] !== undefined) {
+            a = srgbMatch[4].endsWith('%') ? parseFloat(srgbMatch[4]) / 100 : parseFloat(srgbMatch[4]);
+        }
+        if (!Number.isFinite(a) || a < 0.25) return null;
+        return {
+            r: Math.max(0, Math.min(255, parseFloat(srgbMatch[1]) * 255)),
+            g: Math.max(0, Math.min(255, parseFloat(srgbMatch[2]) * 255)),
+            b: Math.max(0, Math.min(255, parseFloat(srgbMatch[3]) * 255)),
+            a: Math.max(0, Math.min(1, a))
+        };
+    }
+
+    // Standard rgb(...) / rgba(...) / space+slash syntax
+    if (trimmed.startsWith('rgb')) {
+        const nums = trimmed.match(/[\d.]+%?/g);
+        if (!nums || nums.length < 3) return null;
+        const parseChannel = (token) => token.endsWith('%') ? (parseFloat(token) / 100) * 255 : parseFloat(token);
+        let a = 1;
+        if (nums.length >= 4) {
+            a = nums[3].endsWith('%') ? parseFloat(nums[3]) / 100 : parseFloat(nums[3]);
+        }
+        if (!Number.isFinite(a) || a < 0.25) return null;
+        const r = parseChannel(nums[0]);
+        const g = parseChannel(nums[1]);
+        const b = parseChannel(nums[2]);
+        if (![r, g, b].every(Number.isFinite)) return null;
+        return {
+            r: Math.max(0, Math.min(255, r)),
+            g: Math.max(0, Math.min(255, g)),
+            b: Math.max(0, Math.min(255, b)),
+            a: Math.max(0, Math.min(1, a))
+        };
+    }
+    return null;
+}
+
+function getSmartDarkLuminance(color, backdrop = 255) {
+    if (!color) return 1;
+    const a = typeof color.a === 'number' ? color.a : 1;
+    const r = color.r * a + backdrop * (1 - a);
+    const g = color.g * a + backdrop * (1 - a);
+    const b = color.b * a + backdrop * (1 - a);
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
 function runSmartDark() {
-    const { isForceDark, isExcluded } = currentSmartDarkConfig;
+    const { isForceDark, isExcluded, excludeMedia } = currentSmartDarkConfig;
+    const shouldExcludeMedia = excludeMedia !== false;
     try {
         const docEl = document.documentElement;
         if (!docEl) return;
 
-        const hostLower = (window.location.hostname || '').toLowerCase();
-        const isBuiltinExcluded = hostLower.includes('google.com') ||
-                                  hostLower.includes('googleusercontent.com') ||
-                                  hostLower.includes('youtube.com') ||
-                                  hostLower.includes('github.com');
+        const isInternalPage = isInternalSmartDarkScheme(window.location && window.location.protocol);
 
-        if (!isForceDark || isExcluded || isBuiltinExcluded) {
-            if (smartDarkObserver) {
-                smartDarkObserver.disconnect();
-                smartDarkObserver = null;
-                observedDocEl = false;
-                observedBody = false;
-            }
-            const styleEl = document.getElementById('qbrowse-smart-dark-style');
-            if (styleEl) styleEl.remove();
-            if (docEl.classList.contains('qbrowse-smart-dark-active')) {
-                isApplyingSmartDark = true;
-                docEl.classList.remove('qbrowse-smart-dark-active');
-                setTimeout(() => { isApplyingSmartDark = false; }, 50);
-            }
+        if (!isForceDark || isExcluded || isInternalPage) {
+            teardownSmartDark(docEl);
             return;
         }
 
         const body = document.body;
+        const isCurrentlyActive = docEl.classList.contains('qbrowse-smart-dark-active');
 
         let styleEl = document.getElementById('qbrowse-smart-dark-style');
         if (!styleEl) {
@@ -1828,35 +2829,61 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active body {
                         background-color: inherit;
                     }
-                    /* Counter-invert all images, media, canvas, background images and banners so they retain natural colors */
-                    html.qbrowse-smart-dark-active img,
-                    html.qbrowse-smart-dark-active picture,
-                    html.qbrowse-smart-dark-active video,
-                    html.qbrowse-smart-dark-active canvas,
-                    html.qbrowse-smart-dark-active svg image,
-                    html.qbrowse-smart-dark-active [role="img"],
-                    html.qbrowse-smart-dark-active [style*="background-image"],
-                    html.qbrowse-smart-dark-active [style*="background: url"],
-                    html.qbrowse-smart-dark-active [style*="background:url"],
-                    html.qbrowse-smart-dark-active [class*="bg-image"],
-                    html.qbrowse-smart-dark-active [class*="background-image"],
-                    html.qbrowse-smart-dark-active [class*="background_image"],
-                    html.qbrowse-smart-dark-active [class*="hero-image"],
-                    html.qbrowse-smart-dark-active [class*="banner-image"],
-                    html.qbrowse-smart-dark-active [class*="ext-background-image"],
-                    html.qbrowse-smart-dark-active [id*="backgroundImage"],
-                    html.qbrowse-smart-dark-active [id*="background-image"],
-                    html.qbrowse-smart-dark-active .qbrowse-counter-invert {
+                    /* Counter-invert all images, media, canvas, embeds, background images and banners when Exclude Media is enabled */
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media picture,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media video,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media canvas,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media embed,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media object,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media svg image,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media model-viewer,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [role="img"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="youtube"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="youtu.be"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="vimeo"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="twitch"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="dailymotion"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="player"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="embed"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="sketchfab"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="viewer"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[src*="maps"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[class*="viewer" i],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media iframe[title*="3D" i],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [style*="background-image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [style*="background: url"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [style*="background:url"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="bg-image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="background-image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="background_image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="hero-image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="banner-image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="ext-background-image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [id*="backgroundImage"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [id*="background-image"],
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media .qbrowse-counter-invert {
                         filter: invert(1) hue-rotate(180deg) !important;
                     }
-                    /* Prevent double-inversion when an img is nested inside a counter-inverted background container */
-                    html.qbrowse-smart-dark-active [style*="background-image"] img,
-                    html.qbrowse-smart-dark-active [style*="background: url"] img,
-                    html.qbrowse-smart-dark-active [style*="background:url"] img,
-                    html.qbrowse-smart-dark-active [class*="bg-image"] img,
-                    html.qbrowse-smart-dark-active [class*="background-image"] img,
-                    html.qbrowse-smart-dark-active [role="img"] img,
-                    html.qbrowse-smart-dark-active .qbrowse-counter-invert img {
+                    /* Prevent double-inversion when media is nested inside a counter-inverted container */
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media picture img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media picture video,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [style*="background-image"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [style*="background: url"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [style*="background:url"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [style*="background-image"] video,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="bg-image"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="background-image"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="background_image"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="hero-image"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [class*="banner-image"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [id*="backgroundImage"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [id*="background-image"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [role="img"] img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media [role="img"] video,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media .qbrowse-counter-invert img,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media .qbrowse-counter-invert video,
+                    html.qbrowse-smart-dark-active.qbrowse-smart-dark-exclude-media .qbrowse-counter-invert picture {
                         filter: none !important;
                     }
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
@@ -1877,7 +2904,8 @@ function runSmartDark() {
                     html.qbrowse-smart-dark-active img,
                     html.qbrowse-smart-dark-active picture,
                     html.qbrowse-smart-dark-active video,
-                    html.qbrowse-smart-dark-active canvas {
+                    html.qbrowse-smart-dark-active canvas,
+                    html.qbrowse-smart-dark-active model-viewer {
                         filter: none !important;
                     }
                     html.qbrowse-smart-dark-active .qbrowse-note-badge,
@@ -1893,43 +2921,22 @@ function runSmartDark() {
             (document.head || docEl).appendChild(styleEl);
         }
 
-        const parseRGB = (str) => {
-            if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
-            const m = str.match(/[\d.]+/g);
-            if (!m) return null;
-            if (m.length >= 4 && parseFloat(m[3]) === 0) return null;
-            return m.length >= 3 ? m.slice(0, 3).map(Number) : null;
-        };
-
-        const getLuminance = (rgb) => {
-            if (!rgb) return 1;
-            return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
-        };
-
-        const isOurInjectedBg = (bg) => {
-            if (!bg) return false;
-            // Injected background #121214 [18, 18, 20] or pre-inversion canvas #ffffff [255, 255, 255]
-            return (bg[0] === 255 && bg[1] === 255 && bg[2] === 255) ||
-                   (Math.abs(bg[0] - 18) <= 2 && Math.abs(bg[1] - 18) <= 2 && Math.abs(bg[2] - 20) <= 2);
-        };
-
-        let isNativelyDark = false;
-
-        // 1. Check attributes on html and body (data-theme="dark", theme="dark", dark="true", dark, etc.)
+        // 1. Check explicit theme attributes on html and body (data-theme="dark", dark, etc.)
         const checkDarkAttrs = (el) => {
             if (!el || !el.attributes) return false;
             for (let i = 0; i < el.attributes.length; i++) {
                 const attr = el.attributes[i];
                 const name = (attr.name || '').toLowerCase();
                 if (name === 'class' || name === 'id' || name === 'style') continue;
-                const val = (attr.value || '').toLowerCase();
-                
-                // YouTube: <html dark>, <html dark="true">
-                if (name === 'dark' || name === 'night') return true;
+                const val = (attr.value || '').toLowerCase().trim();
+
+                // YouTube / similar: <html dark>, <html dark="true">
+                if ((name === 'dark' || name === 'night') && val !== 'false' && val !== '0') return true;
 
                 // Theme attributes: data-theme="dark", data-color-mode="dark", data-bs-theme="dark", etc.
                 if (name.includes('theme') || name.includes('color-mode') || name.includes('mode') || name.includes('scheme') || name.includes('palette')) {
-                    if (val.includes('dark') || val.includes('night') || val.includes('black')) return true;
+                    if (/\b(light|day|white)\b/.test(val)) continue;
+                    if (/(^|[-_\s])(dark|night|black|dim|obsidian|midnight)([-_\s]|$)/.test(val)) return true;
                 }
             }
             return false;
@@ -1941,14 +2948,11 @@ function runSmartDark() {
             for (let i = 0; i < el.classList.length; i++) {
                 const cls = el.classList[i].toLowerCase();
                 if (cls.startsWith('qbrowse-')) continue; // CRITICAL: NEVER match our own classes!
-                
-                // Specific dark mode class indicators
                 if (cls === 'dark' || cls === 'dark-mode' || cls === 'dark-theme' || cls === 'theme-dark' ||
                     cls === 'mode-dark' || cls === 'is-dark' || cls === 'night' || cls === 'night-mode' ||
                     cls === 'black-theme' || cls === '_1nfixzc0') {
                     return true;
                 }
-                // Word boundary check for dark/night/black (avoids false positives like "spark" or "parker")
                 if (/(^|[-_])(dark|night|black)([-_]|$)/i.test(cls)) {
                     return true;
                 }
@@ -1956,88 +2960,136 @@ function runSmartDark() {
             return false;
         };
 
-        // 3. Check <meta name="color-scheme"> (only strictly dark; ignore 'light dark' which just declares dark support)
-        const metaScheme = document.querySelector('meta[name="color-scheme"]');
-        if (metaScheme) {
-            const schemeContent = (metaScheme.content || '').toLowerCase().trim();
-            if (schemeContent === 'dark' || schemeContent === 'only dark') {
-                isNativelyDark = true;
-            }
-        }
+        let isNativelyDark = false;
 
-        if (checkDarkAttrs(docEl) || checkDarkAttrs(body) || checkDarkClasses(docEl) || checkDarkClasses(body)) {
+        // 3. Check <meta name="color-scheme"> and computed CSS color-scheme
+        const metaSchemeEl = document.querySelector('meta[name="color-scheme"]');
+        const metaScheme = metaSchemeEl ? (metaSchemeEl.content || '').toLowerCase().trim() : '';
+        let computedScheme = '';
+        try {
+            computedScheme = (window.getComputedStyle(docEl).colorScheme || '').toLowerCase().trim();
+        } catch (_) {}
+
+        if (
+            metaScheme === 'dark' || metaScheme === 'only dark' ||
+            computedScheme === 'dark' || computedScheme === 'only dark'
+        ) {
             isNativelyDark = true;
         }
 
-        // 4. Check computed styles of structural root elements (docEl, body, and top-level SPA root)
+        if (!isNativelyDark && (checkDarkAttrs(docEl) || checkDarkAttrs(body) || checkDarkClasses(docEl) || checkDarkClasses(body))) {
+            isNativelyDark = true;
+        }
+
+        // 4. Inspect actual painted background luminance in visual top-to-bottom paint order
+        // (SPA root / main -> body -> html). First opaque background determines page tone.
+        let foundExplicitBackground = false;
         if (!isNativelyDark) {
-            const rootElements = [
-                docEl,
-                body,
+            const spaRoots = [
                 document.getElementById('__next'),
                 document.getElementById('root'),
-                document.getElementById('app')
-            ].filter(Boolean);
+                document.getElementById('app'),
+                document.querySelector('[data-reactroot]'),
+                document.querySelector('main')
+            ].filter((el) => {
+                if (!el) return false;
+                try {
+                    const rect = el.getBoundingClientRect();
+                    return rect.width >= 200 && rect.height >= 200;
+                } catch (_) {
+                    return true;
+                }
+            });
 
-            for (const el of rootElements) {
+            const orderedLayers = [...spaRoots, body, docEl].filter(Boolean);
+            for (const el of orderedLayers) {
                 try {
                     const st = window.getComputedStyle(el);
-                    const bg = parseRGB(st.backgroundColor);
-                    if (bg && !isOurInjectedBg(bg)) {
-                        const lum = getLuminance(bg);
-                        if (lum < 0.35) {
-                            isNativelyDark = true;
-                            break;
-                        }
+                    const bg = parseSmartDarkCssColor(st.backgroundColor);
+                    if (!bg) continue;
+                    // Ignore QBrowse's own injected #ffffff canvas ONLY on html while active
+                    if (isCurrentlyActive && el === docEl && bg.r === 255 && bg.g === 255 && bg.b === 255 && bg.a >= 0.99) {
+                        continue;
                     }
+                    foundExplicitBackground = true;
+                    const lum = getSmartDarkLuminance(bg, 255);
+                    if (lum < 0.38) {
+                        isNativelyDark = true;
+                    }
+                    break;
                 } catch (_) {}
             }
         }
 
-        // 5. Fallback: If both html and body have transparent background, check body text color
-        if (!isNativelyDark && body) {
+        // 5. Dual color-scheme ("light dark" / "dark light") + prefers-color-scheme: dark + no explicit bg
+        // When a page declares dark support and leaves html/body transparent, Chromium paints native dark Canvas.
+        if (!isNativelyDark && !foundExplicitBackground) {
+            const declaresDarkSupport = /\bdark\b/.test(metaScheme) || /\bdark\b/.test(computedScheme);
+            let prefersDark = false;
             try {
-                const bodySt = window.getComputedStyle(body);
-                const bodyBg = parseRGB(bodySt.backgroundColor);
-                const docBg = parseRGB(window.getComputedStyle(docEl).backgroundColor);
-                if ((!bodyBg || isOurInjectedBg(bodyBg)) && (!docBg || isOurInjectedBg(docBg))) {
-                    const bodyFg = parseRGB(bodySt.color);
-                    // Light text (lum > 0.85) on default transparent canvas strongly indicates a dark theme/background
-                    if (bodyFg && getLuminance(bodyFg) > 0.85) {
-                        isNativelyDark = true;
-                    }
+                prefersDark = Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            } catch (_) {}
+            if (declaresDarkSupport && prefersDark) {
+                isNativelyDark = true;
+            }
+        }
+
+        // 6. Fallback: If all root backgrounds are transparent, light foreground text implies dark canvas
+        if (!isNativelyDark && !foundExplicitBackground && body) {
+            try {
+                const bodyFg = parseSmartDarkCssColor(window.getComputedStyle(body).color);
+                if (bodyFg && getSmartDarkLuminance(bodyFg, 0) > 0.72) {
+                    isNativelyDark = true;
                 }
             } catch (_) {}
         }
 
         // Apply or remove dark mode with state-check to avoid unnecessary DOM writes
-        const isCurrentlyActive = docEl.classList.contains('qbrowse-smart-dark-active');
         const shouldBeActive = !isNativelyDark;
-        console.log('[QBrowse SmartDark] URL:', window.location.href, 'config:', currentSmartDarkConfig, 'isNativelyDark:', isNativelyDark, 'shouldBeActive:', shouldBeActive);
+        const isMediaClassActive = docEl.classList.contains('qbrowse-smart-dark-exclude-media');
+        const desiredMediaClass = shouldBeActive && shouldExcludeMedia;
 
-        if (shouldBeActive !== isCurrentlyActive) {
+        if (shouldBeActive !== isCurrentlyActive || desiredMediaClass !== isMediaClassActive) {
             isApplyingSmartDark = true;
             try {
                 if (shouldBeActive) {
                     docEl.classList.add('qbrowse-smart-dark-active');
-                    // Dynamically tag background containers so background photos retain original colors
-                    try {
-                        const candidates = document.querySelectorAll('div, section, header, main, aside, span, a');
-                        for (let i = 0; i < candidates.length; i++) {
-                            const el = candidates[i];
-                            if (el.classList.contains('qbrowse-counter-invert')) continue;
-                            const idLower = (el.id || '').toLowerCase();
-                            const clsLower = (el.className || '').toString().toLowerCase();
-                            if (idLower.includes('background') || idLower.includes('hero') || clsLower.includes('background') || clsLower.includes('hero') || clsLower.includes('banner')) {
-                                const bg = window.getComputedStyle(el).backgroundImage;
-                                if (bg && bg !== 'none' && bg.includes('url(')) {
-                                    el.classList.add('qbrowse-counter-invert');
+                    if (desiredMediaClass) {
+                        docEl.classList.add('qbrowse-smart-dark-exclude-media');
+                        // Dynamically tag background containers so background photos retain original colors
+                        try {
+                            const candidates = document.querySelectorAll('div, section, header, main, aside, span, a');
+                            for (let i = 0; i < candidates.length; i++) {
+                                const el = candidates[i];
+                                if (el.classList.contains('qbrowse-counter-invert')) continue;
+                                const idLower = (el.id || '').toLowerCase();
+                                const clsLower = (el.className || '').toString().toLowerCase();
+                                if (idLower.includes('background') || idLower.includes('hero') || clsLower.includes('background') || clsLower.includes('hero') || clsLower.includes('banner')) {
+                                    const bg = window.getComputedStyle(el).backgroundImage;
+                                    if (bg && bg !== 'none' && bg.includes('url(')) {
+                                        el.classList.add('qbrowse-counter-invert');
+                                    }
                                 }
                             }
-                        }
-                    } catch (_) {}
+                        } catch (_) {}
+                    } else {
+                        docEl.classList.remove('qbrowse-smart-dark-exclude-media');
+                        try {
+                            const tagged = document.querySelectorAll('.qbrowse-counter-invert');
+                            for (let i = 0; i < tagged.length; i++) {
+                                tagged[i].classList.remove('qbrowse-counter-invert');
+                            }
+                        } catch (_) {}
+                    }
                 } else {
                     docEl.classList.remove('qbrowse-smart-dark-active');
+                    docEl.classList.remove('qbrowse-smart-dark-exclude-media');
+                    try {
+                        const tagged = document.querySelectorAll('.qbrowse-counter-invert');
+                        for (let i = 0; i < tagged.length; i++) {
+                            tagged[i].classList.remove('qbrowse-counter-invert');
+                        }
+                    } catch (_) {}
                 }
                 if (typeof updateOAuthThemeGlobal === 'function') {
                     updateOAuthThemeGlobal();
@@ -2054,7 +3106,6 @@ function runSmartDark() {
             smartDarkObserver = new MutationObserver((mutations) => {
                 if (isApplyingSmartDark) return;
 
-                // Check if any mutation represents an external theme change (ignore our own class/style changes)
                 let isRelevant = false;
                 for (const m of mutations) {
                     if (m.type === 'attributes') {
@@ -2074,7 +3125,7 @@ function runSmartDark() {
                 if (!isRelevant) return;
 
                 if (smartDarkTimer) clearTimeout(smartDarkTimer);
-                smartDarkTimer = setTimeout(runSmartDark, 300);
+                smartDarkTimer = setTimeout(runSmartDark, 220);
             });
         }
 
@@ -2102,8 +3153,12 @@ function runSmartDark() {
     } catch (e) {}
 }
 
-function checkSmartDark(isForceDark, isExcluded) {
-    currentSmartDarkConfig = { isForceDark, isExcluded };
+function checkSmartDark(isForceDark, isExcluded, excludeMedia = true) {
+    currentSmartDarkConfig = {
+        isForceDark: Boolean(isForceDark),
+        isExcluded: Boolean(isExcluded),
+        excludeMedia: typeof excludeMedia === 'boolean' ? excludeMedia : true
+    };
     runSmartDark();
     if (typeof updateOAuthThemeGlobal === 'function') {
         updateOAuthThemeGlobal();
@@ -2115,20 +3170,20 @@ window.addEventListener('load', runSmartDark);
 window.addEventListener('popstate', runSmartDark);
 window.addEventListener('hashchange', runSmartDark);
 
-ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded }) => {
-    checkSmartDark(isForceDark, isExcluded);
+ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded, excludeMedia } = {}) => {
+    checkSmartDark(isForceDark, isExcluded, excludeMedia);
     if (typeof updateOAuthThemeGlobal === 'function') {
         updateOAuthThemeGlobal();
     }
 });
 
-// Immediately query main process on preload startup for OAuth popups so state is ready before DOM ready
-if (isOAuthPopup) {
+// Immediately query main process on preload startup for top-level frames so state is ready before DOM ready
+if (typeof window !== 'undefined' && window === window.top) {
     try {
         ipcRenderer.invoke('get-smart-dark-state', window.location.href)
             .then(state => {
                 if (state && typeof state.isForceDark === 'boolean') {
-                    checkSmartDark(state.isForceDark, state.isExcluded);
+                    checkSmartDark(state.isForceDark, state.isExcluded, state.excludeMedia);
                 }
             })
             .catch(() => {});
@@ -5815,6 +6870,774 @@ async function queryAdblockPageState() {
             if (document.visibilityState === 'visible') {
                 syncYouTubeAdMitigation();
             }
+        });
+    } catch (_) {}
+})();
+
+// ============================================================================
+// Safari-Style "Hide Distracting Items" (Element Eraser & Scroll Recovery)
+// ============================================================================
+(function initQBrowseElementEraser() {
+    try {
+        if (typeof window === 'undefined' || window !== window.top) return;
+
+        let isPickerActive = false;
+        let activeRules = []; // Array<{ selector, unlockScroll }>
+        let manualErasedHistory = []; // Array<{ elements: Element[], selector: string }>
+        let hoveredEl = null;
+        let childStack = [];
+        let overlayHost = null;
+        let highlightBox = null;
+        let labelPill = null;
+        let rulesStyleEl = null;
+        let scrollStyleEl = null;
+        let mutationObserver = null;
+        let mutationTimer = null;
+
+        function ensureRulesStyleTag() {
+            if (rulesStyleEl && rulesStyleEl.isConnected) return rulesStyleEl;
+            const parent = document.head || document.documentElement;
+            if (!parent) return null;
+            rulesStyleEl = document.getElementById('qbrowse-eraser-rules');
+            if (!rulesStyleEl) {
+                rulesStyleEl = document.createElement('style');
+                rulesStyleEl.id = 'qbrowse-eraser-rules';
+                parent.appendChild(rulesStyleEl);
+            }
+            return rulesStyleEl;
+        }
+
+        function unlockPageScrollAndBlur() {
+            const parent = document.head || document.documentElement;
+            if (parent) {
+                scrollStyleEl = document.getElementById('qbrowse-eraser-scroll-unlock') || document.createElement('style');
+                scrollStyleEl.id = 'qbrowse-eraser-scroll-unlock';
+                scrollStyleEl.textContent = `
+                    html, body {
+                        overflow: auto !important;
+                        overflow-y: auto !important;
+                        height: auto !important;
+                        max-height: none !important;
+                        position: static !important;
+                        touch-action: auto !important;
+                        filter: none !important;
+                        -webkit-filter: none !important;
+                        pointer-events: auto !important;
+                        user-select: auto !important;
+                    }
+                    body > *:not(#qbrowse-eraser-overlay):not([data-qbrowse-erased="true"]) {
+                        filter: none !important;
+                        -webkit-filter: none !important;
+                        pointer-events: auto !important;
+                        user-select: auto !important;
+                    }
+                `;
+                if (!scrollStyleEl.isConnected) parent.appendChild(scrollStyleEl);
+            }
+            try {
+                for (const node of [document.documentElement, document.body]) {
+                    if (!node) continue;
+                    node.style.setProperty('overflow', 'auto', 'important');
+                    node.style.setProperty('overflow-y', 'auto', 'important');
+                    node.style.setProperty('position', 'static', 'important');
+                    node.style.removeProperty('height');
+                    node.style.removeProperty('max-height');
+                    node.style.removeProperty('filter');
+                    node.classList.forEach(cls => {
+                        if (/lock|noscroll|no-scroll|modal-open|overflow-hidden|blur/i.test(cls)) {
+                            node.classList.remove(cls);
+                        }
+                    });
+                }
+            } catch (_) {}
+        }
+
+        function ensureScrollUnlockTag(enable) {
+            if (!enable) {
+                const existing = document.getElementById('qbrowse-eraser-scroll-unlock');
+                if (existing) existing.remove();
+                scrollStyleEl = null;
+                return;
+            }
+            unlockPageScrollAndBlur();
+        }
+
+        function hideDomElementHard(el) {
+            if (!el || el.nodeType !== 1 || el === document.documentElement || el === document.body) return;
+            try {
+                if (!el.hasAttribute('data-qbrowse-orig-style')) {
+                    el.setAttribute('data-qbrowse-orig-style', el.getAttribute('style') || '');
+                }
+                el.setAttribute('data-qbrowse-erased', 'true');
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+                el.style.setProperty('opacity', '0', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                el.style.setProperty('clip-path', 'inset(100%)', 'important');
+                el.style.setProperty('-webkit-clip-path', 'inset(100%)', 'important');
+                el.style.setProperty('height', '0px', 'important');
+                el.style.setProperty('max-height', '0px', 'important');
+                el.style.setProperty('overflow', 'hidden', 'important');
+                el.style.setProperty('z-index', '-9999', 'important');
+
+                // If the element has an open shadowRoot (common on CMP/adblock walls), hide everything inside it too
+                if (el.shadowRoot) {
+                    let shStyle = el.shadowRoot.getElementById?.('qbrowse-shadow-erased');
+                    if (!shStyle) {
+                        shStyle = document.createElement('style');
+                        shStyle.id = 'qbrowse-shadow-erased';
+                        el.shadowRoot.appendChild(shStyle);
+                    }
+                    shStyle.textContent = `:host { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; clip-path: inset(100%) !important; } * { display: none !important; visibility: hidden !important; pointer-events: none !important; }`;
+                }
+            } catch (_) {}
+        }
+
+        function restoreDomElementHard(el) {
+            if (!el || el.nodeType !== 1) return;
+            try {
+                el.removeAttribute('data-qbrowse-erased');
+                const orig = el.getAttribute('data-qbrowse-orig-style');
+                el.removeAttribute('data-qbrowse-orig-style');
+                if (orig) {
+                    el.setAttribute('style', orig);
+                } else {
+                    el.removeAttribute('style');
+                }
+                if (el.shadowRoot) {
+                    const shStyle = el.shadowRoot.getElementById?.('qbrowse-shadow-erased');
+                    if (shStyle) shStyle.remove();
+                }
+            } catch (_) {}
+        }
+
+        function applyEraserRules(rules) {
+            const nextRules = Array.isArray(rules) ? rules : [];
+            const nextSelectors = new Set(nextRules.map(r => (typeof r === 'string' ? r : r?.selector)).filter(Boolean));
+
+            // Restore any manually erased elements whose selector was removed (Undo / Show All)
+            manualErasedHistory = manualErasedHistory.filter(entry => {
+                if (nextSelectors.size === 0 || (entry.selector && !nextSelectors.has(entry.selector))) {
+                    (entry.elements || []).forEach(restoreDomElementHard);
+                    return false;
+                }
+                return true;
+            });
+            if (nextSelectors.size === 0) {
+                try {
+                    document.querySelectorAll('[data-qbrowse-erased="true"]').forEach(restoreDomElementHard);
+                } catch (_) {}
+            }
+
+            activeRules = nextRules;
+            const selectors = Array.from(nextSelectors);
+            const shouldUnlockScroll = activeRules.some(r => typeof r === 'object' && r?.unlockScroll);
+
+            const styleEl = ensureRulesStyleTag();
+            if (styleEl) {
+                const baseRule = `[data-qbrowse-erased="true"] { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; clip-path: inset(100%) !important; -webkit-clip-path: inset(100%) !important; height: 0 !important; max-height: 0 !important; overflow: hidden !important; z-index: -9999 !important; }`;
+                if (selectors.length === 0) {
+                    styleEl.textContent = baseRule;
+                } else {
+                    const validCss = selectors.map(sel => `
+                        ${sel} {
+                            display: none !important;
+                            visibility: hidden !important;
+                            opacity: 0 !important;
+                            pointer-events: none !important;
+                            clip-path: inset(100%) !important;
+                            -webkit-clip-path: inset(100%) !important;
+                            height: 0 !important;
+                            min-height: 0 !important;
+                            max-height: 0 !important;
+                            overflow: hidden !important;
+                            z-index: -9999 !important;
+                        }
+                    `).join('\n');
+                    styleEl.textContent = baseRule + '\n' + validCss;
+                }
+            }
+
+            // Also apply inline !important styles to matching elements so inline style="display: flex !important" on blocker walls loses
+            selectors.forEach(sel => {
+                try {
+                    document.querySelectorAll(sel).forEach(hideDomElementHard);
+                } catch (_) {}
+            });
+
+            ensureScrollUnlockTag(shouldUnlockScroll);
+            if (selectors.length > 0) {
+                startRuleObserver();
+            } else if (mutationObserver) {
+                mutationObserver.disconnect();
+                mutationObserver = null;
+            }
+        }
+
+        function startRuleObserver() {
+            if (mutationObserver) return;
+            const target = document.documentElement || document.body;
+            if (!target) return;
+            mutationObserver = new MutationObserver(() => {
+                if (activeRules.length === 0) return;
+                if (mutationTimer) return;
+                mutationTimer = setTimeout(() => {
+                    mutationTimer = null;
+                    applyEraserRules(activeRules);
+                }, 250);
+            });
+            mutationObserver.observe(target, { childList: true, subtree: true });
+        }
+
+        function isDynamicToken(str) {
+            if (!str) return true;
+            if (/^[:_]/.test(str)) return true;
+            if (/[0-9]{6,}/.test(str)) return true;
+            if (/^(css|sc|jsx|styled|emotion)-[a-z0-9]+$/i.test(str)) return true;
+            return false;
+        }
+
+        function buildUniqueSelector(el) {
+            if (!el || el.nodeType !== 1) return '';
+            const tag = el.tagName.toLowerCase();
+            if (tag === 'html' || tag === 'body') return tag;
+
+            // 1. Any non-empty ID (even with numbers if unique in document, common on CMP/blocker wrappers like #cmpbox, #sp_message_container_12345)
+            if (el.id) {
+                if (!isDynamicToken(el.id)) {
+                    const idSel = `#${CSS.escape(el.id)}`;
+                    try {
+                        if (document.querySelectorAll(idSel).length === 1) return idSel;
+                    } catch (_) {}
+                }
+                const prefixMatch = el.id.match(/^([a-zA-Z][a-zA-Z0-9_-]{3,}?)[-_]?[0-9]{3,}$/);
+                if (prefixMatch) {
+                    const prefixSel = `${tag}[id^="${CSS.escape(prefixMatch[1])}"]`;
+                    try {
+                        if (document.querySelectorAll(prefixSel).length === 1) return prefixSel;
+                    } catch (_) {}
+                }
+                const rawIdSel = `#${CSS.escape(el.id)}`;
+                try {
+                    if (document.querySelectorAll(rawIdSel).length === 1) return rawIdSel;
+                } catch (_) {}
+            }
+
+            // 2. Semantic / CMP attributes
+            for (const attr of ['data-testid', 'data-test', 'data-qa', 'aria-label', 'role', 'aria-modal']) {
+                const val = el.getAttribute(attr);
+                if (val && val.length > 0 && val.length <= 64 && !isDynamicToken(val)) {
+                    const attrSel = `${tag}[${attr}="${CSS.escape(val)}"]`;
+                    try {
+                        if (document.querySelectorAll(attrSel).length === 1) return attrSel;
+                    } catch (_) {}
+                }
+            }
+
+            // 3. Structural path up to 6 levels
+            const parts = [];
+            let cur = el;
+            let depth = 0;
+            while (cur && cur.nodeType === 1 && cur.tagName.toLowerCase() !== 'html' && depth < 6) {
+                const cTag = cur.tagName.toLowerCase();
+                if (cTag === 'body') {
+                    parts.unshift('body');
+                    break;
+                }
+                if (cur.id) {
+                    const idPart = `#${CSS.escape(cur.id)}`;
+                    parts.unshift(idPart);
+                    const candidate = parts.join(' > ');
+                    try {
+                        if (document.querySelectorAll(candidate).length === 1) return candidate;
+                    } catch (_) {}
+                    break;
+                } else {
+                    const stableClasses = Array.from(cur.classList || [])
+                        .filter(c => c.length > 1 && c.length < 40 && !isDynamicToken(c))
+                        .slice(0, 2)
+                        .map(c => `.${CSS.escape(c)}`)
+                        .join('');
+                    let nth = '';
+                    const parent = cur.parentElement;
+                    if (parent) {
+                        const sameTagSiblings = Array.from(parent.children).filter(s => s.tagName === cur.tagName);
+                        if (sameTagSiblings.length > 1) {
+                            nth = `:nth-of-type(${sameTagSiblings.indexOf(cur) + 1})`;
+                        }
+                    }
+                    parts.unshift(`${cTag}${stableClasses}${nth}`);
+                    const candidate = parts.join(' > ');
+                    try {
+                        if (document.querySelectorAll(candidate).length === 1) return candidate;
+                    } catch (_) {}
+                }
+                cur = cur.parentElement;
+                depth++;
+            }
+
+            return parts.join(' > ');
+        }
+
+        function formatElementLabel(el) {
+            if (!el) return '';
+            const tag = el.tagName.toLowerCase();
+            const idPart = el.id ? `#${el.id.slice(0, 22)}` : '';
+            const cls = Array.from(el.classList || []).find(c => !isDynamicToken(c));
+            const clsPart = cls ? `.${cls.slice(0, 22)}` : '';
+            return `${tag}${idPart}${clsPart}`;
+        }
+
+        function isMainPageWrapper(el) {
+            if (!el || el === document.body || el === document.documentElement) return true;
+            const tag = el.tagName.toLowerCase();
+            if (tag === 'main') return true;
+            try {
+                const cs = window.getComputedStyle(el);
+                if (cs.position !== 'fixed' && cs.position !== 'sticky' && cs.position !== 'absolute') {
+                    if (el.scrollHeight > window.innerHeight * 1.6 && el.clientWidth > window.innerWidth * 0.8) {
+                        return true;
+                    }
+                }
+            } catch (_) {}
+            return false;
+        }
+
+        function getEffectiveElementRect(el) {
+            if (!el || typeof el.getBoundingClientRect !== 'function') {
+                return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+            }
+            const base = el.getBoundingClientRect();
+            if (base.width >= 8 && base.height >= 8) return base;
+
+            // If wrapper div or Shadow Host has 0x0 box because children are position:fixed, compute union of visible child rects
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            const roots = [el];
+            if (el.shadowRoot) roots.push(el.shadowRoot);
+            for (const root of roots) {
+                const children = root.querySelectorAll ? root.querySelectorAll('*') : [];
+                for (let i = 0; i < Math.min(children.length, 40); i++) {
+                    const r = children[i].getBoundingClientRect();
+                    if (r.width >= 8 && r.height >= 8) {
+                        if (r.left < minX) minX = r.left;
+                        if (r.top < minY) minY = r.top;
+                        if (r.right > maxX) maxX = r.right;
+                        if (r.bottom > maxY) maxY = r.bottom;
+                    }
+                }
+            }
+            if (minX < maxX && minY < maxY) {
+                return { left: minX, top: minY, right: maxX, bottom: maxY, width: maxX - minX, height: maxY - minY };
+            }
+            return base;
+        }
+
+        // If the user hovers inside a fixed/sticky modal, consent wall, or anti-adblock overlay (like onet.pl),
+        // snap to the top-level floating overlay container so one click removes the whole blocker & backdrop.
+        function findFloatingBlockerRoot(el) {
+            if (!el || el.nodeType !== 1) return el;
+            let cur = el;
+            let bestOverlay = null;
+            const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+
+            while (cur && cur.nodeType === 1 && cur !== document.body && cur !== document.documentElement) {
+                try {
+                    const cs = window.getComputedStyle(cur);
+                    const rect = getEffectiveElementRect(cur);
+                    const area = Math.max(0, rect.width * rect.height);
+                    const z = parseInt(cs.zIndex, 10) || 0;
+                    const idCls = `${cur.id || ''} ${typeof cur.className === 'string' ? cur.className : ''}`;
+                    const isHeaderOrNav = cur.tagName === 'HEADER' || cur.tagName === 'NAV' || (rect.height < 95 && rect.top <= 10 && rect.width > window.innerWidth * 0.7);
+
+                    const holdsPageContent = Boolean(cur.querySelector('main, article')) || (cur.innerText || '').length > 1500;
+                    const tooTall = rect.height > window.innerHeight * 1.2;
+                    if (!isHeaderOrNav && !holdsPageContent && !tooTall && cur.id !== 'qbrowse-eraser-overlay' && !isMainPageWrapper(cur)) {
+                        const isFixedModal = cs.position === 'fixed' && z >= 50;
+                        const isDialog = cur.getAttribute('role') === 'dialog' || cur.getAttribute('aria-modal') === 'true';
+                        const isBlockerNamed = /(cmp|consent|didomi|sp_message|onetrust|paywall|adblock|adb-|fc-consent|rodo|cookie)/i.test(idCls) && (cs.position === 'fixed' || z >= 50 || Boolean(cur.shadowRoot));
+
+                        if (isFixedModal || isDialog || isBlockerNamed) {
+                            bestOverlay = cur;
+                        }
+                    }
+                } catch (_) {}
+                cur = cur.parentElement;
+            }
+            return bestOverlay || el;
+        }
+
+        function isOverlayElement(el) {
+            if (!el) return false;
+            try {
+                const cs = window.getComputedStyle(el);
+                const rect = getEffectiveElementRect(el);
+                const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+                const elArea = Math.max(0, rect.width * rect.height);
+                const isFixedOrSticky = cs.position === 'fixed' || cs.position === 'sticky' || cs.position === 'absolute';
+                const highZ = (parseInt(cs.zIndex, 10) || 0) >= 20;
+                return (isFixedOrSticky && elArea >= viewportArea * 0.12) || (highZ && elArea >= viewportArea * 0.2) || Boolean(el.shadowRoot);
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function findAccompanyingBackdrops(targetEl) {
+            const extras = [];
+            if (!targetEl) return extras;
+            try {
+                const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+                const candidates = Array.from(document.body?.children || []);
+                for (const node of candidates) {
+                    if (!node || node === targetEl || node === overlayHost || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
+                    if (isMainPageWrapper(node)) continue;
+                    const cs = window.getComputedStyle(node);
+                    const rect = node.getBoundingClientRect();
+                    const area = Math.max(0, rect.width * rect.height);
+                    const z = parseInt(cs.zIndex, 10) || 0;
+                    if ((cs.position === 'fixed' || cs.position === 'absolute') && z >= 20 && area >= viewportArea * 0.65) {
+                        const textLen = (node.innerText || '').trim().length;
+                        if (textLen < 400 || node.contains(targetEl)) {
+                            extras.push(node);
+                        }
+                    }
+                }
+            } catch (_) {}
+            return extras;
+        }
+
+        function ensureOverlay() {
+            if (overlayHost && overlayHost.isConnected) return;
+            const root = document.documentElement || document.body;
+            if (!root) return;
+            document.querySelectorAll('#qbrowse-eraser-overlay').forEach((n) => n.remove());
+            overlayHost = document.createElement('div');
+            overlayHost.id = 'qbrowse-eraser-overlay';
+            overlayHost.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none !important;z-index:2147483647;';
+            const shadow = overlayHost.attachShadow({ mode: 'closed' });
+            shadow.innerHTML = `
+                <style>
+                    * { box-sizing: border-box; }
+                    .box {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        border-radius: 10px;
+                        border: 1.5px solid rgba(212, 188, 148, 0.9);
+                        background: rgba(212, 188, 148, 0.1);
+                        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.28), inset 0 0 12px rgba(212, 188, 148, 0.12);
+                        transition: transform 80ms cubic-bezier(0.22, 1, 0.36, 1), width 80ms cubic-bezier(0.22, 1, 0.36, 1), height 80ms cubic-bezier(0.22, 1, 0.36, 1), opacity 100ms ease;
+                        opacity: 0;
+                        pointer-events: none;
+                    }
+                    .pill {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        padding: 3px 9px;
+                        border-radius: 9999px;
+                        background: rgba(12, 13, 18, 0.88);
+                        color: rgba(255, 255, 255, 0.9);
+                        border: 1px solid rgba(255, 255, 255, 0.12);
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                        font-size: 10.5px;
+                        font-weight: 600;
+                        white-space: nowrap;
+                        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+                        opacity: 0;
+                        pointer-events: none;
+                        transition: opacity 100ms ease;
+                    }
+                </style>
+                <div class="box"></div>
+                <div class="pill"></div>
+            `;
+            highlightBox = shadow.querySelector('.box');
+            labelPill = shadow.querySelector('.pill');
+            root.appendChild(overlayHost);
+        }
+
+        function updateHighlight(el) {
+            if (!isPickerActive) return;
+            ensureOverlay();
+            if (!highlightBox || !labelPill) return;
+
+            if (!el || el === document.documentElement || el === document.body || el === overlayHost || overlayHost.contains(el)) {
+                highlightBox.style.opacity = '0';
+                labelPill.style.opacity = '0';
+                return;
+            }
+
+            const rect = getEffectiveElementRect(el);
+            if (rect.width < 4 || rect.height < 4) {
+                highlightBox.style.opacity = '0';
+                labelPill.style.opacity = '0';
+                return;
+            }
+
+            highlightBox.style.opacity = '1';
+            highlightBox.style.transform = `translate3d(${Math.round(rect.left)}px, ${Math.round(rect.top)}px, 0)`;
+            highlightBox.style.width = `${Math.round(rect.width)}px`;
+            highlightBox.style.height = `${Math.round(rect.height)}px`;
+
+            labelPill.textContent = `${formatElementLabel(el)} • ${Math.round(rect.width)}×${Math.round(rect.height)}`;
+            const pillY = rect.top > 30 ? rect.top - 26 : Math.min(window.innerHeight - 28, rect.bottom + 6);
+            const pillX = Math.max(8, Math.min(window.innerWidth - 220, rect.left));
+            labelPill.style.transform = `translate3d(${Math.round(pillX)}px, ${Math.round(pillY)}px, 0)`;
+            labelPill.style.opacity = '1';
+        }
+
+        function hideHighlight() {
+            if (highlightBox) highlightBox.style.opacity = '0';
+            if (labelPill) labelPill.style.opacity = '0';
+        }
+
+        function pickValidTarget(x, y) {
+            // iframes are click-through while picking (so mouse events keep reaching us), which also hides them
+            // from hit-testing. Briefly re-enable the ones under the cursor so they can be picked like any element.
+            const touched = [];
+            try {
+                document.querySelectorAll('iframe').forEach((f) => {
+                    const r = f.getBoundingClientRect();
+                    if (r.width > 20 && r.height > 20 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+                        touched.push([f, f.style.getPropertyValue('pointer-events'), f.style.getPropertyPriority('pointer-events')]);
+                        f.style.setProperty('pointer-events', 'auto', 'important');
+                    }
+                });
+            } catch (_) {}
+            const stack = typeof document.elementsFromPoint === 'function'
+                ? document.elementsFromPoint(x, y)
+                : [];
+            touched.forEach(([f, v, p]) => {
+                if (v) f.style.setProperty('pointer-events', v, p); else f.style.removeProperty('pointer-events');
+            });
+            let raw = null;
+            for (const candidate of stack) {
+                if (!candidate || candidate === overlayHost || overlayHost?.contains(candidate) || candidate.id === 'qbrowse-eraser-overlay') continue;
+                if (candidate === document.documentElement || candidate === document.body) continue;
+                if (candidate.getAttribute?.('data-qbrowse-erased') === 'true') continue;
+                raw = candidate;
+                break;
+            }
+            if (!raw) return null;
+
+            // Don't settle on tiny inline/SVG internals (text spans, icon paths): climb to a sensible block.
+            try {
+                let guard = 0;
+                while (raw.parentElement && guard++ < 6 && raw.parentElement !== document.body && raw.parentElement !== document.documentElement) {
+                    const rr = raw.getBoundingClientRect();
+                    const disp = window.getComputedStyle(raw).display;
+                    const inlineLike = disp === 'inline' || raw.namespaceURI === 'http://www.w3.org/2000/svg' && raw.tagName.toLowerCase() !== 'svg';
+                    if (inlineLike || rr.width < 14 || rr.height < 14) raw = raw.parentElement; else break;
+                }
+            } catch (_) {}
+
+            const blockerRoot = findFloatingBlockerRoot(raw);
+            if (blockerRoot && blockerRoot !== raw) {
+                // Seed childStack with path from raw up to blockerRoot so user can still ArrowDown / Alt+Scroll inward if desired
+                const chain = [];
+                let ptr = raw;
+                while (ptr && ptr !== blockerRoot && ptr !== document.body) {
+                    chain.unshift(ptr);
+                    ptr = ptr.parentElement;
+                }
+                return { target: blockerRoot, chain };
+            }
+            return { target: raw, chain: [] };
+        }
+
+        let lastRawUnderCursor = null;
+        function onMouseMove(e) {
+            if (!isPickerActive) return;
+            const picked = pickValidTarget(e.clientX, e.clientY);
+            if (!picked || !picked.target) return;
+            if (picked.target !== hoveredEl && picked.target !== lastRawUnderCursor) {
+                lastRawUnderCursor = picked.target;
+                hoveredEl = picked.target;
+                childStack = picked.chain || [];
+                updateHighlight(hoveredEl);
+            }
+        }
+
+        function onWheel(e) {
+            if (!isPickerActive || !hoveredEl) return;
+            if (!e.altKey) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.deltaY < 0 && hoveredEl.parentElement && hoveredEl.parentElement !== document.body && hoveredEl.parentElement !== document.documentElement) {
+                childStack.push(hoveredEl);
+                hoveredEl = hoveredEl.parentElement;
+                updateHighlight(hoveredEl);
+            } else if (e.deltaY > 0 && childStack.length > 0) {
+                hoveredEl = childStack.pop();
+                updateHighlight(hoveredEl);
+            }
+        }
+
+        function onKeyDown(e) {
+            if (!isPickerActive) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                ipcRenderer.sendToHost('qbrowse-eraser-exit-request');
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                e.stopPropagation();
+                ipcRenderer.sendToHost('qbrowse-eraser-undo-request');
+                return;
+            }
+            if (e.key === 'ArrowUp' && hoveredEl && hoveredEl.parentElement && hoveredEl.parentElement !== document.body && hoveredEl.parentElement !== document.documentElement) {
+                e.preventDefault();
+                e.stopPropagation();
+                childStack.push(hoveredEl);
+                hoveredEl = hoveredEl.parentElement;
+                updateHighlight(hoveredEl);
+            } else if (e.key === 'ArrowDown' && childStack.length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                hoveredEl = childStack.pop();
+                updateHighlight(hoveredEl);
+            }
+        }
+
+        function onClick(e) {
+            if (!isPickerActive) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            if (pendingCommit) return; // a removal is already in flight; ignore extra clicks
+
+            const target = hoveredEl || pickValidTarget(e.clientX, e.clientY)?.target;
+            if (!target || target === document.documentElement || target === document.body) return;
+
+            const selector = buildUniqueSelector(target);
+            if (!selector) return;
+
+            const rawRect = getEffectiveElementRect(target);
+            const x = Math.max(0, Math.round(rawRect.left));
+            const y = Math.max(0, Math.round(rawRect.top));
+            const right = Math.min(window.innerWidth, Math.round(rawRect.right));
+            const bottom = Math.min(window.innerHeight, Math.round(rawRect.bottom));
+            const clippedRect = {
+                x,
+                y,
+                width: Math.max(1, right - x),
+                height: Math.max(1, bottom - y)
+            };
+
+            let bg = '';
+            let color = '';
+            try {
+                const cs = window.getComputedStyle(target);
+                bg = cs.backgroundColor;
+                color = cs.color;
+            } catch (_) {}
+
+            const unlockScroll = isOverlayElement(target);
+            const label = formatElementLabel(target);
+
+            // Hide reticle immediately so it never appears in capturePage snapshot
+            hideHighlight();
+            hoveredEl = null;
+            lastRawUnderCursor = null;
+            childStack = [];
+
+            // Give compositor one frame to clear reticle, send snapshot rect to host, then hard-hide target + any accompanying backdrop
+            requestAnimationFrame(() => {
+                ipcRenderer.sendToHost('qbrowse-eraser-element-picked', {
+                    selector,
+                    label,
+                    rect: clippedRect,
+                    clickPoint: { x: e.clientX, y: e.clientY },
+                    fallbackColors: { bg, color },
+                    unlockScroll
+                });
+
+                // Hide only after the host confirms the snapshot was captured (or after a safety timeout)
+                let committed = false;
+                const commit = () => {
+                    if (committed) return;
+                    committed = true;
+                    pendingCommit = null;
+                    const erasedNodes = [target];
+                    if (unlockScroll) {
+                        const backdrops = findAccompanyingBackdrops(target);
+                        backdrops.forEach(b => {
+                            hideDomElementHard(b);
+                            erasedNodes.push(b);
+                        });
+                        unlockPageScrollAndBlur();
+                    }
+                    hideDomElementHard(target);
+                    manualErasedHistory.push({ selector, elements: erasedNodes });
+                };
+                pendingCommit = commit;
+                setTimeout(commit, 1500);
+            });
+        }
+
+        let pendingCommit = null;
+        ipcRenderer.on('qbrowse-eraser-commit', () => {
+            if (pendingCommit) pendingCommit();
+        });
+
+        function setPickerActive(active) {
+            isPickerActive = Boolean(active);
+            let pickStyle = document.getElementById('qbrowse-eraser-picker-style');
+            if (isPickerActive) {
+                if (!pickStyle) {
+                    pickStyle = document.createElement('style');
+                    pickStyle.id = 'qbrowse-eraser-picker-style';
+                    pickStyle.textContent = 'html, body, body * { cursor: crosshair !important; } iframe, frame, embed, object { pointer-events: none !important; }';
+                    (document.head || document.documentElement).appendChild(pickStyle);
+                }
+            } else if (pickStyle) {
+                pickStyle.remove();
+            }
+            if (isPickerActive) {
+                ensureOverlay();
+                window.addEventListener('mousemove', onMouseMove, true);
+                window.addEventListener('click', onClick, true);
+                window.addEventListener('mousedown', onBlockMouseDown, true);
+                window.addEventListener('mouseup', onBlockMouseDown, true);
+                window.addEventListener('pointerdown', onBlockMouseDown, true);
+                window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+                window.addEventListener('keydown', onKeyDown, true);
+            } else {
+                hoveredEl = null;
+                lastRawUnderCursor = null;
+                childStack = [];
+                hideHighlight();
+                if (overlayHost) {
+                    overlayHost.remove();
+                    overlayHost = null;
+                    highlightBox = null;
+                    labelPill = null;
+                }
+                window.removeEventListener('mousemove', onMouseMove, true);
+                window.removeEventListener('click', onClick, true);
+                window.removeEventListener('mousedown', onBlockMouseDown, true);
+                window.removeEventListener('mouseup', onBlockMouseDown, true);
+                window.removeEventListener('pointerdown', onBlockMouseDown, true);
+                window.removeEventListener('wheel', onWheel, true);
+                window.removeEventListener('keydown', onKeyDown, true);
+            }
+        }
+
+        function onBlockMouseDown(e) {
+            if (!isPickerActive) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+
+        ipcRenderer.on('qbrowse-eraser-toggle', (event, { active } = {}) => {
+            setPickerActive(Boolean(active));
+        });
+
+        ipcRenderer.on('qbrowse-eraser-apply-rules', (event, { rules } = {}) => {
+            applyEraserRules(rules || []);
         });
     } catch (_) {}
 })();

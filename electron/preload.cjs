@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
     // Platform & Hardware Specs
     platform: process.platform,
+    arch: process.arch,
     getHardwareSpecs: () => ipcRenderer.invoke('get-hardware-specs'),
 
     // Window controls
@@ -22,6 +23,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (event, isFullscreen) => callback(isFullscreen);
         ipcRenderer.on('window-fullscreen-changed', handler);
         return () => ipcRenderer.removeListener('window-fullscreen-changed', handler);
+    },
+    getWindowFocusState: () => ipcRenderer.invoke('window-get-focus-state'),
+    onWindowFocusChanged: (callback) => {
+        const handler = (event, state) => callback(state);
+        ipcRenderer.on('window-focus-state-changed', handler);
+        return () => ipcRenderer.removeListener('window-focus-state-changed', handler);
     },
     close: () => ipcRenderer.send('window-close'),
     windowResizeBy: (deltaX, deltaY, edge) => ipcRenderer.send('window-resize-by', { deltaX, deltaY, edge }),
@@ -69,7 +76,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     changeMasterPassword: (oldPass, newPass) => ipcRenderer.invoke('vault-change-password', oldPass, newPass),
     checkVaultPassword: (password) => ipcRenderer.invoke('vault-check-password', password),
     verifyWindowsHello: (message) => ipcRenderer.invoke('verify-windows-hello', message),
-    respondPasskeyVerification: (requestId, verified) => ipcRenderer.invoke('respond-passkey-verification', { requestId, verified }),
+    respondPasskeyVerification: (requestId, verifiedOrOptions) => {
+        if (verifiedOrOptions && typeof verifiedOrOptions === 'object') {
+            const approved = Boolean(verifiedOrOptions.approved ?? verifiedOrOptions.verified);
+            return ipcRenderer.invoke('respond-passkey-verification', {
+                requestId,
+                approved,
+                verified: approved,
+                fallbackToNative: Boolean(verifiedOrOptions.fallbackToNative)
+            });
+        }
+        const approved = Boolean(verifiedOrOptions);
+        return ipcRenderer.invoke('respond-passkey-verification', {
+            requestId,
+            approved,
+            verified: approved,
+            fallbackToNative: false
+        });
+    },
+    getPasskeyConfig: () => ipcRenderer.invoke('vault-get-passkey-config'),
+    syncPasskeySettings: (config) => ipcRenderer.send('sync-passkey-settings', config),
     lockVault: () => ipcRenderer.invoke('vault-lock'),
     getVaultStatus: () => ipcRenderer.invoke('vault-get-status'),
     setupVaultPin: (pin, masterPassword) => ipcRenderer.invoke('vault-setup-pin', { pin, masterPassword }),
@@ -83,6 +109,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('prompt-passkey-verification', handler);
         return () => ipcRenderer.removeListener('prompt-passkey-verification', handler);
+    },
+    onPasskeyPromptDismiss: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('dismiss-passkey-verification', handler);
+        return () => ipcRenderer.removeListener('dismiss-passkey-verification', handler);
+    },
+    onPasskeySaved: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('qvault-passkey-saved', handler);
+        return () => ipcRenderer.removeListener('qvault-passkey-saved', handler);
     },
 
     // Local AI & llama.cpp
@@ -215,10 +251,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearAllData: (options) => ipcRenderer.invoke('clear-all-data', options),
     clearGhostSession: () => ipcRenderer.invoke('clear-ghost-session'),
     clearTorSession: () => ipcRenderer.invoke('clear-tor-session'),
-    getSitePermissions: (domain) => ipcRenderer.invoke('get-site-permissions', domain),
-    setSitePermission: (domain, permission, value) => ipcRenderer.invoke('set-site-permission', domain, permission, value),
+    // Site Permissions (Live Popups & Per-Origin Storage)
+    getSitePermissions: (originOrDomain, options) => ipcRenderer.invoke('get-site-permissions', originOrDomain, options),
+    setSitePermission: (originOrDomain, permission, value, options) => ipcRenderer.invoke('set-site-permission', originOrDomain, permission, value, options),
     getAllSitePermissions: () => ipcRenderer.invoke('get-all-site-permissions'),
-    resetSitePermissions: (domain) => ipcRenderer.invoke('reset-site-permissions', domain),
+    resetSitePermissions: (originOrDomain, options) => ipcRenderer.invoke('reset-site-permissions', originOrDomain, options),
+    onPermissionRequest: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('qbrowse-permission-request', handler);
+        return () => ipcRenderer.removeListener('qbrowse-permission-request', handler);
+    },
+    onPermissionDismiss: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('qbrowse-permission-dismiss', handler);
+        return () => ipcRenderer.removeListener('qbrowse-permission-dismiss', handler);
+    },
+    respondPermissionRequest: (requestId, decision) => {
+        ipcRenderer.send('qbrowse-permission-response', { requestId, decision });
+    },
+    onSitePermissionsChanged: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('qbrowse-site-permissions-changed', handler);
+        return () => ipcRenderer.removeListener('qbrowse-site-permissions-changed', handler);
+    },
     selectFolder: () => ipcRenderer.invoke('select-folder'),
     setDoh: (config) => ipcRenderer.invoke('set-doh', config),
     testDns: (endpoint) => ipcRenderer.invoke('test-dns', endpoint),
@@ -360,6 +415,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // GitHub Work Mode Integration
     githubGetData: (profileId, force = false) => ipcRenderer.invoke('github-get-data', { profileId, force }),
     githubUpdateConfig: (config, profileId) => ipcRenderer.invoke('github-update-config', { config, profileId }),
-    githubStop: () => ipcRenderer.invoke('github-stop')
+    githubTestSync: (config, profileId) => ipcRenderer.invoke('github-test-sync', { config, profileId }),
+    githubStop: () => ipcRenderer.invoke('github-stop'),
+    onGitHubDataUpdated: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('github-data-updated', handler);
+        return () => ipcRenderer.removeListener('github-data-updated', handler);
+    }
 });
 

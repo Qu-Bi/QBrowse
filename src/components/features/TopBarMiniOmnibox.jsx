@@ -7,6 +7,7 @@ import useOmniboxEngine, { getCompletedSuggestionText } from '../../hooks/useOmn
 import OmniboxSuggestionsDropdown from '../common/OmniboxSuggestionsDropdown';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { useTranslation, t as tStatic } from '../../i18n/index';
 
 const isBlockedByOtherOverlaySelector = (state) => Boolean(
     state.isOmniboxOpen ||
@@ -42,6 +43,7 @@ export default function TopBarMiniOmnibox({
     showToast,
     isBright = false
 }) {
+    const { t } = useTranslation();
     const isTopBarOmniboxActive = useUIStore(state => state.isTopBarOmniboxActive);
     const setIsTopBarOmniboxActive = useUIStore(state => state.setIsTopBarOmniboxActive);
     const isBlockedByOtherOverlay = useUIStore(isBlockedByOtherOverlaySelector);
@@ -151,7 +153,7 @@ export default function TopBarMiniOmnibox({
                 } else if (rawUrl && rawUrl !== 'about:blank') {
                     await writeClipboard(rawUrl);
                 }
-                showToast?.('Copied to clipboard');
+                showToast?.(tStatic('chrome.toastCopiedClipboard', null, 'Copied to clipboard'));
             } else if (action === 'cut') {
                 const inp = inputRef.current;
                 if (isTopBarOmniboxActive && inp) {
@@ -354,7 +356,7 @@ export default function TopBarMiniOmnibox({
                                 : 'border-accent/60 shadow-[0_0_25px_var(--accent-25),0_8px_24px_rgba(0,0,0,0.3)]')
                         : 'cursor-pointer'
                 }`}
-                title={!isTopBarOmniboxActive ? (rawUrl || 'Search or enter address') : undefined}
+                title={!isTopBarOmniboxActive ? (rawUrl || t('chrome.miniOmniboxPlaceholder', null, 'Search or enter address')) : undefined}
             >
                 {/* Refresh Progress Indicator */}
                 <div className={`absolute inset-0 ${
@@ -374,7 +376,7 @@ export default function TopBarMiniOmnibox({
                             e.stopPropagation();
                             togglePopover('tor');
                         }}
-                        title="Tor Onion Circuit & Identity (Click to view circuit)"
+                        title={t('chrome.torCircuitTooltip', null, 'Tor Onion Circuit & Identity (Click to view circuit)')}
                     >
                         <div className={`p-1 rounded-full transition-all duration-200 flex items-center justify-center relative select-none hover:scale-110 active:scale-95 ${
                             torStatus === 'connected'
@@ -403,11 +405,11 @@ export default function TopBarMiniOmnibox({
                                     torStatus === 'connected' ? 'bg-purple-400 shadow-[0_0_6px_#c084fc]' : 'bg-purple-300 animate-pulse'
                                 }`} />
                                 <span className="text-purple-300 font-mono">
-                                    {torStatus === 'connected' ? 'Tor Connected' : 'Connecting Tor...'}
+                                    {torStatus === 'connected' ? t('chrome.torConnected', null, 'Tor Connected') : t('chrome.torConnecting', null, 'Connecting Tor...')}
                                 </span>
                             </div>
                             <div className="text-[10px] text-white/50 font-mono truncate pl-3">
-                                {torVerifiedExitIp ? `Exit: ${torVerifiedExitIp}` : 'Circuit Ready'}
+                                {torVerifiedExitIp ? t('chrome.torExitNode', { ip: torVerifiedExitIp }, `Exit: ${torVerifiedExitIp}`) : t('chrome.torCircuitReady', null, 'Circuit Ready')}
                             </div>
                         </div>
                     </div>
@@ -419,7 +421,7 @@ export default function TopBarMiniOmnibox({
                             e.stopPropagation();
                             togglePopover('siteinfo');
                         }}
-                        title="Site Security & Permissions"
+                        title={t('chrome.siteSecurityTooltip', null, 'Site Security & Permissions')}
                     >
                         {isRefreshing ? (
                             <X size={14} strokeWidth={1.85} className={isBright ? "text-zinc-500" : "text-gray-400"} />
@@ -479,12 +481,12 @@ export default function TopBarMiniOmnibox({
                             }}
                             placeholder={
                                 isCommandMode 
-                                    ? 'Type a browser command...' 
+                                    ? t('chrome.omniboxPlaceholderCommand', null, 'Type a browser command...') 
                                     : activeBang 
-                                        ? `Search ${activeBang.name}...` 
+                                        ? t('chrome.miniOmniboxPlaceholderBang', { engine: activeBang.name }, `Search ${activeBang.name}...`) 
                                         : isTor 
-                                            ? 'Search web or enter .onion...' 
-                                            : 'Search or enter address...'
+                                            ? t('chrome.miniOmniboxPlaceholderTor', null, 'Search web or enter .onion...') 
+                                            : t('chrome.miniOmniboxPlaceholderEllipsis', null, 'Search or enter address...')
                             }
                             className={`w-full bg-transparent border-none text-[13px] font-medium focus:outline-none focus:ring-0 p-0 text-left transition-colors ${
                                 isCommandMode 
@@ -501,7 +503,7 @@ export default function TopBarMiniOmnibox({
                             ? (displayUrl ? 'text-zinc-800' : 'text-zinc-500 group-hover:text-zinc-700') 
                             : (displayUrl ? 'text-white/90' : 'text-white/50 group-hover:text-white/80')
                     }`}>
-                        {displayUrl || 'Search or enter address'}
+                        {displayUrl || t('chrome.miniOmniboxPlaceholder', null, 'Search or enter address')}
                     </span>
                 )}
 
@@ -522,7 +524,7 @@ export default function TopBarMiniOmnibox({
                                     className={`p-1 rounded-full transition-colors cursor-pointer ${
                                         isBright ? 'hover:bg-black/10 text-zinc-400 hover:text-zinc-700' : 'hover:bg-white/10 text-white/40 hover:text-white'
                                     }`}
-                                    title="Clear"
+                                    title={t('chrome.clear', null, 'Clear')}
                                 >
                                     <X size={13} />
                                 </button>
@@ -539,7 +541,7 @@ export default function TopBarMiniOmnibox({
                                         ? 'bg-black/[0.04] border-black/10 text-zinc-500 hover:text-zinc-800 hover:bg-black/10'
                                         : 'bg-white/[0.06] border-white/10 text-white/45 hover:text-white/80 hover:bg-white/10'
                                 }`}
-                                title="Close (Esc)"
+                                title={t('chrome.closeEsc', null, 'Close (Esc)')}
                             >
                                 Esc
                             </button>
@@ -558,10 +560,10 @@ export default function TopBarMiniOmnibox({
                                         e.stopPropagation(); 
                                         toggleReaderMode(); 
                                     }}
-                                    title="Toggle Reader Mode (Ctrl+Alt+R)"
+                                    title={t('chrome.toggleReaderTooltip', null, 'Toggle Reader Mode (Ctrl+Alt+R)')}
                                 >
                                     <BookOpen size={13} strokeWidth={1.85} className={isReaderLoading ? 'animate-pulse' : ''} />
-                                    <span className="hidden sm:inline">Reader</span>
+                                    <span className="hidden sm:inline">{t('chrome.readerLabel', null, 'Reader')}</span>
                                 </div>
                             )}
 
@@ -571,7 +573,7 @@ export default function TopBarMiniOmnibox({
                                         isBright ? 'bg-black/10 text-zinc-700 hover:bg-black/15' : 'bg-white/10 text-white hover:bg-white/20'
                                     }`}
                                     onClick={(e) => { e.stopPropagation(); setZoomLevel(100); }}
-                                    title="Reset Zoom (CMD+0)"
+                                    title={t('chrome.resetZoomCmd0', null, 'Reset Zoom (CMD+0)')}
                                 >
                                     {zoomLevel}%
                                 </div>
@@ -586,7 +588,7 @@ export default function TopBarMiniOmnibox({
                                     if (e.ctrlKey || e.metaKey) {
                                         if (rawUrl && !rawUrl.startsWith('qbrowse://')) {
                                             useTabStore.getState().handleNewTab(rawUrl, false);
-                                            showToast('Duplicated tab in background');
+                                            showToast(t('chrome.toastDuplicatedTabBg', null, 'Duplicated tab in background'));
                                         }
                                     } else {
                                         refresh(); 
@@ -599,11 +601,11 @@ export default function TopBarMiniOmnibox({
                                         e.stopPropagation();
                                         if (rawUrl && !rawUrl.startsWith('qbrowse://')) {
                                             useTabStore.getState().handleNewTab(rawUrl, false);
-                                            showToast('Duplicated tab in background');
+                                            showToast(t('chrome.toastDuplicatedTabBg', null, 'Duplicated tab in background'));
                                         }
                                     }
                                 }}
-                                title="Reload page (Middle-click to duplicate in background)"
+                                title={t('chrome.reloadTooltip', null, 'Reload page (Middle-click to duplicate in background)')}
                             >
                                 <RefreshCw size={13} strokeWidth={1.85} className={isRefreshing ? 'animate-spin' : ''} />
                             </div>

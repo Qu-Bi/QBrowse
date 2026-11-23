@@ -7,6 +7,7 @@ import {
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import CustomSelect from '../common/CustomSelect';
+import { useTranslation } from '../../i18n/index';
 
 const AVAILABLE_FLAGS = [
     // --- HARDWARE & GRAPHICS ---
@@ -386,6 +387,7 @@ export const DEFAULT_FLAGS = AVAILABLE_FLAGS;
 export { AVAILABLE_FLAGS, UNAVAILABLE_FLAGS, CATEGORIES };
 
 export default function FlagsPage() {
+    const { t } = useTranslation();
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -443,11 +445,11 @@ export default function FlagsPage() {
         }
 
         setHasChanged(true);
-        showToast('All experimental flags restored to default');
+        showToast(t('tools.flags.toasts.reset', null, 'All experimental flags restored to default'));
     };
 
     const handleRelaunch = () => {
-        showToast('Relaunching QBrowse with updated flags...');
+        showToast(t('tools.flags.toasts.relaunching', null, 'Relaunching QBrowse with updated flags...'));
         setTimeout(() => {
             if (window.electronAPI && window.electronAPI.relaunchApp) {
                 window.electronAPI.relaunchApp();
@@ -457,21 +459,37 @@ export default function FlagsPage() {
         }, 500);
     };
 
+    const q = search.trim().toLowerCase();
     const filteredAvailableFlags = AVAILABLE_FLAGS.filter(f => {
         const matchesCategory = selectedCategory === 'All' || f.category === selectedCategory;
-        const matchesSearch = !search || 
-            f.name.toLowerCase().includes(search.toLowerCase()) ||
-            f.description.toLowerCase().includes(search.toLowerCase()) ||
-            f.id.toLowerCase().includes(search.toLowerCase()) ||
-            f.category.toLowerCase().includes(search.toLowerCase());
+        if (!q) return matchesCategory;
+        const locName = t(`tools.flags.items.${f.id}.name`, null, f.name);
+        const locDesc = t(`tools.flags.items.${f.id}.description`, null, f.description);
+        const locCat = t(`tools.flags.categories.${f.category}`, null, f.category);
+        const matchesSearch =
+            f.name.toLowerCase().includes(q) ||
+            f.description.toLowerCase().includes(q) ||
+            f.id.toLowerCase().includes(q) ||
+            f.category.toLowerCase().includes(q) ||
+            locName.toLowerCase().includes(q) ||
+            locDesc.toLowerCase().includes(q) ||
+            locCat.toLowerCase().includes(q);
         return matchesCategory && matchesSearch;
     });
 
     const filteredUnavailableFlags = UNAVAILABLE_FLAGS.filter(f => {
-        if (!search) return true;
-        return f.name.toLowerCase().includes(search.toLowerCase()) ||
-            f.description.toLowerCase().includes(search.toLowerCase()) ||
-            f.id.toLowerCase().includes(search.toLowerCase());
+        if (!q) return true;
+        const locName = t(`tools.flags.items.${f.id}.name`, null, f.name);
+        const locDesc = t(`tools.flags.items.${f.id}.description`, null, f.description);
+        const locCat = t(`tools.flags.categories.${f.category}`, null, f.category);
+        const locReason = t(`tools.flags.items.${f.id}.reason`, null, f.reason);
+        return f.name.toLowerCase().includes(q) ||
+            f.description.toLowerCase().includes(q) ||
+            f.id.toLowerCase().includes(q) ||
+            locName.toLowerCase().includes(q) ||
+            locDesc.toLowerCase().includes(q) ||
+            locCat.toLowerCase().includes(q) ||
+            locReason.toLowerCase().includes(q);
     });
 
     return (
@@ -494,7 +512,7 @@ export default function FlagsPage() {
                             </div>
                             <div>
                                 <div className="flex items-center gap-2.5">
-                                    <h1 className={`text-3xl font-extrabold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>Experiments</h1>
+                                    <h1 className={`text-3xl font-extrabold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('tools.flags.title', null, 'Experiments')}</h1>
                                     <span className="px-2.5 py-0.5 rounded-full bg-accent-10 text-accent border border-accent-30 text-xs font-mono font-bold">
                                         qbrowse://flags
                                     </span>
@@ -502,7 +520,7 @@ export default function FlagsPage() {
                             </div>
                         </div>
                         <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/50'} max-w-2xl leading-relaxed`}>
-                            Fine-tune experimental browser features, hardware graphics pipelines, post-quantum cryptographic ciphers, and Tor stream isolation parameters.
+                            {t('tools.flags.subtitle', null, 'Fine-tune experimental browser features, hardware graphics pipelines, post-quantum cryptographic ciphers, and Tor stream isolation parameters.')}
                         </p>
                     </div>
 
@@ -514,7 +532,7 @@ export default function FlagsPage() {
                                 : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80 hover:text-white'
                         } border text-xs font-semibold transition shadow-sm cursor-pointer active:scale-95`}
                     >
-                        <RotateCcw size={14} /> Reset all to default
+                        <RotateCcw size={14} /> {t('tools.flags.resetAll', null, 'Reset all to default')}
                     </button>
                 </div>
 
@@ -526,8 +544,8 @@ export default function FlagsPage() {
                 } border flex items-start gap-3 text-xs leading-relaxed shadow-lg`}>
                     <AlertTriangle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
                     <div>
-                        <span className={`font-bold ${isBright ? 'text-amber-950' : 'text-amber-200'} uppercase tracking-wide`}>Warning: Experimental Features Ahead! </span>
-                        Enabling these experimental switches alters underlying Chromium V8 execution, hardware compositing, or TLS parameters. Relaunching is required for changes to take effect.
+                        <span className={`font-bold ${isBright ? 'text-amber-950' : 'text-amber-200'} uppercase tracking-wide`}>{t('tools.flags.warningTitle', null, 'Warning: Experimental Features Ahead!')} </span>
+                        {t('tools.flags.warningBody', null, 'Enabling these experimental switches alters underlying Chromium V8 execution, hardware compositing, or TLS parameters. Relaunching is required for changes to take effect.')}
                     </div>
                 </div>
 
@@ -539,7 +557,7 @@ export default function FlagsPage() {
                             type="text" 
                             value={search}
                             onChange={e => setSearch(e.target.value)}
-                            placeholder="Search flags (e.g. GPU, Kyber, QUIC, DoH, bfcache)..."
+                            placeholder={t('tools.flags.searchPlaceholder', null, 'Search flags (e.g. GPU, Kyber, QUIC, DoH, bfcache)...')}
                             className={`w-full ${
                                 isBright 
                                     ? 'bg-white/80 border-black/10 text-zinc-900 placeholder-zinc-400 focus:bg-white' 
@@ -559,7 +577,7 @@ export default function FlagsPage() {
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
                                 }`}
                             >
-                                Available ({AVAILABLE_FLAGS.length})
+                                {t('tools.flags.tabAvailable', { count: AVAILABLE_FLAGS.length }, `Available (${AVAILABLE_FLAGS.length})`)}
                             </button>
                             <button
                                 onClick={() => setActiveTab('unavailable')}
@@ -569,7 +587,7 @@ export default function FlagsPage() {
                                         : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/60 hover:text-white')
                                 }`}
                             >
-                                Unavailable ({UNAVAILABLE_FLAGS.length})
+                                {t('tools.flags.tabUnavailable', { count: UNAVAILABLE_FLAGS.length }, `Unavailable (${UNAVAILABLE_FLAGS.length})`)}
                             </button>
                         </div>
 
@@ -586,7 +604,7 @@ export default function FlagsPage() {
                                                 : (isBright ? 'bg-black/[0.03] text-zinc-600 border-transparent hover:text-zinc-900 hover:bg-black/[0.06]' : 'bg-white/5 text-white/40 border-transparent hover:text-white hover:bg-white/10')
                                         }`}
                                     >
-                                        {cat}
+                                        {t(`tools.flags.categories.${cat}`, null, cat)}
                                     </button>
                                 ))}
                             </div>
@@ -614,7 +632,7 @@ export default function FlagsPage() {
                                         <div className="space-y-1.5 flex-1 pr-4">
                                             <div className="flex items-center gap-2.5 flex-wrap">
                                                 <h3 className={`font-bold text-sm ${isBright ? 'text-zinc-900 group-hover:text-black' : 'text-white/90 group-hover:text-white'} transition`}>
-                                                    {flag.name}
+                                                    {t(`tools.flags.items.${flag.id}.name`, null, flag.name)}
                                                 </h3>
                                                 <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/40'} border text-[10px] font-mono`}>
                                                     #{flag.id}
@@ -626,14 +644,14 @@ export default function FlagsPage() {
                                                         ? (isBright ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-300 border-blue-500/20') 
                                                         : 'bg-accent-10 text-accent border-accent-30'
                                                 }`}>
-                                                    {flag.status}
+                                                    {t(`tools.flags.statuses.${flag.status}`, null, flag.status)}
                                                 </span>
                                                 <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/5 text-white/50'} text-[10px] font-medium`}>
-                                                    {flag.category}
+                                                    {t(`tools.flags.categories.${flag.category}`, null, flag.category)}
                                                 </span>
                                             </div>
                                             <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/50'} leading-relaxed`}>
-                                                {flag.description}
+                                                {t(`tools.flags.items.${flag.id}.description`, null, flag.description)}
                                             </p>
                                         </div>
 
@@ -646,9 +664,9 @@ export default function FlagsPage() {
                                                     isModified ? '!border-accent !text-accent font-bold' : ''
                                                 }`}
                                                 options={[
-                                                    { value: 'default', label: 'Default', badge: flag.defaultState },
-                                                    { value: 'enabled', label: 'Enabled' },
-                                                    { value: 'disabled', label: 'Disabled' }
+                                                    { value: 'default', label: t('tools.flags.options.default', null, 'Default'), badge: t(`tools.flags.options.${flag.defaultState}`, null, flag.defaultState) },
+                                                    { value: 'enabled', label: t('tools.flags.options.enabled', null, 'Enabled') },
+                                                    { value: 'disabled', label: t('tools.flags.options.disabled', null, 'Disabled') }
                                                 ]}
                                             />
                                         </div>
@@ -657,7 +675,7 @@ export default function FlagsPage() {
                             })
                         ) : (
                             <div className={`p-16 text-center ${isBright ? 'text-zinc-400 bg-white/40 border-black/5' : 'text-white/40 bg-white/[0.02] border-white/5'} font-medium border rounded-2xl`}>
-                                No available flags match "{search}"
+                                {t('tools.flags.emptyMatch', { search }, `No available flags match "${search}"`)}
                             </div>
                         )}
                     </div>
@@ -672,25 +690,25 @@ export default function FlagsPage() {
                                 <div className="space-y-1.5 flex-1 pr-4">
                                     <div className="flex items-center gap-2.5 flex-wrap">
                                         <h3 className={`font-bold text-sm ${isBright ? 'text-zinc-800' : 'text-white/70'}`}>
-                                            {flag.name}
+                                            {t(`tools.flags.items.${flag.id}.name`, null, flag.name)}
                                         </h3>
                                         <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/30'} border text-[10px] font-mono`}>
                                             #{flag.id}
                                         </span>
                                         <span className={`px-2 py-0.5 rounded-md ${isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/5 text-white/40'} text-[10px] font-medium`}>
-                                            {flag.category}
+                                            {t(`tools.flags.categories.${flag.category}`, null, flag.category)}
                                         </span>
                                     </div>
                                     <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/40'} leading-relaxed`}>
-                                        {flag.description}
+                                        {t(`tools.flags.items.${flag.id}.description`, null, flag.description)}
                                     </p>
                                     <p className={`text-[11px] ${isBright ? 'text-amber-700' : 'text-amber-400/80'} font-medium pt-1`}>
-                                        Reason: {flag.reason}
+                                        {t('tools.flags.reasonPrefix', { reason: t(`tools.flags.items.${flag.id}.reason`, null, flag.reason) }, `Reason: ${flag.reason}`)}
                                     </p>
                                 </div>
 
                                 <div className={`px-3 py-1.5 ${isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/5 border-white/10 text-white/40'} border rounded-xl text-xs font-mono`}>
-                                    Unavailable
+                                    {t('tools.flags.unavailableBadge', null, 'Unavailable')}
                                 </div>
                             </div>
                         ))}
@@ -707,13 +725,13 @@ export default function FlagsPage() {
                 } backdrop-blur-2xl px-6 py-4 rounded-2xl flex items-center gap-6 animate-pop-in`}>
                     <div className="flex items-center gap-3 text-xs font-medium">
                         <Sparkles size={18} className="text-accent animate-pulse" />
-                        <span>Your changes will take effect the next time you relaunch QBrowse.</span>
+                        <span>{t('tools.flags.relaunchMsg', null, 'Your changes will take effect the next time you relaunch QBrowse.')}</span>
                     </div>
                     <button 
                         onClick={handleRelaunch}
                         className="px-5 py-2.5 bg-accent hover:bg-accent/90 active:scale-95 text-black font-bold rounded-xl text-xs shadow-lg shadow-accent/20 transition flex items-center gap-2 cursor-pointer"
                     >
-                        <RefreshCw size={13} /> Relaunch
+                        <RefreshCw size={13} /> {t('tools.flags.relaunchBtn', null, 'Relaunch')}
                     </button>
                 </div>
             )}

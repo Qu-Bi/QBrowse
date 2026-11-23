@@ -4,13 +4,13 @@ import {
     Palette, Shield, Cpu, ShieldAlert, Search, Download, X, 
     ShieldCheck, Cookie, Lock, Trash2, RotateCcw, Flag, Info, History,
     Key, Bell, RefreshCw, Layers, CheckCircle2, Sparkles, 
-    Eye, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal, Square,
+    Eye, EyeOff, Zap, Volume2, Globe, Sliders, Laptop, Maximize2, Minimize2, Monitor, SlidersHorizontal, Square,
     UploadCloud, Compass, ExternalLink, Plus, Feather, GaugeCircle, Rocket, BatteryCharging, Activity,
     Image as ImageIcon, Upload, Link as LinkIcon, Sun, Moon, XSquare, Check, Edit2, Edit3, Server, Wifi, AlertCircle,
     Type, Keyboard, VolumeX, ZoomIn, Filter, Minus, GitPullRequest, GitBranch,
     ArrowLeftRight, ListOrdered, User, Briefcase, Code, Bookmark, Coffee, Folder,
     Terminal, Heart, ChevronUp, ChevronDown, Ghost, AlertTriangle, GripVertical, Copy,
-    Layout, Sidebar, Languages, Play
+    Layout, Sidebar, Languages, Play, Usb, KeyRound
 } from 'lucide-react';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
 import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
@@ -20,6 +20,10 @@ import {
     isPotentialRemoteListUrl, 
     normalizeRemoteListUrl 
 } from '../../utils/adblockUrlParser';
+import {
+    normalizeWhitelistEntry,
+    DEFAULT_DARK_EXCLUSIONS
+} from '../../utils/darkModeWhitelist';
 import AdblockImportModal from '../settings/AdblockImportModal';
 import { isVideoWallpaper, isGifWallpaper, isLiveWallpaper, getWallpaperBadgeLabel } from '../../utils/wallpaperHelpers';
 import WallpaperPreviewThumbnail from '../common/WallpaperPreviewThumbnail';
@@ -64,7 +68,30 @@ import CustomFontManager from '../common/CustomFontManager';
 import { getLiquidGlassMenuClasses, getLiquidGlassInlineStyle } from '../common/ContextMenuProvider';
 import qbrowseLogo from '../../assets/icon.png';
 import LanguageSettings from '../settings/LanguageSettings';
-import { useTranslation } from '../../i18n/index';
+import { useTranslation, t as tStatic } from '../../i18n/index';
+import settingsDomain from '../../i18n/domains/settings';
+
+const ALL_TAB_SEARCH_TEXT = Object.keys(settingsDomain?.en?.navKeywords || {}).reduce((acc, tabId) => {
+    acc[tabId] = Object.values(settingsDomain)
+        .map(dict => dict?.navKeywords?.[tabId] || '')
+        .join(' ')
+        .toLowerCase();
+    return acc;
+}, {});
+
+const renderTemplateParts = (template, replacements) => {
+    if (typeof template !== 'string') return template;
+    const regex = /(\{[a-zA-Z0-9_]+\})/g;
+    return template.split(regex).map((part, idx) => {
+        if (part.startsWith('{') && part.endsWith('}')) {
+            const key = part.slice(1, -1);
+            if (Object.prototype.hasOwnProperty.call(replacements, key)) {
+                return <React.Fragment key={idx}>{replacements[key]}</React.Fragment>;
+            }
+        }
+        return part;
+    });
+};
 
 // Helper Card Component for Unified Styling (Top-level to preserve DOM instances and CSS transitions)
 const SettingCard = ({ icon: Icon, title, description, badge, children }) => {
@@ -290,7 +317,102 @@ const SlidingPillSwitcher = ({ options = [], value, onChange, isBright: isBright
 };
 
 const SettingsModalContent = () => {
-    const { t } = useTranslation();
+    const { t, intlLocale } = useTranslation();
+
+    const formatOpenTabs = (count) => {
+        let cat = 'other';
+        try {
+            cat = new Intl.PluralRules(intlLocale || 'en-US').select(count);
+        } catch (_) {
+            cat = count === 1 ? 'one' : 'other';
+        }
+        const fallback = count === 1 ? `${count} open tab` : `${count} open tabs`;
+        const keyMap = {
+            one: 'cfg.spaces.openTabsOne',
+            few: 'cfg.spaces.openTabsFew',
+            many: 'cfg.spaces.openTabsMany',
+            other: 'cfg.spaces.openTabsOther'
+        };
+        const key = keyMap[cat] || 'cfg.spaces.openTabsOther';
+        const val = t(key, { count }, '');
+        return val && val !== key ? val : t('cfg.spaces.openTabsOther', { count }, fallback);
+    };
+
+    const getLocalizedWallpaperBadge = (rawUrl, source = 'default') => {
+        if (!rawUrl) return t('cfg.appearance.badgeDefaultStock', null, 'Default Stock');
+        const sourceLabel = source === 'file'
+            ? t('cfg.appearance.sourceLocal', null, 'Local')
+            : source === 'url'
+                ? t('cfg.appearance.sourceWeb', null, 'Web')
+                : t('cfg.appearance.sourceStock', null, 'Stock');
+        if (isVideoWallpaper(rawUrl)) {
+            return t('cfg.appearance.badgeLiveVideo', { source: sourceLabel }, `Live Video (${sourceLabel})`);
+        }
+        if (isGifWallpaper(rawUrl)) {
+            return t('cfg.appearance.badgeAnimatedGif', { source: sourceLabel }, `Animated GIF (${sourceLabel})`);
+        }
+        if (source === 'file') return t('cfg.appearance.badgeLocalImage', null, 'Local Image');
+        if (source === 'url') return t('cfg.appearance.badgeWebImage', null, 'Web Image');
+        return t('cfg.appearance.badgeDefaultStock', null, 'Default Stock');
+    };
+
+    const getLocalizedSpaceName = (sp) => {
+        if (!sp) return '';
+        if (sp.id === 'personal' && sp.name === 'Personal') return t('nav.personal', null, 'Personal');
+        if (sp.id === 'work' && sp.name === 'Work') return t('nav.work', null, 'Work');
+        return sp.name;
+    };
+
+    const getLocalizedPos = (pos) => t(`cfg.layout.pos.${pos}`, null, pos);
+
+    const getLocalizedDnsMode = (mode) => {
+        if (mode === 'secure') return t('cfg.privacy.dnsModeStrict', null, 'Strict DoH');
+        if (mode === 'off') return t('cfg.privacy.dnsModeOff', null, 'Off');
+        return t('cfg.privacy.dnsModeAuto', null, 'Automatic');
+    };
+
+    const getLocalizedDnsProvider = (providerId) => {
+        if (providerId === 'custom') return t('cfg.privacy.dnsCustomLabel', null, 'Custom DNS');
+        if (providerId === 'cloudflare') return 'Cloudflare';
+        if (providerId === 'quad9') return 'Quad9';
+        if (providerId === 'adguard') return 'AdGuard';
+        if (providerId === 'google') return 'Google';
+        return providerId.charAt(0).toUpperCase() + providerId.slice(1);
+    };
+
+    const getLocalizedPerfMode = (mode) => {
+        if (mode === 'eco') return t('cfg.engine.pillEco', null, 'Eco Saver');
+        if (mode === 'balanced') return t('cfg.engine.pillBalanced', null, 'Balanced');
+        if (mode === 'ultra') return t('cfg.engine.pillUltra', null, 'Ultra Speed');
+        return t('cfg.engine.pillAuto', null, 'Auto');
+    };
+
+    const getLocalizedPerfTier = (tier) => {
+        const norm = String(tier || 'balanced').toLowerCase();
+        return t(`cfg.engine.tiers.${norm}`, null, String(tier || 'balanced').toUpperCase());
+    };
+
+    const PERM_FALLBACK_LABELS = {
+        camera: 'Camera',
+        microphone: 'Microphone',
+        media: 'Camera & Mic',
+        geolocation: 'Location',
+        notifications: 'Notifications',
+        'clipboard-read': 'Clipboard',
+        clipboard: 'Clipboard',
+        midi: 'MIDI Devices',
+        sensors: 'Motion & Sensors',
+        'idle-detection': 'Idle Detection',
+        'display-capture': 'Screen Share',
+        'window-management': 'Window Management',
+        'speaker-selection': 'Audio Output',
+        openExternal: 'External Apps',
+        sound: 'Sound',
+        javascript: 'JavaScript'
+    };
+    const getLocalizedPermName = (perm) => t(`cfg.cookies.permNames.${perm}`, null, PERM_FALLBACK_LABELS[perm] || perm);
+    const getLocalizedPermVal = (val) => t(`cfg.cookies.permValues.${val}`, null, val);
+
     const [isContentReady, setIsContentReady] = useState(false);
 
     useEffect(() => {
@@ -314,6 +436,8 @@ const SettingsModalContent = () => {
         setTheme,
         isForceDark, 
         setIsForceDark,
+        darkExcludeMedia,
+        setDarkExcludeMedia,
         isGlassEnabled, 
         setIsGlassEnabled,
         isSwipeEnabled, 
@@ -325,6 +449,10 @@ const SettingsModalContent = () => {
         setAccentColor,
         darkExclusions,
         setDarkExclusions,
+        addDarkExclusion,
+        removeDarkExclusion,
+        resetDarkExclusions,
+        clearDarkExclusions,
         addCustomBang,
         removeCustomBang,
         hardwareProfile,
@@ -395,12 +523,12 @@ const SettingsModalContent = () => {
 
     const handleSetSidebarPosition = (pos) => {
         setSidebarPosition?.(pos);
-        showToast?.(`Sidebar positioned on ${pos}`);
+        showToast?.(t('cfg.layout.toastSidebarPos', { pos: getLocalizedPos(pos) }, `Sidebar positioned on ${pos}`));
     };
 
     const handleSetTopBarPosition = (pos) => {
         setTopBarPosition?.(pos);
-        showToast?.(`Top Bar positioned on ${pos}`);
+        showToast?.(t('cfg.layout.toastTopBarPos', { pos: getLocalizedPos(pos) }, `Top Bar positioned on ${pos}`));
     };
 
     const handleSetToolHubPosition = (pos) => {
@@ -408,9 +536,9 @@ const SettingsModalContent = () => {
         if (sidebarPosition === pos) {
             const opposite = pos === 'right' ? 'left' : 'right';
             setSidebarPosition?.(opposite);
-            showToast?.(`Moved Sidebar to ${opposite} to avoid collision with Tool Hub`);
+            showToast?.(t('cfg.layout.toastToolHubCollision', { pos: getLocalizedPos(opposite) }, `Moved Sidebar to ${opposite} to avoid collision with Tool Hub`));
         } else {
-            showToast?.(`Tool Hub positioned on ${pos}`);
+            showToast?.(t('cfg.layout.toastToolHubPos', { pos: getLocalizedPos(pos) }, `Tool Hub positioned on ${pos}`));
         }
     };
 
@@ -423,6 +551,71 @@ const SettingsModalContent = () => {
     const [editingSpaceName, setEditingSpaceName] = useState('');
     const [activeIconPickerSpaceId, setActiveIconPickerSpaceId] = useState(null);
     const [iconPickerCoords, setIconPickerCoords] = useState(null);
+
+    // GitHub Work Mode Test & Sync state
+    const [isTestingGitHub, setIsTestingGitHub] = useState(false);
+    const [ghTestStatus, setGhTestStatus] = useState(null);
+    const [showGitHubToken, setShowGitHubToken] = useState(false);
+    const ghAuthenticated = useGitHubStore(state => state.authenticated);
+    const ghAuthMode = useGitHubStore(state => state.authMode);
+    const ghUsername = useGitHubStore(state => state.username);
+    const ghReviewRequests = useGitHubStore(state => state.reviewRequests);
+    const ghMyPrs = useGitHubStore(state => state.myPrs);
+    const ghAssignedIssues = useGitHubStore(state => state.assignedIssues);
+    const ghError = useGitHubStore(state => state.error);
+    const ghWarning = useGitHubStore(state => state.warning);
+    const ghIsLoading = useGitHubStore(state => state.isLoading);
+
+    const handleTestAndSyncGitHub = async () => {
+        if (isTestingGitHub) return;
+        setIsTestingGitHub(true);
+        setGhTestStatus(null);
+        try {
+            const latestSettings = useUIStore.getState().settings || {};
+            const res = await useGitHubStore.getState().testAndSync({
+                token: latestSettings.githubPersonalAccessToken || '',
+                username: latestSettings.githubUsername || '',
+                repoFilter: latestSettings.githubRepoFilter || ''
+            });
+
+            if (res?.authenticated) {
+                const reviewsCount = (res.reviewRequests || []).length;
+                const prsCount = (res.myPrs || []).length;
+                const issuesCount = (res.assignedIssues || []).length;
+                const modeLabel = res.authMode === 'token'
+                    ? t('cfg.workmode.statusViaPat', null, 'via PAT')
+                    : res.authMode === 'session'
+                        ? t('cfg.workmode.statusViaSession', null, 'via Browser Session')
+                        : t('cfg.workmode.statusViaPublic', null, 'via Public API');
+                const countsText = t(
+                    'cfg.workmode.statusCounts',
+                    { reviews: reviewsCount, prs: prsCount, issues: issuesCount },
+                    `${reviewsCount} reviews · ${prsCount} PRs · ${issuesCount} issues`
+                );
+                const connectedText = `${t('cfg.workmode.statusConnected', { username: res.username || 'GitHub' }, `Connected as @${res.username || 'GitHub'}`)} (${modeLabel}) — ${countsText}`;
+
+                setGhTestStatus({
+                    type: res.warning ? 'warning' : 'success',
+                    message: res.warning ? `${connectedText}. ${res.warning}` : connectedText
+                });
+                showToast(t(
+                    'cfg.workmode.toastSyncedDetail',
+                    { username: res.username || 'GitHub', reviews: reviewsCount, prs: prsCount, issues: issuesCount },
+                    `Synced @${res.username || 'GitHub'} (${reviewsCount} reviews, ${prsCount} PRs, ${issuesCount} issues)`
+                ));
+            } else {
+                const errMsg = res?.error || t('chrome.githubLiveConnectDesc', null, 'Connect your GitHub session in Work Mode or enter a Personal Access Token in settings.');
+                setGhTestStatus({ type: 'error', message: errMsg });
+                showToast(t('cfg.workmode.toastSyncFailed', { error: errMsg }, `GitHub sync failed: ${errMsg}`));
+            }
+        } catch (err) {
+            const errMsg = err?.message || t('cfg.common.unknownError', null, 'Unknown error');
+            setGhTestStatus({ type: 'error', message: errMsg });
+            showToast(t('cfg.workmode.toastSyncFailed', { error: errMsg }, `GitHub sync failed: ${errMsg}`));
+        } finally {
+            setIsTestingGitHub(false);
+        }
+    };
 
     // Auto-dismiss icon picker on window scroll, resize, or Escape key
     useEffect(() => {
@@ -576,23 +769,23 @@ const SettingsModalContent = () => {
         if (!raw) return;
         const clean = cleanDomain(raw);
         if (!clean) {
-            showToast('Invalid website URL or domain');
+            showToast(t('cfg.adblock.toastInvalidDomain', null, 'Invalid website URL or domain'));
             return;
         }
         const current = settings?.adblockAllowlist || [];
         if (current.includes(clean)) {
-            showToast(`${clean} is already in trusted sites`);
+            showToast(t('cfg.adblock.toastAlreadyTrusted', { domain: clean }, `${clean} is already in trusted sites`));
             return;
         }
         setSettingValue('adblockAllowlist', [...current, clean]);
         setAdblockAllowlistInput('');
-        showToast(`Added ${clean} to trusted sites`);
+        showToast(t('cfg.adblock.toastAddedTrusted', { domain: clean }, `Added ${clean} to trusted sites`));
     };
 
     const handleRemoveAllowlist = (domain) => {
         const current = settings?.adblockAllowlist || [];
         setSettingValue('adblockAllowlist', current.filter(d => d !== domain));
-        showToast(`Removed ${domain} from trusted sites`);
+        showToast(t('cfg.adblock.toastRemovedTrusted', { domain }, `Removed ${domain} from trusted sites`));
     };
 
     const handleAddBlocklist = (e) => {
@@ -611,7 +804,7 @@ const SettingsModalContent = () => {
         // Auto-parse URL / rule / bulk list input
         const parseResult = parseBlocklistInput(raw);
         if (parseResult.domains.length === 0) {
-            showToast('Invalid domain or URL format');
+            showToast(t('cfg.adblock.toastInvalidFormat', null, 'Invalid domain or URL format'));
             return;
         }
 
@@ -620,7 +813,11 @@ const SettingsModalContent = () => {
         const newDomains = parseResult.domains.filter(d => !currentSet.has(d.toLowerCase()));
 
         if (newDomains.length === 0) {
-            showToast(parseResult.domains.length === 1 ? `${parseResult.domains[0]} is already in custom blocklist` : 'Entered domains are already in custom blocklist');
+            showToast(
+                parseResult.domains.length === 1
+                    ? t('cfg.adblock.toastAlreadyBlockedSingle', { domain: parseResult.domains[0] }, `${parseResult.domains[0]} is already in custom blocklist`)
+                    : t('cfg.adblock.toastAlreadyBlockedMany', null, 'Entered domains are already in custom blocklist')
+            );
             return;
         }
 
@@ -629,16 +826,16 @@ const SettingsModalContent = () => {
         setAdblockBlocklistInput('');
 
         if (newDomains.length === 1) {
-            showToast(`Blocked ${newDomains[0]}`);
+            showToast(t('cfg.adblock.toastBlockedSingle', { domain: newDomains[0] }, `Blocked ${newDomains[0]}`));
         } else {
-            showToast(`Added ${newDomains.length} domains to custom blocklist`);
+            showToast(t('cfg.adblock.toastBlockedMany', { count: newDomains.length }, `Added ${newDomains.length} domains to custom blocklist`));
         }
     };
 
     const handleRemoveBlocklist = (domain) => {
         const current = settings?.adblockCustomBlockedDomains || [];
         setSettingValue('adblockCustomBlockedDomains', current.filter(d => d !== domain));
-        showToast(`Removed ${domain} from custom blocklist`);
+        showToast(t('cfg.adblock.toastRemovedBlocked', { domain }, `Removed ${domain} from custom blocklist`));
     };
 
     const handleImportBlocklistDomains = (domains, replace = false) => {
@@ -647,27 +844,32 @@ const SettingsModalContent = () => {
         const toAdd = domains.filter(d => !currentSet.has(d.toLowerCase()));
         const updated = [...current, ...toAdd];
         setSettingValue('adblockCustomBlockedDomains', updated);
-        showToast(replace ? `Replaced blocklist with ${updated.length} domains` : `Added ${toAdd.length} domains to custom blocklist`);
+        showToast(
+            replace
+                ? t('cfg.adblock.toastReplacedBlocklist', { count: updated.length }, `Replaced blocklist with ${updated.length} domains`)
+                : t('cfg.adblock.toastBlockedMany', { count: toAdd.length }, `Added ${toAdd.length} domains to custom blocklist`)
+        );
     };
 
     const handleClearBlocklist = () => {
         const count = settings?.adblockCustomBlockedDomains?.length || 0;
         if (count === 0) return;
-        if (window.confirm(`Are you sure you want to clear all ${count.toLocaleString()} custom blocked domains?`)) {
+        const formattedCount = count.toLocaleString(intlLocale);
+        if (window.confirm(t('cfg.adblock.confirmClearBlocklist', { count: formattedCount }, `Are you sure you want to clear all ${formattedCount} custom blocked domains?`))) {
             setSettingValue('adblockCustomBlockedDomains', []);
-            showToast('Cleared custom blocklist');
+            showToast(t('cfg.adblock.toastClearedBlocklist', null, 'Cleared custom blocklist'));
         }
     };
 
     const handleExportBlocklist = () => {
         const list = settings?.adblockCustomBlockedDomains || [];
         if (list.length === 0) {
-            showToast('Blocklist is empty');
+            showToast(t('cfg.adblock.toastBlocklistEmpty', null, 'Blocklist is empty'));
             return;
         }
         const text = list.join('\n');
         navigator.clipboard?.writeText(text);
-        showToast(`Copied ${list.length.toLocaleString()} domains to clipboard`);
+        showToast(t('cfg.adblock.toastCopiedBlocklist', { count: list.length.toLocaleString(intlLocale) }, `Copied ${list.length.toLocaleString()} domains to clipboard`));
     };
 
     useEffect(() => {
@@ -685,17 +887,18 @@ const SettingsModalContent = () => {
                 const res = await window.electronAPI.testDns(target);
                 setDnsTestStatus(res);
                 if (res && res.ok) {
-                    showToast(`DNS server online (${res.latency}ms latency)`);
+                    showToast(t('cfg.privacy.toastDnsOnline', { latency: res.latency }, `DNS server online (${res.latency}ms latency)`));
                 } else {
-                    showToast(`DNS test failed: ${res?.error || 'Unreachable'}`);
+                    const errText = res?.error || t('cfg.privacy.dnsUnreachable', null, 'Unreachable');
+                    showToast(t('cfg.privacy.toastDnsFailed', { error: errText }, `DNS test failed: ${errText}`));
                 }
             } else {
                 setDnsTestStatus({ ok: true, latency: 18, server: target || 'default' });
-                showToast('DNS verified online');
+                showToast(t('cfg.privacy.toastDnsVerified', null, 'DNS verified online'));
             }
         } catch (err) {
             setDnsTestStatus({ ok: false, error: err.message });
-            showToast('DNS test error');
+            showToast(t('cfg.privacy.toastDnsError', null, 'DNS test error'));
         } finally {
             setIsTestingDns(false);
         }
@@ -707,11 +910,11 @@ const SettingsModalContent = () => {
         const cleanUrl = engineUrlInput.trim();
 
         if (!cleanName) {
-            showToast('Please enter an engine name');
+            showToast(t('cfg.search.toastEnterEngineName', null, 'Please enter an engine name'));
             return;
         }
         if (!cleanUrl || !isValidSearchUrlTemplate(cleanUrl)) {
-            showToast('Please enter a valid URL template (e.g. https://example.com/search?q=%s)');
+            showToast(t('cfg.search.toastInvalidEngineUrl', null, 'Please enter a valid URL template (e.g. https://example.com/search?q=%s)'));
             return;
         }
 
@@ -722,7 +925,7 @@ const SettingsModalContent = () => {
                 url: cleanUrl,
                 color: engineColorInput
             });
-            showToast(`Search engine "${cleanName}" updated`);
+            showToast(t('cfg.search.toastEngineUpdated', { name: cleanName }, `Search engine "${cleanName}" updated`));
         } else {
             addCustomSearchEngine({
                 name: cleanName,
@@ -730,7 +933,7 @@ const SettingsModalContent = () => {
                 url: cleanUrl,
                 color: engineColorInput
             });
-            showToast(`Custom search engine "${cleanName}" added`);
+            showToast(t('cfg.search.toastEngineAdded', { name: cleanName }, `Custom search engine "${cleanName}" added`));
         }
 
         setIsAddingEngine(false);
@@ -751,7 +954,7 @@ const SettingsModalContent = () => {
 
     const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
     const [updateData, setUpdateData] = useState(null);
-    const currentAppVersion = updateData?.currentVersion || '1.3.7';
+    const currentAppVersion = updateData?.currentVersion || '1.4.3';
     const [isDefaultBrowser, setIsDefaultBrowser] = useState(false);
     const [isCheckingDefault, setIsCheckingDefault] = useState(false);
     const [checkDefaultOnStartup, setCheckDefaultOnStartup] = useState(() => {
@@ -780,16 +983,27 @@ const SettingsModalContent = () => {
                 setIsCheckingUpdates(false);
             }
             if (data.status === 'not-available' && !data.silent) {
-                const ver = data.currentVersion || data.version || '1.3.7';
-                showToast(`QBrowse is up to date! (v${String(ver).replace(/^v/i, '')})`);
+                const ver = String(data.currentVersion || data.version || '1.4.3').replace(/^v/i, '');
+                showToast(tStatic('cfg.about.toastUpToDate', { version: ver }, `QBrowse is up to date! (v${ver})`));
             } else if (data.status === 'available') {
                 const nextVer = String(data.latestVersion || data.version || '').replace(/^v/i, '');
-                showToast(`New GitHub Release found: v${nextVer}! Downloading update...`);
+                if (data.managedExternally) {
+                    showToast(tStatic('cfg.about.toastNewReleaseExternal', { version: nextVer, format: data.installShortLabel || 'package manager' }, `New version v${nextVer} available! Update via ${data.installShortLabel || 'your package manager'}.`));
+                } else if (data.platform === 'linux' && data.canAutoInstall === false) {
+                    showToast(tStatic('cfg.about.toastNewReleaseLinuxPkg', { version: nextVer, format: data.packageExt || 'Linux' }, `New GitHub Release v${nextVer} available (${data.packageExt || 'Linux'}). Click Download to get the package.`));
+                } else {
+                    showToast(tStatic('cfg.about.toastNewRelease', { version: nextVer }, `New GitHub Release found: v${nextVer}! Downloading update...`));
+                }
             } else if (data.status === 'downloaded') {
                 const nextVer = String(data.latestVersion || data.version || '').replace(/^v/i, '');
-                showToast(`Update v${nextVer} ready! Click Restart & Update to apply.`);
+                if (data.platform === 'linux' && data.canAutoInstall === false) {
+                    showToast(tStatic('cfg.about.toastLinuxPkgReady', { version: nextVer }, `Update package v${nextVer} downloaded! Open it or run the install command to apply.`));
+                } else {
+                    showToast(tStatic('cfg.about.toastUpdateReady', { version: nextVer }, `Update v${nextVer} ready! Click Restart & Update to apply.`));
+                }
             } else if (data.status === 'error' && !data.silent) {
-                showToast(`Update notice: ${data.message || 'Check failed'}`);
+                const msg = data.message || tStatic('cfg.about.checkFailed', null, 'Check failed');
+                showToast(tStatic('cfg.about.toastUpdateNotice', { message: msg }, `Update notice: ${msg}`));
             }
         });
         return () => {
@@ -817,7 +1031,7 @@ const SettingsModalContent = () => {
 
     const handleImportWallpaperFile = async () => {
         if (!window.electronAPI?.importWallpaperFile) {
-            showToast('File import is only available in the desktop app');
+            showToast(t('cfg.appearance.toastDesktopOnly', null, 'File import is only available in the desktop app'));
             return;
         }
         setIsImportingFile(true);
@@ -825,12 +1039,12 @@ const SettingsModalContent = () => {
             const res = await window.electronAPI.importWallpaperFile();
             if (res?.success) {
                 setCustomWallpaper(res.protocolUrl, 'file');
-                showToast('Custom wallpaper applied!');
+                showToast(t('cfg.appearance.toastCustomApplied', null, 'Custom wallpaper applied!'));
             } else if (res?.error && res.error !== 'Cancelled') {
                 showToast(res.error);
             }
         } catch (err) {
-            showToast(err.message || 'Failed to import wallpaper');
+            showToast(err.message || t('cfg.appearance.toastImportFailed', null, 'Failed to import wallpaper'));
         } finally {
             setIsImportingFile(false);
         }
@@ -841,7 +1055,7 @@ const SettingsModalContent = () => {
         const url = wallpaperUrlInput.trim();
         if (!url) return;
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            showToast('Please enter a valid HTTP or HTTPS image URL');
+            showToast(t('cfg.appearance.toastInvalidUrl', null, 'Please enter a valid HTTP or HTTPS image URL'));
             return;
         }
         setIsImportingUrl(true);
@@ -851,17 +1065,17 @@ const SettingsModalContent = () => {
                 if (res?.success) {
                     setCustomWallpaper(res.protocolUrl, 'url', url);
                     setWallpaperUrlInput('');
-                    showToast('Web wallpaper cached and applied!');
+                    showToast(t('cfg.appearance.toastWebCached', null, 'Web wallpaper cached and applied!'));
                 } else {
-                    showToast(res?.error || 'Failed to download wallpaper');
+                    showToast(res?.error || t('cfg.appearance.toastDownloadFailed', null, 'Failed to download wallpaper'));
                 }
             } else {
                 setCustomWallpaper(url, 'url', url);
                 setWallpaperUrlInput('');
-                showToast('Wallpaper applied!');
+                showToast(t('cfg.appearance.toastApplied', null, 'Wallpaper applied!'));
             }
         } catch (err) {
-            showToast(err.message || 'Failed to import wallpaper');
+            showToast(err.message || t('cfg.appearance.toastImportFailed', null, 'Failed to import wallpaper'));
         } finally {
             setIsImportingUrl(false);
         }
@@ -872,16 +1086,76 @@ const SettingsModalContent = () => {
             await window.electronAPI.resetWallpaper();
         }
         resetCustomWallpaper();
-        showToast('Wallpaper reset to default stock');
+        showToast(t('cfg.appearance.toastResetWallpaper', null, 'Wallpaper reset to default stock'));
     };
 
-    const [localDarkExclusions, setLocalDarkExclusions] = useState(() => (darkExclusions || []).join('\n'));
+    const [darkWhitelistInput, setDarkWhitelistInput] = useState('');
+    const [darkWhitelistSearch, setDarkWhitelistSearch] = useState('');
+    const [darkWhitelistError, setDarkWhitelistError] = useState('');
 
     useEffect(() => {
         if (activeModal === 'settings') {
-            setLocalDarkExclusions((darkExclusions || []).join('\n'));
+            setDarkWhitelistInput('');
+            setDarkWhitelistSearch('');
+            setDarkWhitelistError('');
         }
     }, [activeModal]);
+
+    const normalizedDarkInputPreview = (() => {
+        const trimmed = darkWhitelistInput.trim();
+        if (!trimmed) return null;
+        const normalized = normalizeWhitelistEntry(trimmed);
+        if (!normalized || normalized === trimmed.toLowerCase()) return null;
+        return normalized;
+    })();
+
+    const handleAddDarkWhitelist = (e) => {
+        if (e) e.preventDefault();
+        const raw = darkWhitelistInput.trim();
+        if (!raw) return;
+        const res = addDarkExclusion(raw);
+        if (!res.ok) {
+            if (res.reason === 'duplicate') {
+                setDarkWhitelistError(
+                    t('cfg.appearance.whitelistDuplicate', { domain: res.entry }, `${res.entry} is already whitelisted.`)
+                );
+            } else {
+                setDarkWhitelistError(
+                    t('cfg.appearance.whitelistInvalid', null, 'Enter a valid domain, URL, or *.domain.com wildcard.')
+                );
+            }
+            return;
+        }
+        setDarkWhitelistInput('');
+        setDarkWhitelistError('');
+        showToast(t('cfg.appearance.whitelistAddedToast', { domain: res.entry }, `Excluded ${res.entry} from Smart Dark Mode`));
+    };
+
+    const handleRemoveDarkWhitelist = (domain) => {
+        removeDarkExclusion(domain);
+        setDarkWhitelistError('');
+        showToast(t('cfg.appearance.whitelistRemovedToast', { domain }, `Removed ${domain} from Smart Dark whitelist`));
+    };
+
+    const handleResetDarkWhitelist = () => {
+        resetDarkExclusions();
+        setDarkWhitelistSearch('');
+        setDarkWhitelistError('');
+        showToast(
+            t(
+                'cfg.appearance.whitelistResetToast',
+                { count: DEFAULT_DARK_EXCLUSIONS.length },
+                `Restored ${DEFAULT_DARK_EXCLUSIONS.length} recommended default domains`
+            )
+        );
+    };
+
+    const handleClearDarkWhitelist = () => {
+        clearDarkExclusions();
+        setDarkWhitelistSearch('');
+        setDarkWhitelistError('');
+        showToast(t('cfg.appearance.whitelistClearedToast', null, 'Cleared Smart Dark Mode whitelist'));
+    };
 
     const refreshDefaultBrowserStatus = async () => {
         if (window.electronAPI && window.electronAPI.checkDefaultBrowser) {
@@ -900,13 +1174,13 @@ const SettingsModalContent = () => {
                 const res = await window.electronAPI.setDefaultBrowser();
                 if (res.isDefault) {
                     setIsDefaultBrowser(true);
-                    showToast('QBrowse set as default browser!');
+                    showToast(t('cfg.about.toastSetDefault', null, 'QBrowse set as default browser!'));
                 } else {
                     const defaultAppsToast = osPlatform === 'darwin'
-                        ? 'Opening System Settings. Select QBrowse as your default browser.'
+                        ? t('cfg.about.toastOpenDefaultDarwin', null, 'Opening System Settings. Select QBrowse as your default browser.')
                         : osPlatform === 'linux'
-                            ? 'Opening Default Applications. Select QBrowse as your default browser.'
-                            : 'Opening Windows Default Apps. Click "Set default" for QBrowse.';
+                            ? t('cfg.about.toastOpenDefaultLinux', null, 'Opening Default Applications. Select QBrowse as your default browser.')
+                            : t('cfg.about.toastOpenDefaultWin', null, 'Opening Windows Default Apps. Click "Set default" for QBrowse.');
                     showToast(defaultAppsToast);
                     let attempts = 0;
                     const pollTimer = setInterval(async () => {
@@ -917,7 +1191,7 @@ const SettingsModalContent = () => {
                                 if (check && check.isDefault) {
                                     setIsDefaultBrowser(true);
                                     clearInterval(pollTimer);
-                                    showToast('QBrowse is now your default browser!');
+                                    showToast(tStatic('cfg.about.toastNowDefault', null, 'QBrowse is now your default browser!'));
                                 }
                             } catch (_) {}
                         }
@@ -925,7 +1199,7 @@ const SettingsModalContent = () => {
                     }, 1500);
                 }
             } catch (_) {
-                showToast('Failed to set default browser.');
+                showToast(t('cfg.about.toastFailedDefault', null, 'Failed to set default browser.'));
             }
         }
     };
@@ -933,7 +1207,7 @@ const SettingsModalContent = () => {
     const handleOpenDefaultAppsSettings = () => {
         if (window.electronAPI && window.electronAPI.openDefaultAppsSettings) {
             window.electronAPI.openDefaultAppsSettings();
-            showToast('Opening system default apps settings...');
+            showToast(t('cfg.about.toastOpeningDefaultApps', null, 'Opening system default apps settings...'));
         }
     };
 
@@ -942,10 +1216,10 @@ const SettingsModalContent = () => {
         setCheckDefaultOnStartup(next);
         if (next) {
             localStorage.removeItem('qbrowse_dismiss_default_browser');
-            showToast('Will check default browser on startup.');
+            showToast(t('cfg.about.toastStartupCheckOn', null, 'Will check default browser on startup.'));
         } else {
             localStorage.setItem('qbrowse_dismiss_default_browser', 'true');
-            showToast('Startup default browser check disabled.');
+            showToast(t('cfg.about.toastStartupCheckOff', null, 'Startup default browser check disabled.'));
         }
     };
 
@@ -977,11 +1251,20 @@ const SettingsModalContent = () => {
     }, [settingsTab]);
 
     useEffect(() => {
-        if (settingsTab === 'cookies' && window.electronAPI && window.electronAPI.getAllSitePermissions) {
+        if (settingsTab !== 'cookies' || !window.electronAPI?.getAllSitePermissions) return;
+        const refreshAllPerms = () => {
             window.electronAPI.getAllSitePermissions().then(perms => {
                 setAllPermissions(perms || {});
             }).catch(() => {});
+        };
+        refreshAllPerms();
+        let unsub = null;
+        if (window.electronAPI.onSitePermissionsChanged) {
+            unsub = window.electronAPI.onSitePermissionsChanged(() => refreshAllPerms());
         }
+        return () => {
+            if (typeof unsub === 'function') unsub();
+        };
     }, [settingsTab]);
 
     const handleRemoveDomainRules = async (domain) => {
@@ -992,7 +1275,7 @@ const SettingsModalContent = () => {
                 delete next[domain];
                 return next;
             });
-            showToast(`Cleared permission overrides for ${domain}`);
+            showToast(t('cfg.cookies.toastClearedPerms', { domain }, `Cleared permission overrides for ${domain}`));
         }
     };
 
@@ -1005,12 +1288,12 @@ const SettingsModalContent = () => {
                 { id: 'work', name: 'Work', icon: 'Layers', showGitHub: true, isBuiltIn: false }
             ];
         if (currentSpaces.length >= 8) {
-            showToast('Maximum of 8 workspaces reached');
+            showToast(t('cfg.spaces.toastMaxReached', null, 'Maximum of 8 workspaces reached'));
             return;
         }
         const cleanName = newSpaceName.trim();
         if (!cleanName) {
-            showToast('Please enter a workspace name');
+            showToast(t('cfg.spaces.toastEnterName', null, 'Please enter a workspace name'));
             return;
         }
         addSpace(cleanName, newSpaceIcon, newSpaceShowGitHub);
@@ -1039,7 +1322,8 @@ const SettingsModalContent = () => {
         reorderSpaces(next);
         setDraggedSpaceIdx(null);
         setDragOverSpaceIdx(null);
-        showToast(`Moved "${movedItem.name}" to position ${targetIdx + 1}`);
+        const movedName = getLocalizedSpaceName(movedItem);
+        showToast(t('cfg.spaces.toastMoved', { name: movedName, pos: targetIdx + 1 }, `Moved "${movedName}" to position ${targetIdx + 1}`));
     };
 
     const handleSaveSpaceName = (id) => {
@@ -1094,15 +1378,18 @@ const SettingsModalContent = () => {
             await useUIStore.getState().resetAllToFactoryDefaults?.();
             setActivePresetId('balanced');
             setCustomDnsUrl('');
-            setLocalDarkExclusions('');
+            setDarkWhitelistInput('');
+            setDarkWhitelistSearch('');
+            setDarkWhitelistError('');
             setAdblockAllowlistInput('');
             setAdblockBlocklistInput('');
             setWallpaperUrlInput('');
             setShowResetConfirm(false);
-            showToast('All QBrowse settings restored to factory defaults');
+            showToast(t('cfg.reset.toastSuccess', null, 'All QBrowse settings restored to factory defaults'));
         } catch (err) {
             console.error('Failed to reset settings to defaults:', err);
-            showToast('Reset failed: ' + (err?.message || 'Unknown error'));
+            const errMsg = err?.message || t('cfg.common.unknownError', null, 'Unknown error');
+            showToast(t('cfg.reset.toastFailed', { error: errMsg }, `Reset failed: ${errMsg}`));
         }
     };
 
@@ -1110,131 +1397,180 @@ const SettingsModalContent = () => {
         { 
             id: 'appearance', 
             label: t('settings.tabs.appearance', null, 'Appearance & Themes'), 
+            englishLabel: 'Appearance & Themes',
             icon: Palette, 
             color: 'text-purple-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.appearance', null, ''),
             keywords: ['theme', 'dark mode', 'smart dark', 'light', 'wallpaper', 'live wallpaper', 'gif', 'video loop', 'presets', 'preset studio', 'accent color', 'glass', 'blur', 'translucency', 'colors', 'curvature'] 
         },
         { 
             id: 'layout', 
             label: t('settings.tabs.layout', null, 'Layout & Interface'), 
+            englishLabel: 'Layout & Interface',
             icon: Layout, 
             color: 'text-amber-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.layout', null, ''),
             keywords: ['sidebar', 'top bar', 'bottom bar', 'omnibox', 'window controls', 'close minimize maximize', 'tabs', 'tab layout', 'density', 'pills', 'cards', 'ui scale', 'compact', 'toolhub'] 
         },
         { 
             id: 'typography', 
             label: t('settings.tabs.typography', null, 'Typography & Fonts'), 
+            englishLabel: 'Typography & Fonts',
             icon: Type, 
             color: 'text-rose-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.typography', null, ''),
             keywords: ['font', 'typography', 'custom font', 'google font', 'system font', 'font scale', 'letter spacing', 'text size', 'typeface', 'weight', 'ttf', 'otf', 'woff'] 
         },
         { 
             id: 'spaces', 
             label: t('settings.tabs.spaces', null, 'Workspaces'), 
+            englishLabel: 'Workspaces',
             icon: Layers, 
             color: 'text-indigo-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.spaces', null, ''),
             keywords: ['workspace', 'spaces', 'personal', 'work', 'swipe', 'switch', 'reorder', 'custom spaces', 'space tabs'] 
         },
         { 
             id: 'language', 
             label: t('settings.tabs.language', null, 'Language & Region'), 
+            englishLabel: 'Language & Region',
             icon: Languages, 
             color: 'text-sky-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.language', null, ''),
             keywords: ['language', 'translation', 'locale', 'region', 'polish', 'french', 'german', 'spanish', 'portuguese', 'chinese', 'japanese', 'russian', 'italian', 'ukrainian', 'korean', 'język', 'idioma', 'sprache', 'langue', 'lingua', 'язык', '语言', '言語', '언어'] 
         },
         { 
             id: 'accessibility', 
             label: t('settings.tabs.accessibility', null, 'Accessibility'), 
+            englishLabel: 'Accessibility',
             icon: Eye, 
             color: 'text-teal-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.accessibility', null, ''),
             keywords: ['reduced motion', 'motion', 'animations', 'disable animations', 'system sync', 'os sync', 'windows sync', 'dyslexia font', 'high contrast', 'focus rings', 'font size', 'zoom', 'caret browsing', 'autoplay', 'captions', 'mono audio', 'vestibular'] 
         },
         { 
             id: 'privacy', 
             label: t('settings.tabs.privacy', null, 'Privacy & Security'), 
+            englishLabel: 'Privacy & Security',
             icon: Lock, 
             color: 'text-emerald-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.privacy', null, ''),
             keywords: ['tor', 'onion', 'ghost', 'incognito', 'doh', 'dns over https', 'history', 'cache', 'clear browsing data', 'vault', 'passwords', 'autofill', 'https', 'telemetry', 'webrtc', 'leak'] 
         },
         { 
             id: 'cookies', 
             label: t('settings.tabs.cookies', null, 'Cookies & Permissions'), 
+            englishLabel: 'Cookies & Permissions',
             icon: Cookie, 
             color: 'text-amber-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.cookies', null, ''),
             keywords: ['cookies', 'permissions', 'camera', 'microphone', 'geolocation', 'location', 'notifications', 'popups', 'storage', 'data', 'site data'] 
         },
         { 
             id: 'search', 
             label: t('settings.tabs.search', null, 'Search & Omnibox'), 
+            englishLabel: 'Search & Omnibox',
             icon: Search, 
             color: 'text-sky-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.search', null, ''),
             keywords: ['search engine', 'google', 'duckduckgo', 'bing', 'brave', 'ecosia', 'custom search', 'bangs', 'shortcuts', 'omnibox', 'suggestions', 'autocomplete', 'weather', 'calculator'] 
         },
         { 
             id: 'downloads', 
             label: t('settings.tabs.downloads', null, 'Downloads & Media'), 
+            englishLabel: 'Downloads & Media',
             icon: Download, 
             color: 'text-blue-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.downloads', null, ''),
             keywords: ['downloads', 'download folder', 'ask where to save', 'media player', 'audio', 'video', 'pdf', 'files', 'shelf'] 
         },
         { 
             id: 'workmode', 
             label: t('settings.tabs.workmode', null, 'Work Mode & GitHub'), 
+            englishLabel: 'Work Mode & GitHub',
             icon: GitPullRequest, 
             color: 'text-emerald-400', 
             category: 'Preferences',
+            categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
+            localizedKeywords: t('cfg.navKeywords.workmode', null, ''),
             keywords: ['github', 'pull requests', 'prs', 'issues', 'notifications', 'token', 'pat', 'git', 'work', 'developer'] 
         },
         { 
             id: 'ai', 
-            label: t('settings.tabs.ai', null, 'AI & llama.cpp Engine'), 
+            label: t('settings.tabs.ai', null, 'AI & Gemma Engine'), 
+            englishLabel: 'AI & llama.cpp Engine',
             icon: Sparkles, 
             color: 'text-violet-400', 
             category: 'Advanced',
+            categoryLabel: t('settings.categories.advanced', null, 'Advanced'),
+            localizedKeywords: t('cfg.navKeywords.ai', null, ''),
             keywords: ['ai', 'gemma', 'llama', 'model', 'local ai', 'chat', 'summarize', 'reader', 'llm', 'gpu layers', 'threads', 'context length'] 
         },
         { 
             id: 'engine', 
             label: t('settings.tabs.engine', null, 'Engine & Performance'), 
+            englishLabel: 'Engine & Performance',
             icon: Cpu, 
             color: 'text-rose-400', 
             category: 'Advanced',
+            categoryLabel: t('settings.categories.advanced', null, 'Advanced'),
+            localizedKeywords: t('cfg.navKeywords.engine', null, ''),
             keywords: ['gpu', 'hardware acceleration', 'performance', 'eco mode', 'ultra mode', 'memory', 'ram', 'tab suspension', 'bfcache', 'instant cache', 'battery', 'cpu', 'power'] 
         },
         { 
             id: 'adblock', 
             label: t('settings.tabs.adblock', null, 'Shields & AdBlock'), 
+            englishLabel: 'Shields & AdBlock',
             icon: Shield, 
             color: 'text-emerald-400', 
             category: 'Advanced',
+            categoryLabel: t('settings.categories.advanced', null, 'Advanced'),
+            localizedKeywords: t('cfg.navKeywords.adblock', null, ''),
             keywords: ['adblock', 'shields', 'trackers', 'ads', 'blocker', 'easylist', 'ublock', 'custom blocklist', 'rules', 'whitelisted domains', 'anti-adblock', 'dnr'] 
         },
         { 
             id: 'about', 
             label: t('settings.tabs.about', null, 'About & System Info'), 
+            englishLabel: 'About & System Info',
             icon: Info, 
             color: 'text-cyan-400', 
             category: 'System',
+            categoryLabel: t('cfg.categories.system', null, 'System'),
+            localizedKeywords: t('cfg.navKeywords.about', null, ''),
             keywords: ['version', 'update', 'check for updates', 'changelog', 'default browser', 'license', 'credits', 'system info', 'diagnostics', 'hardware profile'] 
         }
     ];
 
     const trimmedQuery = (searchFilter || '').trim().toLowerCase();
     const filteredNavTabs = trimmedQuery
-        ? navTabs.filter(t => 
-            t.label.toLowerCase().includes(trimmedQuery) || 
-            t.category.toLowerCase().includes(trimmedQuery) ||
-            (Array.isArray(t.keywords) && t.keywords.some(kw => kw.toLowerCase().includes(trimmedQuery)))
+        ? navTabs.filter(tab => 
+            tab.label.toLowerCase().includes(trimmedQuery) || 
+            (tab.englishLabel && tab.englishLabel.toLowerCase().includes(trimmedQuery)) ||
+            tab.category.toLowerCase().includes(trimmedQuery) ||
+            (tab.categoryLabel && tab.categoryLabel.toLowerCase().includes(trimmedQuery)) ||
+            (tab.localizedKeywords && tab.localizedKeywords.toLowerCase().includes(trimmedQuery)) ||
+            (ALL_TAB_SEARCH_TEXT[tab.id] && ALL_TAB_SEARCH_TEXT[tab.id].includes(trimmedQuery)) ||
+            (Array.isArray(tab.keywords) && tab.keywords.some(kw => kw.toLowerCase().includes(trimmedQuery)))
           )
         : navTabs;
 
@@ -1276,7 +1612,7 @@ const SettingsModalContent = () => {
                                 className="w-4 h-4 object-contain rounded drop-shadow" 
                                 onError={(e) => { e.currentTarget.style.display = 'none'; }} 
                             />
-                            Settings
+                            {t('settings.title', null, 'Settings')}
                         </h2>
                         <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
                             isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]'
@@ -1381,11 +1717,11 @@ const SettingsModalContent = () => {
                             <div className="flex items-center gap-1.5 text-red-400">
                                 <AlertTriangle size={13} className="flex-shrink-0 text-red-500" />
                                 <span className={`text-[11px] font-semibold ${isBright ? 'text-rose-900' : 'text-red-200'}`}>
-                                    Reset all settings?
+                                    {t('cfg.reset.confirmTitle', null, 'Reset all settings?')}
                                 </span>
                             </div>
                             <p className={`text-[10px] leading-tight ${isBright ? 'text-rose-700/80' : 'text-red-300/70'}`}>
-                                Restores Balanced preset, dark theme, and clears customized layouts &amp; shields.
+                                {t('cfg.reset.confirmDesc', null, 'Restores Balanced preset, dark theme, and clears customized layouts & shields.')}
                             </p>
                             <div className="flex items-center gap-1.5 mt-0.5">
                                 <button
@@ -1397,14 +1733,14 @@ const SettingsModalContent = () => {
                                             : 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10'
                                     }`}
                                 >
-                                    Cancel
+                                    {t('cfg.common.cancel', null, 'Cancel')}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleResetAllSettings}
                                     className="flex-1 py-1 rounded-lg text-[10px] font-bold bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-xs transition"
                                 >
-                                    Reset All
+                                    {t('cfg.reset.confirmBtn', null, 'Reset All')}
                                 </button>
                             </div>
                         </div>
@@ -1417,9 +1753,9 @@ const SettingsModalContent = () => {
                                     ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200' 
                                     : 'bg-red-500/10 hover:bg-red-500/15 text-red-400 border-red-500/20'
                             }`}
-                            title="Reset all QBrowse settings to factory defaults"
+                            title={t('cfg.reset.buttonTitle', null, 'Reset all QBrowse settings to factory defaults')}
                         >
-                            <RotateCcw size={12} /> Reset Defaults
+                            <RotateCcw size={12} /> {t('cfg.reset.buttonLabel', null, 'Reset Defaults')}
                         </button>
                     )}
                 </div>
@@ -1437,7 +1773,7 @@ const SettingsModalContent = () => {
                             ? 'bg-white/80 hover:bg-white border-black/10 text-zinc-600 hover:text-zinc-900 shadow-sm' 
                             : 'bg-[#090a0f]/80 hover:bg-[#090a0f] border-white/10 text-zinc-400 hover:text-white shadow-sm'
                     }`}
-                    title="Close Settings (Esc)"
+                    title={t('cfg.reset.closeTitle', null, 'Close Settings (Esc)')}
                 >
                     <X size={16} className="pointer-events-none transition-transform duration-200 group-hover:rotate-90" />
                 </button>
@@ -1451,9 +1787,9 @@ const SettingsModalContent = () => {
                     {settingsTab === 'appearance' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Appearance &amp; Themes</h3>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.appearance.title', null, 'Appearance & Themes')}</h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Customize color themes, browsing presets, wallpapers, live playback, and surface glass effects.
+                                    {t('cfg.appearance.subtitle', null, 'Customize color themes, browsing presets, wallpapers, live playback, and surface glass effects.')}
                                 </p>
                             </div>
 
@@ -1461,20 +1797,20 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Palette}
-                                    title="Color Theme & Accent"
-                                    subtitle="Select your primary interface surface and accent color."
+                                    title={t('cfg.appearance.colorThemeTitle', null, 'Color Theme & Accent')}
+                                    subtitle={t('cfg.appearance.colorThemeDesc', null, 'Select your primary interface surface and accent color.')}
                                 />
 
                                 <SettingCard
                                     icon={theme === 'light' ? Sun : Moon}
-                                    title="Browser Interface Theme"
-                                    description="Switch between dark obsidian and bright frosted interface."
+                                    title={t('cfg.appearance.interfaceThemeTitle', null, 'Browser Interface Theme')}
+                                    description={t('cfg.appearance.interfaceThemeDesc', null, 'Switch between dark obsidian and bright frosted interface.')}
                                 >
                                     <div className="min-w-[190px]">
                                         <SlidingPillSwitcher
                                             options={[
-                                                { id: 'dark', label: 'Dark', icon: Moon },
-                                                { id: 'light', label: 'Bright', icon: Sun }
+                                                { id: 'dark', label: t('cfg.appearance.themeDark', null, 'Dark'), icon: Moon },
+                                                { id: 'light', label: t('cfg.appearance.themeBright', null, 'Bright'), icon: Sun }
                                             ]}
                                             value={theme === 'light' ? 'light' : 'dark'}
                                             onChange={(val) => setTheme(val)}
@@ -1496,23 +1832,23 @@ const SettingsModalContent = () => {
                                             </div>
                                             <div className="min-w-0">
                                                 <p className={`font-medium text-xs ${isBright ? 'text-zinc-800 font-semibold' : 'text-zinc-200'}`}>
-                                                    Accent Color
+                                                    {t('cfg.appearance.accentColorTitle', null, 'Accent Color')}
                                                 </p>
                                                 <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Rewrites all glass highlights, shadows, and active states instantly.
+                                                    {t('cfg.appearance.accentColorDesc', null, 'Rewrites all glass highlights, shadows, and active states instantly.')}
                                                 </p>
                                             </div>
                                         </div>
 
                                         <div className="flex gap-2.5 items-center flex-wrap flex-shrink-0">
                                             {[
-                                                { hex: '#d4bc94', name: 'Sand' },
-                                                { hex: '#3b82f6', name: 'Ocean' },
-                                                { hex: '#10b981', name: 'Emerald' },
-                                                { hex: '#8b5cf6', name: 'Amethyst' },
-                                                { hex: '#f43f5e', name: 'Rose' },
-                                                { hex: '#f97316', name: 'Sunset' },
-                                                { hex: '#06b6d4', name: 'Cyber' }
+                                                { hex: '#d4bc94', name: t('cfg.appearance.accents.sand', null, 'Sand') },
+                                                { hex: '#3b82f6', name: t('cfg.appearance.accents.ocean', null, 'Ocean') },
+                                                { hex: '#10b981', name: t('cfg.appearance.accents.emerald', null, 'Emerald') },
+                                                { hex: '#8b5cf6', name: t('cfg.appearance.accents.amethyst', null, 'Amethyst') },
+                                                { hex: '#f43f5e', name: t('cfg.appearance.accents.rose', null, 'Rose') },
+                                                { hex: '#f97316', name: t('cfg.appearance.accents.sunset', null, 'Sunset') },
+                                                { hex: '#06b6d4', name: t('cfg.appearance.accents.cyber', null, 'Cyber') }
                                             ].map((c) => (
                                                 <button
                                                     key={c.hex}
@@ -1557,52 +1893,235 @@ const SettingsModalContent = () => {
 
                                 <SettingCard
                                     icon={Eye}
-                                    title="Smart Dark Mode (Websites)"
-                                    description="Smart luminosity engine inverts light websites while preserving native dark sites."
+                                    title={t('cfg.appearance.smartDarkTitle', null, 'Smart Dark Mode (Websites)')}
+                                    description={t('cfg.appearance.smartDarkDesc', null, 'Smart luminosity engine inverts light websites while preserving native dark sites.')}
                                 >
                                     <SettingToggle isChecked={isForceDark} onToggle={() => setIsForceDark(!isForceDark)} />
                                 </SettingCard>
 
-                                <div className={`p-3.5 px-4 rounded-xl border space-y-2 ${
-                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
-                                }`}>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                            Smart Dark Mode Excluded Domains
-                                        </p>
-                                        <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            One per line
-                                        </span>
-                                    </div>
-                                    <textarea
-                                        value={localDarkExclusions}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            setLocalDarkExclusions(val);
-                                            const parsed = val.split('\n').map(s => s.trim()).filter(Boolean);
-                                            setDarkExclusions(parsed);
-                                        }}
-                                        onBlur={() => {
-                                            const cleaned = (localDarkExclusions || '').split('\n').map(s => s.trim()).filter(Boolean);
-                                            setDarkExclusions(cleaned);
-                                            setLocalDarkExclusions(cleaned.join('\n'));
-                                        }}
-                                        placeholder={"example.com\ngithub.com"}
-                                        className={`w-full h-20 border rounded-xl p-2.5 text-xs font-mono resize-none outline-none focus:border-accent transition-colors ${
-                                            isBright
-                                                ? 'bg-white border-black/[0.08] text-zinc-900 placeholder:text-zinc-400'
-                                                : 'bg-black/40 border-white/[0.06] text-white/80 placeholder:text-white/30'
-                                        }`}
-                                    />
-                                </div>
+                                <SettingCard
+                                    icon={ImageIcon}
+                                    title={t('cfg.appearance.smartDarkExcludeMediaTitle', null, 'Exclude Images & Videos')}
+                                    description={t('cfg.appearance.smartDarkExcludeMediaDesc', null, 'Keep photos, videos, canvas, and embedded players in natural colors instead of inverting them.')}
+                                >
+                                    <SettingToggle isChecked={darkExcludeMedia} onToggle={() => setDarkExcludeMedia(!darkExcludeMedia)} />
+                                </SettingCard>
+
+                                {(() => {
+                                    const exclusionsList = Array.isArray(darkExclusions) ? darkExclusions : [];
+                                    const searchQuery = darkWhitelistSearch.trim().toLowerCase();
+                                    const filteredExclusions = searchQuery
+                                        ? exclusionsList.filter(d => d.toLowerCase().includes(searchQuery))
+                                        : exclusionsList;
+
+                                    return (
+                                        <div className={`p-4 rounded-2xl border space-y-3 ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                        }`}>
+                                            {/* Header with Count Badge, Active Status & Quick Actions */}
+                                            <div className="flex items-start justify-between gap-2 flex-wrap">
+                                                <div className="space-y-0.5">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <p className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
+                                                            {t('cfg.appearance.excludedDomainsTitle', null, 'Smart Dark Mode Whitelist')}
+                                                        </p>
+                                                        <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md border ${
+                                                            isBright
+                                                                ? 'bg-white border-black/10 text-zinc-600'
+                                                                : 'bg-white/[0.05] border-white/10 text-zinc-300'
+                                                        }`}>
+                                                            {exclusionsList.length}
+                                                        </span>
+                                                        <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                                                            isForceDark
+                                                                ? (isBright
+                                                                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700'
+                                                                    : 'bg-emerald-500/10 border-emerald-400/25 text-emerald-300')
+                                                                : (isBright
+                                                                    ? 'bg-black/[0.04] border-black/[0.08] text-zinc-500'
+                                                                    : 'bg-white/[0.04] border-white/[0.08] text-zinc-400')
+                                                        }`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${isForceDark ? 'bg-emerald-400' : (isBright ? 'bg-zinc-400' : 'bg-zinc-500')}`} />
+                                                            {isForceDark
+                                                                ? t('cfg.appearance.smartDarkStatusOn', null, 'Force Dark On')
+                                                                : t('cfg.appearance.smartDarkStatusOff', null, 'Force Dark Off')}
+                                                        </span>
+                                                    </div>
+                                                    <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        {t(
+                                                            'cfg.appearance.excludedDomainsDesc',
+                                                            null,
+                                                            'Sites listed here (and their subdomains) keep their native theme. Paste any domain, full URL, or *.domain.com wildcard.'
+                                                        )}
+                                                    </p>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleResetDarkWhitelist}
+                                                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition cursor-pointer active:scale-95 ${
+                                                            isBright
+                                                                ? 'bg-white border-black/10 text-zinc-700 hover:bg-black/5 hover:text-zinc-950'
+                                                                : 'bg-white/[0.04] border-white/10 text-zinc-300 hover:bg-white/[0.08] hover:text-white'
+                                                        }`}
+                                                        title={t('cfg.appearance.whitelistResetTooltip', null, 'Restore recommended natively-dark sites')}
+                                                    >
+                                                        <RotateCcw size={11} />
+                                                        <span>{t('cfg.appearance.whitelistResetBtn', null, 'Reset Defaults')}</span>
+                                                    </button>
+                                                    {exclusionsList.length > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleClearDarkWhitelist}
+                                                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition cursor-pointer active:scale-95 ${
+                                                                isBright
+                                                                    ? 'bg-white border-rose-500/20 text-rose-600 hover:bg-rose-500/10'
+                                                                    : 'bg-rose-500/[0.08] border-rose-500/20 text-rose-300 hover:bg-rose-500/15'
+                                                            }`}
+                                                            title={t('cfg.appearance.whitelistClearTooltip', null, 'Remove all excluded domains')}
+                                                        >
+                                                            <Trash2 size={11} />
+                                                            <span>{t('cfg.common.clear', null, 'Clear')}</span>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Add Domain / URL Form */}
+                                            <form onSubmit={handleAddDarkWhitelist} className="space-y-1.5">
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={darkWhitelistInput}
+                                                        onChange={(e) => {
+                                                            setDarkWhitelistInput(e.target.value);
+                                                            if (darkWhitelistError) setDarkWhitelistError('');
+                                                        }}
+                                                        placeholder={t('cfg.appearance.whitelistInputPlaceholder', null, 'e.g. github.com, https://docs.site.com, or *.example.com')}
+                                                        className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
+                                                            darkWhitelistError
+                                                                ? 'border-rose-500/60 focus:border-rose-500'
+                                                                : (isBright
+                                                                    ? 'bg-white border-black/15 text-zinc-900 placeholder:text-zinc-400 focus:border-accent'
+                                                                    : 'bg-black/40 border-white/[0.08] text-white placeholder:text-white/30 focus:border-accent')
+                                                        } ${isBright ? 'bg-white text-zinc-900' : 'bg-black/40 text-white'}`}
+                                                    />
+                                                    <button
+                                                        type="submit"
+                                                        disabled={!darkWhitelistInput.trim()}
+                                                        className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95 shadow-xs"
+                                                    >
+                                                        <Plus size={13} strokeWidth={2.5} />
+                                                        <span>{t('cfg.common.add', null, 'Add')}</span>
+                                                    </button>
+                                                </div>
+
+                                                {darkWhitelistError && (
+                                                    <p className="text-[11px] text-rose-400 flex items-center gap-1.5 pl-1">
+                                                        <AlertCircle size={11} className="flex-shrink-0" />
+                                                        <span>{darkWhitelistError}</span>
+                                                    </p>
+                                                )}
+
+                                                {!darkWhitelistError && normalizedDarkInputPreview && (
+                                                    <p className={`text-[11px] flex items-center gap-1.5 pl-1 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        <span>{t('cfg.appearance.whitelistWillAdd', null, 'Will add:')}</span>
+                                                        <span className={`font-mono font-semibold px-1.5 py-0.5 rounded ${
+                                                            isBright ? 'bg-black/[0.05] text-zinc-800' : 'bg-white/[0.07] text-accent'
+                                                        }`}>
+                                                            {normalizedDarkInputPreview}
+                                                        </span>
+                                                    </p>
+                                                )}
+                                            </form>
+
+                                            {/* Search / Filter Input when list has multiple entries */}
+                                            {exclusionsList.length > 4 && (
+                                                <div className={`relative flex items-center rounded-xl border px-2.5 ${
+                                                    isBright
+                                                        ? 'bg-white/80 border-black/[0.08] focus-within:border-accent'
+                                                        : 'bg-black/30 border-white/[0.06] focus-within:border-accent/60'
+                                                }`}>
+                                                    <Search size={12} className={isBright ? 'text-zinc-400' : 'text-white/35'} />
+                                                    <input
+                                                        type="text"
+                                                        value={darkWhitelistSearch}
+                                                        onChange={(e) => setDarkWhitelistSearch(e.target.value)}
+                                                        placeholder={t('cfg.appearance.whitelistSearchPlaceholder', null, 'Filter excluded domains...')}
+                                                        className={`flex-1 min-w-0 bg-transparent border-none outline-none px-2 py-1.5 text-xs ${
+                                                            isBright ? 'text-zinc-800 placeholder:text-zinc-400' : 'text-white/90 placeholder:text-white/30'
+                                                        }`}
+                                                    />
+                                                    {searchQuery && (
+                                                        <span className={`text-[10px] font-mono mr-1.5 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                                            {filteredExclusions.length}/{exclusionsList.length}
+                                                        </span>
+                                                    )}
+                                                    {darkWhitelistSearch && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDarkWhitelistSearch('')}
+                                                            className={`p-0.5 rounded transition cursor-pointer ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/35 hover:text-white'}`}
+                                                        >
+                                                            <X size={11} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Excluded Domain Pills */}
+                                            <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto hide-scroll pt-0.5">
+                                                {exclusionsList.length === 0 ? (
+                                                    <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/35'}`}>
+                                                        {t('cfg.appearance.whitelistEmpty', null, 'No excluded domains. Smart Dark Mode will evaluate all websites automatically.')}
+                                                    </span>
+                                                ) : filteredExclusions.length === 0 ? (
+                                                    <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/35'}`}>
+                                                        {t('cfg.appearance.whitelistNoMatches', { query: darkWhitelistSearch }, `No whitelisted domains matching "${darkWhitelistSearch}".`)}
+                                                    </span>
+                                                ) : (
+                                                    filteredExclusions.map((domain) => {
+                                                        const isWildcard = domain.startsWith('*.');
+                                                        return (
+                                                            <span
+                                                                key={domain}
+                                                                className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-mono border transition ${
+                                                                    isWildcard
+                                                                        ? (isBright
+                                                                            ? 'bg-amber-500/[0.08] border-amber-500/25 text-amber-900 shadow-xs'
+                                                                            : 'bg-accent/10 border-accent/25 text-accent')
+                                                                        : (isBright
+                                                                            ? 'bg-white border-black/10 text-zinc-800 shadow-xs'
+                                                                            : 'bg-white/[0.04] border-white/10 text-zinc-200')
+                                                                }`}
+                                                            >
+                                                                <Globe size={11} className={isWildcard ? 'text-accent opacity-90' : (isBright ? 'text-zinc-400' : 'text-white/35')} />
+                                                                <span>{domain}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveDarkWhitelist(domain)}
+                                                                    className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
+                                                                    title={t('cfg.common.remove', null, 'Remove')}
+                                                                >
+                                                                    <X size={11} />
+                                                                </button>
+                                                            </span>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* 2. QUICK PRESETS */}
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Sparkles}
-                                    title="Quick Presets"
-                                    subtitle="Apply curated interface themes or open Preset Studio."
+                                    title={t('cfg.appearance.quickPresetsTitle', null, 'Quick Presets')}
+                                    subtitle={t('cfg.appearance.quickPresetsDesc', null, 'Apply curated interface themes or open Preset Studio.')}
                                     action={
                                         <button
                                             type="button"
@@ -1614,7 +2133,7 @@ const SettingsModalContent = () => {
                                             }`}
                                         >
                                             <Sliders size={13} strokeWidth={2} />
-                                            <span>Preset Studio &rarr;</span>
+                                            <span>{t('cfg.appearance.presetStudioArrow', null, 'Preset Studio')} &rarr;</span>
                                         </button>
                                     }
                                 />
@@ -1623,13 +2142,16 @@ const SettingsModalContent = () => {
                                     {[...EXPERIENCE_PRESETS, ...(customPresets || [])].map((p) => {
                                         const PresetIcon = getPresetIcon(p.icon);
                                         const isSelected = (storeActivePresetId || activePresetId) === p.id;
-                                        const tagline = PRESET_TAGLINES[p.id] || p.tagline;
+                                        const rawTagline = PRESET_TAGLINES[p.id] || p.tagline;
+                                        const displayName = p.isCustom ? p.name : t(`cfg.presets.${p.id}.name`, null, p.name);
+                                        const displayTagline = p.isCustom ? rawTagline : t(`cfg.presets.${p.id}.tagline`, null, rawTagline);
 
                                         const handleActivate = () => {
+                                            const toastTarget = showToast || useUIStore.getState().showToast;
                                             applyExperiencePreset(p, {
                                                 uiStore: useUIStore.getState(),
                                                 tabStore: useTabStore.getState(),
-                                                showToast: showToast || useUIStore.getState().showToast
+                                                showToast: () => toastTarget?.(t('cfg.presets.appliedToast', { name: displayName }, `Preset Applied: ${displayName}`))
                                             });
                                             setActivePresetId(p.id);
                                             setStoreActivePresetId?.(p.id);
@@ -1665,7 +2187,7 @@ const SettingsModalContent = () => {
                                                             <PresetIcon size={14} />
                                                         </div>
                                                         <div className="flex items-center gap-1.5 min-w-0">
-                                                            <span className="text-xs font-bold truncate">{p.name}</span>
+                                                            <span className="text-xs font-bold truncate">{displayName}</span>
                                                             {isSelected && (
                                                                 <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
                                                             )}
@@ -1680,7 +2202,7 @@ const SettingsModalContent = () => {
                                                                     e.stopPropagation();
                                                                     openStudio(p.id);
                                                                 }}
-                                                                title="Edit in Preset Studio"
+                                                                title={t('cfg.appearance.editInStudio', null, 'Edit in Preset Studio')}
                                                                 className={`p-1 rounded-lg border transition cursor-pointer ${
                                                                     isBright ? 'border-black/[0.07] hover:bg-black/5 text-zinc-600 hover:text-zinc-900' : 'border-white/[0.06] hover:bg-white/10 text-zinc-400 hover:text-white'
                                                                 }`}
@@ -1694,7 +2216,7 @@ const SettingsModalContent = () => {
                                                                 e.stopPropagation();
                                                                 duplicatePreset(p.id);
                                                             }}
-                                                            title="Duplicate Preset"
+                                                            title={t('cfg.appearance.duplicatePreset', null, 'Duplicate Preset')}
                                                             className={`p-1 rounded-lg border transition cursor-pointer ${
                                                                 isBright ? 'border-black/[0.07] hover:bg-black/5 text-zinc-600' : 'border-white/[0.06] hover:bg-white/10 text-zinc-400 hover:text-white'
                                                             }`}
@@ -1708,7 +2230,7 @@ const SettingsModalContent = () => {
                                                                     e.stopPropagation();
                                                                     deleteCustomPreset(p.id);
                                                                 }}
-                                                                title="Delete Custom Preset"
+                                                                title={t('cfg.appearance.deleteCustomPreset', null, 'Delete Custom Preset')}
                                                                 className="p-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
                                                             >
                                                                 <Trash2 size={11} />
@@ -1731,7 +2253,7 @@ const SettingsModalContent = () => {
                                                     className="w-full text-left cursor-pointer outline-none"
                                                 >
                                                     <p className={`text-[11px] leading-snug line-clamp-1 ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                                        {tagline}
+                                                        {displayTagline}
                                                     </p>
                                                 </button>
                                             </div>
@@ -1744,8 +2266,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={ImageIcon}
-                                    title="Wallpaper & Backdrop"
-                                    subtitle="Customize homepage backgrounds, live video/GIF wallpapers, and transitions."
+                                    title={t('cfg.appearance.wallpaperTitle', null, 'Wallpaper & Backdrop')}
+                                    subtitle={t('cfg.appearance.wallpaperDesc', null, 'Customize homepage backgrounds, live video/GIF wallpapers, and transitions.')}
                                     action={
                                         customWallpaper && (
                                             <button
@@ -1756,10 +2278,10 @@ const SettingsModalContent = () => {
                                                         ? 'bg-black/[0.02] text-zinc-700 hover:text-zinc-950 border-black/[0.07] hover:bg-black/5'
                                                         : 'bg-white/[0.02] text-zinc-300 hover:text-white border-white/[0.06] hover:bg-white/[0.06]'
                                                 }`}
-                                                title="Reset to default wallpaper"
+                                                title={t('cfg.appearance.resetWallpaperTitle', null, 'Reset to default wallpaper')}
                                             >
                                                 <RotateCcw size={12} />
-                                                <span>Reset to Default</span>
+                                                <span>{t('cfg.appearance.resetToDefault', null, 'Reset to Default')}</span>
                                             </button>
                                         )
                                     }
@@ -1785,23 +2307,23 @@ const SettingsModalContent = () => {
                                         <div className="flex-1 min-w-0 space-y-1">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                    Active Source:
+                                                    {t('cfg.appearance.activeSource', null, 'Active Source:')}
                                                 </span>
                                                 <span className="text-xs font-mono font-semibold text-accent">
-                                                    {getWallpaperBadgeLabel(customWallpaper, customWallpaperSource)}
+                                                    {getLocalizedWallpaperBadge(customWallpaper, customWallpaperSource)}
                                                 </span>
                                                 {customWallpaperSource === 'file' && (
                                                     <span className={`text-[10px] italic ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                        (Local only, skipped during cloud sync)
+                                                        {t('cfg.appearance.localOnlyNote', null, '(Local only, skipped during cloud sync)')}
                                                     </span>
                                                 )}
                                             </div>
                                             <p className={`text-[11px] leading-relaxed truncate ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                 {!customWallpaper 
-                                                    ? 'Default dynamic landscape wallpaper is active. Import your own photo, GIF, or looping video to personalize your workspace.'
+                                                    ? t('cfg.appearance.wallpaperDescDefault', null, 'Default dynamic landscape wallpaper is active. Import your own photo, GIF, or looping video to personalize your workspace.')
                                                     : customWallpaperSource === 'file'
-                                                        ? 'Using an imported local media file stored safely in your application data directory.'
-                                                        : `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`}
+                                                        ? t('cfg.appearance.wallpaperDescFile', null, 'Using an imported local media file stored safely in your application data directory.')
+                                                        : t('cfg.appearance.wallpaperDescUrl', { url: customWallpaperOriginalUrl || customWallpaper }, `Loaded from web URL: ${customWallpaperOriginalUrl || customWallpaper}`)}
                                             </p>
                                         </div>
                                     </div>
@@ -1815,10 +2337,10 @@ const SettingsModalContent = () => {
                                             <div>
                                                 <p className={`text-xs font-medium flex items-center gap-1.5 ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
                                                     <Upload size={13} className="text-accent" />
-                                                    <span>Choose from Hard Drive</span>
+                                                    <span>{t('cfg.appearance.chooseFromDrive', null, 'Choose from Hard Drive')}</span>
                                                 </p>
                                                 <p className={`text-[11px] mt-1 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Pick a JPG, PNG, WebP, GIF, or MP4/WebM video from your PC. Automatically saved into app storage.
+                                                    {t('cfg.appearance.chooseFromDriveDesc', null, 'Pick a JPG, PNG, WebP, GIF, or MP4/WebM video from your PC. Automatically saved into app storage.')}
                                                 </p>
                                             </div>
                                             <button
@@ -1836,7 +2358,7 @@ const SettingsModalContent = () => {
                                                 ) : (
                                                     <Upload size={13} />
                                                 )}
-                                                <span>{isImportingFile ? 'Importing...' : 'Browse Media File...'}</span>
+                                                <span>{isImportingFile ? t('cfg.appearance.importing', null, 'Importing...') : t('cfg.appearance.browseMediaFile', null, 'Browse Media File...')}</span>
                                             </button>
                                         </div>
 
@@ -1847,10 +2369,10 @@ const SettingsModalContent = () => {
                                             <div>
                                                 <p className={`text-xs font-medium flex items-center gap-1.5 ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
                                                     <LinkIcon size={13} className="text-accent" />
-                                                    <span>Import from Web URL</span>
+                                                    <span>{t('cfg.appearance.importFromUrl', null, 'Import from Web URL')}</span>
                                                 </p>
                                                 <p className={`text-[11px] mt-1 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Paste any public image, GIF, or video URL (.mp4, .webm). Cached locally and synced across devices.
+                                                    {t('cfg.appearance.importFromUrlDesc', null, 'Paste any public image, GIF, or video URL (.mp4, .webm). Cached locally and synced across devices.')}
                                                 </p>
                                             </div>
                                             <form onSubmit={handleImportWallpaperUrl} className="flex gap-2">
@@ -1873,7 +2395,7 @@ const SettingsModalContent = () => {
                                                     {isImportingUrl ? (
                                                         <RefreshCw size={12} className="animate-spin" />
                                                     ) : (
-                                                        <span>Apply</span>
+                                                        <span>{t('cfg.common.apply', null, 'Apply')}</span>
                                                     )}
                                                 </button>
                                             </form>
@@ -1883,8 +2405,8 @@ const SettingsModalContent = () => {
 
                                 <SettingCard
                                     icon={Sliders}
-                                    title="Backdrop Contrast Dimming"
-                                    description="Adjust dark overlay to ensure text and tab readability over bright wallpapers."
+                                    title={t('cfg.appearance.dimmingTitle', null, 'Backdrop Contrast Dimming')}
+                                    description={t('cfg.appearance.dimmingDesc', null, 'Adjust dark overlay to ensure text and tab readability over bright wallpapers.')}
                                 >
                                     <div className="flex items-center gap-3 flex-shrink-0">
                                         <input
@@ -1902,8 +2424,8 @@ const SettingsModalContent = () => {
 
                                 <SettingCard
                                     icon={ImageIcon}
-                                    title="Blur Wallpaper Background"
-                                    description="When disabled, the wallpaper stays crisp and sharp while UI panels retain frosted glass blur."
+                                    title={t('cfg.appearance.blurWallpaperTitle', null, 'Blur Wallpaper Background')}
+                                    description={t('cfg.appearance.blurWallpaperDesc', null, 'When disabled, the wallpaper stays crisp and sharp while UI panels retain frosted glass blur.')}
                                 >
                                     <SettingToggle
                                         isChecked={!!blurWallpaper}
@@ -1915,15 +2437,15 @@ const SettingsModalContent = () => {
                                     <>
                                         <SettingCard
                                             icon={RotateCcw}
-                                            title="Live Wallpaper Loop Mode"
-                                            description="Choose how video and animated GIF wallpapers transition between cycles."
+                                            title={t('cfg.appearance.loopModeTitle', null, 'Live Wallpaper Loop Mode')}
+                                            description={t('cfg.appearance.loopModeDesc', null, 'Choose how video and animated GIF wallpapers transition between cycles.')}
                                         >
                                             <div className="min-w-[260px]">
                                                 <SlidingPillSwitcher
                                                     options={[
-                                                        { id: 'crossfade', label: 'Cross-Dissolve' },
-                                                        { id: 'dip', label: 'Ambient Dip' },
-                                                        { id: 'cut', label: 'Instant Cut' }
+                                                        { id: 'crossfade', label: t('cfg.appearance.loopCrossfade', null, 'Cross-Dissolve') },
+                                                        { id: 'dip', label: t('cfg.appearance.loopDip', null, 'Ambient Dip') },
+                                                        { id: 'cut', label: t('cfg.appearance.loopCut', null, 'Instant Cut') }
                                                     ]}
                                                     value={wallpaperVideoLoopMode}
                                                     onChange={(mode) => setWallpaperVideoLoopMode(mode)}
@@ -1936,11 +2458,13 @@ const SettingsModalContent = () => {
                                         {wallpaperVideoLoopMode !== 'cut' && (
                                             <SettingCard
                                                 icon={SlidersHorizontal}
-                                                title={wallpaperVideoLoopMode === 'dip' ? 'Ambient Dip Duration' : 'Loop Dissolve Duration'}
+                                                title={wallpaperVideoLoopMode === 'dip'
+                                                    ? t('cfg.appearance.dipDurationTitle', null, 'Ambient Dip Duration')
+                                                    : t('cfg.appearance.dissolveDurationTitle', null, 'Loop Dissolve Duration')}
                                                 description={
                                                     wallpaperVideoLoopMode === 'dip'
-                                                        ? 'Total time of the ambient fade-down and return cycle.'
-                                                        : 'Length of the blending overlap window between loop endings and beginnings.'
+                                                        ? t('cfg.appearance.dipDurationDesc', null, 'Total time of the ambient fade-down and return cycle.')
+                                                        : t('cfg.appearance.dissolveDurationDesc', null, 'Length of the blending overlap window between loop endings and beginnings.')
                                                 }
                                             >
                                                 <div className="flex items-center gap-3 flex-shrink-0">
@@ -1965,14 +2489,14 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Play}
-                                    title="Live Wallpaper Playback"
-                                    subtitle="Control when animated wallpapers play or pause to save resources."
+                                    title={t('cfg.appearance.livePlaybackTitle', null, 'Live Wallpaper Playback')}
+                                    subtitle={t('cfg.appearance.livePlaybackDesc', null, 'Control when animated wallpapers play or pause to save resources.')}
                                 />
 
                                 <SettingCard
                                     icon={Zap}
-                                    title="Pause When Window is Unfocused"
-                                    description="Automatically pause video and animated GIF playback when QBrowse is minimized or unfocused to eliminate CPU/GPU drain."
+                                    title={t('cfg.appearance.pauseUnfocusedTitle', null, 'Pause When Window is Unfocused')}
+                                    description={t('cfg.appearance.pauseUnfocusedDesc', null, 'Automatically pause video and animated GIF playback when QBrowse is minimized or unfocused to eliminate CPU/GPU drain.')}
                                 >
                                     <SettingToggle
                                         isChecked={settings?.pauseWallpaperInBackground !== false}
@@ -1982,8 +2506,8 @@ const SettingsModalContent = () => {
 
                                 <SettingCard
                                     icon={Globe}
-                                    title="Pause While Browsing Websites"
-                                    description="Pause animated video and GIF wallpapers whenever an active website tab is open, resuming automatically on the New Tab page."
+                                    title={t('cfg.appearance.pauseWebviewTitle', null, 'Pause While Browsing Websites')}
+                                    description={t('cfg.appearance.pauseWebviewDesc', null, 'Pause animated video and GIF wallpapers whenever an active website tab is open, resuming automatically on the New Tab page.')}
                                 >
                                     <SettingToggle
                                         isChecked={!!settings?.pauseWallpaperOnWebview}
@@ -1993,8 +2517,8 @@ const SettingsModalContent = () => {
 
                                 <SettingCard
                                     icon={BatteryCharging}
-                                    title="Pause in Eco / Battery Saver Mode"
-                                    description="Freeze animated wallpapers during laptop battery saving or Eco Mode."
+                                    title={t('cfg.appearance.pauseEcoTitle', null, 'Pause in Eco / Battery Saver Mode')}
+                                    description={t('cfg.appearance.pauseEcoDesc', null, 'Freeze animated wallpapers during laptop battery saving or Eco Mode.')}
                                 >
                                     <SettingToggle
                                         isChecked={settings?.pauseWallpaperInEcoMode !== false}
@@ -2007,15 +2531,23 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Layers}
-                                    title="Glass & Surface Effects"
-                                    subtitle="Adjust frosted glass blur intensity and ambient glow."
+                                    title={t('cfg.appearance.glassEffectsTitle', null, 'Glass & Surface Effects')}
+                                    subtitle={t('cfg.appearance.glassEffectsDesc', null, 'Adjust frosted glass blur intensity and ambient glow.')}
                                 />
 
-                                <SettingCard icon={Sliders} title="UI Transparency (Glassmorphism)" description="Disable backdrop-blur translucency for weaker GPUs.">
+                                <SettingCard
+                                    icon={Sliders}
+                                    title={t('cfg.appearance.glassmorphismTitle', null, 'UI Transparency (Glassmorphism)')}
+                                    description={t('cfg.appearance.glassmorphismDesc', null, 'Disable backdrop-blur translucency for weaker GPUs.')}
+                                >
                                     <SettingToggle isChecked={isGlassEnabled} onToggle={() => setIsGlassEnabled(!isGlassEnabled)} />
                                 </SettingCard>
 
-                                <SettingCard icon={Sparkles} title="Liquid Glass UI Frosted Blur" description="Adjust frosted glass diffusion on UI surfaces (Sidebar, TopBar, and tab windows).">
+                                <SettingCard
+                                    icon={Sparkles}
+                                    title={t('cfg.appearance.frostedBlurTitle', null, 'Liquid Glass UI Frosted Blur')}
+                                    description={t('cfg.appearance.frostedBlurDesc', null, 'Adjust frosted glass diffusion on UI surfaces (Sidebar, TopBar, and tab windows).')}
+                                >
                                     <div className="flex items-center gap-3 flex-shrink-0">
                                         <input
                                             type="range"
@@ -2030,21 +2562,29 @@ const SettingsModalContent = () => {
                                     </div>
                                 </SettingCard>
 
-                                <SettingCard icon={Maximize2} title="Space Swipe Animations" description="Physical screen swipe transitions when switching workspace tabs.">
+                                <SettingCard
+                                    icon={Maximize2}
+                                    title={t('cfg.appearance.swipeAnimTitle', null, 'Space Swipe Animations')}
+                                    description={t('cfg.appearance.swipeAnimDesc', null, 'Physical screen swipe transitions when switching workspace tabs.')}
+                                >
                                     <SettingToggle isChecked={isSwipeEnabled} onToggle={() => setIsSwipeEnabled(!isSwipeEnabled)} />
                                 </SettingCard>
 
-                                <SettingCard icon={Sparkles} title="Active Tab Favicon Glow" description="Render a subtle glowing aura around active tab favicons.">
+                                <SettingCard
+                                    icon={Sparkles}
+                                    title={t('cfg.appearance.faviconGlowTitle', null, 'Active Tab Favicon Glow')}
+                                    description={t('cfg.appearance.faviconGlowDesc', null, 'Render a subtle glowing aura around active tab favicons.')}
+                                >
                                     <SettingToggle isChecked={!!settings.faviconGlow} onToggle={() => toggleSetting('faviconGlow')} />
                                 </SettingCard>
 
                                 <SettingCard
                                     icon={Layers}
-                                    title="Visual Tab Switcher (Ctrl+Tab)"
+                                    title={t('cfg.appearance.visualTabSwitcherTitle', null, 'Visual Tab Switcher (Ctrl+Tab)')}
                                     description={
                                         osPlatform === 'win32'
-                                            ? 'Show Windows-style card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.'
-                                            : 'Show desktop card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.'
+                                            ? t('cfg.appearance.visualTabSwitcherDescWin', null, 'Show Windows-style card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.')
+                                            : t('cfg.appearance.visualTabSwitcherDescOther', null, 'Show desktop card carousel overlay when pressing Ctrl+Tab. Disable for instant tab switching with zero overlay.')
                                     }
                                 >
                                     <SettingToggle isChecked={settings.visualTabSwitcher !== false} onToggle={() => toggleSetting('visualTabSwitcher')} />
@@ -2057,9 +2597,9 @@ const SettingsModalContent = () => {
                     {settingsTab === 'layout' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Layout &amp; Interface</h3>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.layout.title', null, 'Layout & Interface')}</h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Configure spatial dockings, window geometry, omnibox architecture, and toolbar controls.
+                                    {t('cfg.layout.subtitle', null, 'Configure spatial dockings, window geometry, omnibox architecture, and toolbar controls.')}
                                 </p>
                             </div>
 
@@ -2067,15 +2607,15 @@ const SettingsModalContent = () => {
                                     <div className="space-y-3">
                                         <SectionHeader 
                                             icon={Compass} 
-                                            title="Spatial Positioning" 
-                                            description="Dock primary bars, drawers, and vertical tabs across screen coordinates." 
+                                            title={t('cfg.layout.spatialTitle', null, 'Spatial Positioning')} 
+                                            description={t('cfg.layout.spatialDesc', null, 'Dock primary bars, drawers, and vertical tabs across screen coordinates.')} 
                                         />
 
                                         {/* Sidebar Position */}
                                         <SettingCard 
                                             icon={Sidebar} 
-                                            title="Sidebar Position" 
-                                            description="Dock workspace navigation and vertical tabs on the left or right edge."
+                                            title={t('cfg.layout.sidebarPosTitle', null, 'Sidebar Position')} 
+                                            description={t('cfg.layout.sidebarPosDesc', null, 'Dock workspace navigation and vertical tabs on the left or right edge.')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2089,8 +2629,8 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: 'left', label: 'Left' },
-                                                    { id: 'right', label: 'Right' }
+                                                    { id: 'left', label: t('cfg.layout.pos.left', null, 'Left') },
+                                                    { id: 'right', label: t('cfg.layout.pos.right', null, 'Right') }
                                                 ].map(s => {
                                                     const isSelected = sidebarPosition === s.id;
                                                     return (
@@ -2114,8 +2654,8 @@ const SettingsModalContent = () => {
                                         {/* Top Bar Position */}
                                         <SettingCard 
                                             icon={Layout} 
-                                            title="Top Bar Position" 
-                                            description="Position the omnibox address bar, navigation buttons, and tab controls."
+                                            title={t('cfg.layout.topBarPosTitle', null, 'Top Bar Position')} 
+                                            description={t('cfg.layout.topBarPosDesc', null, 'Position the omnibox address bar, navigation buttons, and tab controls.')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2129,8 +2669,8 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: 'top', label: 'Top' },
-                                                    { id: 'bottom', label: 'Bottom' }
+                                                    { id: 'top', label: t('cfg.layout.pos.top', null, 'Top') },
+                                                    { id: 'bottom', label: t('cfg.layout.pos.bottom', null, 'Bottom') }
                                                 ].map(s => {
                                                     const isSelected = topBarPosition === s.id;
                                                     return (
@@ -2154,8 +2694,8 @@ const SettingsModalContent = () => {
                                         {/* Tool Hub Drawer */}
                                         <SettingCard 
                                             icon={SlidersHorizontal} 
-                                            title="Tool Hub Drawer Position" 
-                                            description="Side panel dock for extensions, downloads, QVault, and AI assistant."
+                                            title={t('cfg.layout.toolHubPosTitle', null, 'Tool Hub Drawer Position')} 
+                                            description={t('cfg.layout.toolHubPosDesc', null, 'Side panel dock for extensions, downloads, QVault, and AI assistant.')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2169,8 +2709,8 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: 'left', label: 'Left' },
-                                                    { id: 'right', label: 'Right' }
+                                                    { id: 'left', label: t('cfg.layout.pos.left', null, 'Left') },
+                                                    { id: 'right', label: t('cfg.layout.pos.right', null, 'Right') }
                                                 ].map(s => {
                                                     const isSelected = toolHubPosition === s.id;
                                                     return (
@@ -2191,7 +2731,7 @@ const SettingsModalContent = () => {
                                             </div>
                                         </SettingCard>
                                         <p className={`text-[11px] px-1 -mt-1 font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Note: If docked on the same side as the Sidebar, the Sidebar will automatically adjust to the opposite side to prevent interface collision.
+                                            {t('cfg.layout.collisionNote', null, 'Note: If docked on the same side as the Sidebar, the Sidebar will automatically adjust to the opposite side to prevent interface collision.')}
                                         </p>
                                     </div>
 
@@ -2211,9 +2751,9 @@ const SettingsModalContent = () => {
                                                     <Sliders size={20} strokeWidth={2.2} />
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-sm font-bold tracking-tight">Preset Studio</h4>
+                                                    <h4 className="text-sm font-bold tracking-tight">{t('cfg.layout.presetStudioBannerTitle', null, 'Preset Studio')}</h4>
                                                     <p className={`text-xs mt-0.5 max-w-xl ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                                        Craft, preview, and arrange custom spatial architectures with drag-and-drop live preview, custom docking slots, and preset duplication.
+                                                        {t('cfg.layout.presetStudioBannerDesc', null, 'Craft, preview, and arrange custom spatial architectures with drag-and-drop live preview, custom docking slots, and preset duplication.')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -2223,7 +2763,7 @@ const SettingsModalContent = () => {
                                                 className="px-4 py-2 rounded-xl bg-accent text-zinc-950 font-bold text-xs flex items-center gap-2 transition cursor-pointer hover:brightness-105 active:scale-95 shadow-md shrink-0"
                                             >
                                                 <Sliders size={14} strokeWidth={2.4} />
-                                                <span>Launch Preset Studio</span>
+                                                <span>{t('cfg.layout.launchPresetStudio', null, 'Launch Preset Studio')}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -2232,15 +2772,15 @@ const SettingsModalContent = () => {
                                     <div className="space-y-3">
                                         <SectionHeader 
                                             icon={Laptop} 
-                                            title="Window & Bar Geometry" 
-                                            description="Window frame geometry, omnibox presentation, and system window controls." 
+                                            title={t('cfg.layout.geometryTitle', null, 'Window & Bar Geometry')} 
+                                            description={t('cfg.layout.geometryDesc', null, 'Window frame geometry, omnibox presentation, and system window controls.')} 
                                         />
 
                                         {/* 1. Window Frame Curvature */}
                                         <SettingCard 
                                             icon={Square} 
-                                            title="Window Frame Curvature" 
-                                            description="Adjust curvature across the main webview frame, sidebar, topbar, and elements (Default 20px, Cohesive 12px, Sharp 0px)."
+                                            title={t('cfg.layout.curvatureTitle', null, 'Window Frame Curvature')} 
+                                            description={t('cfg.layout.curvatureDesc', null, 'Adjust curvature across the main webview frame, sidebar, topbar, and elements (Default 20px, Cohesive 12px, Sharp 0px).')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2258,9 +2798,9 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: "default", label: "Default" },
-                                                    { id: "cohesive", label: "Cohesive" },
-                                                    { id: "square", label: "Sharp" }
+                                                    { id: "default", label: t('cfg.layout.curvatureDefault', null, 'Default') },
+                                                    { id: "cohesive", label: t('cfg.layout.curvatureCohesive', null, 'Cohesive') },
+                                                    { id: "square", label: t('cfg.layout.curvatureSharp', null, 'Sharp') }
                                                 ].map(s => {
                                                     const isSelected = (settings.frameCurvature || "default") === s.id;
                                                     return (
@@ -2287,8 +2827,8 @@ const SettingsModalContent = () => {
                                         {/* 2. Omnibox Display Profiles */}
                                         <SettingCard 
                                             icon={Search} 
-                                            title="Omnibox Architecture" 
-                                            description="Select the centered horizontal span and fluid focus expansion of the address bar."
+                                            title={t('cfg.layout.omniboxTitle', null, 'Omnibox Architecture')} 
+                                            description={t('cfg.layout.omniboxDesc', null, 'Select the centered horizontal span and fluid focus expansion of the address bar.')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2306,9 +2846,9 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: "capsule", label: "Capsule" },
-                                                    { id: "wide", label: "Wide" },
-                                                    { id: "minimal", label: "Minimal" }
+                                                    { id: "capsule", label: t('cfg.layout.omniboxCapsule', null, 'Capsule') },
+                                                    { id: "wide", label: t('cfg.layout.omniboxWide', null, 'Wide') },
+                                                    { id: "minimal", label: t('cfg.layout.omniboxMinimal', null, 'Minimal') }
                                                 ].map(s => {
                                                     const isSelected = (settings.omniboxStyle || "capsule") === s.id;
                                                     return (
@@ -2332,8 +2872,8 @@ const SettingsModalContent = () => {
                                         {/* 3. Sidebar Tab Presentation Modes */}
                                         <SettingCard 
                                             icon={Layers} 
-                                            title="Tab Presentation" 
-                                            description="Switch between liquid glass pills, high-density minimal rows, or rich card tiles."
+                                            title={t('cfg.layout.tabPresentationTitle', null, 'Tab Presentation')} 
+                                            description={t('cfg.layout.tabPresentationDesc', null, 'Switch between liquid glass pills, high-density minimal rows, or rich card tiles.')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2351,9 +2891,9 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: "pills", label: "Pills" },
-                                                    { id: "compact", label: "Compact" },
-                                                    { id: "cards", label: "Cards" }
+                                                    { id: "pills", label: t('cfg.layout.tabPills', null, 'Pills') },
+                                                    { id: "compact", label: t('cfg.layout.tabCompact', null, 'Compact') },
+                                                    { id: "cards", label: t('cfg.layout.tabCards', null, 'Cards') }
                                                 ].map(s => {
                                                     const isSelected = (settings.tabPresentation || "pills") === s.id;
                                                     return (
@@ -2377,8 +2917,8 @@ const SettingsModalContent = () => {
                                         {/* 4. Traffic Light & Window Button Styles */}
                                         <SettingCard 
                                             icon={Laptop} 
-                                            title="Window Controls Style" 
-                                            description="Choose macOS traffic dots, clean native Windows icons, or stealth minimal glyphs."
+                                            title={t('cfg.layout.windowControlsStyleTitle', null, 'Window Controls Style')} 
+                                            description={t('cfg.layout.windowControlsStyleDesc', null, 'Choose macOS traffic dots, clean native Windows icons, or stealth minimal glyphs.')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2398,7 +2938,7 @@ const SettingsModalContent = () => {
                                                 {[
                                                     { id: "mac", label: "macOS" },
                                                     { id: "windows", label: "Windows" },
-                                                    { id: "minimal", label: "Minimal" }
+                                                    { id: "minimal", label: t('cfg.layout.windowControlsMinimal', null, 'Minimal') }
                                                 ].map(s => {
                                                     const isSelected = (settings.windowControlsStyle || "mac") === s.id;
                                                     return (
@@ -2422,8 +2962,8 @@ const SettingsModalContent = () => {
                                         {/* 5. Window Controls Button Order */}
                                         <SettingCard 
                                             icon={SlidersHorizontal} 
-                                            title="Window Controls Layout" 
-                                            description="Smart Corner keeps Close at the outer screen edge. Or lock Close first (macOS) vs Minimize first (Windows)."
+                                            title={t('cfg.layout.windowControlsLayoutTitle', null, 'Window Controls Layout')} 
+                                            description={t('cfg.layout.windowControlsLayoutDesc', null, 'Smart Corner keeps Close at the outer screen edge. Or lock Close first (macOS) vs Minimize first (Windows).')}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -2441,9 +2981,9 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: "auto", label: "Smart Corner" },
-                                                    { id: "close-first", label: "Close First" },
-                                                    { id: "minimize-first", label: "Minimize First" }
+                                                    { id: "auto", label: t('cfg.layout.orderAuto', null, 'Smart Corner') },
+                                                    { id: "close-first", label: t('cfg.layout.orderCloseFirst', null, 'Close First') },
+                                                    { id: "minimize-first", label: t('cfg.layout.orderMinimizeFirst', null, 'Minimize First') }
                                                 ].map(s => {
                                                     const isSelected = (settings.windowControlsOrder || "auto") === s.id;
                                                     return (
@@ -2469,8 +3009,8 @@ const SettingsModalContent = () => {
                                     <div className="space-y-3">
                                         <SectionHeader 
                                             icon={Sliders} 
-                                            title="Toolbar & Controls" 
-                                            description="Toolbar quick access icons and interaction behaviors." 
+                                            title={t('cfg.layout.toolbarSectionTitle', null, 'Toolbar & Controls')} 
+                                            description={t('cfg.layout.toolbarSectionDesc', null, 'Toolbar quick access icons and interaction behaviors.')} 
                                         />
 
                                         {/* Toolbar & Extensions Hub Quick Icons Card */}
@@ -2485,8 +3025,8 @@ const SettingsModalContent = () => {
                                                         <SlidersHorizontal size={17} />
                                                     </div>
                                                     <div>
-                                                        <p className="font-semibold text-sm">Toolbar &amp; Extension Hub Icons</p>
-                                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Toggle quick-access buttons in the top bar. You can also right-click any icon in the toolbar to hide it.</p>
+                                                        <p className="font-semibold text-sm">{t('cfg.layout.hubIconsTitle', null, 'Toolbar & Extension Hub Icons')}</p>
+                                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.layout.hubIconsDesc', null, 'Toggle quick-access buttons in the top bar. You can also right-click any icon in the toolbar to hide it.')}</p>
                                                     </div>
                                                 </div>
                                                 <button
@@ -2494,18 +3034,18 @@ const SettingsModalContent = () => {
                                                     onClick={() => useUIStore.getState().resetTopBarIcons()}
                                                     className="text-xs text-accent hover:underline cursor-pointer"
                                                 >
-                                                    Restore All
+                                                    {t('cfg.layout.restoreAll', null, 'Restore All')}
                                                 </button>
                                             </div>
                                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 pt-2">
                                                 {[
-                                                    { id: 'splitview', label: 'Split View' },
-                                                    { id: 'theme', label: 'Theme Toggle' },
-                                                    { id: 'shield', label: 'QShield Tracker' },
-                                                    { id: 'media', label: 'Media Player' },
-                                                    { id: 'downloads', label: 'Downloads' },
-                                                    { id: 'tor', label: 'Tor Network' },
-                                                    { id: 'vault', label: 'QVault Passwords' }
+                                                    { id: 'splitview', label: t('cfg.layout.iconLabels.splitview', null, 'Split View') },
+                                                    { id: 'theme', label: t('cfg.layout.iconLabels.theme', null, 'Theme Toggle') },
+                                                    { id: 'shield', label: t('cfg.layout.iconLabels.shield', null, 'QShield Tracker') },
+                                                    { id: 'media', label: t('cfg.layout.iconLabels.media', null, 'Media Player') },
+                                                    { id: 'downloads', label: t('cfg.layout.iconLabels.downloads', null, 'Downloads') },
+                                                    { id: 'tor', label: t('cfg.layout.iconLabels.tor', null, 'Tor Network') },
+                                                    { id: 'vault', label: t('cfg.layout.iconLabels.vault', null, 'QVault Passwords') }
                                                 ].map(item => {
                                                     const isItemVisible = !(settings.hiddenTopBarIcons || []).includes(item.id);
                                                     return (
@@ -2531,7 +3071,7 @@ const SettingsModalContent = () => {
                                             </div>
                                         </div>
 
-                                        <SettingCard icon={Monitor} title="UI Density & Scale" description="Adjust spacing, padding, and tab density across navigation controls and sidebars.">
+                                        <SettingCard icon={Monitor} title={t('cfg.layout.densityTitle', null, 'UI Density & Scale')} description={t('cfg.layout.densityDesc', null, 'Adjust spacing, padding, and tab density across navigation controls and sidebars.')}>
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
                                                     ? 'bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]' 
@@ -2544,8 +3084,8 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: 'compact', label: 'Compact', icon: Minimize2 },
-                                                    { id: 'comfortable', label: 'Comfortable', icon: Maximize2 }
+                                                    { id: 'compact', label: t('cfg.layout.densityCompact', null, 'Compact'), icon: Minimize2 },
+                                                    { id: 'comfortable', label: t('cfg.layout.densityComfortable', null, 'Comfortable'), icon: Maximize2 }
                                                 ].map(s => {
                                                     const IconComp = s.icon;
                                                     const isSelected = (settings.uiScale || 'comfortable') === s.id;
@@ -2571,7 +3111,7 @@ const SettingsModalContent = () => {
                                             </div>
                                         </SettingCard>
 
-                                        <SettingCard icon={ArrowLeftRight} title="Tab Switching Order (Ctrl+Tab)" description="Choose whether Ctrl+Tab navigates by most recently used tabs or in sequential sidebar order.">
+                                        <SettingCard icon={ArrowLeftRight} title={t('cfg.layout.tabOrderTitle', null, 'Tab Switching Order (Ctrl+Tab)')} description={t('cfg.layout.tabOrderDesc', null, 'Choose whether Ctrl+Tab navigates by most recently used tabs or in sequential sidebar order.')}>
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
                                                     ? 'bg-black/[0.04] border-black/10 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]' 
@@ -2584,8 +3124,8 @@ const SettingsModalContent = () => {
                                                     }}
                                                 />
                                                 {[
-                                                    { id: 'mru', label: 'Recently Used', icon: History },
-                                                    { id: 'sidebar', label: 'Sidebar Order', icon: ListOrdered }
+                                                    { id: 'mru', label: t('cfg.layout.tabOrderMru', null, 'Recently Used'), icon: History },
+                                                    { id: 'sidebar', label: t('cfg.layout.tabOrderSidebar', null, 'Sidebar Order'), icon: ListOrdered }
                                                 ].map(s => {
                                                     const IconComp = s.icon;
                                                     const isSelected = (settings.tabSwitcherOrder || 'mru') === s.id;
@@ -2608,11 +3148,11 @@ const SettingsModalContent = () => {
                                             </div>
                                         </SettingCard>
 
-                                        <SettingCard icon={RotateCcw} title="Remember Open Websites on Close" description="Restore your previous open tabs and active workspace when reopening QBrowse. When off, QBrowse starts fresh with a New Tab.">
+                                        <SettingCard icon={RotateCcw} title={t('cfg.layout.restoreTabsTitle', null, 'Remember Open Websites on Close')} description={t('cfg.layout.restoreTabsDesc', null, 'Restore your previous open tabs and active workspace when reopening QBrowse. When off, QBrowse starts fresh with a New Tab.')}>
                                             <SettingToggle isChecked={settings.restoreTabsOnStartup !== false} onToggle={() => toggleSetting('restoreTabsOnStartup')} />
                                         </SettingCard>
 
-                                        <SettingCard icon={XSquare} title="Close Window on Last Tab (Ctrl+W)" description="Close the browser window when pressing Ctrl+W with no open tabs or pinned tabs.">
+                                        <SettingCard icon={XSquare} title={t('cfg.layout.closeLastTabTitle', null, 'Close Window on Last Tab (Ctrl+W)')} description={t('cfg.layout.closeLastTabDesc', null, 'Close the browser window when pressing Ctrl+W with no open tabs or pinned tabs.')}>
                                             <SettingToggle isChecked={settings.closeWindowOnLastTab !== false} onToggle={() => toggleSetting('closeWindowOnLastTab')} />
                                         </SettingCard>
                                     </div>
@@ -2623,17 +3163,17 @@ const SettingsModalContent = () => {
                     {settingsTab === 'typography' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Typography &amp; Fonts</h3>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.typography.title', null, 'Typography & Fonts')}</h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Customize interface typefaces, web fonts, variable weights, sizing scale, and font smoothing.
+                                    {t('cfg.typography.subtitle', null, 'Customize interface typefaces, web fonts, variable weights, sizing scale, and font smoothing.')}
                                 </p>
                             </div>
 
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Type}
-                                    title="Interface & Web Typography"
-                                    description="Choose curated font presets, browse Google Fonts, load local font files, and tune scale & line height."
+                                    title={t('cfg.typography.sectionTitle', null, 'Interface & Web Typography')}
+                                    description={t('cfg.typography.sectionDesc', null, 'Choose curated font presets, browse Google Fonts, load local font files, and tune scale & line height.')}
                                 />
                                 <CustomFontManager isBright={isBright} />
                             </div>
@@ -2655,10 +3195,10 @@ const SettingsModalContent = () => {
                                 <div className="flex items-center justify-between flex-wrap gap-4 pr-14">
                                     <div>
                                         <h3 className="text-2xl font-bold mb-1 flex items-center gap-2.5">
-                                            <Layers className="text-accent" size={22} /> Workspaces
+                                            <Layers className="text-accent" size={22} /> {t('cfg.spaces.title', null, 'Workspaces')}
                                         </h3>
                                         <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Separate tab environments with independent history and GitHub Live tracking.
+                                            {t('cfg.spaces.subtitle', null, 'Separate tab environments with independent history and GitHub Live tracking.')}
                                         </p>
                                     </div>
                                     <button
@@ -2666,7 +3206,7 @@ const SettingsModalContent = () => {
                                         disabled={spacesList.length >= 8 && !isCreatingSpace}
                                         onClick={() => {
                                             if (spacesList.length >= 8 && !isCreatingSpace) {
-                                                showToast('Maximum of 8 workspaces reached');
+                                                showToast(t('cfg.spaces.toastMaxReached', null, 'Maximum of 8 workspaces reached'));
                                                 return;
                                             }
                                             setIsCreatingSpace(prev => !prev);
@@ -2683,10 +3223,10 @@ const SettingsModalContent = () => {
                                                     ? (isBright ? 'bg-black/10 text-zinc-800 hover:bg-black/15 cursor-pointer' : 'bg-white/10 text-white hover:bg-white/15 cursor-pointer')
                                                     : 'bg-accent hover:bg-accent-hover text-zinc-950 cursor-pointer'
                                         }`}
-                                        title={spacesList.length >= 8 && !isCreatingSpace ? 'Maximum of 8 workspaces reached' : 'Create new workspace'}
+                                        title={spacesList.length >= 8 && !isCreatingSpace ? t('cfg.spaces.maxReachedTitle', null, 'Maximum of 8 workspaces reached') : t('cfg.spaces.createTitle', null, 'Create new workspace')}
                                     >
                                         <Plus size={14} className={`transition-transform duration-300 ${isCreatingSpace ? 'rotate-45' : ''}`} />
-                                        <span>{isCreatingSpace ? 'Cancel' : spacesList.length >= 8 ? 'Max 8 Reached' : 'New Workspace'}</span>
+                                        <span>{isCreatingSpace ? t('cfg.common.cancel', null, 'Cancel') : spacesList.length >= 8 ? t('cfg.spaces.maxReachedBtn', null, 'Max 8 Reached') : t('cfg.spaces.newWorkspaceBtn', null, 'New Workspace')}</span>
                                     </button>
                                 </div>
 
@@ -2702,14 +3242,14 @@ const SettingsModalContent = () => {
                                             }`}
                                         >
                                             <div className={`text-xs font-semibold tracking-wide ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                Create Workspace
+                                                {t('cfg.spaces.createFormTitle', null, 'Create Workspace')}
                                             </div>
 
                                             {/* Name Input */}
                                             <div>
                                                 <input
                                                     type="text"
-                                                    placeholder="Workspace name (e.g. Work, Research, Dev)..."
+                                                    placeholder={t('cfg.spaces.namePlaceholder', null, 'Workspace name (e.g. Work, Research, Dev)...')}
                                                     value={newSpaceName}
                                                     onChange={(e) => setNewSpaceName(e.target.value)}
                                                     className={`w-full px-3.5 py-2 rounded-xl text-xs outline-none focus:border-accent border transition ${
@@ -2722,7 +3262,7 @@ const SettingsModalContent = () => {
                                             {/* Icon Picker (Clean icon buttons with tooltips, no ugly cut-off text) */}
                                             <div>
                                                 <label className={`text-[11px] block mb-2 font-medium ${isBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                                    Choose Icon
+                                                    {t('cfg.spaces.chooseIcon', null, 'Choose Icon')}
                                                 </label>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {SPACE_ICONS.map((item) => {
@@ -2733,7 +3273,7 @@ const SettingsModalContent = () => {
                                                                 key={item.id}
                                                                 type="button"
                                                                 onClick={() => setNewSpaceIcon(item.id)}
-                                                                title={item.label}
+                                                                title={t(`cfg.spaceIcons.${item.id}`, null, item.label)}
                                                                 className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 cursor-pointer border hover:scale-110 active:scale-90 ${
                                                                     isSelected
                                                                         ? 'bg-accent border-accent text-zinc-950 font-bold shadow-sm ring-2 ring-accent/30'
@@ -2757,10 +3297,10 @@ const SettingsModalContent = () => {
                                                     <GitPullRequest size={16} className="text-emerald-400 shrink-0" />
                                                     <div>
                                                         <div className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                            Enable GitHub Live
+                                                            {t('cfg.spaces.enableGithubLive', null, 'Enable GitHub Live')}
                                                         </div>
                                                         <div className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                            Show open pull requests and notifications in the sidebar for this workspace.
+                                                            {t('cfg.spaces.enableGithubLiveDesc', null, 'Show open pull requests and notifications in the sidebar for this workspace.')}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2784,13 +3324,13 @@ const SettingsModalContent = () => {
                                                         isBright ? 'hover:bg-black/5 text-zinc-600' : 'hover:bg-white/5 text-white/60'
                                                     }`}
                                                 >
-                                                    Cancel
+                                                    {t('cfg.common.cancel', null, 'Cancel')}
                                                 </button>
                                                 <button
                                                     type="submit"
                                                     className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
                                                 >
-                                                    <Plus size={14} /> Add Workspace
+                                                    <Plus size={14} /> {t('cfg.spaces.addWorkspaceBtn', null, 'Add Workspace')}
                                                 </button>
                                             </div>
                                         </form>
@@ -2801,14 +3341,17 @@ const SettingsModalContent = () => {
                                 <div className="space-y-3">
                                     <SectionHeader
                                         icon={Layers}
-                                        title={`Active Workspaces (${spacesList.length} / 8)`}
-                                        description="Drag handle or rows to reorder your workspaces."
+                                        title={t('cfg.spaces.activeListTitle', { count: spacesList.length }, `Active Workspaces (${spacesList.length} / 8)`)}
+                                        description={t('cfg.spaces.activeListDesc', null, 'Drag handle or rows to reorder your workspaces.')}
                                     />
 
                                     <div className="space-y-2">
                                         {spacesList.map((sp, idx) => {
                                             const IconComponent = getSpaceIconComponent(sp.icon);
                                             const isPersonal = sp.id === 'personal';
+                                            const displaySpaceName = getLocalizedSpaceName(sp);
+                                            const personalSpace = spacesList.find(item => item.id === 'personal');
+                                            const personalSpaceLabel = getLocalizedSpaceName(personalSpace) || t('nav.personal', null, 'Personal');
                                             const isEditingThis = editingSpaceId === sp.id;
                                             const isDeletingThis = deletingSpace?.id === sp.id;
                                             const isIconPickerOpen = activeIconPickerSpaceId === sp.id;
@@ -2863,7 +3406,7 @@ const SettingsModalContent = () => {
                                                                 className={`p-1 rounded text-zinc-500 transition-colors cursor-grab active:cursor-grabbing shrink-0 select-none ${
                                                                     isBright ? 'hover:text-zinc-800 hover:bg-black/5' : 'hover:text-zinc-200 hover:bg-white/5'
                                                                 }`}
-                                                                title="Drag to reorder workspace"
+                                                                title={t('cfg.spaces.dragHandleTitle', null, 'Drag to reorder workspace')}
                                                             >
                                                                 <GripVertical size={14} />
                                                             </div>
@@ -2890,7 +3433,7 @@ const SettingsModalContent = () => {
                                                                             setActiveIconPickerSpaceId(sp.id);
                                                                         }
                                                                     }}
-                                                                    title="Change workspace icon"
+                                                                    title={t('cfg.spaces.changeIconTitle', null, 'Change workspace icon')}
                                                                     className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer group active:scale-90 ${
                                                                         isBright 
                                                                             ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border border-black/[0.06]' 
@@ -2942,9 +3485,9 @@ const SettingsModalContent = () => {
                                                                                             updateSpace(sp.id, { icon: ic.id });
                                                                                             setActiveIconPickerSpaceId(null);
                                                                                             setIconPickerCoords(null);
-                                                                                            showToast('Workspace icon updated');
+                                                                                            showToast(t('cfg.spaces.toastIconUpdated', null, 'Workspace icon updated'));
                                                                                         }}
-                                                                                        title={ic.label}
+                                                                                        title={t(`cfg.spaceIcons.${ic.id}`, null, ic.label)}
                                                                                         className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer hover:scale-115 active:scale-90 ${
                                                                                             isCur
                                                                                                 ? 'bg-accent text-zinc-950 font-bold shadow-sm'
@@ -2985,7 +3528,7 @@ const SettingsModalContent = () => {
                                                                             type="button"
                                                                             onClick={() => handleSaveSpaceName(sp.id)}
                                                                             className="p-1 rounded-md text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
-                                                                            title="Save"
+                                                                            title={t('cfg.common.save', null, 'Save')}
                                                                         >
                                                                             <Check size={14} />
                                                                         </button>
@@ -2993,7 +3536,7 @@ const SettingsModalContent = () => {
                                                                             type="button"
                                                                             onClick={() => setEditingSpaceId(null)}
                                                                             className="p-1 rounded-md text-zinc-400 hover:bg-white/5 cursor-pointer"
-                                                                            title="Cancel"
+                                                                            title={t('cfg.common.cancel', null, 'Cancel')}
                                                                         >
                                                                             <X size={14} />
                                                                         </button>
@@ -3001,7 +3544,7 @@ const SettingsModalContent = () => {
                                                                 ) : (
                                                                     <div className="flex items-center gap-2 group/name">
                                                                         <span className={`text-sm font-medium truncate ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
-                                                                            {sp.name}
+                                                                            {displaySpaceName}
                                                                         </span>
                                                                         <button
                                                                             type="button"
@@ -3009,7 +3552,7 @@ const SettingsModalContent = () => {
                                                                                 setEditingSpaceId(sp.id);
                                                                                 setEditingSpaceName(sp.name);
                                                                             }}
-                                                                            title="Rename"
+                                                                            title={t('cfg.common.rename', null, 'Rename')}
                                                                             className={`opacity-0 group-hover/name:opacity-100 p-1 rounded-md transition cursor-pointer ${
                                                                                 isBright ? 'hover:bg-black/5 text-zinc-500' : 'hover:bg-white/5 text-zinc-400'
                                                                             }`}
@@ -3023,20 +3566,20 @@ const SettingsModalContent = () => {
                                                                 <div className="text-[11px] text-zinc-400 flex items-center gap-1.5 mt-0.5">
                                                                     {isPersonal ? (
                                                                         <>
-                                                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Default</span>
+                                                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>{t('cfg.common.default', null, 'Default')}</span>
                                                                             <span>•</span>
-                                                                            <span>{tabCount} open {tabCount === 1 ? 'tab' : 'tabs'}</span>
+                                                                            <span>{formatOpenTabs(tabCount)}</span>
                                                                         </>
                                                                     ) : (
                                                                         <>
-                                                                            <span>{tabCount} open {tabCount === 1 ? 'tab' : 'tabs'}</span>
+                                                                            <span>{formatOpenTabs(tabCount)}</span>
                                                                         </>
                                                                     )}
                                                                     {sp.showGitHub && (
                                                                         <>
                                                                             <span>•</span>
                                                                             <span className="flex items-center gap-1 text-emerald-400">
-                                                                                <GitPullRequest size={10} /> GitHub Live
+                                                                                <GitPullRequest size={10} /> {t('cfg.spaces.githubLiveLabel', null, 'GitHub Live')}
                                                                             </span>
                                                                         </>
                                                                     )}
@@ -3051,7 +3594,7 @@ const SettingsModalContent = () => {
                                                                 <span className={`text-xs hidden sm:inline ${
                                                                     isBright ? 'text-zinc-600' : 'text-zinc-400'
                                                                 }`}>
-                                                                    GitHub Live
+                                                                    {t('cfg.spaces.githubLiveLabel', null, 'GitHub Live')}
                                                                 </span>
                                                                 <SettingToggle
                                                                     isChecked={!!sp.showGitHub}
@@ -3070,7 +3613,7 @@ const SettingsModalContent = () => {
                                                                     type="button"
                                                                     disabled={idx === 0}
                                                                     onClick={() => handleMoveSpaceUp(idx)}
-                                                                    title="Move Up"
+                                                                    title={t('cfg.common.moveUp', null, 'Move Up')}
                                                                     className={`p-1.5 rounded-lg transition-all duration-150 cursor-pointer active:scale-75 hover:scale-110 ${
                                                                         idx === 0 
                                                                             ? 'opacity-20 cursor-not-allowed hover:scale-100 active:scale-100' 
@@ -3083,7 +3626,7 @@ const SettingsModalContent = () => {
                                                                     type="button"
                                                                     disabled={idx === spacesList.length - 1}
                                                                     onClick={() => handleMoveSpaceDown(idx)}
-                                                                    title="Move Down"
+                                                                    title={t('cfg.common.moveDown', null, 'Move Down')}
                                                                     className={`p-1.5 rounded-lg transition-all duration-150 cursor-pointer active:scale-75 hover:scale-110 ${
                                                                         idx === spacesList.length - 1 
                                                                             ? 'opacity-20 cursor-not-allowed hover:scale-100 active:scale-100' 
@@ -3099,7 +3642,7 @@ const SettingsModalContent = () => {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => setDeletingSpace(sp)}
-                                                                    title="Delete Workspace"
+                                                                    title={t('cfg.spaces.deleteWorkspaceTitle', null, 'Delete Workspace')}
                                                                     className={`p-1.5 rounded-lg transition-all duration-150 cursor-pointer active:scale-75 hover:scale-110 ${
                                                                         isBright 
                                                                             ? 'hover:bg-rose-50 text-zinc-400 hover:text-rose-600' 
@@ -3121,7 +3664,13 @@ const SettingsModalContent = () => {
                                                                 isBright ? 'bg-rose-50/60 border-rose-100 text-rose-950' : 'bg-rose-500/10 border-rose-500/20 text-rose-200'
                                                             }`}>
                                                                 <span className={`text-xs ${isBright ? 'text-rose-900' : 'text-rose-200'}`}>
-                                                                    Delete <strong>{sp.name}</strong>? Open tabs will move to <strong>Personal</strong>.
+                                                                    {renderTemplateParts(
+                                                                        t('cfg.spaces.deleteConfirm', null, 'Delete {name}? Open tabs will move to {personal}.'),
+                                                                        {
+                                                                            name: <strong>{displaySpaceName}</strong>,
+                                                                            personal: <strong>{personalSpaceLabel}</strong>
+                                                                        }
+                                                                    )}
                                                                 </span>
                                                                 <div className="flex items-center gap-2">
                                                                     <button
@@ -3131,14 +3680,14 @@ const SettingsModalContent = () => {
                                                                             isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 text-white/70'
                                                                         }`}
                                                                     >
-                                                                        Cancel
+                                                                        {t('cfg.common.cancel', null, 'Cancel')}
                                                                     </button>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleDeleteSpace(sp.id)}
                                                                         className="px-3 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs transition active:scale-95 shadow-sm cursor-pointer"
                                                                     >
-                                                                        Delete
+                                                                        {t('cfg.common.delete', null, 'Delete')}
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -3156,7 +3705,7 @@ const SettingsModalContent = () => {
                                 }`}>
                                     <Ghost size={16} className="text-accent shrink-0" />
                                     <p className="text-xs">
-                                        <strong className={isBright ? 'text-zinc-800' : 'text-zinc-200'}>Private Browsing:</strong> Ghost and Tor modes run in RAM with zero disk persistence and can be launched directly from the sidebar.
+                                        <strong className={isBright ? 'text-zinc-800' : 'text-zinc-200'}>{t('cfg.spaces.privateNoteTitle', null, 'Private Browsing:')}</strong> {t('cfg.spaces.privateNoteDesc', null, 'Ghost and Tor modes run in RAM with zero disk persistence and can be launched directly from the sidebar.')}
                                     </p>
                                 </div>
                             </div>
@@ -3173,21 +3722,21 @@ const SettingsModalContent = () => {
                         <div className="animate-tab-fade space-y-6">
                             <div className="flex items-center justify-between flex-wrap gap-3 pr-14">
                                 <div>
-                                    <h3 className="text-2xl font-bold mb-1">Accessibility</h3>
+                                    <h3 className="text-2xl font-bold mb-1">{t('cfg.accessibility.title', null, 'Accessibility')}</h3>
                                     <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                        Customize visual contrast, dyslexia typography, vestibular comfort, and navigation aids.
+                                        {t('cfg.accessibility.subtitle', null, 'Customize visual contrast, dyslexia typography, vestibular comfort, and navigation aids.')}
                                     </p>
                                 </div>
 
                                 <button
                                     onClick={() => {
                                         openReadAloud();
-                                        showToast('Read Aloud assistant launched.');
+                                        showToast(t('cfg.accessibility.toastReadAloud', null, 'Read Aloud assistant launched.'));
                                     }}
                                     className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-accent text-zinc-950 font-bold hover:bg-accent-hover text-xs shadow-sm transition active:scale-95 cursor-pointer"
                                 >
                                     <Volume2 size={14} />
-                                    <span>Start Read Aloud</span>
+                                    <span>{t('cfg.accessibility.startReadAloud', null, 'Start Read Aloud')}</span>
                                     <span className="px-1.5 py-0.5 rounded bg-black/15 text-[10px] font-mono">Alt+R</span>
                                 </button>
                             </div>
@@ -3196,14 +3745,14 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Eye}
-                                    title="Visual Contrast & Typography"
-                                    description="High-contrast legibility, specialized typeface, minimum text sizing, and page scale."
+                                    title={t('cfg.accessibility.visualSectionTitle', null, 'Visual Contrast & Typography')}
+                                    description={t('cfg.accessibility.visualSectionDesc', null, 'High-contrast legibility, specialized typeface, minimum text sizing, and page scale.')}
                                 />
 
                                 <SettingCard 
                                     icon={Eye} 
-                                    title="High Contrast Mode" 
-                                    description="Amplifies text luminance, defines stark contrast boundaries, and strips soft shadows across the QBrowse interface and web pages."
+                                    title={t('cfg.accessibility.highContrastTitle', null, 'High Contrast Mode')} 
+                                    description={t('cfg.accessibility.highContrastDesc', null, 'Amplifies text luminance, defines stark contrast boundaries, and strips soft shadows across the QBrowse interface and web pages.')}
                                 >
                                     <SettingToggle 
                                         isChecked={!!settings.a11yHighContrast} 
@@ -3213,8 +3762,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={Type} 
-                                        title="Dyslexia-Friendly Font (OpenDyslexic)" 
-                                        description="Applies gravity-weighted OpenDyslexic typography with increased letter spacing to combat letter flipping and improve reading comprehension."
+                                        title={t('cfg.accessibility.dyslexiaTitle', null, 'Dyslexia-Friendly Font (OpenDyslexic)')} 
+                                        description={t('cfg.accessibility.dyslexiaDesc', null, 'Applies gravity-weighted OpenDyslexic typography with increased letter spacing to combat letter flipping and improve reading comprehension.')}
                                     >
                                         <SettingToggle 
                                             isChecked={!!settings.a11yDyslexiaFont} 
@@ -3224,8 +3773,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={Sliders} 
-                                        title="Minimum Text Size" 
-                                        description="Enforces an absolute lower bound on font size so small captions and body text remain clearly readable."
+                                        title={t('cfg.accessibility.minTextSizeTitle', null, 'Minimum Text Size')} 
+                                        description={t('cfg.accessibility.minTextSizeDesc', null, 'Enforces an absolute lower bound on font size so small captions and body text remain clearly readable.')}
                                     >
                                         <div className="flex items-center gap-1.5">
                                             {['default', '12px', '14px', '16px', '18px'].map((sz) => (
@@ -3240,7 +3789,7 @@ const SettingsModalContent = () => {
                                                                 : 'bg-white/5 hover:bg-white/10 text-white/70'
                                                     }`}
                                                 >
-                                                    {sz === 'default' ? 'Default' : sz}
+                                                    {sz === 'default' ? t('cfg.common.default', null, 'Default') : sz}
                                                 </button>
                                             ))}
                                         </div>
@@ -3248,8 +3797,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={ZoomIn} 
-                                        title="Default Page Zoom" 
-                                        description="Base magnification scale applied across tabs. Standard baseline is 100%."
+                                        title={t('cfg.accessibility.pageZoomTitle', null, 'Default Page Zoom')} 
+                                        description={t('cfg.accessibility.pageZoomDesc', null, 'Base magnification scale applied across tabs. Standard baseline is 100%.')}
                                     >
                                         <div className="flex items-center gap-2">
                                             {/* Dedicated Reset Slot on the LEFT - Fixed width (40px) so stepper pill NEVER shifts position! */}
@@ -3261,7 +3810,7 @@ const SettingsModalContent = () => {
                                                         setZoomLevel(100);
                                                     }}
                                                     disabled={(settings.a11yPageZoom || 100) === 100}
-                                                    title="Reset zoom to 100%"
+                                                    title={t('cfg.accessibility.resetZoomTitle', null, 'Reset zoom to 100%')}
                                                     className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
                                                         (settings.a11yPageZoom || 100) !== 100
                                                             ? 'scale-100 opacity-100 pointer-events-auto rotate-0 shadow-sm'
@@ -3294,7 +3843,7 @@ const SettingsModalContent = () => {
                                                         setZoomLevel(nextVal);
                                                     }}
                                                     disabled={(settings.a11yPageZoom || 100) <= 50}
-                                                    title="Zoom out"
+                                                    title={t('cfg.accessibility.zoomOutTitle', null, 'Zoom out')}
                                                     className={`w-10 h-full rounded-l-2xl flex items-center justify-center transition-all cursor-pointer active:scale-90 disabled:opacity-20 disabled:cursor-not-allowed ${
                                                         isBright 
                                                             ? 'hover:bg-black/5 active:bg-black/10 text-zinc-700' 
@@ -3315,7 +3864,7 @@ const SettingsModalContent = () => {
                                                             setZoomLevel(100);
                                                         }
                                                     }}
-                                                    title={(settings.a11yPageZoom || 100) !== 100 ? "Click to reset to 100%" : "Default scale (100%)"}
+                                                    title={(settings.a11yPageZoom || 100) !== 100 ? t('cfg.accessibility.clickResetZoomTitle', null, 'Click to reset to 100%') : t('cfg.accessibility.defaultScaleTitle', null, 'Default scale (100%)')}
                                                     className={`w-20 h-full flex items-center justify-center select-none cursor-pointer transition-colors ${
                                                         (settings.a11yPageZoom || 100) === 100
                                                             ? isBright ? 'text-zinc-700' : 'text-zinc-200'
@@ -3342,7 +3891,7 @@ const SettingsModalContent = () => {
                                                         setZoomLevel(nextVal);
                                                     }}
                                                     disabled={(settings.a11yPageZoom || 100) >= 200}
-                                                    title="Zoom in"
+                                                    title={t('cfg.accessibility.zoomInTitle', null, 'Zoom in')}
                                                     className={`w-10 h-full rounded-r-2xl flex items-center justify-center transition-all cursor-pointer active:scale-90 disabled:opacity-20 disabled:cursor-not-allowed ${
                                                         isBright 
                                                             ? 'hover:bg-black/5 active:bg-black/10 text-zinc-700' 
@@ -3360,27 +3909,27 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Zap}
-                                    title="Motion & Vestibular Comfort"
-                                    description="Protect against motion sickness and vestibular strain by suppressing rapid animations."
+                                    title={t('cfg.accessibility.motionSectionTitle', null, 'Motion & Vestibular Comfort')}
+                                    description={t('cfg.accessibility.motionSectionDesc', null, 'Protect against motion sickness and vestibular strain by suppressing rapid animations.')}
                                 />
 
                                 <SettingCard 
                                     icon={Zap} 
-                                    title="Force Reduced Motion" 
+                                    title={t('cfg.accessibility.reducedMotionTitle', null, 'Force Reduced Motion')} 
                                     description={
                                         settings?.a11yReducedMotion
-                                            ? "Reduced motion is manually forced on. Browser interface transitions, Tab Map 3D tilt, and web animations are suppressed."
+                                            ? t('cfg.accessibility.reducedMotionForced', null, 'Reduced motion is manually forced on. Browser interface transitions, Tab Map 3D tilt, and web animations are suppressed.')
                                             : isSystemReducedMotion
                                                 ? (osPlatform === 'darwin'
-                                                    ? "macOS Reduce Motion is currently turned on in System Settings. Transitions and animations are automatically suppressed to match macOS."
+                                                    ? t('cfg.accessibility.reducedMotionSysDarwin', null, 'macOS Reduce Motion is currently turned on in System Settings. Transitions and animations are automatically suppressed to match macOS.')
                                                     : osPlatform === 'linux'
-                                                        ? "System Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match your desktop settings."
-                                                        : "Windows Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match Windows.")
+                                                        ? t('cfg.accessibility.reducedMotionSysLinux', null, 'System Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match your desktop settings.')
+                                                        : t('cfg.accessibility.reducedMotionSysWin', null, 'Windows Accessibility animations are currently turned off in your OS. Transitions and animations are automatically suppressed to match Windows.'))
                                                 : (osPlatform === 'darwin'
-                                                    ? "Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with macOS Reduce Motion."
+                                                    ? t('cfg.accessibility.reducedMotionDefDarwin', null, 'Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with macOS Reduce Motion.')
                                                     : osPlatform === 'linux'
-                                                        ? "Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with OS Animation Effects."
-                                                        : "Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with Windows Animation Effects.")
+                                                        ? t('cfg.accessibility.reducedMotionDefLinux', null, 'Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with OS Animation Effects.')
+                                                        : t('cfg.accessibility.reducedMotionDefWin', null, 'Disables browser interface transitions, suppresses parallax scrolling, and instructs websites to halt decorative animations. Automatically syncs with Windows Animation Effects.'))
                                     }
                                 >
                                     <SettingToggle 
@@ -3391,8 +3940,8 @@ const SettingsModalContent = () => {
 
                                 <SettingCard 
                                     icon={VolumeX} 
-                                    title="Suppress Media Autoplay" 
-                                    description="Prevents background video elements and HTML5 audiovisual streams from auto-playing without explicit user initiation."
+                                    title={t('cfg.accessibility.autoplayTitle', null, 'Suppress Media Autoplay')} 
+                                    description={t('cfg.accessibility.autoplayDesc', null, 'Prevents background video elements and HTML5 audiovisual streams from auto-playing without explicit user initiation.')}
                                 >
                                     <SettingToggle 
                                         isChecked={!!settings.a11ySuppressAutoplay} 
@@ -3405,14 +3954,14 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Keyboard}
-                                    title="Keyboard Navigation & Focus Indicators"
-                                    description="Independent keyboard operation, high-visibility focus indicators, and text caret browsing."
+                                    title={t('cfg.accessibility.keyboardSectionTitle', null, 'Keyboard Navigation & Focus Indicators')}
+                                    description={t('cfg.accessibility.keyboardSectionDesc', null, 'Independent keyboard operation, high-visibility focus indicators, and text caret browsing.')}
                                 />
 
                                 <SettingCard 
                                     icon={Keyboard} 
-                                    title="Caret Browsing (Text Cursor Navigation)" 
-                                    description="Place a moveable typing cursor on any web page to select text, scroll, and navigate purely via arrow keys. Press F7 at any time."
+                                    title={t('cfg.accessibility.caretTitle', null, 'Caret Browsing (Text Cursor Navigation)')} 
+                                    description={t('cfg.accessibility.caretDesc', null, 'Place a moveable typing cursor on any web page to select text, scroll, and navigate purely via arrow keys. Press F7 at any time.')}
                                 >
                                     <div className="flex items-center gap-3">
                                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-zinc-400'}`}>F7</span>
@@ -3425,8 +3974,8 @@ const SettingsModalContent = () => {
 
                                 <SettingCard 
                                     icon={Sliders} 
-                                    title="High-Visibility Keyboard Focus Rings" 
-                                    description="Renders a high-contrast 3px glowing amber border around whichever link, button, or input currently holds keyboard focus."
+                                    title={t('cfg.accessibility.focusRingsTitle', null, 'High-Visibility Keyboard Focus Rings')} 
+                                    description={t('cfg.accessibility.focusRingsDesc', null, 'Renders a high-contrast 3px glowing amber border around whichever link, button, or input currently holds keyboard focus.')}
                                 >
                                     <SettingToggle 
                                         isChecked={!!settings.a11yFocusRings} 
@@ -3439,33 +3988,33 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Volume2}
-                                    title="Auditory & Reading Assistance"
-                                    description="Text-to-speech engine, automatic video subtitles, and mono audio downmixing."
+                                    title={t('cfg.accessibility.audioSectionTitle', null, 'Auditory & Reading Assistance')}
+                                    description={t('cfg.accessibility.audioSectionDesc', null, 'Text-to-speech engine, automatic video subtitles, and mono audio downmixing.')}
                                 />
 
                                 <SettingCard 
                                     icon={Volume2} 
-                                    title="Read Aloud Floating Assistant" 
-                                    description="Launches the dedicated text-to-speech toolbar to read web articles, news, or selected text with synchronized speech."
+                                    title={t('cfg.accessibility.readAloudTitle', null, 'Read Aloud Floating Assistant')} 
+                                    description={t('cfg.accessibility.readAloudDesc', null, 'Launches the dedicated text-to-speech toolbar to read web articles, news, or selected text with synchronized speech.')}
                                 >
                                     <button
                                         onClick={() => {
                                             openReadAloud();
-                                            showToast('Read Aloud assistant launched.');
+                                            showToast(t('cfg.accessibility.toastReadAloud', null, 'Read Aloud assistant launched.'));
                                         }}
                                         className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition active:scale-95 flex items-center gap-2 cursor-pointer ${
                                             isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/[0.07] text-zinc-800' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white'
                                         }`}
                                     >
-                                        <span>Launch Toolbar</span>
+                                        <span>{t('cfg.accessibility.launchToolbar', null, 'Launch Toolbar')}</span>
                                         <span className="text-[10px] font-mono opacity-50">Alt+R</span>
                                     </button>
                                 </SettingCard>
 
                                 <SettingCard 
                                     icon={Sparkles} 
-                                    title="Force Video Closed Captions (Subtitles)" 
-                                    description="Automatically instructs HTML5 video players to activate native closed caption and subtitle text tracks by default."
+                                    title={t('cfg.accessibility.captionsTitle', null, 'Force Video Closed Captions (Subtitles)')} 
+                                    description={t('cfg.accessibility.captionsDesc', null, 'Automatically instructs HTML5 video players to activate native closed caption and subtitle text tracks by default.')}
                                 >
                                     <SettingToggle 
                                         isChecked={!!settings.a11yVideoCaptions} 
@@ -3475,8 +4024,8 @@ const SettingsModalContent = () => {
 
                                 <SettingCard 
                                     icon={VolumeX} 
-                                    title="Mono Audio Downmix" 
-                                    description="Combines left and right stereo audio channels into both ears to ensure no content is missed for users with unilateral hearing."
+                                    title={t('cfg.accessibility.monoAudioTitle', null, 'Mono Audio Downmix')} 
+                                    description={t('cfg.accessibility.monoAudioDesc', null, 'Combines left and right stereo audio channels into both ears to ensure no content is missed for users with unilateral hearing.')}
                                 >
                                     <SettingToggle 
                                         isChecked={!!settings.a11yMonoAudio} 
@@ -3491,16 +4040,16 @@ const SettingsModalContent = () => {
                     {settingsTab === 'privacy' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Privacy & Security</h3>
-                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Manage encrypted DNS routing, network protection, process sandboxing, and private spaces.</p>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.privacy.title', null, 'Privacy & Security')}</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.privacy.subtitle', null, 'Manage encrypted DNS routing, network protection, process sandboxing, and private spaces.')}</p>
                             </div>
 
                             {/* 1. ENCRYPTED DNS & CUSTOM RESOLVER COMMAND CARD */}
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Lock}
-                                    title="Encrypted DNS"
-                                    description="Route domain lookups through an encrypted HTTPS resolver to prevent ISP profiling."
+                                    title={t('cfg.privacy.dnsSectionTitle', null, 'Encrypted DNS')}
+                                    description={t('cfg.privacy.dnsSectionDesc', null, 'Route domain lookups through an encrypted HTTPS resolver to prevent ISP profiling.')}
                                 />
                                 <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
                                     isBright 
@@ -3519,10 +4068,10 @@ const SettingsModalContent = () => {
                                             </div>
                                             <div>
                                                 <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    Encrypted DNS (DNS over HTTPS)
+                                                    {t('cfg.privacy.dnsCardTitle', null, 'Encrypted DNS (DNS over HTTPS)')}
                                                 </h4>
                                                 <p className={`text-xs mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Select a trusted resolver or configure your own RFC 8484 DoH endpoint.
+                                                    {t('cfg.privacy.dnsCardDesc', null, 'Select a trusted resolver or configure your own RFC 8484 DoH endpoint.')}
                                                 </p>
                                             </div>
                                         </div>
@@ -3545,12 +4094,12 @@ const SettingsModalContent = () => {
                                         <Activity size={12} className={isTestingDns ? 'animate-spin text-accent' : ''} />
                                         <span>
                                             {isTestingDns 
-                                                ? 'Testing...' 
+                                                ? t('cfg.privacy.dnsTesting', null, 'Testing...') 
                                                 : dnsTestStatus?.ok && dnsTestStatus.latency !== undefined 
-                                                    ? `${dnsTestStatus.latency}ms • Online` 
+                                                    ? t('cfg.privacy.dnsOnlineStatus', { latency: dnsTestStatus.latency }, `${dnsTestStatus.latency}ms • Online`) 
                                                     : dnsTestStatus && !dnsTestStatus.ok
-                                                        ? 'Offline • Retry'
-                                                        : 'Test Connection'}
+                                                        ? t('cfg.privacy.dnsOfflineRetry', null, 'Offline • Retry')
+                                                        : t('cfg.privacy.dnsTestConnection', null, 'Test Connection')}
                                         </span>
                                     </button>
                                 </div>
@@ -3560,18 +4109,18 @@ const SettingsModalContent = () => {
                                     <label className={`text-[10px] font-mono font-bold uppercase tracking-wider block ${
                                         isBright ? 'text-zinc-500' : 'text-zinc-400'
                                     }`}>
-                                        Enforcement Mode
+                                        {t('cfg.privacy.dnsEnforcementMode', null, 'Enforcement Mode')}
                                     </label>
                                     <SlidingPillSwitcher
                                         options={[
-                                            { id: 'automatic', label: 'Automatic' },
-                                            { id: 'secure', label: 'Strict DoH' },
-                                            { id: 'off', label: 'Off' }
+                                            { id: 'automatic', label: getLocalizedDnsMode('automatic') },
+                                            { id: 'secure', label: getLocalizedDnsMode('secure') },
+                                            { id: 'off', label: getLocalizedDnsMode('off') }
                                         ]}
                                         value={settings.dohMode || 'automatic'}
                                         onChange={async (mode) => {
                                             await setDnsConfiguration({ mode });
-                                            showToast(`DNS Mode: ${mode === 'secure' ? 'Strict DoH' : mode === 'off' ? 'Off' : 'Automatic'}`);
+                                            showToast(t('cfg.privacy.toastDnsMode', { mode: getLocalizedDnsMode(mode) }, `DNS Mode: ${getLocalizedDnsMode(mode)}`));
                                         }}
                                         isBright={isBright}
                                         size="sm"
@@ -3585,26 +4134,26 @@ const SettingsModalContent = () => {
                                             <label className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
                                                 isBright ? 'text-zinc-500' : 'text-zinc-400'
                                             }`}>
-                                                Resolver Provider
+                                                {t('cfg.privacy.dnsResolverProvider', null, 'Resolver Provider')}
                                             </label>
                                             <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                RFC 8484 Standard
+                                                {t('cfg.privacy.dnsStandard', null, 'RFC 8484 Standard')}
                                             </span>
                                         </div>
 
                                         {/* Top Sliding Pill Switcher for Resolvers - Custom DNS is FIRST! */}
                                         <SlidingPillSwitcher
                                             options={[
-                                                { id: 'custom', label: 'Custom DNS' },
-                                                { id: 'cloudflare', label: 'Cloudflare' },
-                                                { id: 'quad9', label: 'Quad9' },
-                                                { id: 'adguard', label: 'AdGuard' },
-                                                { id: 'google', label: 'Google' }
+                                                { id: 'custom', label: getLocalizedDnsProvider('custom') },
+                                                { id: 'cloudflare', label: getLocalizedDnsProvider('cloudflare') },
+                                                { id: 'quad9', label: getLocalizedDnsProvider('quad9') },
+                                                { id: 'adguard', label: getLocalizedDnsProvider('adguard') },
+                                                { id: 'google', label: getLocalizedDnsProvider('google') }
                                             ]}
                                             value={settings.doh || 'cloudflare'}
                                             onChange={async (providerId) => {
                                                 await setDnsConfiguration({ provider: providerId });
-                                                showToast(`DNS Provider: ${providerId === 'custom' ? 'Custom DNS' : providerId.charAt(0).toUpperCase() + providerId.slice(1)}`);
+                                                showToast(t('cfg.privacy.toastDnsProvider', { provider: getLocalizedDnsProvider(providerId) }, `DNS Provider: ${getLocalizedDnsProvider(providerId)}`));
                                             }}
                                             isBright={isBright}
                                         />
@@ -3617,14 +4166,14 @@ const SettingsModalContent = () => {
                                                 <div className="flex items-center justify-between">
                                                     <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
                                                         <Server size={12} />
-                                                        <span>Custom DoH Endpoint URL or IPv4</span>
+                                                        <span>{t('cfg.privacy.dnsCustomEndpointLabel', null, 'Custom DoH Endpoint URL or IPv4')}</span>
                                                     </label>
                                                     <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>DoH / IPv4</span>
                                                 </div>
 
                                                 {/* Quick-fill preset chips */}
                                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Presets:</span>
+                                                    <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.privacy.dnsPresetsLabel', null, 'Presets:')}</span>
                                                     {[
                                                         { name: 'NextDNS', url: 'https://dns.nextdns.io' },
                                                         { name: 'Mullvad', url: 'https://dns.mullvad.net/dns-query' },
@@ -3658,7 +4207,7 @@ const SettingsModalContent = () => {
                                                         <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
                                                         <input
                                                             type="text"
-                                                            placeholder="https://dns.example.com/dns-query or 9.9.9.9"
+                                                            placeholder={t('cfg.privacy.dnsUrlPlaceholder', null, 'https://dns.example.com/dns-query or 9.9.9.9')}
                                                             value={customDnsUrl}
                                                             onChange={(e) => setCustomDnsUrl(e.target.value)}
                                                             className="w-full bg-transparent text-xs font-mono outline-none"
@@ -3669,7 +4218,7 @@ const SettingsModalContent = () => {
                                                         onClick={async () => {
                                                             const formatted = formatCustomDohUrl(customDnsUrl);
                                                             if (!formatted || !isValidDohUrl(formatted)) {
-                                                                showToast('Please enter a valid DNS URL or IPv4 address');
+                                                                showToast(t('cfg.privacy.toastDnsInvalid', null, 'Please enter a valid DNS URL or IPv4 address'));
                                                                 return;
                                                             }
                                                             await setDnsConfiguration({
@@ -3677,13 +4226,13 @@ const SettingsModalContent = () => {
                                                                 customUrl: formatted
                                                             });
                                                             setCustomDnsUrl(formatted);
-                                                            showToast('Custom DNS server saved & applied');
+                                                            showToast(t('cfg.privacy.toastDnsSaved', null, 'Custom DNS server saved & applied'));
                                                             handleTestDns(formatted);
                                                         }}
                                                         className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm flex items-center gap-1.5 flex-shrink-0"
                                                     >
                                                         <Check size={12} strokeWidth={2.5} />
-                                                        <span>Apply</span>
+                                                        <span>{t('cfg.common.apply', null, 'Apply')}</span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -3696,8 +4245,8 @@ const SettingsModalContent = () => {
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
                                                 <span className="truncate">
-                                                    Active: {settings.doh === 'custom' 
-                                                        ? (customDnsUrl || 'Custom DoH Endpoint')
+                                                    {t('cfg.privacy.dnsActivePrefix', null, 'Active:')} {settings.doh === 'custom' 
+                                                        ? (customDnsUrl || t('cfg.privacy.dnsCustomFallback', null, 'Custom DoH Endpoint'))
                                                         : DOH_PROVIDERS.find(p => p.id === (settings.doh || 'cloudflare'))?.url || 'https://cloudflare-dns.com/dns-query'}
                                                 </span>
                                             </div>
@@ -3711,8 +4260,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Lock}
-                                    title="Protection & Network Isolation"
-                                    description="Baseline privacy profile, HTTPS enforcement, process sandboxing, and leak defense."
+                                    title={t('cfg.privacy.isolationSectionTitle', null, 'Protection & Network Isolation')}
+                                    description={t('cfg.privacy.isolationSectionDesc', null, 'Baseline privacy profile, HTTPS enforcement, process sandboxing, and leak defense.')}
                                 />
                                 <div className={`rounded-2xl border p-5 transition-all duration-200 space-y-3 ${
                                     isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
@@ -3720,18 +4269,18 @@ const SettingsModalContent = () => {
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Privacy Shield Level
+                                                {t('cfg.privacy.shieldLevelTitle', null, 'Privacy Shield Level')}
                                             </h4>
                                             <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                Select a baseline security preset or fine-tune individual protection layers below.
+                                                {t('cfg.privacy.shieldLevelDesc', null, 'Select a baseline security preset or fine-tune individual protection layers below.')}
                                             </p>
                                         </div>
                                     </div>
                                     <SlidingPillSwitcher
                                         options={[
-                                            { id: 'standard', label: 'Standard' },
-                                            { id: 'strict', label: 'Strict' },
-                                            { id: 'custom', label: 'Custom' }
+                                            { id: 'standard', label: t('cfg.privacy.levelStandard', null, 'Standard') },
+                                            { id: 'strict', label: t('cfg.privacy.levelStrict', null, 'Strict') },
+                                            { id: 'custom', label: t('cfg.privacy.levelCustom', null, 'Custom') }
                                         ]}
                                         value={
                                             settings.privacyLevel || (
@@ -3749,14 +4298,14 @@ const SettingsModalContent = () => {
                                                 setSettingValue('isolation', false);
                                                 setSettingValue('webrtc', true);
                                                 setSettingValue('dnt', true);
-                                                showToast('Privacy Shield: Standard profile applied');
+                                                showToast(t('cfg.privacy.toastShieldStandard', null, 'Privacy Shield: Standard profile applied'));
                                             } else if (level === 'strict') {
                                                 setSettingValue('privacyLevel', 'strict');
                                                 setSettingValue('httpsOnly', true);
                                                 setSettingValue('isolation', true);
                                                 setSettingValue('webrtc', true);
                                                 setSettingValue('dnt', true);
-                                                showToast('Privacy Shield: Strict profile applied');
+                                                showToast(t('cfg.privacy.toastShieldStrict', null, 'Privacy Shield: Strict profile applied'));
                                             } else {
                                                 setSettingValue('privacyLevel', 'custom');
                                             }
@@ -3765,7 +4314,7 @@ const SettingsModalContent = () => {
                                     />
                                 </div>
 
-                                <SettingCard icon={Lock} title="HTTPS-Only Mode" description="Automatically upgrade all connections to secure HTTPS.">
+                                <SettingCard icon={Lock} title={t('cfg.privacy.httpsOnlyTitle', null, 'HTTPS-Only Mode')} description={t('cfg.privacy.httpsOnlyDesc', null, 'Automatically upgrade all connections to secure HTTPS.')}>
                                     <SettingToggle 
                                         isChecked={!!settings.httpsOnly} 
                                         onToggle={() => {
@@ -3775,7 +4324,7 @@ const SettingsModalContent = () => {
                                     />
                                 </SettingCard>
 
-                                <SettingCard icon={Cpu} title="Strict Process Isolation" description="Run each site in its own isolated Electron process sandbox.">
+                                <SettingCard icon={Cpu} title={t('cfg.privacy.isolationTitle', null, 'Strict Process Isolation')} description={t('cfg.privacy.isolationDesc', null, 'Run each site in its own isolated Electron process sandbox.')}>
                                     <SettingToggle 
                                         isChecked={!!settings.isolation} 
                                         onToggle={() => {
@@ -3785,7 +4334,7 @@ const SettingsModalContent = () => {
                                     />
                                 </SettingCard>
 
-                            <SettingCard icon={Globe} title="WebRTC Leak Protection" description="Prevent sites from discovering your true local IP address via WebRTC calls.">
+                            <SettingCard icon={Globe} title={t('cfg.privacy.webrtcTitle', null, 'WebRTC Leak Protection')} description={t('cfg.privacy.webrtcDesc', null, 'Prevent sites from discovering your true local IP address via WebRTC calls.')}>
                                 <SettingToggle 
                                     isChecked={!!settings.webrtc} 
                                     onToggle={() => {
@@ -3799,7 +4348,7 @@ const SettingsModalContent = () => {
                                 />
                             </SettingCard>
 
-                            <SettingCard icon={Eye} title="Send 'Do Not Track' (DNT) Header" description="Request that web networks and advertisers omit cross-site tracking.">
+                            <SettingCard icon={Eye} title={t('cfg.privacy.dntTitle', null, "Send 'Do Not Track' (DNT) Header")} description={t('cfg.privacy.dntDesc', null, 'Request that web networks and advertisers omit cross-site tracking.')}>
                                 <SettingToggle 
                                     isChecked={!!settings.dnt} 
                                     onToggle={() => {
@@ -3814,15 +4363,15 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Ghost}
-                                    title="Private Spaces, Sync & Vault"
-                                    description="Tor routing, encrypted cloud auto-sync, QVault privacy rules, and browsing data cleanup."
+                                    title={t('cfg.privacy.vaultSectionTitle', null, 'Private Spaces, Sync & Vault')}
+                                    description={t('cfg.privacy.vaultSectionDesc', null, 'Tor routing, encrypted cloud auto-sync, QVault privacy rules, and browsing data cleanup.')}
                                 />
 
                                 {/* Tor Onion Network Routing */}
                                 <SettingCard 
                                     icon={Globe} 
-                                    title="Tor Onion Network Routing" 
-                                    description="Route Private space through the Tor network. Onion icon dynamically replaces Ghost in the bottom spaces bar."
+                                    title={t('cfg.privacy.torTitle', null, 'Tor Onion Network Routing')} 
+                                    description={t('cfg.privacy.torDesc', null, 'Route Private space through the Tor network. Onion icon dynamically replaces Ghost in the bottom spaces bar.')}
                                 >
                                     <SettingToggle 
                                         isChecked={isTorEnabled} 
@@ -3833,10 +4382,10 @@ const SettingsModalContent = () => {
                                 {/* Encrypted Cloud Auto-Sync */}
                                 <SettingCard 
                                     icon={RefreshCw} 
-                                    title="Encrypted Cloud Auto-Sync" 
+                                    title={t('cfg.privacy.autoSyncTitle', null, 'Encrypted Cloud Auto-Sync')} 
                                     description={user 
-                                        ? `Automatically encrypts (AES-256) and syncs tabs, vault, and settings every 5 minutes and on local changes. (Last sync: ${lastSyncTime || 'Pending'})`
-                                        : "Sign in to your account from the user profile popover to enable automatic encrypted cloud sync across devices."
+                                        ? t('cfg.privacy.autoSyncDescSignedIn', { time: lastSyncTime || t('cfg.common.pending', null, 'Pending') }, `Automatically encrypts (AES-256) and syncs tabs, vault, and settings every 5 minutes and on local changes. (Last sync: ${lastSyncTime || 'Pending'})`)
+                                        : t('cfg.privacy.autoSyncDescSignedOut', null, 'Sign in to your account from the user profile popover to enable automatic encrypted cloud sync across devices.')
                                     }
                                 >
                                     <SettingToggle 
@@ -3854,16 +4403,74 @@ const SettingsModalContent = () => {
                                 {/* QVault in Ghost & Tor Spaces */}
                                 <SettingCard 
                                     icon={Key} 
-                                    title="QVault in Ghost & Tor Spaces" 
-                                    description="Allow inline autofill of saved passwords while in private spaces. Password save prompts are always suppressed for privacy."
+                                    title={t('cfg.privacy.qvaultPrivateTitle', null, 'QVault in Ghost & Tor Spaces')} 
+                                    description={t('cfg.privacy.qvaultPrivateDesc', null, 'Allow inline autofill of saved passwords while in private spaces. Password save prompts are always suppressed for privacy.')}
                                 >
                                     <SettingToggle 
                                         isChecked={allowVaultInGhostTor} 
                                         onToggle={() => {
                                             const next = !allowVaultInGhostTor;
                                             setAllowVaultInGhostTor(next);
-                                            showToast(next ? 'QVault autofill enabled in private spaces' : 'QVault autofill disabled in private spaces');
+                                            showToast(next ? t('cfg.privacy.toastQvaultEnabled', null, 'QVault autofill enabled in private spaces') : t('cfg.privacy.toastQvaultDisabled', null, 'QVault autofill disabled in private spaces'));
                                         }} 
+                                    />
+                                </SettingCard>
+
+                                {/* Passkey Provider Routing (QVault vs Hardware / System Key) */}
+                                <div className={`p-3.5 rounded-2xl border space-y-3 transition-all duration-200 ${
+                                    isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                }`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                                            isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border-white/[0.06]'
+                                        }`}>
+                                            <KeyRound size={15} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className={`font-medium text-xs ${isBright ? 'text-zinc-800 font-semibold' : 'text-zinc-200'}`}>
+                                                {t('cfg.privacy.passkeyProviderTitle', null, 'Passkey Provider')}
+                                            </p>
+                                            <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                {t('cfg.privacy.passkeyProviderDesc', null, 'Choose whether websites use QVault passkeys first or always route directly to your Hardware / System Security Key (YubiKey, FIDO2, Windows Hello, Touch ID, Phone QR).')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <SlidingPillSwitcher
+                                        options={[
+                                            { id: 'qvault', label: t('cfg.privacy.passkeyModeQvault', null, 'QVault'), icon: ShieldCheck },
+                                            { id: 'hardware', label: t('cfg.privacy.passkeyModeHardware', null, 'Hardware / System Key'), icon: Usb }
+                                        ]}
+                                        value={settings.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault'}
+                                        onChange={(mode) => {
+                                            setSettingValue('passkeyProviderMode', mode);
+                                            showToast(
+                                                mode === 'hardware'
+                                                    ? t('cfg.privacy.toastPasskeyModeHardware', null, 'Passkey Provider: Always use Hardware / System Security Key')
+                                                    : t('cfg.privacy.toastPasskeyModeQvault', null, 'Passkey Provider: QVault (with Hardware Key fallback)')
+                                            );
+                                        }}
+                                        isBright={isBright}
+                                    />
+                                </div>
+
+                                {/* Automatic Hardware Key Fallback */}
+                                <SettingCard
+                                    icon={Usb}
+                                    title={t('cfg.privacy.passkeyFallbackTitle', null, 'Automatic Hardware Key Fallback')}
+                                    description={t('cfg.privacy.passkeyFallbackDesc', null, 'Automatically fall back to YubiKey, FIDO2, OS biometrics, or Phone QR when QVault has no matching passkey, is locked/unavailable in Ghost or Tor, or a site requests unsupported algorithms.')}
+                                    badge={settings.passkeyProviderMode === 'hardware' ? t('cfg.privacy.passkeyFallbackAlwaysActive', null, 'Always Active') : null}
+                                >
+                                    <SettingToggle
+                                        isChecked={settings.passkeyHardwareFallback !== false}
+                                        onToggle={() => {
+                                            const next = settings.passkeyHardwareFallback === false;
+                                            setSettingValue('passkeyHardwareFallback', next);
+                                            showToast(
+                                                next
+                                                    ? t('cfg.privacy.toastPasskeyFallbackEnabled', null, 'Automatic Hardware Key fallback enabled')
+                                                    : t('cfg.privacy.toastPasskeyFallbackDisabled', null, 'Automatic Hardware Key fallback disabled')
+                                            );
+                                        }}
                                     />
                                 </SettingCard>
 
@@ -3878,13 +4485,13 @@ const SettingsModalContent = () => {
                                             <Lock size={15} />
                                         </div>
                                         <div>
-                                            <p className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>Never Saved Sites</p>
-                                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Websites where you dismissed credential saving with "Never for this site".</p>
+                                            <p className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('cfg.privacy.neverSavedTitle', null, 'Never Saved Sites')}</p>
+                                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.privacy.neverSavedDesc', null, 'Websites where you dismissed credential saving with "Never for this site".')}</p>
                                         </div>
                                     </div>
                                     {neverSaveDomains.length === 0 ? (
                                         <div className={`text-center text-xs italic py-3 rounded-xl border ${isBright ? 'text-zinc-500 bg-black/[0.02] border-black/[0.07]' : 'text-zinc-400 bg-white/[0.02] border-white/[0.06]'}`}>
-                                            No sites excluded. QVault will offer to save logins across all websites.
+                                            {t('cfg.privacy.neverSavedEmpty', null, 'No sites excluded. QVault will offer to save logins across all websites.')}
                                         </div>
                                     ) : (
                                         <div className="flex flex-wrap gap-2 mt-2">
@@ -3894,10 +4501,10 @@ const SettingsModalContent = () => {
                                                     <button 
                                                         onClick={() => {
                                                             removeNeverSaveDomain(d);
-                                                            showToast(`Removed ${d} from excluded sites`);
+                                                            showToast(t('cfg.privacy.toastRemovedExclusion', { domain: d }, `Removed ${d} from excluded sites`));
                                                         }}
                                                         className={`w-4 h-4 rounded flex items-center justify-center transition cursor-pointer ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-black' : 'hover:bg-white/10 text-white/40 hover:text-white'}`}
-                                                        title="Remove exclusion"
+                                                        title={t('cfg.privacy.removeExclusionTitle', null, 'Remove exclusion')}
                                                     >
                                                         <X size={11} />
                                                     </button>
@@ -3910,8 +4517,8 @@ const SettingsModalContent = () => {
                                 {/* Clear Data Card */}
                                 <div className={`p-4 rounded-2xl flex items-center justify-between border ${isBright ? 'bg-red-500/[0.08] border-red-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                                     <div>
-                                        <p className={`font-semibold text-sm ${isBright ? 'text-red-600' : 'text-red-400'}`}>Clear Browsing Data</p>
-                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-red-600/70' : 'text-red-400/60'}`}>Clear history, cookies, and cache from local storage &amp; SQLite.</p>
+                                        <p className={`font-semibold text-sm ${isBright ? 'text-red-600' : 'text-red-400'}`}>{t('cfg.privacy.clearDataTitle', null, 'Clear Browsing Data')}</p>
+                                        <p className={`text-xs mt-0.5 ${isBright ? 'text-red-600/70' : 'text-red-400/60'}`}>{t('cfg.privacy.clearDataDesc', null, 'Clear history, cookies, and cache from local storage & SQLite.')}</p>
                                     </div>
                                     <button 
                                         onClick={async () => {
@@ -3919,11 +4526,11 @@ const SettingsModalContent = () => {
                                                 await window.electronAPI.clearAllData({ cookies: true, cache: true, storage: true }).catch(()=>{});
                                             }
                                             useHistoryStore.getState().clearHistory();
-                                            showToast('All browsing data cleared!');
+                                            showToast(t('cfg.privacy.toastDataCleared', null, 'All browsing data cleared!'));
                                         }}
                                         className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer"
                                     >
-                                        Clear Data...
+                                        {t('cfg.privacy.clearDataBtn', null, 'Clear Data...')}
                                     </button>
                                 </div>
                             </div>
@@ -3934,22 +4541,22 @@ const SettingsModalContent = () => {
                     {settingsTab === 'cookies' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Cookies &amp; Site Permissions</h3>
-                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Control storage access, cross-site tracking cookies, and site rules.</p>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.cookies.title', null, 'Cookies & Site Permissions')}</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.cookies.subtitle', null, 'Control storage access, cross-site tracking cookies, and site rules.')}</p>
                             </div>
 
                             {/* Cookie Storage & Tracking */}
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Cookie}
-                                    title="Cookie Storage & Tracking"
-                                    description="Inspect stored site data and control cross-site tracking cookies."
+                                    title={t('cfg.cookies.storageTitle', null, 'Cookie Storage & Tracking')}
+                                    description={t('cfg.cookies.storageDesc', null, 'Inspect stored site data and control cross-site tracking cookies.')}
                                 />
 
                                 <SettingCard
                                     icon={Cookie}
-                                    title="Interactive Cookie Explorer"
-                                    description="Inspect, search, and delete individual site cookies and local storage."
+                                    title={t('cfg.cookies.explorerTitle', null, 'Interactive Cookie Explorer')}
+                                    description={t('cfg.cookies.explorerDesc', null, 'Inspect, search, and delete individual site cookies and local storage.')}
                                 >
                                     <button 
                                         onClick={() => openModal('cookies')}
@@ -3957,15 +4564,15 @@ const SettingsModalContent = () => {
                                             isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-white'
                                         }`}
                                     >
-                                        Open Explorer
+                                        {t('cfg.cookies.openExplorer', null, 'Open Explorer')}
                                     </button>
                                 </SettingCard>
 
-                                <SettingCard icon={ShieldAlert} title="Block 3rd-Party Tracking Cookies" description="Prevent external tracking widgets from saving cross-site cookies.">
+                                <SettingCard icon={ShieldAlert} title={t('cfg.cookies.block3rdPartyTitle', null, 'Block 3rd-Party Tracking Cookies')} description={t('cfg.cookies.block3rdPartyDesc', null, 'Prevent external tracking widgets from saving cross-site cookies.')}>
                                     <SettingToggle isChecked={!!settings.block3rdParty} onToggle={() => toggleSetting('block3rdParty')} />
                                 </SettingCard>
 
-                                <SettingCard icon={RotateCcw} title="Clear Cookies on Exit" description="Automatically clear non-essential session cookies when QBrowse closes.">
+                                <SettingCard icon={RotateCcw} title={t('cfg.cookies.clearOnExitTitle', null, 'Clear Cookies on Exit')} description={t('cfg.cookies.clearOnExitDesc', null, 'Automatically clear non-essential session cookies when QBrowse closes.')}>
                                     <SettingToggle isChecked={!!settings.clearOnExit} onToggle={() => toggleSetting('clearOnExit')} />
                                 </SettingCard>
                             </div>
@@ -3974,8 +4581,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={SlidersHorizontal}
-                                    title="Site Permission Overrides"
-                                    description="Sites with custom location, media, notification, or sound rules."
+                                    title={t('cfg.cookies.overridesTitle', null, 'Site Permission Overrides')}
+                                    description={t('cfg.cookies.overridesDesc', null, 'Sites with custom location, media, notification, or sound rules.')}
                                 />
 
                                 <div className={`p-4 rounded-2xl border flex flex-col gap-3 ${
@@ -3985,7 +4592,7 @@ const SettingsModalContent = () => {
                                         <div className={`p-4 rounded-xl border text-center text-xs ${
                                             isBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-500' : 'bg-black/20 border-white/[0.06] text-zinc-400'
                                         }`}>
-                                            No custom site permissions saved yet. Click the lock icon in the address bar on any site to set rules.
+                                            {t('cfg.cookies.overridesEmpty', null, 'No custom site permissions saved yet. Click the lock icon in the address bar on any site to set rules.')}
                                         </div>
                                     ) : (
                                         <div className="flex flex-col gap-2 max-h-56 overflow-y-auto hide-scroll pr-1">
@@ -4000,7 +4607,7 @@ const SettingsModalContent = () => {
                                                                 <span key={perm} className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
                                                                     val === 'allow' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
                                                                 }`}>
-                                                                    {perm}: {val}
+                                                                    {getLocalizedPermName(perm)}: {getLocalizedPermVal(val)}
                                                                 </span>
                                                             ))}
                                                         </div>
@@ -4010,7 +4617,7 @@ const SettingsModalContent = () => {
                                                         className={`p-1.5 rounded-lg hover:bg-red-500/20 hover:text-red-400 transition cursor-pointer ${
                                                             isBright ? 'text-zinc-400' : 'text-white/40'
                                                         }`}
-                                                        title="Reset permissions for domain"
+                                                        title={t('cfg.cookies.resetPermsTitle', null, 'Reset permissions for domain')}
                                                     >
                                                         <Trash2 size={14} />
                                                     </button>
@@ -4027,16 +4634,16 @@ const SettingsModalContent = () => {
                     {settingsTab === 'search' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Search &amp; Omnibox</h3>
-                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Configure default search engines, live suggestions, and smart search bangs.</p>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.search.title', null, 'Search & Omnibox')}</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.search.subtitle', null, 'Configure default search engines, live suggestions, and smart search bangs.')}</p>
                             </div>
 
                             {/* Default Search Engine */}
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Search}
-                                    title="Default Search Engine"
-                                    description="Select the primary search provider used across the Omnibox and context menus."
+                                    title={t('cfg.search.defaultEngineSectionTitle', null, 'Default Search Engine')}
+                                    description={t('cfg.search.defaultEngineSectionDesc', null, 'Select the primary search provider used across the Omnibox and context menus.')}
                                 />
                                 <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-3.5 ${
                                     isBright 
@@ -4051,10 +4658,10 @@ const SettingsModalContent = () => {
                                         </div>
                                         <div>
                                             <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Primary Search Provider
+                                                {t('cfg.search.primaryProviderTitle', null, 'Primary Search Provider')}
                                             </h4>
                                             <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                Default search engine used when entering queries in the Omnibox, right-click menus, and navigation fallback.
+                                                {t('cfg.search.primaryProviderDesc', null, 'Default search engine used when entering queries in the Omnibox, right-click menus, and navigation fallback.')}
                                             </p>
                                         </div>
                                     </div>
@@ -4069,7 +4676,7 @@ const SettingsModalContent = () => {
                                                     type="button"
                                                     onClick={() => {
                                                         setDefaultSearchEngine(se.id);
-                                                        showToast(`Default search: ${se.name}`);
+                                                        showToast(t('cfg.search.toastDefaultSearch', { name: se.name }, `Default search: ${se.name}`));
                                                     }}
                                                     className={`py-1.5 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center gap-2 ${
                                                         isDefault
@@ -4096,8 +4703,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Compass}
-                                    title="Omnibox Keywords & Custom Engines"
-                                    description="Assign short keyword triggers to search websites directly from the address bar."
+                                    title={t('cfg.search.keywordsSectionTitle', null, 'Omnibox Keywords & Custom Engines')}
+                                    description={t('cfg.search.keywordsSectionDesc', null, 'Assign short keyword triggers to search websites directly from the address bar.')}
                                 />
                                 <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
                                     isBright 
@@ -4113,10 +4720,15 @@ const SettingsModalContent = () => {
                                             </div>
                                             <div>
                                                 <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    Custom Search Shortcuts
+                                                    {t('cfg.search.customShortcutsTitle', null, 'Custom Search Shortcuts')}
                                                 </h4>
                                                 <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Type a keyword followed by your query (e.g. <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">yt query</span>).
+                                                    {renderTemplateParts(
+                                                        t('cfg.search.customShortcutsDesc', null, 'Type a keyword followed by your query (e.g. {code}).'),
+                                                        {
+                                                            code: <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">yt query</span>
+                                                        }
+                                                    )}
                                                 </p>
                                             </div>
                                         </div>
@@ -4139,7 +4751,7 @@ const SettingsModalContent = () => {
                                         className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
                                     >
                                         <Plus size={13} className={`transition-transform duration-300 ${isAddingEngine ? 'rotate-45' : ''}`} />
-                                        <span>{isAddingEngine ? 'Cancel' : 'Add Engine'}</span>
+                                        <span>{isAddingEngine ? t('cfg.common.cancel', null, 'Cancel') : t('cfg.search.addEngineBtn', null, 'Add Engine')}</span>
                                     </button>
                                 </div>
 
@@ -4153,19 +4765,19 @@ const SettingsModalContent = () => {
                                         }`}>
                                             <div className="flex items-center justify-between">
                                                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-accent">
-                                                    {editingEngineId ? 'EDIT SEARCH ENGINE' : 'NEW SEARCH ENGINE'}
+                                                    {editingEngineId ? t('cfg.search.editEngineHeader', null, 'EDIT SEARCH ENGINE') : t('cfg.search.newEngineHeader', null, 'NEW SEARCH ENGINE')}
                                                 </span>
                                                 <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
-                                                    %s = query
+                                                    {t('cfg.search.queryVarHint', null, '%s = query')}
                                                 </span>
                                             </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                                                 <div>
-                                                    <label className={`text-[10px] block mb-1 font-mono font-bold uppercase ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Engine Name</label>
+                                                    <label className={`text-[10px] block mb-1 font-mono font-bold uppercase ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('cfg.search.engineNameLabel', null, 'Engine Name')}</label>
                                                     <input
                                                         type="text"
-                                                        placeholder="e.g. YouTube, GitHub"
+                                                        placeholder={t('cfg.search.engineNamePlaceholder', null, 'e.g. YouTube, GitHub')}
                                                         value={engineNameInput}
                                                         onChange={(e) => setEngineNameInput(e.target.value)}
                                                         className={`w-full px-3 py-1.5 rounded-xl text-xs outline-none focus:border-accent border ${
@@ -4174,10 +4786,10 @@ const SettingsModalContent = () => {
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className={`text-[10px] block mb-1 font-mono font-bold uppercase ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Keyword Shortcut</label>
+                                                    <label className={`text-[10px] block mb-1 font-mono font-bold uppercase ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('cfg.search.keywordShortcutLabel', null, 'Keyword Shortcut')}</label>
                                                     <input
                                                         type="text"
-                                                        placeholder="e.g. yt, gh, wiki"
+                                                        placeholder={t('cfg.search.keywordShortcutPlaceholder', null, 'e.g. yt, gh, wiki')}
                                                         value={engineKeywordInput}
                                                         onChange={(e) => setEngineKeywordInput(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
                                                         className={`w-full px-3 py-1.5 rounded-xl text-xs font-mono outline-none focus:border-accent border ${
@@ -4186,7 +4798,7 @@ const SettingsModalContent = () => {
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className={`text-[10px] block mb-1 font-mono font-bold uppercase ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Color Accent</label>
+                                                    <label className={`text-[10px] block mb-1 font-mono font-bold uppercase ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('cfg.search.colorAccentLabel', null, 'Color Accent')}</label>
                                                     <div className="flex items-center gap-2 pt-1">
                                                         {['#d4bc94', '#4285F4', '#FF0000', '#A855F7', '#10B981', '#F59E0B', '#38BDF8', '#EC4899'].map(c => (
                                                             <button
@@ -4203,7 +4815,7 @@ const SettingsModalContent = () => {
 
                                             <div>
                                                 <label className={`text-[10px] block mb-1 font-mono font-bold uppercase ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                                                    Search URL Template
+                                                    {t('cfg.search.urlTemplateLabel', null, 'Search URL Template')}
                                                 </label>
                                                 <input
                                                     type="text"
@@ -4227,14 +4839,14 @@ const SettingsModalContent = () => {
                                                         isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 text-white/70'
                                                     }`}
                                                 >
-                                                    Cancel
+                                                    {t('cfg.common.cancel', null, 'Cancel')}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={handleSaveSearchEngine}
                                                     className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
                                                 >
-                                                    {editingEngineId ? 'Update Engine' : 'Save Engine'}
+                                                    {editingEngineId ? t('cfg.search.updateEngineBtn', null, 'Update Engine') : t('cfg.search.saveEngineBtn', null, 'Save Engine')}
                                                 </button>
                                             </div>
                                         </div>
@@ -4247,7 +4859,7 @@ const SettingsModalContent = () => {
                                         <div className={`p-4 rounded-xl border border-dashed text-center text-xs ${
                                             isBright ? 'bg-black/[0.01] border-black/10 text-zinc-500' : 'bg-white/[0.01] border-white/10 text-white/40'
                                         }`}>
-                                            No custom search engines configured. Click &quot;Add Engine&quot; above to create Omnibox shortcuts for any website.
+                                            {t('cfg.search.noCustomEngines', null, 'No custom search engines configured. Click "Add Engine" above to create Omnibox shortcuts for any website.')}
                                         </div>
                                     ) : (
                                         (settings.customSearchEngines || []).map(engine => {
@@ -4280,13 +4892,13 @@ const SettingsModalContent = () => {
                                                                 type="button"
                                                                 onClick={() => {
                                                                     setDefaultSearchEngine(engine.id);
-                                                                    showToast(`Default search: ${engine.name}`);
+                                                                    showToast(t('cfg.search.toastDefaultSearch', { name: engine.name }, `Default search: ${engine.name}`));
                                                                 }}
                                                                 className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition cursor-pointer ${
                                                                     isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/70 hover:text-white'
                                                                 }`}
                                                             >
-                                                                Make Default
+                                                                {t('cfg.search.makeDefaultBtn', null, 'Make Default')}
                                                             </button>
                                                         )}
                                                         <button
@@ -4295,7 +4907,7 @@ const SettingsModalContent = () => {
                                                             className={`p-1.5 rounded-lg border border-transparent transition cursor-pointer ${
                                                                 isBright ? 'hover:bg-black/5 text-zinc-600' : 'hover:bg-white/10 text-white/60 hover:text-white'
                                                             }`}
-                                                            title="Edit Engine"
+                                                            title={t('cfg.search.editEngineTitle', null, 'Edit Engine')}
                                                         >
                                                             <Edit2 size={13} />
                                                         </button>
@@ -4303,10 +4915,10 @@ const SettingsModalContent = () => {
                                                             type="button"
                                                             onClick={() => {
                                                                 removeCustomSearchEngine(engine.id);
-                                                                showToast(`Removed "${engine.name}"`);
+                                                                showToast(t('cfg.search.toastRemovedEngine', { name: engine.name }, `Removed "${engine.name}"`));
                                                             }}
                                                             className="p-1.5 rounded-lg text-rose-400/80 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
-                                                            title="Delete Engine"
+                                                            title={t('cfg.search.deleteEngineTitle', null, 'Delete Engine')}
                                                         >
                                                             <Trash2 size={13} />
                                                         </button>
@@ -4323,8 +4935,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Sparkles}
-                                    title="Smart Search Bangs"
-                                    description="Route searches directly to specific engines using ! or @ prefixes in the Omnibox."
+                                    title={t('cfg.search.bangsSectionTitle', null, 'Smart Search Bangs')}
+                                    description={t('cfg.search.bangsSectionDesc', null, 'Route searches directly to specific engines using ! or @ prefixes in the Omnibox.')}
                                 />
                                 <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
                                     isBright 
@@ -4340,10 +4952,16 @@ const SettingsModalContent = () => {
                                             </div>
                                             <div>
                                                 <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    Bang Triggers Directory
+                                                    {t('cfg.search.bangsDirectoryTitle', null, 'Bang Triggers Directory')}
                                                 </h4>
                                                 <p className={`text-xs leading-relaxed mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    Type <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">!yt</span> or <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">@wiki</span> in the address bar to route searches immediately.
+                                                    {renderTemplateParts(
+                                                        t('cfg.search.bangsDirectoryDesc', null, 'Type {bang1} or {bang2} in the address bar to route searches immediately.'),
+                                                        {
+                                                            bang1: <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">!yt</span>,
+                                                            bang2: <span className="font-mono text-accent font-semibold px-1 py-0.2 rounded bg-accent/10 border border-accent/20">@wiki</span>
+                                                        }
+                                                    )}
                                                 </p>
                                             </div>
                                         </div>
@@ -4354,7 +4972,7 @@ const SettingsModalContent = () => {
                                             className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer shrink-0"
                                         >
                                             <Plus size={13} className={`transition-transform duration-300 ${isAddingBang ? 'rotate-45' : ''}`} />
-                                            <span>{isAddingBang ? 'Cancel' : 'Add Bang'}</span>
+                                            <span>{isAddingBang ? t('cfg.common.cancel', null, 'Cancel') : t('cfg.search.addBangBtn', null, 'Add Bang')}</span>
                                         </button>
                                     </div>
 
@@ -4364,15 +4982,15 @@ const SettingsModalContent = () => {
                                         <div className={`p-4 rounded-xl border flex flex-col gap-3 my-1 ${
                                             isBright ? 'bg-black/[0.03] border-black/10' : 'bg-black/40 border-white/10'
                                         }`}>
-                                            <p className="text-xs font-bold text-accent uppercase tracking-wider">Create Custom Search Bang</p>
+                                            <p className="text-xs font-bold text-accent uppercase tracking-wider">{t('cfg.search.createBangTitle', null, 'Create Custom Search Bang')}</p>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                 <div>
-                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Shortcut Prefix</label>
+                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('cfg.search.shortcutPrefixLabel', null, 'Shortcut Prefix')}</label>
                                                     <div className="relative flex items-center">
                                                         <span className="absolute left-3 text-xs font-mono opacity-50">! / @</span>
                                                         <input
                                                             type="text"
-                                                            placeholder="e.g. keep or aw"
+                                                            placeholder={t('cfg.search.shortcutPrefixPlaceholder', null, 'e.g. keep or aw')}
                                                             value={newBangPrefix}
                                                             onChange={(e) => setNewBangPrefix(e.target.value.replace(/^[!@]/, ''))}
                                                             className={`w-full pl-12 pr-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-accent font-mono ${
@@ -4382,10 +5000,10 @@ const SettingsModalContent = () => {
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Engine Name</label>
+                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('cfg.search.engineNameLabel', null, 'Engine Name')}</label>
                                                     <input
                                                         type="text"
-                                                        placeholder="e.g. Google Keep or ArchWiki"
+                                                        placeholder={t('cfg.search.bangEnginePlaceholder', null, 'e.g. Google Keep or ArchWiki')}
                                                         value={newBangName}
                                                         onChange={(e) => setNewBangName(e.target.value)}
                                                         className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-accent ${
@@ -4394,7 +5012,7 @@ const SettingsModalContent = () => {
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Color Accent</label>
+                                                    <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('cfg.search.colorAccentLabel', null, 'Color Accent')}</label>
                                                     <div className="flex items-center gap-2 pt-1">
                                                         {['#d4bc94', '#4285F4', '#FF0000', '#A855F7', '#10B981', '#F59E0B', '#38BDF8'].map(c => (
                                                             <button
@@ -4409,10 +5027,10 @@ const SettingsModalContent = () => {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Search URL Template (Use {'{q}'} for search query)</label>
+                                                <label className={`text-[10px] block mb-1 font-semibold ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('cfg.search.bangUrlLabel', { token: '{q}' }, 'Search URL Template (Use {q} for search query)')}</label>
                                                 <input
                                                     type="text"
-                                                    placeholder="e.g. https://wiki.archlinux.org/index.php?search={q}"
+                                                    placeholder={t('cfg.search.bangUrlPlaceholder', { token: '{q}' }, 'e.g. https://wiki.archlinux.org/index.php?search={q}')}
                                                     value={newBangUrl}
                                                     onChange={(e) => setNewBangUrl(e.target.value)}
                                                     className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-accent font-mono ${
@@ -4433,7 +5051,7 @@ const SettingsModalContent = () => {
                                                         isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 text-white/70'
                                                     }`}
                                                 >
-                                                    Cancel
+                                                    {t('cfg.common.cancel', null, 'Cancel')}
                                                 </button>
                                                 <button
                                                     type="button"
@@ -4442,11 +5060,11 @@ const SettingsModalContent = () => {
                                                         const n = newBangName.trim() || p;
                                                         const u = newBangUrl.trim();
                                                         if (!p || !u) {
-                                                            showToast('Please enter both shortcut prefix and search URL');
+                                                            showToast(t('cfg.search.toastBangMissingFields', null, 'Please enter both shortcut prefix and search URL'));
                                                             return;
                                                         }
                                                         addCustomBang({ prefix: p, name: n, url: u, color: newBangColor });
-                                                        showToast(`Custom bang "!${p}" added!`);
+                                                        showToast(t('cfg.search.toastBangAdded', { prefix: p }, `Custom bang "!${p}" added!`));
                                                         setIsAddingBang(false);
                                                         setNewBangPrefix('');
                                                         setNewBangName('');
@@ -4454,7 +5072,7 @@ const SettingsModalContent = () => {
                                                     }}
                                                     className="px-4 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs shadow-md transition cursor-pointer"
                                                 >
-                                                    Save Bang
+                                                    {t('cfg.search.saveBangBtn', null, 'Save Bang')}
                                                 </button>
                                             </div>
                                         </div>
@@ -4466,7 +5084,7 @@ const SettingsModalContent = () => {
                                     <Search size={14} className={`absolute left-3 top-2.5 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
                                     <input
                                         type="text"
-                                        placeholder="Filter bangs by name, shortcut (!yt, @github), or category..."
+                                        placeholder={t('cfg.search.filterBangsPlaceholder', null, 'Filter bangs by name, shortcut (!yt, @github), or category...')}
                                         value={bangFilter}
                                         onChange={(e) => setBangFilter(e.target.value)}
                                         className={`w-full pl-9 pr-3 py-2 border rounded-xl text-xs transition outline-none focus:border-accent ${
@@ -4524,12 +5142,12 @@ const SettingsModalContent = () => {
                                                         <button
                                                             onClick={() => {
                                                                 removeCustomBang(bang.prefix);
-                                                                showToast(`Removed custom bang "!${bang.prefix}"`);
+                                                                showToast(t('cfg.search.toastBangRemoved', { prefix: bang.prefix }, `Removed custom bang "!${bang.prefix}"`));
                                                             }}
                                                             className={`p-1.5 rounded-lg hover:bg-red-500/20 hover:text-red-400 transition cursor-pointer flex-shrink-0 ${
                                                                 isBright ? 'text-zinc-400' : 'text-white/30'
                                                             }`}
-                                                            title="Delete custom bang"
+                                                            title={t('cfg.search.deleteCustomBangTitle', null, 'Delete custom bang')}
                                                         >
                                                             <Trash2 size={13} />
                                                         </button>
@@ -4545,18 +5163,18 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={SlidersHorizontal}
-                                    title="Omnibox Behavior & Display"
-                                    description="Control inline calculations, live autocomplete, and URL formatting."
+                                    title={t('cfg.search.behaviorSectionTitle', null, 'Omnibox Behavior & Display')}
+                                    description={t('cfg.search.behaviorSectionDesc', null, 'Control inline calculations, live autocomplete, and URL formatting.')}
                                 />
-                                <SettingCard icon={Search} title="Smart Calculator in Omnibox" description="Solve math equations directly in the address bar dropdown.">
+                                <SettingCard icon={Search} title={t('cfg.search.smartCalcTitle', null, 'Smart Calculator in Omnibox')} description={t('cfg.search.smartCalcDesc', null, 'Solve math equations directly in the address bar dropdown.')}>
                                     <SettingToggle isChecked={!!settings.smartCalc} onToggle={() => toggleSetting('smartCalc')} />
                                 </SettingCard>
 
-                                <SettingCard icon={Zap} title="Live Search Suggestions" description="Send typed queries to your search engine for live autocomplete.">
+                                <SettingCard icon={Zap} title={t('cfg.search.liveSearchTitle', null, 'Live Search Suggestions')} description={t('cfg.search.liveSearchDesc', null, 'Send typed queries to your search engine for live autocomplete.')}>
                                     <SettingToggle isChecked={!!settings.liveSearch} onToggle={() => toggleSetting('liveSearch')} />
                                 </SettingCard>
 
-                                <SettingCard icon={Globe} title="Show Full Raw URLs" description="Display complete protocol and parameters instead of simplified domain names.">
+                                <SettingCard icon={Globe} title={t('cfg.search.showFullUrlsTitle', null, 'Show Full Raw URLs')} description={t('cfg.search.showFullUrlsDesc', null, 'Display complete protocol and parameters instead of simplified domain names.')}>
                                     <SettingToggle isChecked={!!settings.showFullUrls} onToggle={() => toggleSetting('showFullUrls')} />
                                 </SettingCard>
                             </div>
@@ -4567,46 +5185,46 @@ const SettingsModalContent = () => {
                     {settingsTab === 'downloads' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">Downloads &amp; Media</h3>
-                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Manage file storage paths, organization, and background media policies.</p>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.downloads.title', null, 'Downloads & Media')}</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.downloads.subtitle', null, 'Manage file storage paths, organization, and background media policies.')}</p>
                             </div>
 
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Download}
-                                    title="File Storage & Organization"
-                                    description="Configure download prompts, target folder, automatic grouping, and completion alerts."
+                                    title={t('cfg.downloads.sectionTitle', null, 'File Storage & Organization')}
+                                    description={t('cfg.downloads.sectionDesc', null, 'Configure download prompts, target folder, automatic grouping, and completion alerts.')}
                                 />
-                                <SettingCard icon={Download} title="Ask where to save each file" description="Prompt save-as file picker instead of downloading automatically.">
+                                <SettingCard icon={Download} title={t('cfg.downloads.askSaveTitle', null, 'Ask where to save each file')} description={t('cfg.downloads.askSaveDesc', null, 'Prompt save-as file picker instead of downloading automatically.')}>
                                     <SettingToggle isChecked={!!settings.askSave} onToggle={() => toggleSetting('askSave')} />
                                 </SettingCard>
 
-                                <SettingCard icon={Laptop} title="Default Storage Directory" description={settings.downloadsPath || 'C:\\Users\\Downloads'}>
+                                <SettingCard icon={Laptop} title={t('cfg.downloads.storageDirTitle', null, 'Default Storage Directory')} description={settings.downloadsPath || 'C:\\Users\\Downloads'}>
                                     <button 
                                         onClick={async () => {
                                             if (window.electronAPI && window.electronAPI.selectFolder) {
                                                 const folder = await window.electronAPI.selectFolder();
                                                 if (folder) {
                                                     setSettingValue('downloadsPath', folder);
-                                                    showToast('Downloads directory updated');
+                                                    showToast(t('cfg.downloads.toastDirUpdated', null, 'Downloads directory updated'));
                                                 }
                                             } else {
-                                                showToast('Downloads directory configured');
+                                                showToast(t('cfg.downloads.toastDirConfigured', null, 'Downloads directory configured'));
                                             }
                                         }}
                                         className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border ${
                                             isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
                                         }`}
                                     >
-                                        Change...
+                                        {t('cfg.downloads.changeBtn', null, 'Change...')}
                                     </button>
                                 </SettingCard>
 
-                                <SettingCard icon={Layers} title="Group Files by Category" description="Automatically organize downloads into Images, Documents, and Archives.">
+                                <SettingCard icon={Layers} title={t('cfg.downloads.groupFilesTitle', null, 'Group Files by Category')} description={t('cfg.downloads.groupFilesDesc', null, 'Automatically organize downloads into Images, Documents, and Archives.')}>
                                     <SettingToggle isChecked={!!settings.groupDownloads} onToggle={() => toggleSetting('groupDownloads')} />
                                 </SettingCard>
 
-                                <SettingCard icon={Bell} title="Download Completion Sound" description="Play an audio chime when a file finishes downloading.">
+                                <SettingCard icon={Bell} title={t('cfg.downloads.completionSoundTitle', null, 'Download Completion Sound')} description={t('cfg.downloads.completionSoundDesc', null, 'Play an audio chime when a file finishes downloading.')}>
                                     <SettingToggle isChecked={!!settings.downloadSound} onToggle={() => toggleSetting('downloadSound')} />
                                 </SettingCard>
                             </div>
@@ -4618,10 +5236,10 @@ const SettingsModalContent = () => {
                         <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
-                                    <GitPullRequest className="text-emerald-400" size={24} /> Work Mode &amp; GitHub
+                                    <GitPullRequest className="text-emerald-400" size={24} /> {t('cfg.workmode.title', null, 'Work Mode & GitHub')}
                                 </h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Dynamic Pull Requests and Issues integration inspired by Arc Browser. Built with a strict zero-resource architecture when turned off.
+                                    {t('cfg.workmode.subtitle', null, 'Dynamic Pull Requests and Issues integration inspired by Arc Browser. Built with a strict zero-resource architecture when turned off.')}
                                 </p>
                             </div>
 
@@ -4629,21 +5247,20 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={GitPullRequest}
-                                    title="GitHub Live Sync"
-                                    description="Enable sidebar live folder tracking and background refresh frequency."
+                                    title={t('cfg.workmode.syncSectionTitle', null, 'GitHub Live Sync')}
+                                    description={t('cfg.workmode.syncSectionDesc', null, 'Enable sidebar live folder tracking and background refresh frequency.')}
                                 />
                                 <SettingCard 
                                     icon={GitPullRequest} 
-                                    title="Enable GitHub Live Integration" 
-                                    description="Auto-updates pull requests and assigned issues directly in your Work Space sidebar. When turned off, all background timers and network calls are completely shut down."
+                                    title={t('cfg.workmode.enableTitle', null, 'Enable GitHub Live Integration')} 
+                                    description={t('cfg.workmode.enableDesc', null, 'Auto-updates pull requests and assigned issues directly in your Work Space sidebar. When turned off, all background timers and network calls are completely shut down.')}
                                 >
                                     <SettingToggle 
                                         isChecked={!!settings.githubIntegrationEnabled} 
                                         onToggle={() => {
                                             toggleSetting('githubIntegrationEnabled');
-                                            setTimeout(() => {
-                                                useGitHubStore.getState().syncWithConfig();
-                                            }, 50);
+                                            setGhTestStatus(null);
+                                            useGitHubStore.getState().syncWithConfig(true);
                                         }} 
                                     />
                                 </SettingCard>
@@ -4651,8 +5268,8 @@ const SettingsModalContent = () => {
                                 {settings.githubIntegrationEnabled && (
                                     <SettingCard 
                                         icon={RefreshCw} 
-                                        title="Background Refresh Interval" 
-                                        description="How frequently QBrowse checks GitHub for updates. Choose 'Manual Only' to eliminate all background polling."
+                                        title={t('cfg.workmode.refreshIntervalTitle', null, 'Background Refresh Interval')} 
+                                        description={t('cfg.workmode.refreshIntervalDesc', null, "How frequently QBrowse checks GitHub for updates. Choose 'Manual Only' to eliminate all background polling.")}
                                     >
                                         <CustomSelect 
                                             value={settings.githubSyncInterval ?? 10}
@@ -4663,12 +5280,12 @@ const SettingsModalContent = () => {
                                             }}
                                             isBright={isBright}
                                             options={[
-                                                { value: 0, label: 'Manual Only', badge: 'Zero Polling' },
-                                                { value: 2, label: 'Every 2 minutes' },
-                                                { value: 5, label: 'Every 5 minutes' },
-                                                { value: 10, label: 'Every 10 minutes', badge: 'Balanced' },
-                                                { value: 15, label: 'Every 15 minutes' },
-                                                { value: 30, label: 'Every 30 minutes', badge: 'Eco' }
+                                                { value: 0, label: t('cfg.workmode.intervalManual', null, 'Manual Only'), badge: t('cfg.workmode.badgeZeroPolling', null, 'Zero Polling') },
+                                                { value: 2, label: t('cfg.workmode.interval2m', null, 'Every 2 minutes') },
+                                                { value: 5, label: t('cfg.workmode.interval5m', null, 'Every 5 minutes') },
+                                                { value: 10, label: t('cfg.workmode.interval10m', null, 'Every 10 minutes'), badge: t('cfg.workmode.badgeBalanced', null, 'Balanced') },
+                                                { value: 15, label: t('cfg.workmode.interval15m', null, 'Every 15 minutes') },
+                                                { value: 30, label: t('cfg.workmode.interval30m', null, 'Every 30 minutes'), badge: t('cfg.workmode.badgeEco', null, 'Eco') }
                                             ]}
                                         />
                                     </SettingCard>
@@ -4681,62 +5298,62 @@ const SettingsModalContent = () => {
                                     <div className="space-y-3">
                                         <SectionHeader
                                             icon={GitBranch}
-                                            title="Tracked Categories"
-                                            description="Select which pull request and issue queues appear in your Work Space."
+                                            title={t('cfg.workmode.trackedTitle', null, 'Tracked Categories')}
+                                            description={t('cfg.workmode.trackedDesc', null, 'Select which pull request and issue queues appear in your Work Space.')}
                                         />
 
                                     <SettingCard 
                                         icon={CheckCircle2} 
-                                        title="Review Requests" 
-                                        description="Track pull requests where someone has requested your review."
+                                        title={t('cfg.workmode.reviewsTitle', null, 'Review Requests')} 
+                                        description={t('cfg.workmode.reviewsDesc', null, 'Track pull requests where someone has requested your review.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.githubShowReviews ?? true} 
                                             onToggle={() => {
                                                 toggleSetting('githubShowReviews');
-                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                                useGitHubStore.getState().syncWithConfig();
                                             }} 
                                         />
                                     </SettingCard>
 
                                     <SettingCard 
                                         icon={GitBranch} 
-                                        title="My Pull Requests" 
-                                        description="Track open pull requests authored by you across your repositories."
+                                        title={t('cfg.workmode.myPrsTitle', null, 'My Pull Requests')} 
+                                        description={t('cfg.workmode.myPrsDesc', null, 'Track open pull requests authored by you across your repositories.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.githubShowMyPrs ?? true} 
                                             onToggle={() => {
                                                 toggleSetting('githubShowMyPrs');
-                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                                useGitHubStore.getState().syncWithConfig();
                                             }} 
                                         />
                                     </SettingCard>
 
                                     <SettingCard 
                                         icon={AlertCircle} 
-                                        title="Assigned Issues" 
-                                        description="Track open issues directly assigned to you."
+                                        title={t('cfg.workmode.assignedIssuesTitle', null, 'Assigned Issues')} 
+                                        description={t('cfg.workmode.assignedIssuesDesc', null, 'Track open issues directly assigned to you.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.githubShowAssignedIssues ?? true} 
                                             onToggle={() => {
                                                 toggleSetting('githubShowAssignedIssues');
-                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                                useGitHubStore.getState().syncWithConfig();
                                             }} 
                                         />
                                     </SettingCard>
 
                                     <SettingCard 
                                         icon={SlidersHorizontal} 
-                                        title="Include Draft PRs" 
-                                        description="Include work-in-progress draft pull requests in the lists."
+                                        title={t('cfg.workmode.draftPrsTitle', null, 'Include Draft PRs')} 
+                                        description={t('cfg.workmode.draftPrsDesc', null, 'Include work-in-progress draft pull requests in the lists.')}
                                     >
                                         <SettingToggle 
                                             isChecked={!!settings.githubIncludeDrafts} 
                                             onToggle={() => {
                                                 toggleSetting('githubIncludeDrafts');
-                                                setTimeout(() => useGitHubStore.getState().syncWithConfig(), 50);
+                                                useGitHubStore.getState().syncWithConfig(true);
                                             }} 
                                         />
                                     </SettingCard>
@@ -4746,14 +5363,14 @@ const SettingsModalContent = () => {
                                     <div className="space-y-3">
                                         <SectionHeader
                                             icon={Eye}
-                                            title="Sidebar & Preview"
-                                            description="Control hover peeks and counter badges on the pinned Live Folder."
+                                            title={t('cfg.workmode.sidebarPreviewTitle', null, 'Sidebar & Preview')}
+                                            description={t('cfg.workmode.sidebarPreviewDesc', null, 'Control hover peeks and counter badges on the pinned Live Folder.')}
                                         />
 
                                     <SettingCard 
                                         icon={Eye} 
-                                        title="Hover Peek Glance (Arc-Style)" 
-                                        description="Hovering over the pinned GitHub icon displays a lightweight preview card with active reviews and notifications."
+                                        title={t('cfg.workmode.hoverGlanceTitle', null, 'Hover Peek Glance (Arc-Style)')} 
+                                        description={t('cfg.workmode.hoverGlanceDesc', null, 'Hovering over the pinned GitHub icon displays a lightweight preview card with active reviews and notifications.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.githubHoverGlanceEnabled ?? true} 
@@ -4763,8 +5380,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={Bell} 
-                                        title="Review Request Counter Badge" 
-                                        description="Show an indicator badge on the Live Folder when PRs are awaiting your review."
+                                        title={t('cfg.workmode.badgeCountTitle', null, 'Review Request Counter Badge')} 
+                                        description={t('cfg.workmode.badgeCountDesc', null, 'Show an indicator badge on the Live Folder when PRs are awaiting your review.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.githubBadgeCountEnabled ?? true} 
@@ -4773,12 +5390,12 @@ const SettingsModalContent = () => {
                                     </SettingCard>
                                     </div>
 
-                                    {/* Repository Filter */}
+                                    {/* Repository Filter & Credentials */}
                                     <div className="space-y-3">
                                         <SectionHeader
                                             icon={Key}
-                                            title="Scope & Credentials"
-                                            description="Filter monitored repositories or provide a Personal Access Token for SSO organizations."
+                                            title={t('cfg.workmode.scopeSectionTitle', null, 'Scope & Credentials')}
+                                            description={t('cfg.workmode.scopeSectionDesc', null, 'Filter monitored repositories or provide a Personal Access Token for SSO organizations.')}
                                         />
 
                                         <div className={`p-4 rounded-2xl border transition-all ${
@@ -4791,16 +5408,22 @@ const SettingsModalContent = () => {
                                                     <Filter size={15} />
                                                 </div>
                                                 <div>
-                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>Repository Scope (Optional)</p>
-                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Leave blank to watch all repositories, or enter comma-separated repos (e.g. <code>facebook/react, vercel/next.js</code>):</p>
+                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('cfg.workmode.repoScopeTitle', null, 'Repository Scope (Optional)')}</p>
+                                                    <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        {renderTemplateParts(
+                                                            t('cfg.workmode.repoScopeDesc', null, 'Leave blank to watch all repositories, or enter comma-separated repos (e.g. {repos}):'),
+                                                            { repos: <code>facebook/react, vercel/next.js</code> }
+                                                        )}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <input 
                                                 type="text"
-                                                placeholder="e.g. vercel/next.js, facebook/react"
+                                                placeholder={t('cfg.workmode.repoScopePlaceholder', null, 'e.g. vercel/next.js, facebook/react')}
                                                 value={settings.githubRepoFilter || ''}
                                                 onChange={(e) => setSettingValue('githubRepoFilter', e.target.value)}
-                                                onBlur={() => useGitHubStore.getState().syncWithConfig()}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') handleTestAndSyncGitHub(); }}
+                                                onBlur={() => useGitHubStore.getState().syncWithConfig(true)}
                                                 className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
                                                     isBright 
                                                         ? 'bg-white border-black/[0.12] text-zinc-800' 
@@ -4809,49 +5432,154 @@ const SettingsModalContent = () => {
                                             />
                                         </div>
 
-                                        {/* Personal Access Token */}
-                                        <div className={`p-4 rounded-2xl border transition-all ${
+                                        {/* Personal Access Token & Public Username + Test & Sync */}
+                                        <div className={`p-4 rounded-2xl border transition-all space-y-3 ${
                                             isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                                         }`}>
-                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                            <div className="flex items-center justify-between gap-3">
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border flex-shrink-0 ${
                                                         isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent border-white/[0.06]'
                                                     }`}>
                                                         <Key size={15} />
                                                     </div>
                                                     <div>
-                                                        <p className={`font-medium text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>Custom Personal Access Token (Optional)</p>
-                                                        <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>QBrowse auto-detects your active GitHub session. Provide a PAT if your organization enforces SSO/SAML:</p>
+                                                        <p className={`font-medium text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('cfg.workmode.patTitle', null, 'Personal Access Token (Optional)')}</p>
+                                                        <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.workmode.patDesc', null, 'QBrowse auto-detects your active GitHub browser session. Provide a classic (ghp_) or fine-grained (github_pat_) PAT for private repos or SSO/SAML:')}</p>
                                                     </div>
                                                 </div>
                                                 <button 
-                                                    onClick={async () => {
-                                                        await useGitHubStore.getState().syncWithConfig();
-                                                        await useGitHubStore.getState().fetchData(true);
-                                                        showToast('Synced with GitHub');
-                                                    }}
-                                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all cursor-pointer flex-shrink-0"
+                                                    type="button"
+                                                    disabled={isTestingGitHub || ghIsLoading}
+                                                    onClick={handleTestAndSyncGitHub}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 flex-shrink-0 ${
+                                                        (isTestingGitHub || ghIsLoading)
+                                                            ? 'bg-emerald-500/15 text-emerald-400/70 cursor-wait'
+                                                            : isBright
+                                                                ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 cursor-pointer active:scale-95'
+                                                                : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 cursor-pointer active:scale-95'
+                                                    }`}
                                                 >
-                                                    Test &amp; Sync
+                                                    <RefreshCw size={12} className={(isTestingGitHub || ghIsLoading) ? 'animate-spin' : ''} />
+                                                    <span>{(isTestingGitHub || ghIsLoading) ? t('cfg.workmode.testingSyncBtn', null, 'Syncing...') : t('cfg.workmode.testSyncBtn', null, 'Test & Sync')}</span>
                                                 </button>
                                             </div>
-                                            <input 
-                                                type="password"
-                                                placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                                                value={settings.githubPersonalAccessToken || ''}
-                                                onChange={(e) => {
-                                                    const val = e.target.value;
-                                                    setSettingValue('githubPersonalAccessToken', val);
-                                                    setSettingValue('githubAuthMode', val.trim() ? 'token' : 'auto');
-                                                }}
-                                                onBlur={() => useGitHubStore.getState().syncWithConfig()}
-                                                className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
-                                                    isBright 
-                                                        ? 'bg-white border-black/[0.12] text-zinc-800' 
-                                                        : 'bg-black/40 border-white/[0.08] text-zinc-200'
-                                                }`}
-                                            />
+                                            <div className="relative">
+                                                <input 
+                                                    type={showGitHubToken ? 'text' : 'password'}
+                                                    placeholder="ghp_... or github_pat_..."
+                                                    value={settings.githubPersonalAccessToken || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setSettingValue('githubPersonalAccessToken', val);
+                                                        setSettingValue('githubAuthMode', val.trim() ? 'token' : 'auto');
+                                                        if (ghTestStatus) setGhTestStatus(null);
+                                                    }}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') handleTestAndSyncGitHub(); }}
+                                                    onBlur={() => {
+                                                        const trimmed = (settings.githubPersonalAccessToken || '').trim();
+                                                        if (trimmed !== (settings.githubPersonalAccessToken || '')) {
+                                                            setSettingValue('githubPersonalAccessToken', trimmed);
+                                                        }
+                                                        useGitHubStore.getState().syncWithConfig(true);
+                                                    }}
+                                                    className={`w-full text-xs p-2 pr-9 rounded-lg border outline-none font-mono ${
+                                                        isBright 
+                                                            ? 'bg-white border-black/[0.12] text-zinc-800' 
+                                                            : 'bg-black/40 border-white/[0.08] text-zinc-200'
+                                                    }`}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowGitHubToken(prev => !prev)}
+                                                    className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer transition-colors ${
+                                                        isBright ? 'text-zinc-500 hover:text-zinc-800' : 'text-zinc-400 hover:text-white'
+                                                    }`}
+                                                    title={showGitHubToken ? 'Hide token' : 'Show token'}
+                                                >
+                                                    {showGitHubToken ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                </button>
+                                            </div>
+
+                                            {/* Optional Public GitHub Username */}
+                                            <div className={`pt-3 border-t space-y-2 ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
+                                                <div className="flex items-center gap-2">
+                                                    <User size={13} className="text-accent flex-shrink-0" />
+                                                    <div>
+                                                        <p className={`font-medium text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('cfg.workmode.usernameTitle', null, 'GitHub Username (Optional — Public Repos)')}</p>
+                                                        <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.workmode.usernameDesc', null, 'Track public PRs and issues by username without signing in or adding a token:')}</p>
+                                                    </div>
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder={t('cfg.workmode.usernamePlaceholder', null, 'e.g. octocat')}
+                                                    value={settings.githubUsername || ''}
+                                                    onChange={(e) => {
+                                                        setSettingValue('githubUsername', e.target.value);
+                                                        if (ghTestStatus) setGhTestStatus(null);
+                                                    }}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') handleTestAndSyncGitHub(); }}
+                                                    onBlur={() => {
+                                                        const clean = (settings.githubUsername || '').trim().replace(/^@+/, '');
+                                                        if (clean !== (settings.githubUsername || '')) {
+                                                            setSettingValue('githubUsername', clean);
+                                                        }
+                                                        useGitHubStore.getState().syncWithConfig(true);
+                                                    }}
+                                                    className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                                                        isBright 
+                                                            ? 'bg-white border-black/[0.12] text-zinc-800' 
+                                                            : 'bg-black/40 border-white/[0.08] text-zinc-200'
+                                                    }`}
+                                                />
+                                            </div>
+
+                                            {/* Live Connection & Test Feedback Banner */}
+                                            {(() => {
+                                                const activeStatus = ghTestStatus || (
+                                                    ghAuthenticated
+                                                        ? {
+                                                            type: ghWarning ? 'warning' : 'success',
+                                                            message: `${t('cfg.workmode.statusConnected', { username: ghUsername || 'GitHub' }, `Connected as @${ghUsername || 'GitHub'}`)} (${
+                                                                ghAuthMode === 'token'
+                                                                    ? t('cfg.workmode.statusViaPat', null, 'via PAT')
+                                                                    : ghAuthMode === 'session'
+                                                                        ? t('cfg.workmode.statusViaSession', null, 'via Browser Session')
+                                                                        : t('cfg.workmode.statusViaPublic', null, 'via Public API')
+                                                            }) — ${t(
+                                                                'cfg.workmode.statusCounts',
+                                                                { reviews: (ghReviewRequests || []).length, prs: (ghMyPrs || []).length, issues: (ghAssignedIssues || []).length },
+                                                                `${(ghReviewRequests || []).length} reviews · ${(ghMyPrs || []).length} PRs · ${(ghAssignedIssues || []).length} issues`
+                                                            )}${ghWarning ? `. ${ghWarning}` : ''}`
+                                                        }
+                                                        : ghError
+                                                            ? { type: 'error', message: ghError }
+                                                            : { type: 'idle', message: t('cfg.workmode.statusNotConnected', null, 'Not connected yet. Click Test & Sync to check your session, PAT, or username.') }
+                                                );
+
+                                                const bannerClasses = activeStatus.type === 'success'
+                                                    ? (isBright ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-800' : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300')
+                                                    : activeStatus.type === 'warning'
+                                                        ? (isBright ? 'bg-amber-500/10 border-amber-500/25 text-amber-800' : 'bg-amber-500/10 border-amber-500/25 text-amber-300')
+                                                        : activeStatus.type === 'error'
+                                                            ? (isBright ? 'bg-rose-500/10 border-rose-500/25 text-rose-700' : 'bg-rose-500/10 border-rose-500/25 text-rose-300')
+                                                            : (isBright ? 'bg-black/[0.03] border-black/[0.08] text-zinc-600' : 'bg-white/[0.03] border-white/[0.08] text-zinc-400');
+
+                                                return (
+                                                    <div className={`flex items-start gap-2 px-3 py-2 rounded-xl border text-[11px] leading-snug ${bannerClasses}`}>
+                                                        {activeStatus.type === 'success' ? (
+                                                            <CheckCircle2 size={14} className="flex-shrink-0 mt-0.5" />
+                                                        ) : activeStatus.type === 'warning' ? (
+                                                            <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                                                        ) : activeStatus.type === 'error' ? (
+                                                            <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                                                        ) : (
+                                                            <Info size={14} className="flex-shrink-0 mt-0.5" />
+                                                        )}
+                                                        <span className="break-words">{activeStatus.message}</span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </>
@@ -4860,7 +5588,7 @@ const SettingsModalContent = () => {
                                     isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                                 }`}>
                                     <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                        GitHub Live Integration is currently dormant. Turn it on above to start tracking Pull Requests and Issues in Work Mode.
+                                        {t('cfg.workmode.dormantText', null, 'GitHub Live Integration is currently dormant. Turn it on above to start tracking Pull Requests and Issues in Work Mode.')}
                                     </p>
                                 </div>
                             )}
@@ -4872,10 +5600,10 @@ const SettingsModalContent = () => {
                         <div className="animate-tab-fade space-y-6">
                             <div>
                                 <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
-                                    <Cpu className="text-accent" size={24} /> Engine &amp; Performance
+                                    <Cpu className="text-accent" size={24} /> {t('cfg.engine.title', null, 'Engine & Performance')}
                                 </h3>
                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Adaptive hardware tiering, Chromium background throttling, memory saving, and GPU rasterization.
+                                    {t('cfg.engine.subtitle', null, 'Adaptive hardware tiering, Chromium background throttling, memory saving, and GPU rasterization.')}
                                 </p>
                             </div>
 
@@ -4883,8 +5611,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={GaugeCircle}
-                                    title="Hardware & Performance Profile"
-                                    description="Detected system specifications and active adaptive scaling tier."
+                                    title={t('cfg.engine.profileSectionTitle', null, 'Hardware & Performance Profile')}
+                                    description={t('cfg.engine.profileSectionDesc', null, 'Detected system specifications and active adaptive scaling tier.')}
                                 />
 
                                 {/* Live Hardware Diagnostics Banner */}
@@ -4895,39 +5623,39 @@ const SettingsModalContent = () => {
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <Activity size={13} className={isBright ? 'text-zinc-500' : 'text-zinc-400'} />
-                                                <span className={`text-[10px] uppercase tracking-wider font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Detected System Hardware</span>
+                                                <span className={`text-[10px] uppercase tracking-wider font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.engine.detectedHardware', null, 'Detected System Hardware')}</span>
                                             </div>
                                             <h4 className={`text-xs font-semibold mt-1 font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                {hardwareProfile?.cpuModel || 'Detecting CPU...'}
+                                                {hardwareProfile?.cpuModel || t('cfg.engine.detectingCpu', null, 'Detecting CPU...')}
                                             </h4>
                                             <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs">
                                                 <span className={`px-2 py-0.5 rounded border font-mono text-[11px] ${
                                                     isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-zinc-300'
                                                 }`}>
-                                                    {hardwareProfile?.coreCount ? `${hardwareProfile.coreCount} Cores` : 'Multi-Core'}
+                                                    {hardwareProfile?.coreCount ? t('cfg.engine.cores', { count: hardwareProfile.coreCount }, `${hardwareProfile.coreCount} Cores`) : t('cfg.engine.multiCore', null, 'Multi-Core')}
                                                 </span>
                                                 <span className={`px-2 py-0.5 rounded border font-mono text-[11px] ${
                                                     isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-zinc-300'
                                                 }`}>
-                                                    {hardwareProfile?.totalMemGB ? `${hardwareProfile.totalMemGB} GB RAM` : 'RAM'}
+                                                    {hardwareProfile?.totalMemGB ? t('cfg.engine.ramGb', { size: hardwareProfile.totalMemGB }, `${hardwareProfile.totalMemGB} GB RAM`) : 'RAM'}
                                                 </span>
                                                 {hardwareProfile?.freeMemGB && (
                                                     <span className={`px-2 py-0.5 rounded border font-mono text-[11px] ${
                                                         isBright ? 'bg-black/[0.04] border-black/[0.07] text-zinc-700' : 'bg-white/[0.04] border-white/[0.06] text-zinc-300'
                                                     }`}>
-                                                        {hardwareProfile.freeMemGB} GB Free
+                                                        {t('cfg.engine.freeGb', { size: hardwareProfile.freeMemGB }, `${hardwareProfile.freeMemGB} GB Free`)}
                                                     </span>
                                                 )}
                                                 <span className={`px-2 py-0.5 rounded border font-mono text-[11px] flex items-center gap-1 font-bold ${
                                                     isBright ? 'bg-accent/15 border-accent/30 text-zinc-900' : 'bg-accent/15 border-accent/30 text-accent'
                                                 }`}>
-                                                    <Zap size={10} className="text-accent" /> {hardwareProfile?.detectedTier?.toUpperCase() || 'BALANCED'}
+                                                    <Zap size={10} className="text-accent" /> {getLocalizedPerfTier(hardwareProfile?.detectedTier || 'balanced').toUpperCase()}
                                                 </span>
                                                 {hardwareProfile?.isOnBattery && (
                                                     <span className={`px-2 py-0.5 rounded border font-mono text-[11px] flex items-center gap-1 ${
                                                         isBright ? 'bg-amber-500/10 border-black/[0.07] text-amber-700' : 'bg-amber-500/10 border-white/[0.06] text-amber-300'
                                                     }`}>
-                                                        <BatteryCharging size={10} /> Battery
+                                                        <BatteryCharging size={10} /> {t('cfg.engine.battery', null, 'Battery')}
                                                     </span>
                                                 )}
                                             </div>
@@ -4939,7 +5667,7 @@ const SettingsModalContent = () => {
                                             }`}
                                         >
                                             <Activity size={12} className={isBright ? 'text-zinc-600' : 'text-zinc-300'} />
-                                            <span>Task Manager</span>
+                                            <span>{t('cfg.engine.taskManager', null, 'Task Manager')}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -4951,10 +5679,10 @@ const SettingsModalContent = () => {
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                            Performance Scaling Mode
+                                            {t('cfg.engine.scalingModeTitle', null, 'Performance Scaling Mode')}
                                         </h4>
                                         <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Dynamic CPU scaling, background tab hibernation, and visual blur fidelity.
+                                            {t('cfg.engine.scalingModeDesc', null, 'Dynamic CPU scaling, background tab hibernation, and visual blur fidelity.')}
                                         </p>
                                     </div>
                                 </div>
@@ -4962,15 +5690,15 @@ const SettingsModalContent = () => {
                                 {/* Spaces-Style Sliding Pill Switcher at Top of Card */}
                                 <SlidingPillSwitcher
                                     options={[
-                                        { id: 'auto', label: 'Auto', icon: Cpu },
-                                        { id: 'eco', label: 'Eco Saver', icon: Feather },
-                                        { id: 'balanced', label: 'Balanced', icon: GaugeCircle },
-                                        { id: 'ultra', label: 'Ultra Speed', icon: Rocket }
+                                        { id: 'auto', label: t('cfg.engine.pillAuto', null, 'Auto'), icon: Cpu },
+                                        { id: 'eco', label: t('cfg.engine.pillEco', null, 'Eco Saver'), icon: Feather },
+                                        { id: 'balanced', label: t('cfg.engine.pillBalanced', null, 'Balanced'), icon: GaugeCircle },
+                                        { id: 'ultra', label: t('cfg.engine.pillUltra', null, 'Ultra Speed'), icon: Rocket }
                                     ]}
                                     value={performanceMode || 'auto'}
                                     onChange={(mode) => {
                                         setPerformanceMode(mode);
-                                        showToast(`Performance Mode: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
+                                        showToast(t('cfg.engine.toastMode', { mode: getLocalizedPerfMode(mode) }, `Performance Mode: ${getLocalizedPerfMode(mode)}`));
                                     }}
                                     isBright={isBright}
                                 />
@@ -4980,26 +5708,26 @@ const SettingsModalContent = () => {
                                     {[
                                         {
                                             id: 'auto',
-                                            title: 'Auto (Adaptive)',
-                                            desc: `Dynamically scales based on hardware specs & battery power (${String(activePerformanceTier || 'balanced').toUpperCase()} active).`,
+                                            title: t('cfg.engine.cardAutoTitle', null, 'Auto (Adaptive)'),
+                                            desc: t('cfg.engine.cardAutoDesc', { tier: getLocalizedPerfTier(activePerformanceTier || 'balanced').toUpperCase() }, `Dynamically scales based on hardware specs & battery power (${String(activePerformanceTier || 'balanced').toUpperCase()} active).`),
                                             icon: Cpu
                                         },
                                         {
                                             id: 'eco',
-                                            title: 'Eco / Low-End',
-                                            desc: 'Aggressive 5-min tab sleep & clean flat dark styling (no GPU blur lag) for maximum battery & netbooks.',
+                                            title: t('cfg.engine.cardEcoTitle', null, 'Eco / Low-End'),
+                                            desc: t('cfg.engine.cardEcoDesc', null, 'Aggressive 5-min tab sleep & clean flat dark styling (no GPU blur lag) for maximum battery & netbooks.'),
                                             icon: Feather
                                         },
                                         {
                                             id: 'balanced',
-                                            title: 'Balanced',
-                                            desc: 'Standard 15-min tab sleep with full glassmorphism and optimal responsiveness for everyday multitasking.',
+                                            title: t('cfg.engine.cardBalancedTitle', null, 'Balanced'),
+                                            desc: t('cfg.engine.cardBalancedDesc', null, 'Standard 15-min tab sleep with full glassmorphism and optimal responsiveness for everyday multitasking.'),
                                             icon: GaugeCircle
                                         },
                                         {
                                             id: 'ultra',
-                                            title: 'Ultra Performance',
-                                            desc: '30-min tab sleep, maximum frame rates and GPU pipeline throughput for high-end rigs.',
+                                            title: t('cfg.engine.cardUltraTitle', null, 'Ultra Performance'),
+                                            desc: t('cfg.engine.cardUltraDesc', null, '30-min tab sleep, maximum frame rates and GPU pipeline throughput for high-end rigs.'),
                                             icon: Rocket
                                         }
                                     ].map(mode => {
@@ -5010,7 +5738,7 @@ const SettingsModalContent = () => {
                                                 key={mode.id}
                                                 onClick={() => {
                                                     setPerformanceMode(mode.id);
-                                                    showToast(`Performance Mode: ${mode.title}`);
+                                                    showToast(t('cfg.engine.toastMode', { mode: mode.title }, `Performance Mode: ${mode.title}`));
                                                 }}
                                                 className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                                                     isSelected 
@@ -5043,30 +5771,30 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Cpu}
-                                    title="Memory, Rendering & Flags"
-                                    description="Configure background tab hibernation, bfcache freezing, GPU acceleration, and experimental flags."
+                                    title={t('cfg.engine.memorySectionTitle', null, 'Memory, Rendering & Flags')}
+                                    description={t('cfg.engine.memorySectionDesc', null, 'Configure background tab hibernation, bfcache freezing, GPU acceleration, and experimental flags.')}
                                 />
 
                                 {/* Tab Memory Saver Inactivity Timeout */}
                             <SettingCard 
                                 icon={Zap} 
-                                title="Memory Saver Inactivity Timeout" 
-                                description="Automatically hibernate inactive tabs to zero RAM consumption. Audio, pinned tabs, and downloads are always immune."
+                                title={t('cfg.engine.sleepTimeoutTitle', null, 'Memory Saver Inactivity Timeout')} 
+                                description={t('cfg.engine.sleepTimeoutDesc', null, 'Automatically hibernate inactive tabs to zero RAM consumption. Audio, pinned tabs, and downloads are always immune.')}
                             >
                                 <CustomSelect 
                                     value={tabSleepTimeoutMinutes}
                                     onChange={(val) => setTabSleepTimeoutMinutes(Number(val))}
                                     isBright={isBright}
                                     options={[
-                                        { value: 1, label: '1 Minute', badge: 'Instant' },
-                                        { value: 2, label: '2 Minutes', badge: 'Ultra Fast' },
-                                        { value: 5, label: '5 Minutes', badge: 'Aggressive' },
-                                        { value: 15, label: '15 Minutes', badge: 'Balanced' },
-                                        { value: 30, label: '30 Minutes', badge: 'Recommended' },
-                                        { value: 60, label: '1 Hour', badge: 'Relaxed' },
-                                        { value: 120, label: '2 Hours', badge: 'Extended' },
-                                        { value: 240, label: '4 Hours', badge: 'Conservative' },
-                                        { value: 0, label: 'Never Hibernate', badge: 'Off' }
+                                        { value: 1, label: t('cfg.engine.timeout1m', null, '1 Minute'), badge: t('cfg.engine.badgeInstant', null, 'Instant') },
+                                        { value: 2, label: t('cfg.engine.timeout2m', null, '2 Minutes'), badge: t('cfg.engine.badgeUltraFast', null, 'Ultra Fast') },
+                                        { value: 5, label: t('cfg.engine.timeout5m', null, '5 Minutes'), badge: t('cfg.engine.badgeAggressive', null, 'Aggressive') },
+                                        { value: 15, label: t('cfg.engine.timeout15m', null, '15 Minutes'), badge: t('cfg.engine.badgeBalanced', null, 'Balanced') },
+                                        { value: 30, label: t('cfg.engine.timeout30m', null, '30 Minutes'), badge: t('cfg.engine.badgeRecommended', null, 'Recommended') },
+                                        { value: 60, label: t('cfg.engine.timeout1h', null, '1 Hour'), badge: t('cfg.engine.badgeRelaxed', null, 'Relaxed') },
+                                        { value: 120, label: t('cfg.engine.timeout2h', null, '2 Hours'), badge: t('cfg.engine.badgeExtended', null, 'Extended') },
+                                        { value: 240, label: t('cfg.engine.timeout4h', null, '4 Hours'), badge: t('cfg.engine.badgeConservative', null, 'Conservative') },
+                                        { value: 0, label: t('cfg.engine.timeoutNever', null, 'Never Hibernate'), badge: t('cfg.engine.badgeOff', null, 'Off') }
                                     ]}
                                 />
                             </SettingCard>
@@ -5074,11 +5802,11 @@ const SettingsModalContent = () => {
                             {/* Instant Back/Forward Cache (bfcache) */}
                             <SettingCard 
                                 icon={History} 
-                                title="Instant Back/Forward Cache (bfcache)" 
+                                title={t('cfg.engine.bfcacheTitle', null, 'Instant Back/Forward Cache (bfcache)')} 
                                 description={
                                     <div className="flex flex-col gap-1.5 mt-0.5">
                                         <span>
-                                            Freezes recently visited pages in high-speed RAM for instant, 0ms back/forward navigation without page reloads. Automatically scales with your active performance tier.
+                                            {t('cfg.engine.bfcacheDesc', null, 'Freezes recently visited pages in high-speed RAM for instant, 0ms back/forward navigation without page reloads. Automatically scales with your active performance tier.')}
                                         </span>
                                         <div className="flex items-center gap-2 pt-0.5">
                                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border backdrop-blur-md transition-all duration-200 ${
@@ -5097,12 +5825,12 @@ const SettingsModalContent = () => {
                                                 }`} />
                                                 <span>
                                                     {bfcacheEnabled === false
-                                                        ? 'Cache Disabled'
+                                                        ? t('cfg.engine.bfcacheDisabled', null, 'Cache Disabled')
                                                         : activePerformanceTier === 'ultra' 
-                                                        ? '6 Pages in RAM (Ultra)' 
+                                                        ? t('cfg.engine.bfcacheUltra', null, '6 Pages in RAM (Ultra)') 
                                                         : activePerformanceTier === 'eco' 
-                                                        ? 'Paused in Eco' 
-                                                        : '3 Pages in RAM (Balanced)'}
+                                                        ? t('cfg.engine.bfcacheEco', null, 'Paused in Eco') 
+                                                        : t('cfg.engine.bfcacheBalanced', null, '3 Pages in RAM (Balanced)')}
                                                 </span>
                                             </span>
                                         </div>
@@ -5118,8 +5846,8 @@ const SettingsModalContent = () => {
                             {/* Reduce Visual Blurs on Eco Mode */}
                             <SettingCard 
                                 icon={Feather} 
-                                title="Optimize Visuals in Eco Mode" 
-                                description="Replace heavy GPU composite blur filters with solid dark translucent panels to ensure 60fps on integrated graphics."
+                                title={t('cfg.engine.ecoVisualsTitle', null, 'Optimize Visuals in Eco Mode')} 
+                                description={t('cfg.engine.ecoVisualsDesc', null, 'Replace heavy GPU composite blur filters with solid dark translucent panels to ensure 60fps on integrated graphics.')}
                             >
                                 <SettingToggle 
                                     isChecked={reduceVisualsOnEco} 
@@ -5127,19 +5855,19 @@ const SettingsModalContent = () => {
                                 />
                             </SettingCard>
 
-                            <SettingCard icon={Cpu} title="Hardware Acceleration (GPU)" description="Use GPU graphics hardware to render web pages and animations.">
+                            <SettingCard icon={Cpu} title={t('cfg.engine.gpuAccelTitle', null, 'Hardware Acceleration (GPU)')} description={t('cfg.engine.gpuAccelDesc', null, 'Use GPU graphics hardware to render web pages and animations.')}>
                                 <SettingToggle isChecked={!!settings.hardware} onToggle={() => toggleSetting('hardware')} />
                             </SettingCard>
 
-                            <SettingCard icon={Sliders} title="Smooth Momentum Scroll" description="Enable physical momentum scrolling on long web pages.">
+                            <SettingCard icon={Sliders} title={t('cfg.engine.smoothScrollTitle', null, 'Smooth Momentum Scroll')} description={t('cfg.engine.smoothScrollDesc', null, 'Enable physical momentum scrolling on long web pages.')}>
                                 <SettingToggle isChecked={!!settings.smooth} onToggle={() => toggleSetting('smooth')} />
                             </SettingCard>
 
                             {/* Experimental Flags Shortcut */}
                             <SettingCard
                                 icon={Flag}
-                                title="Experimental Flags & Features"
-                                description="Configure advanced Chromium & QBrowse experimental flags."
+                                title={t('cfg.engine.flagsTitle', null, 'Experimental Flags & Features')}
+                                description={t('cfg.engine.flagsDesc', null, 'Configure advanced Chromium & QBrowse experimental flags.')}
                             >
                                 <button 
                                     onClick={() => {
@@ -5153,7 +5881,7 @@ const SettingsModalContent = () => {
                                         isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-white'
                                     }`}
                                 >
-                                    Open Flags
+                                    {t('cfg.engine.openFlagsBtn', null, 'Open Flags')}
                                 </button>
                             </SettingCard>
                             </div>
@@ -5171,11 +5899,11 @@ const SettingsModalContent = () => {
                         };
 
                         const filterDefinitions = [
-                            { id: 'easylist', name: 'EasyList', desc: 'Core advertisement blocking rules' },
-                            { id: 'easyprivacy', name: 'EasyPrivacy', desc: 'Tracking scripts, beacons, and telemetry' },
-                            { id: 'annoyances', name: 'Cookie & Annoyance Filters', desc: 'Cookie consent dialogs and newsletter popups' },
-                            { id: 'malware', name: 'Malware & Mining Protection', desc: 'Known malicious domains and in-browser miners' },
-                            { id: 'peterlowe', name: "Peter Lowe's Ad Server List", desc: 'Curated ad server and tracking domains' }
+                            { id: 'easylist', name: t('cfg.adblock.filters.easylist.name', null, 'EasyList'), desc: t('cfg.adblock.filters.easylist.desc', null, 'Core advertisement blocking rules') },
+                            { id: 'easyprivacy', name: t('cfg.adblock.filters.easyprivacy.name', null, 'EasyPrivacy'), desc: t('cfg.adblock.filters.easyprivacy.desc', null, 'Tracking scripts, beacons, and telemetry') },
+                            { id: 'annoyances', name: t('cfg.adblock.filters.annoyances.name', null, 'Cookie & Annoyance Filters'), desc: t('cfg.adblock.filters.annoyances.desc', null, 'Cookie consent dialogs and newsletter popups') },
+                            { id: 'malware', name: t('cfg.adblock.filters.malware.name', null, 'Malware & Mining Protection'), desc: t('cfg.adblock.filters.malware.desc', null, 'Known malicious domains and in-browser miners') },
+                            { id: 'peterlowe', name: t('cfg.adblock.filters.peterlowe.name', null, "Peter Lowe's Ad Server List"), desc: t('cfg.adblock.filters.peterlowe.desc', null, 'Curated ad server and tracking domains') }
                         ];
 
                         const currentAdblockLevel = settings?.adblockLevel || (
@@ -5193,7 +5921,7 @@ const SettingsModalContent = () => {
                                 setSettingValue('adblockTelemetry', false);
                                 setSettingValue('adblockMalware', true);
                                 setSettingValue('adblockYoutubeAds', true);
-                                showToast('Standard blocking applied');
+                                showToast(t('cfg.adblock.toastStandardApplied', null, 'Standard blocking applied'));
                             } else if (mode === 'strict') {
                                 setSettingValue('adblockLevel', 'strict');
                                 setSettingValue('cosmetic', true);
@@ -5202,7 +5930,7 @@ const SettingsModalContent = () => {
                                 setSettingValue('adblockTelemetry', true);
                                 setSettingValue('adblockMalware', true);
                                 setSettingValue('adblockYoutubeAds', true);
-                                showToast('Strict mode applied');
+                                showToast(t('cfg.adblock.toastStrictApplied', null, 'Strict mode applied'));
                             } else {
                                 setSettingValue('adblockLevel', 'custom');
                             }
@@ -5211,9 +5939,9 @@ const SettingsModalContent = () => {
                         return (
                             <div className="animate-tab-fade space-y-6">
                                 <div>
-                                    <h3 className="text-2xl font-bold mb-1">Shields &amp; AdBlock</h3>
+                                    <h3 className="text-2xl font-bold mb-1">{t('cfg.adblock.title', null, 'Shields & AdBlock')}</h3>
                                     <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                        Manage ad blocking, privacy protection, and site exceptions.
+                                        {t('cfg.adblock.subtitle', null, 'Manage ad blocking, privacy protection, and site exceptions.')}
                                     </p>
                                 </div>
 
@@ -5221,8 +5949,8 @@ const SettingsModalContent = () => {
                                 <div className="space-y-3">
                                     <SectionHeader
                                         icon={Shield}
-                                        title="Shields Protection"
-                                        description="Global ad & tracker blocker switch, filter updates, and baseline profile."
+                                        title={t('cfg.adblock.protectionSectionTitle', null, 'Shields Protection')}
+                                        description={t('cfg.adblock.protectionSectionDesc', null, 'Global ad & tracker blocker switch, filter updates, and baseline profile.')}
                                     />
 
                                     <div className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-4 ${
@@ -5239,10 +5967,10 @@ const SettingsModalContent = () => {
                                                 </div>
                                                 <div>
                                                     <h4 className={`font-semibold text-sm ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                        Ad &amp; Tracker Protection
+                                                        {t('cfg.adblock.adTrackerTitle', null, 'Ad & Tracker Protection')}
                                                     </h4>
                                                     <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                        Blocks advertising banners, tracking pixels, and analytical telemetry.
+                                                        {t('cfg.adblock.adTrackerDesc', null, 'Blocks advertising banners, tracking pixels, and analytical telemetry.')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -5251,9 +5979,9 @@ const SettingsModalContent = () => {
                                                 {blockedTrackersCount > 0 && (
                                                     <div className={`text-right pr-3 border-r ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
                                                         <span className={`text-sm font-semibold font-mono ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                            {blockedTrackersCount.toLocaleString()}
+                                                            {blockedTrackersCount.toLocaleString(intlLocale)}
                                                         </span>
-                                                        <p className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Blocked</p>
+                                                        <p className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.adblock.blockedLabel', null, 'Blocked')}</p>
                                                     </div>
                                                 )}
                                                 <SettingToggle isChecked={isAdblockActive} onToggle={toggleAdblock} />
@@ -5265,7 +5993,7 @@ const SettingsModalContent = () => {
                                             isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
                                         }`}>
                                             <span className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                {filterUpdateStatus || 'Filters updated and ready'}
+                                                {filterUpdateStatus || t('cfg.adblock.filtersReady', null, 'Filters updated and ready')}
                                             </span>
 
                                             <button
@@ -5276,11 +6004,11 @@ const SettingsModalContent = () => {
                                                         if (window.electronAPI?.updateAdblockFilters) {
                                                             await window.electronAPI.updateAdblockFilters();
                                                         }
-                                                        setFilterUpdateStatus('Updated just now');
-                                                        showToast('Filter lists updated');
+                                                        setFilterUpdateStatus(t('cfg.adblock.updatedJustNow', null, 'Updated just now'));
+                                                        showToast(t('cfg.adblock.toastFiltersUpdated', null, 'Filter lists updated'));
                                                     } catch (err) {
-                                                        setFilterUpdateStatus('Updated just now');
-                                                        showToast('Filter lists up to date');
+                                                        setFilterUpdateStatus(t('cfg.adblock.updatedJustNow', null, 'Updated just now'));
+                                                        showToast(t('cfg.adblock.toastFiltersUpToDate', null, 'Filter lists up to date'));
                                                     } finally {
                                                         setIsUpdatingFilters(false);
                                                     }
@@ -5293,7 +6021,7 @@ const SettingsModalContent = () => {
                                                 }`}
                                             >
                                                 <RefreshCw size={12} className={isUpdatingFilters ? 'animate-spin text-accent' : ''} />
-                                                <span>{isUpdatingFilters ? 'Updating...' : 'Check for Updates'}</span>
+                                                <span>{isUpdatingFilters ? t('cfg.adblock.updating', null, 'Updating...') : t('cfg.adblock.checkUpdates', null, 'Check for Updates')}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -5304,18 +6032,18 @@ const SettingsModalContent = () => {
                                     }`}>
                                         <div>
                                             <h4 className={`text-sm font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Protection Level
+                                                {t('cfg.adblock.protectionLevelTitle', null, 'Protection Level')}
                                             </h4>
                                             <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                Select a balanced standard profile or strict privacy shielding.
+                                                {t('cfg.adblock.protectionLevelDesc', null, 'Select a balanced standard profile or strict privacy shielding.')}
                                             </p>
                                         </div>
 
                                         <SlidingPillSwitcher
                                             options={[
-                                                { id: 'standard', label: 'Standard' },
-                                                { id: 'strict', label: 'Strict' },
-                                                { id: 'custom', label: 'Custom' }
+                                                { id: 'standard', label: t('cfg.adblock.levelStandard', null, 'Standard') },
+                                                { id: 'strict', label: t('cfg.adblock.levelStrict', null, 'Strict') },
+                                                { id: 'custom', label: t('cfg.adblock.levelCustom', null, 'Custom') }
                                             ]}
                                             value={currentAdblockLevel}
                                             onChange={handleSetAdblockMode}
@@ -5327,15 +6055,15 @@ const SettingsModalContent = () => {
                                 {/* 3. TOGGLE CARDS */}
                                 <SectionHeader 
                                     icon={SlidersHorizontal} 
-                                    title="Content Filters" 
-                                    description="Toggle specific categories of blocked content."
+                                    title={t('cfg.adblock.contentFiltersTitle', null, 'Content Filters')} 
+                                    description={t('cfg.adblock.contentFiltersDesc', null, 'Toggle specific categories of blocked content.')}
                                 />
 
                                 <div className="space-y-2 pt-1">
                                     <SettingCard 
                                         icon={Eye} 
-                                        title="Cosmetic Element Hiding" 
-                                        description="Collapse blank containers and empty spaces left by blocked ads."
+                                        title={t('cfg.adblock.cosmeticTitle', null, 'Cosmetic Element Hiding')} 
+                                        description={t('cfg.adblock.cosmeticDesc', null, 'Collapse blank containers and empty spaces left by blocked ads.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.cosmetic !== false} 
@@ -5348,8 +6076,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={Cookie} 
-                                        title="Cookie Consent Popups" 
-                                        description="Automatically dismiss GDPR notices and cookie consent walls."
+                                        title={t('cfg.adblock.annoyancesTitle', null, 'Cookie Consent Popups')} 
+                                        description={t('cfg.adblock.annoyancesDesc', null, 'Automatically dismiss GDPR notices and cookie consent walls.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.adblockAnnoyances !== false} 
@@ -5363,8 +6091,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={ShieldAlert} 
-                                        title="Social Trackers" 
-                                        description="Block embedded social media tracking widgets and pixel beacons."
+                                        title={t('cfg.adblock.socialTitle', null, 'Social Trackers')} 
+                                        description={t('cfg.adblock.socialDesc', null, 'Block embedded social media tracking widgets and pixel beacons.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.social !== false} 
@@ -5377,8 +6105,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={Activity} 
-                                        title="Analytics & Telemetry" 
-                                        description="Block third-party user recording and telemetry scripts."
+                                        title={t('cfg.adblock.telemetryTitle', null, 'Analytics & Telemetry')} 
+                                        description={t('cfg.adblock.telemetryDesc', null, 'Block third-party user recording and telemetry scripts.')}
                                     >
                                         <SettingToggle 
                                             isChecked={!!settings.adblockTelemetry} 
@@ -5391,8 +6119,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={Lock} 
-                                        title="Malware & Phishing" 
-                                        description="Block connections to known malware and cryptomining domains."
+                                        title={t('cfg.adblock.malwareTitle', null, 'Malware & Phishing')} 
+                                        description={t('cfg.adblock.malwareDesc', null, 'Block connections to known malware and cryptomining domains.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.adblockMalware !== false} 
@@ -5406,8 +6134,8 @@ const SettingsModalContent = () => {
 
                                     <SettingCard 
                                         icon={Zap} 
-                                        title="Video Ad Stripping" 
-                                        description="Hide video sponsor banners and promoted content cards."
+                                        title={t('cfg.adblock.youtubeAdsTitle', null, 'Video Ad Stripping')} 
+                                        description={t('cfg.adblock.youtubeAdsDesc', null, 'Hide video sponsor banners and promoted content cards.')}
                                     >
                                         <SettingToggle 
                                             isChecked={settings.adblockYoutubeAds !== false} 
@@ -5423,8 +6151,8 @@ const SettingsModalContent = () => {
                                 {/* 4. FILTER LISTS */}
                                 <SectionHeader 
                                     icon={Layers} 
-                                    title="Filter Subscriptions" 
-                                    description="Active community filter lists."
+                                    title={t('cfg.adblock.subscriptionsTitle', null, 'Filter Subscriptions')} 
+                                    description={t('cfg.adblock.subscriptionsDesc', null, 'Active community filter lists.')}
                                 />
 
                                 <div className="space-y-2 pt-1">
@@ -5455,7 +6183,7 @@ const SettingsModalContent = () => {
                                                             [filter.id]: !isEnabled
                                                         };
                                                         setSettingValue('adblockFilterLists', updated);
-                                                        showToast(`${filter.name} ${!isEnabled ? 'enabled' : 'disabled'}`);
+                                                        showToast(t('cfg.adblock.toastFilterToggle', { name: filter.name, state: !isEnabled ? t('cfg.common.enabled', null, 'enabled') : t('cfg.common.disabled', null, 'disabled') }, `${filter.name} ${!isEnabled ? 'enabled' : 'disabled'}`));
                                                     }}
                                                 />
                                             </div>
@@ -5466,8 +6194,8 @@ const SettingsModalContent = () => {
                                 {/* 5. EXCEPTIONS */}
                                 <SectionHeader 
                                     icon={Globe} 
-                                    title="Exceptions & Rules" 
-                                    description="Allow ads on specific websites, or block additional domains."
+                                    title={t('cfg.adblock.exceptionsTitle', null, 'Exceptions & Rules')} 
+                                    description={t('cfg.adblock.exceptionsDesc', null, 'Allow ads on specific websites, or block additional domains.')}
                                 />
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
@@ -5477,14 +6205,14 @@ const SettingsModalContent = () => {
                                     }`}>
                                         <div className="flex items-center justify-between">
                                             <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                Allowlist
+                                                {t('cfg.adblock.allowlistTitle', null, 'Allowlist')}
                                             </span>
                                             <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                 {(settings.adblockAllowlist || []).length}
                                             </span>
                                         </div>
                                         <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Websites where protection is disabled.
+                                            {t('cfg.adblock.allowlistDesc', null, 'Websites where protection is disabled.')}
                                         </p>
 
                                         <form onSubmit={handleAddAllowlist} className="flex gap-2">
@@ -5503,14 +6231,14 @@ const SettingsModalContent = () => {
                                                 type="submit"
                                                 className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95 shadow-xs"
                                             >
-                                                Add
+                                                {t('cfg.common.add', null, 'Add')}
                                             </button>
                                         </form>
 
                                         <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto hide-scroll pt-1">
                                             {(settings.adblockAllowlist || []).length === 0 ? (
                                                 <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                    No websites allowlisted.
+                                                    {t('cfg.adblock.allowlistEmpty', null, 'No websites allowlisted.')}
                                                 </span>
                                             ) : (
                                                 (settings.adblockAllowlist || []).map((domain) => (
@@ -5527,7 +6255,7 @@ const SettingsModalContent = () => {
                                                             type="button"
                                                             onClick={() => handleRemoveAllowlist(domain)}
                                                             className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
-                                                            title="Remove"
+                                                            title={t('cfg.common.remove', null, 'Remove')}
                                                         >
                                                             <X size={11} />
                                                         </button>
@@ -5544,10 +6272,10 @@ const SettingsModalContent = () => {
                                         <div className="flex items-center justify-between flex-wrap gap-2">
                                             <div className="flex items-center gap-2">
                                                 <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                    Custom Blocklist
+                                                    {t('cfg.adblock.customBlocklistTitle', null, 'Custom Blocklist')}
                                                 </span>
                                                 <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    {(settings.adblockCustomBlockedDomains || []).length.toLocaleString()}
+                                                    {(settings.adblockCustomBlockedDomains || []).length.toLocaleString(intlLocale)}
                                                 </span>
                                             </div>
 
@@ -5566,10 +6294,10 @@ const SettingsModalContent = () => {
                                                             ? 'bg-black/5 hover:bg-black/10 text-zinc-800 border-black/10' 
                                                             : 'bg-white/10 hover:bg-white/15 text-white border-white/10'
                                                     }`}
-                                                    title="Import domain lists from GitHub, hosts files, or ABP rules"
+                                                    title={t('cfg.adblock.importFromUrlTitle', null, 'Import domain lists from GitHub, hosts files, or ABP rules')}
                                                 >
                                                     <Download size={12} className="text-accent" />
-                                                    <span>Import from GitHub / URL</span>
+                                                    <span>{t('cfg.adblock.importFromUrlBtn', null, 'Import from GitHub / URL')}</span>
                                                 </button>
                                                 {(settings.adblockCustomBlockedDomains || []).length > 0 && (
                                                     <>
@@ -5581,7 +6309,7 @@ const SettingsModalContent = () => {
                                                                     ? 'bg-white hover:bg-black/5 text-zinc-600 border-black/10' 
                                                                     : 'bg-white/5 hover:bg-white/10 text-zinc-300 border-white/10'
                                                             }`}
-                                                            title="Copy all custom blocked domains to clipboard"
+                                                            title={t('cfg.adblock.copyBlocklistTitle', null, 'Copy all custom blocked domains to clipboard')}
                                                         >
                                                             <Copy size={12} />
                                                         </button>
@@ -5589,7 +6317,7 @@ const SettingsModalContent = () => {
                                                             type="button"
                                                             onClick={handleClearBlocklist}
                                                             className="p-1.5 rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
-                                                            title="Clear all custom blocked domains"
+                                                            title={t('cfg.adblock.clearBlocklistTitle', null, 'Clear all custom blocked domains')}
                                                         >
                                                             <Trash2 size={12} />
                                                         </button>
@@ -5599,7 +6327,10 @@ const SettingsModalContent = () => {
                                         </div>
 
                                         <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            Specific domains to always block. Paste full URLs, hosts syntax (<code className="font-mono text-[10px]">0.0.0.0 domain</code>), ABP filter rules, or import community lists from GitHub.
+                                            {renderTemplateParts(
+                                                t('cfg.adblock.customBlocklistDesc', null, 'Specific domains to always block. Paste full URLs, hosts syntax ({syntax}), ABP filter rules, or import community lists from GitHub.'),
+                                                { syntax: <code className="font-mono text-[10px]">0.0.0.0 domain</code> }
+                                            )}
                                         </p>
 
                                         {/* Auto-detected Remote List URL Smart Banner */}
@@ -5608,7 +6339,7 @@ const SettingsModalContent = () => {
                                                 <div className="flex items-center gap-2 min-w-0">
                                                     <Globe size={14} className="text-accent shrink-0" />
                                                     <span className="truncate text-xs font-semibold">
-                                                        Detected GitHub / remote blocklist link
+                                                        {t('cfg.adblock.remoteLinkDetected', null, 'Detected GitHub / remote blocklist link')}
                                                     </span>
                                                 </div>
                                                 <button
@@ -5622,7 +6353,7 @@ const SettingsModalContent = () => {
                                                     }}
                                                     className="px-3 py-1 rounded-lg bg-accent text-zinc-950 font-bold text-xs shrink-0 hover:bg-accent-hover transition cursor-pointer shadow-xs active:scale-95"
                                                 >
-                                                    Fetch &amp; Import List
+                                                    {t('cfg.adblock.fetchImportBtn', null, 'Fetch & Import List')}
                                                 </button>
                                             </div>
                                         )}
@@ -5632,7 +6363,7 @@ const SettingsModalContent = () => {
                                             <div className="flex gap-2">
                                                 <input
                                                     type="text"
-                                                    placeholder="ads.example.com, https://..., or GitHub link"
+                                                    placeholder={t('cfg.adblock.blocklistPlaceholder', null, 'ads.example.com, https://..., or GitHub link')}
                                                     value={adblockBlocklistInput}
                                                     onChange={(e) => setAdblockBlocklistInput(e.target.value)}
                                                     className={`flex-1 min-w-0 px-3 py-1.5 rounded-xl text-xs font-mono outline-none border transition ${
@@ -5645,7 +6376,7 @@ const SettingsModalContent = () => {
                                                     type="submit"
                                                     className="px-3.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95 shadow-xs"
                                                 >
-                                                    Add
+                                                    {t('cfg.common.add', null, 'Add')}
                                                 </button>
                                             </div>
 
@@ -5657,7 +6388,7 @@ const SettingsModalContent = () => {
                                                 if (parsed.domains.length === 1 && parsed.domains[0] !== raw.toLowerCase()) {
                                                     return (
                                                         <div className="text-[10px] font-mono opacity-70 px-1 flex items-center gap-1">
-                                                            <span>Auto-parsed domain:</span>
+                                                            <span>{t('cfg.adblock.autoParsedDomain', null, 'Auto-parsed domain:')}</span>
                                                             <span className="text-accent font-semibold">{parsed.domains[0]}</span>
                                                         </div>
                                                     );
@@ -5665,8 +6396,8 @@ const SettingsModalContent = () => {
                                                 if (parsed.domains.length > 1) {
                                                     return (
                                                         <div className="text-[10px] font-mono opacity-70 px-1 flex items-center gap-1">
-                                                            <span>Bulk input detected:</span>
-                                                            <span className="text-accent font-semibold">{parsed.domains.length} domains</span>
+                                                            <span>{t('cfg.adblock.bulkDetected', null, 'Bulk input detected:')}</span>
+                                                            <span className="text-accent font-semibold">{t('cfg.adblock.bulkDomainsCount', { count: parsed.domains.length }, `${parsed.domains.length} domains`)}</span>
                                                         </div>
                                                     );
                                                 }
@@ -5680,7 +6411,7 @@ const SettingsModalContent = () => {
                                                 <Search size={12} className="absolute left-2.5 top-2.5 opacity-40" />
                                                 <input
                                                     type="text"
-                                                    placeholder="Filter custom domains..."
+                                                    placeholder={t('cfg.adblock.filterDomainsPlaceholder', null, 'Filter custom domains...')}
                                                     value={blocklistSearchQuery}
                                                     onChange={(e) => setBlocklistSearchQuery(e.target.value)}
                                                     className={`w-full pl-7 pr-3 py-1.5 rounded-lg text-[11px] font-mono outline-none border transition ${
@@ -5703,7 +6434,7 @@ const SettingsModalContent = () => {
                                             if (allDomains.length === 0) {
                                                 return (
                                                     <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                        No custom domains added yet. Click &quot;Import from GitHub / URL&quot; or enter a domain above.
+                                                        {t('cfg.adblock.customBlocklistEmpty', null, 'No custom domains added yet. Click "Import from GitHub / URL" or enter a domain above.')}
                                                     </span>
                                                 );
                                             }
@@ -5711,7 +6442,7 @@ const SettingsModalContent = () => {
                                             if (filtered.length === 0) {
                                                 return (
                                                     <span className={`text-[11px] italic py-1 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                        No domains matching &quot;{blocklistSearchQuery}&quot;
+                                                        {t('cfg.adblock.noMatchingDomains', { query: blocklistSearchQuery }, `No domains matching "${blocklistSearchQuery}"`)}
                                                     </span>
                                                 );
                                             }
@@ -5735,7 +6466,7 @@ const SettingsModalContent = () => {
                                                                     type="button"
                                                                     onClick={() => handleRemoveBlocklist(domain)}
                                                                     className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
-                                                                    title="Remove"
+                                                                    title={t('cfg.common.remove', null, 'Remove')}
                                                                 >
                                                                     <X size={11} />
                                                                 </button>
@@ -5744,7 +6475,7 @@ const SettingsModalContent = () => {
                                                     </div>
                                                     {filtered.length > 120 && (
                                                         <p className={`text-[10px] font-mono italic ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                                            Showing 120 of {filtered.length.toLocaleString()} matching domains. Use search above to narrow down.
+                                                            {t('cfg.adblock.showingSlice', { count: filtered.length.toLocaleString(intlLocale) }, `Showing 120 of ${filtered.length.toLocaleString(intlLocale)} matching domains. Use search above to narrow down.`)}
                                                         </p>
                                                     )}
                                                 </div>
@@ -5764,16 +6495,16 @@ const SettingsModalContent = () => {
                     {settingsTab === 'about' && (
                         <div className="animate-tab-fade space-y-6">
                             <div>
-                                <h3 className="text-2xl font-bold mb-1">About &amp; System Info</h3>
-                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>System architecture, runtime specifications, and app updates.</p>
+                                <h3 className="text-2xl font-bold mb-1">{t('cfg.about.title', null, 'About & System Info')}</h3>
+                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.about.subtitle', null, 'System architecture, runtime specifications, and app updates.')}</p>
                             </div>
 
                             {/* Account & Firebase Sync Card */}
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={User}
-                                    title="Account & Cloud Sync"
-                                    description="Manage your encrypted cloud profile, snapshots, and cross-device synchronization."
+                                    title={t('cfg.about.accountSectionTitle', null, 'Account & Cloud Sync')}
+                                    description={t('cfg.about.accountSectionDesc', null, 'Manage your encrypted cloud profile, snapshots, and cross-device synchronization.')}
                                 />
                                 <div className={`p-5 rounded-2xl border space-y-4 ${
                                     isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
@@ -5787,17 +6518,17 @@ const SettingsModalContent = () => {
                                             </div>
                                             <div>
                                                 <h4 className={`font-bold text-base flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    {user ? user.email : 'Guest / Offline Mode'}
+                                                    {user ? user.email : t('cfg.about.guestMode', null, 'Guest / Offline Mode')}
                                                     <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border ${
                                                         user
                                                             ? (isBright ? 'bg-emerald-500/10 text-emerald-700 border-black/[0.07]' : 'bg-emerald-500/15 text-emerald-300 border-white/[0.06]')
                                                             : (isBright ? 'bg-black/[0.04] text-zinc-500 border-black/[0.07]' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06]')
                                                     }`}>
-                                                        {user ? 'AES-256 Encrypted' : 'Local Only'}
+                                                        {user ? t('cfg.about.aesEncrypted', null, 'AES-256 Encrypted') : t('cfg.about.localOnly', null, 'Local Only')}
                                                     </span>
                                                 </h4>
                                                 <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                    {user ? `Last synced: ${lastSyncTime || 'Just now'} • ${syncedItemsCount || 24} items synced` : 'Sign in to sync your encrypted passwords, settings, and tabs across devices.'}
+                                                    {user ? t('cfg.about.syncStats', { time: lastSyncTime || t('cfg.common.justNow', null, 'Just now'), count: syncedItemsCount || 24 }, `Last synced: ${lastSyncTime || 'Just now'} • ${syncedItemsCount || 24} items synced`) : t('cfg.about.signInSyncPrompt', null, 'Sign in to sync your encrypted passwords, settings, and tabs across devices.')}
                                                 </p>
                                             </div>
                                         </div>
@@ -5810,25 +6541,25 @@ const SettingsModalContent = () => {
                                                     className="px-4 py-2 bg-accent text-zinc-950 font-bold rounded-xl text-xs transition hover:brightness-105 cursor-pointer shadow-sm disabled:opacity-50 flex items-center gap-1.5"
                                                 >
                                                     <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
-                                                    {isSyncing ? 'Syncing...' : 'Sync Now'}
+                                                    {isSyncing ? t('cfg.about.syncing', null, 'Syncing...') : t('cfg.about.syncNow', null, 'Sync Now')}
                                                 </button>
                                                 <button
                                                     onClick={() => {
-                                                        useSyncStore.getState().pushManualBackup('Manual Snapshot from Settings');
+                                                        useSyncStore.getState().pushManualBackup(t('cfg.about.manualSnapshotNote', null, 'Manual Snapshot from Settings'));
                                                     }}
                                                     className={`px-3 py-2 border rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                                                         isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
                                                     }`}
-                                                    title="Push Cloud Backup Version"
+                                                    title={t('cfg.about.pushBackupTitle', null, 'Push Cloud Backup Version')}
                                                 >
                                                     <UploadCloud size={13} className="text-accent" />
-                                                    Push Backup
+                                                    {t('cfg.about.pushBackup', null, 'Push Backup')}
                                                 </button>
                                                 <button
                                                     onClick={logout}
                                                     className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition cursor-pointer"
                                                 >
-                                                    Sign Out
+                                                    {t('cfg.about.signOut', null, 'Sign Out')}
                                                 </button>
                                             </div>
                                         ) : (
@@ -5836,7 +6567,7 @@ const SettingsModalContent = () => {
                                                 onClick={() => openModal('auth')}
                                                 className="px-5 py-2.5 bg-accent text-zinc-950 font-bold rounded-xl text-xs transition hover:brightness-105 cursor-pointer shadow-sm"
                                             >
-                                                Sign In / Register
+                                                {t('cfg.about.signInRegister', null, 'Sign In / Register')}
                                             </button>
                                         )}
                                     </div>
@@ -5847,8 +6578,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Compass}
-                                    title="Default Browser & Startup"
-                                    description="Configure system web link handling and session restoration."
+                                    title={t('cfg.about.defaultBrowserSectionTitle', null, 'Default Browser & Startup')}
+                                    description={t('cfg.about.defaultBrowserSectionDesc', null, 'Configure system web link handling and session restoration.')}
                                 />
                                 <div className={`p-5 rounded-2xl border space-y-4 transition-all duration-300 ${
                                     isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
@@ -5873,27 +6604,27 @@ const SettingsModalContent = () => {
                                             </div>
                                             <div>
                                                 <h4 className={`font-bold text-base flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    Default Web Browser
+                                                    {t('cfg.about.defaultWebBrowser', null, 'Default Web Browser')}
                                                     <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
                                                         isDefaultBrowser 
                                                             ? (isBright ? 'bg-emerald-500/10 text-emerald-700 border-black/[0.07]' : 'bg-emerald-500/15 text-emerald-300 border-white/[0.06]')
                                                             : (isBright ? 'bg-amber-500/10 text-amber-700 border-black/[0.07]' : 'bg-amber-500/15 text-amber-300 border-white/[0.06]')
                                                     }`}>
-                                                        {isDefaultBrowser ? 'Default Browser' : 'Not Default'}
+                                                        {isDefaultBrowser ? t('cfg.about.badgeDefaultBrowser', null, 'Default Browser') : t('cfg.about.badgeNotDefault', null, 'Not Default')}
                                                     </span>
                                                 </h4>
                                                 <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                     {isDefaultBrowser 
                                                         ? (osPlatform === 'darwin'
-                                                            ? 'QBrowse is currently your primary browser on macOS for all web links, HTML documents, and protocol requests.'
+                                                            ? t('cfg.about.defaultTrueDarwin', null, 'QBrowse is currently your primary browser on macOS for all web links, HTML documents, and protocol requests.')
                                                             : osPlatform === 'linux'
-                                                                ? 'QBrowse is currently your Linux desktop default browser for all web links, HTML documents, and protocol requests.'
-                                                                : 'QBrowse is currently your Windows default browser for all web links, HTML documents, and protocol requests.')
+                                                                ? t('cfg.about.defaultTrueLinux', null, 'QBrowse is currently your Linux desktop default browser for all web links, HTML documents, and protocol requests.')
+                                                                : t('cfg.about.defaultTrueWin', null, 'QBrowse is currently your Windows default browser for all web links, HTML documents, and protocol requests.'))
                                                         : (osPlatform === 'darwin'
-                                                            ? 'Make QBrowse your default browser in macOS System Settings to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.'
+                                                            ? t('cfg.about.defaultFalseDarwin', null, 'Make QBrowse your default browser in macOS System Settings to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.')
                                                             : osPlatform === 'linux'
-                                                                ? 'Make QBrowse your default browser in Linux Desktop Default Applications to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.'
-                                                                : 'Make QBrowse your default browser in Windows Settings to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.')}
+                                                                ? t('cfg.about.defaultFalseLinux', null, 'Make QBrowse your default browser in Linux Desktop Default Applications to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.')
+                                                                : t('cfg.about.defaultFalseWin', null, 'Make QBrowse your default browser in Windows Settings to open links from apps with Tor routing, sandboxed spaces, and encrypted sync.'))}
                                                 </p>
                                             </div>
                                         </div>
@@ -5905,7 +6636,7 @@ const SettingsModalContent = () => {
                                                     className="px-4 py-2 bg-accent text-zinc-950 font-bold rounded-xl text-xs transition hover:brightness-105 active:scale-95 cursor-pointer shadow-sm flex items-center gap-1.5"
                                                 >
                                                     <CheckCircle2 size={14} />
-                                                    Set as Default
+                                                    {t('cfg.about.setAsDefault', null, 'Set as Default')}
                                                 </button>
                                             )}
                                             <button
@@ -5915,18 +6646,18 @@ const SettingsModalContent = () => {
                                                 }`}
                                                 title={
                                                     osPlatform === 'darwin'
-                                                        ? 'Open macOS System Settings'
+                                                        ? t('cfg.about.openDarwinSettingsTitle', null, 'Open macOS System Settings')
                                                         : osPlatform === 'linux'
-                                                            ? 'Open Linux Desktop Default Applications'
-                                                            : 'Open Windows Default Apps Settings'
+                                                            ? t('cfg.about.openLinuxSettingsTitle', null, 'Open Linux Desktop Default Applications')
+                                                            : t('cfg.about.openWinSettingsTitle', null, 'Open Windows Default Apps Settings')
                                                 }
                                             >
                                                 <ExternalLink size={13} />
                                                 {osPlatform === 'darwin'
-                                                    ? 'macOS System Settings'
+                                                    ? t('cfg.about.darwinSettingsBtn', null, 'macOS System Settings')
                                                     : osPlatform === 'linux'
-                                                        ? 'Default Applications'
-                                                        : 'Windows Settings'}
+                                                        ? t('cfg.about.linuxSettingsBtn', null, 'Default Applications')
+                                                        : t('cfg.about.winSettingsBtn', null, 'Windows Settings')}
                                             </button>
                                             <button
                                                 onClick={refreshDefaultBrowserStatus}
@@ -5934,7 +6665,7 @@ const SettingsModalContent = () => {
                                                 className={`p-2 border rounded-xl text-xs transition cursor-pointer ${
                                                     isBright ? 'bg-black/[0.03] hover:bg-black/[0.07] text-zinc-600 hover:text-zinc-900 border-black/[0.07]' : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06]'
                                                 }`}
-                                                title="Refresh status"
+                                                title={t('cfg.about.refreshStatusTitle', null, 'Refresh status')}
                                             >
                                                 <RefreshCw size={14} className={isCheckingDefault ? 'animate-spin text-accent' : ''} />
                                             </button>
@@ -5943,8 +6674,8 @@ const SettingsModalContent = () => {
 
                                     <div className={`pt-3 border-t flex items-center justify-between ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
                                         <div className="flex items-center gap-2">
-                                            <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>Check if QBrowse is default on startup</p>
-                                            <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>(Prompts banner if not default)</span>
+                                            <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>{t('cfg.about.checkStartupTitle', null, 'Check if QBrowse is default on startup')}</p>
+                                            <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.about.checkStartupHint', null, '(Prompts banner if not default)')}</span>
                                         </div>
                                         <SettingToggle 
                                             isChecked={checkDefaultOnStartup} 
@@ -5954,8 +6685,8 @@ const SettingsModalContent = () => {
 
                                     <div className={`pt-3 border-t flex items-center justify-between ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
                                         <div className="flex items-center gap-2">
-                                            <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>Remember open websites on close</p>
-                                            <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>(Reopen previous session tabs on startup)</span>
+                                            <p className={`text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>{t('cfg.about.rememberTabsTitle', null, 'Remember open websites on close')}</p>
+                                            <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.about.rememberTabsHint', null, '(Reopen previous session tabs on startup)')}</span>
                                         </div>
                                         <SettingToggle 
                                             isChecked={settings.restoreTabsOnStartup !== false} 
@@ -5969,8 +6700,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Info}
-                                    title="Application & Updates"
-                                    description="Current build version, GitHub Releases sync, and automatic updates."
+                                    title={t('cfg.about.updatesSectionTitle', null, 'Application & Updates')}
+                                    description={t('cfg.about.updatesSectionDesc', null, 'Current build version, GitHub Releases sync, and automatic updates.')}
                                 />
                                 <div className={`p-4 px-5 rounded-2xl border flex flex-col gap-3 ${
                                     isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
@@ -5999,6 +6730,13 @@ const SettingsModalContent = () => {
                                                     }`}>
                                                         v{String(currentAppVersion).replace(/^v/i, '')}
                                                     </span>
+                                                    {updateData?.platform === 'linux' && updateData?.installShortLabel && (
+                                                        <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
+                                                            isBright ? 'bg-sky-500/10 text-sky-700 border-black/[0.07]' : 'bg-sky-500/15 text-sky-300 border-white/[0.06]'
+                                                        }`}>
+                                                            {updateData.installShortLabel}{updateData.arch ? ` · ${updateData.arch}` : ''}
+                                                        </span>
+                                                    )}
                                                     {updateData?.syncedWithGitHub && updateData?.latestVersion && (
                                                         <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border flex items-center gap-1 ${
                                                             updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
@@ -6007,64 +6745,112 @@ const SettingsModalContent = () => {
                                                         }`}>
                                                             <CheckCircle2 size={10} />
                                                             {updateData.status === 'available' || updateData.status === 'downloading' || updateData.status === 'downloaded'
-                                                                ? `GitHub Release: v${String(updateData.latestVersion).replace(/^v/i, '')}`
-                                                                : `Synced with GitHub (v${String(updateData.latestVersion).replace(/^v/i, '')})`}
+                                                                ? t('cfg.about.githubReleaseBadge', { version: String(updateData.latestVersion).replace(/^v/i, '') }, `GitHub Release: v${String(updateData.latestVersion).replace(/^v/i, '')}`)
+                                                                : t('cfg.about.syncedGithubBadge', { version: String(updateData.latestVersion).replace(/^v/i, '') }, `Synced with GitHub (v${String(updateData.latestVersion).replace(/^v/i, '')})`)}
                                                         </span>
                                                     )}
                                                 </h4>
                                                 <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                                                     {updateData?.status === 'error' && updateData?.message
-                                                        ? `Update check notice: ${updateData.message}`
+                                                        ? t('cfg.about.updateNoticeMsg', { message: updateData.message }, `Update check notice: ${updateData.message}`)
+                                                        : updateData?.status === 'available' && updateData?.managedExternally
+                                                        ? t('cfg.about.updateExternalMsg', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, ''), format: updateData.installLabel || updateData.installShortLabel || 'package manager' }, `Version v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} is available. Update using ${updateData.installLabel || updateData.installShortLabel || 'your package manager'}.`)
+                                                        : updateData?.status === 'available' && updateData?.platform === 'linux' && !updateData?.assetUrl
+                                                        ? t('cfg.about.updateNoLinuxAssetMsg', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, ''), arch: updateData.arch || 'linux' }, `Version v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} is available on GitHub Releases. No prebuilt package matched ${updateData.arch || 'this architecture'} — open GitHub Releases to download manually.`)
                                                         : updateData?.status === 'available'
-                                                        ? `New version v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} is available on GitHub Releases.`
+                                                        ? t('cfg.about.updateAvailableMsg', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, '') }, `New version v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} is available on GitHub Releases.`)
+                                                        : updateData?.status === 'downloaded' && updateData?.platform === 'linux' && updateData?.canAutoInstall === false
+                                                        ? t('cfg.about.updateDownloadedLinuxPkgMsg', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, ''), format: updateData.packageExt || 'package' }, `Package v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} (${updateData.packageExt || 'Linux'}) downloaded. Open the package or run the terminal command below to install.`)
                                                         : updateData?.status === 'downloaded'
-                                                        ? `Update v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} verified and ready to install.`
-                                                        : 'Privacy-first multi-space desktop browser'}
+                                                        ? t('cfg.about.updateDownloadedMsg', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, '') }, `Update v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')} verified and ready to install.`)
+                                                        : t('cfg.about.tagline', null, 'Privacy-first multi-space desktop browser')}
                                                 </p>
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             {updateData?.status === 'downloaded' ? (
-                                                <button 
-                                                    onClick={async () => {
-                                                        if (window.electronAPI?.quitAndInstallUpdate) {
-                                                            showToast('Launching update installer...');
-                                                            const res = await window.electronAPI.quitAndInstallUpdate();
-                                                            if (res?.status === 'error') {
-                                                                showToast('Install failed: ' + (res.message || 'Unknown error'));
+                                                <>
+                                                    <button 
+                                                        onClick={async () => {
+                                                            if (window.electronAPI?.quitAndInstallUpdate) {
+                                                                const isLinuxManualPkg = updateData?.platform === 'linux' && updateData?.canAutoInstall === false;
+                                                                showToast(isLinuxManualPkg
+                                                                    ? t('cfg.about.toastOpeningPackage', null, 'Opening downloaded update package...')
+                                                                    : t('cfg.about.toastLaunchingInstaller', null, 'Launching update installer...'));
+                                                                const res = await window.electronAPI.quitAndInstallUpdate();
+                                                                if (res?.status === 'error') {
+                                                                    showToast(t('cfg.about.toastInstallFailed', { message: res.message || t('cfg.common.unknownError', null, 'Unknown error') }, 'Install failed: ' + (res.message || 'Unknown error')));
+                                                                } else if (res?.status === 'opened-folder') {
+                                                                    showToast(t('cfg.about.toastOpenedPackageFolder', null, 'Opened download folder. Run the install command to finish updating.'));
+                                                                }
+                                                            } else {
+                                                                showToast(t('cfg.about.toastRestartingUpdate', null, 'Restarting to install update...'));
                                                             }
-                                                        } else {
-                                                            showToast('Restarting to install update...');
-                                                        }
-                                                    }}
-                                                    className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-emerald-400/30 shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95 animate-pulse"
-                                                >
-                                                    <CheckCircle2 size={13} />
-                                                    Restart &amp; Update (v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')})
-                                                </button>
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-2 border border-emerald-400/30 shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95"
+                                                    >
+                                                        <CheckCircle2 size={13} />
+                                                        {updateData?.platform === 'linux' && updateData?.canAutoInstall === false
+                                                            ? t('cfg.about.openDownloadedPackage', null, 'Open Downloaded Package')
+                                                            : t('cfg.about.restartAndUpdate', { version: String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '') }, `Restart & Update (v${String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')})`)}
+                                                    </button>
+                                                    {updateData?.platform === 'linux' && updateData?.canAutoInstall === false && updateData?.downloadedFilePath && window.electronAPI?.showItemInFolder && (
+                                                        <button
+                                                            onClick={() => window.electronAPI.showItemInFolder(updateData.downloadedFilePath)}
+                                                            className={`px-2.5 py-1.5 font-medium rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 border active:scale-95 ${
+                                                                isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/[0.07]' : 'bg-white/[0.05] hover:bg-white/[0.1] text-white border-white/[0.06]'
+                                                            }`}
+                                                            title={t('cfg.about.showInFolder', null, 'Show downloaded package in folder')}
+                                                        >
+                                                            <Folder size={12} />
+                                                            {t('cfg.about.showInFolderBtn', null, 'Folder')}
+                                                        </button>
+                                                    )}
+                                                </>
                                             ) : updateData?.status === 'downloading' ? (
                                                 <div className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg border ${
                                                     isBright ? 'bg-black/[0.04] border-black/[0.07]' : 'bg-white/[0.06] border-white/[0.06]'
                                                 }`}>
                                                     <RefreshCw size={12} className="animate-spin text-accent" />
                                                     <span className={`text-xs font-mono ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
-                                                        Downloading v{String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')} ({updateData.percent || 0}%)
+                                                        {t('cfg.about.downloadingVer', { version: String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, ''), percent: updateData.percent || 0 }, `Downloading v${String(updateData.latestVersion || updateData.version || currentAppVersion).replace(/^v/i, '')} (${updateData.percent || 0}%)`)}
                                                     </span>
                                                 </div>
                                             ) : updateData?.status === 'available' ? (
-                                                <button 
-                                                    onClick={async () => {
-                                                        if (window.electronAPI?.downloadUpdate) {
-                                                            showToast(`Downloading QBrowse v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}...`);
-                                                            await window.electronAPI.downloadUpdate();
-                                                        }
-                                                    }}
-                                                    className="px-3.5 py-1.5 bg-accent text-zinc-950 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-2 shadow-sm hover:brightness-105 active:scale-95"
-                                                >
-                                                    <Download size={13} />
-                                                    Download v{String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}
-                                                </button>
+                                                (updateData?.managedExternally || (updateData?.platform === 'linux' && !updateData?.assetUrl)) ? (
+                                                    <button
+                                                        onClick={() => {
+                                                            const targetUrl = updateData?.releaseUrl || 'https://github.com/Qu-Bi/QBrowse/releases';
+                                                            if (window.electronAPI?.openExternal) {
+                                                                window.electronAPI.openExternal(targetUrl);
+                                                            } else {
+                                                                window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                                                            }
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-accent text-zinc-950 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-2 shadow-sm hover:brightness-105 active:scale-95"
+                                                    >
+                                                        <ExternalLink size={13} />
+                                                        {t('cfg.about.openReleasePage', null, 'Open Release Page')}
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        onClick={async () => {
+                                                            if (window.electronAPI?.downloadUpdate) {
+                                                                showToast(t('cfg.about.toastDownloadingApp', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, '') }, `Downloading QBrowse v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}...`));
+                                                                await window.electronAPI.downloadUpdate();
+                                                            }
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-accent text-zinc-950 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-2 shadow-sm hover:brightness-105 active:scale-95"
+                                                    >
+                                                        <Download size={13} />
+                                                        {updateData?.platform === 'linux' && updateData?.installType === 'appimage'
+                                                            ? t('cfg.about.downloadAppImage', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, '') }, `Download AppImage (v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')})`)
+                                                            : updateData?.platform === 'linux' && updateData?.packageExt
+                                                            ? t('cfg.about.downloadLinuxPkg', { format: updateData.packageExt, version: String(updateData.latestVersion || updateData.version).replace(/^v/i, '') }, `Download ${updateData.packageExt} Update (v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')})`)
+                                                            : t('cfg.about.downloadVer', { version: String(updateData.latestVersion || updateData.version).replace(/^v/i, '') }, `Download v${String(updateData.latestVersion || updateData.version).replace(/^v/i, '')}`)}
+                                                    </button>
+                                                )
                                             ) : null}
 
                                             {updateData?.status !== 'downloading' && (
@@ -6080,12 +6866,12 @@ const SettingsModalContent = () => {
                                                                 setIsCheckingUpdates(false);
                                                             } catch (e) {
                                                                 setIsCheckingUpdates(false);
-                                                                showToast('Update check failed: ' + (e?.message || e));
+                                                                showToast(t('cfg.about.toastUpdateCheckFailed', { message: e?.message || e }, 'Update check failed: ' + (e?.message || e)));
                                                             }
                                                         } else {
                                                             setTimeout(() => {
                                                                 setIsCheckingUpdates(false);
-                                                                showToast(`QBrowse is up to date! (v${String(currentAppVersion).replace(/^v/i, '')})`);
+                                                                showToast(t('cfg.about.toastUpToDate', { version: String(currentAppVersion).replace(/^v/i, '') }, `QBrowse is up to date! (v${String(currentAppVersion).replace(/^v/i, '')})`));
                                                             }, 1200);
                                                         }
                                                     }}
@@ -6095,7 +6881,7 @@ const SettingsModalContent = () => {
                                                     }`}
                                                 >
                                                     <RefreshCw size={12} className={isCheckingUpdates ? 'animate-spin' : ''} />
-                                                    {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
+                                                    {isCheckingUpdates ? t('cfg.about.checking', null, 'Checking...') : t('cfg.about.checkUpdates', null, 'Check Updates')}
                                                 </button>
                                             )}
 
@@ -6111,7 +6897,7 @@ const SettingsModalContent = () => {
                                                 className={`p-1.5 px-2.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 border ${
                                                     isBright ? 'bg-black/[0.03] hover:bg-black/[0.07] text-zinc-700 border-black/[0.07]' : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white border-white/[0.06]'
                                                 }`}
-                                                title="View QBrowse Releases on GitHub"
+                                                title={t('cfg.about.viewReleasesTitle', null, 'View QBrowse Releases on GitHub')}
                                             >
                                                 <ExternalLink size={12} />
                                                 GitHub
@@ -6127,6 +6913,41 @@ const SettingsModalContent = () => {
                                             />
                                         </div>
                                     )}
+
+                                    {updateData?.platform === 'linux' && updateData?.installCommand && (
+                                        (updateData.status === 'downloaded' && updateData.canAutoInstall === false) ||
+                                        (updateData.status === 'available' && updateData.managedExternally)
+                                    ) && (
+                                        <div className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-[11px] ${
+                                            isBright ? 'bg-black/[0.03] border-black/[0.08] text-zinc-800' : 'bg-black/30 border-white/[0.08] text-zinc-200'
+                                        }`}>
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <Terminal size={13} className="shrink-0 opacity-70" />
+                                                <code className="font-mono truncate select-all" title={updateData.installCommand}>
+                                                    {updateData.installCommand}
+                                                </code>
+                                            </div>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        if (window.electronAPI?.writeClipboardText) {
+                                                            await window.electronAPI.writeClipboardText(updateData.installCommand);
+                                                        } else if (navigator.clipboard?.writeText) {
+                                                            await navigator.clipboard.writeText(updateData.installCommand);
+                                                        }
+                                                        showToast(t('cfg.about.toastCommandCopied', null, 'Install command copied to clipboard'));
+                                                    } catch (_) {}
+                                                }}
+                                                className={`shrink-0 px-2 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 border transition cursor-pointer active:scale-95 ${
+                                                    isBright ? 'bg-black/[0.05] hover:bg-black/[0.1] text-zinc-800 border-black/[0.08]' : 'bg-white/[0.06] hover:bg-white/[0.12] text-white border-white/[0.08]'
+                                                }`}
+                                                title={t('cfg.about.copyInstallCmdTitle', null, 'Copy terminal install command')}
+                                            >
+                                                <Copy size={11} />
+                                                {t('cfg.about.copyBtn', null, 'Copy')}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -6134,8 +6955,8 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Cpu}
-                                    title="System Specifications"
-                                    description="Embedded Chromium engine, Electron runtime, and local storage subsystems."
+                                    title={t('cfg.about.specsSectionTitle', null, 'System Specifications')}
+                                    description={t('cfg.about.specsSectionDesc', null, 'Embedded Chromium engine, Electron runtime, and local storage subsystems.')}
                                 />
                                 <div className={`p-5 rounded-2xl border flex flex-col gap-3 ${
                                     isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
@@ -6144,7 +6965,7 @@ const SettingsModalContent = () => {
                                         <div className={`p-3 rounded-xl border flex items-center justify-between ${
                                             isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
                                         }`}>
-                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Chromium Engine</span>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>{t('cfg.about.specChromium', null, 'Chromium Engine')}</span>
                                             <span className={`font-mono font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                                 {updateData?.runtimeVersions?.chrome || '130.0.6723.117'}
                                             </span>
@@ -6152,7 +6973,7 @@ const SettingsModalContent = () => {
                                         <div className={`p-3 rounded-xl border flex items-center justify-between ${
                                             isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
                                         }`}>
-                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Electron Platform</span>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>{t('cfg.about.specElectron', null, 'Electron Platform')}</span>
                                             <span className={`font-mono font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                                 {updateData?.runtimeVersions?.electron || '43.1.1'}
                                             </span>
@@ -6160,7 +6981,7 @@ const SettingsModalContent = () => {
                                         <div className={`p-3 rounded-xl border flex items-center justify-between ${
                                             isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
                                         }`}>
-                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Node.js Runtime</span>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>{t('cfg.about.specNode', null, 'Node.js Runtime')}</span>
                                             <span className={`font-mono font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                                                 {updateData?.runtimeVersions?.node || '20.18.0'}
                                             </span>
@@ -6168,7 +6989,7 @@ const SettingsModalContent = () => {
                                         <div className={`p-3 rounded-xl border flex items-center justify-between ${
                                             isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-black/30 border-white/[0.06]'
                                         }`}>
-                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>Architecture</span>
+                                            <span className={isBright ? 'text-zinc-500' : 'text-zinc-400'}>{t('cfg.about.specArch', null, 'Architecture')}</span>
                                             <span className={`font-mono font-semibold ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`}>
                                                 {window.electronAPI?.platform === 'linux' || navigator.userAgent.includes('Linux') ? 'Linux x64 (x86_64)' : window.electronAPI?.platform === 'darwin' || navigator.userAgent.includes('Mac') ? 'macOS (ARM/x64)' : 'Windows x64 (x86_64)'}
                                             </span>
@@ -6183,8 +7004,8 @@ const SettingsModalContent = () => {
                                     }`}>
                                         <CheckCircle2 size={20} className="text-emerald-400 flex-shrink-0" />
                                         <div>
-                                            <p className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>SQLite History Sync</p>
-                                            <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Encrypted local database active</p>
+                                            <p className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('cfg.about.sqliteSyncTitle', null, 'SQLite History Sync')}</p>
+                                            <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.about.sqliteSyncDesc', null, 'Encrypted local database active')}</p>
                                         </div>
                                     </div>
                                     <div className={`p-4 border rounded-2xl flex items-center gap-3 ${
@@ -6192,8 +7013,8 @@ const SettingsModalContent = () => {
                                     }`}>
                                         <Layers size={20} className="text-accent flex-shrink-0" />
                                         <div>
-                                            <p className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>Zen Workspace Engine</p>
-                                            <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>Personal, Work &amp; Incognito spaces</p>
+                                            <p className={`font-semibold text-xs ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('cfg.about.zenEngineTitle', null, 'Zen Workspace Engine')}</p>
+                                            <p className={`text-[11px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>{t('cfg.about.zenEngineDesc', null, 'Personal, Work & Incognito spaces')}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -6203,13 +7024,13 @@ const SettingsModalContent = () => {
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Sparkles}
-                                    title="Experience & Discovery"
-                                    description="Startup audio cues, onboarding setup flow, and interactive feature tour."
+                                    title={t('cfg.about.expSectionTitle', null, 'Experience & Discovery')}
+                                    description={t('cfg.about.expSectionDesc', null, 'Startup audio cues, onboarding setup flow, and interactive feature tour.')}
                                 />
                                 <SettingCard
                                     icon={Volume2}
-                                    title="Play startup welcome chime"
-                                    description="Synthesized acoustic chord when launching the browser."
+                                    title={t('cfg.about.startupChimeTitle', null, 'Play startup welcome chime')}
+                                    description={t('cfg.about.startupChimeDesc', null, 'Synthesized acoustic chord when launching the browser.')}
                                 >
                                     <SettingToggle 
                                         isChecked={!!settings?.playStartupSound} 
@@ -6232,7 +7053,7 @@ const SettingsModalContent = () => {
                                         }`}
                                     >
                                         <RotateCcw size={13} className="text-accent" />
-                                        <span>Relaunch Setup Journey</span>
+                                        <span>{t('cfg.about.relaunchSetup', null, 'Relaunch Setup Journey')}</span>
                                     </button>
                                     <button
                                         onClick={() => {
@@ -6246,7 +7067,7 @@ const SettingsModalContent = () => {
                                         className="px-4 py-2.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
                                     >
                                         <Compass size={13} />
-                                        <span>Interactive Living Tour</span>
+                                        <span>{t('cfg.about.interactiveTour', null, 'Interactive Living Tour')}</span>
                                     </button>
                                 </div>
                             </div>

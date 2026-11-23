@@ -3,6 +3,7 @@ import LocalDirectoryPage from './LocalDirectoryPage';
 import GlassPdfViewer from './GlassPdfViewer';
 import GlassDocumentViewer from './GlassDocumentViewer';
 import useTabStore from '../../store/useTabStore';
+import { t } from '../../i18n/index';
 
 export default function LocalFileViewer({ tab }) {
     const url = tab?.url || '';
@@ -52,13 +53,13 @@ export default function LocalFileViewer({ tab }) {
     try {
         const decoded = decodeURIComponent(url);
         const parts = decoded.split(/[/\\]/).filter(Boolean);
-        fileName = parts[parts.length - 1] || 'Local Resource';
+        fileName = parts[parts.length - 1] || t('stores.common.localResource', 'Local Resource');
         const dotIdx = fileName.lastIndexOf('.');
         if (dotIdx !== -1) {
             ext = fileName.slice(dotIdx + 1).toLowerCase();
         }
     } catch (_) {
-        fileName = 'Local Resource';
+        fileName = t('stores.common.localResource', 'Local Resource');
     }
 
     if (isDir) {

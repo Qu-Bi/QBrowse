@@ -4,8 +4,10 @@ import { Check, X, Crop } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function SnippingOverlay() {
+    const { t } = useTranslation();
     const isSnippingMode = useUIStore(state => state.isSnippingMode);
     const setIsSnippingMode = useUIStore(state => state.setIsSnippingMode);
     const captureSelectedArea = useUIStore(state => state.captureSelectedArea);
@@ -175,7 +177,16 @@ export default function SnippingOverlay() {
                     className={`absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none ${getLiquidGlassSurfaceClasses(isBright)} rounded-full px-4 py-2 text-xs font-medium flex items-center gap-2 animate-bounce-subtle`}
                 >
                     <Crop size={14} className="text-accent" />
-                    <span>Click and drag to select an area to snip • Press <kbd className={`px-1.5 py-0.5 rounded ${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/90'} text-[10px] font-mono`}>Esc</kbd> to cancel</span>
+                    {(() => {
+                        const parts = t('pop.snip.instruction', { key: '__ESC__' }, 'Click and drag to select an area to snip • Press __ESC__ to cancel').split('__ESC__');
+                        return (
+                            <span>
+                                {parts[0]}
+                                <kbd className={`px-1.5 py-0.5 rounded ${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/90'} text-[10px] font-mono`}>Esc</kbd>
+                                {parts[1] || ''}
+                            </span>
+                        );
+                    })()}
                 </div>
             )}
 
@@ -217,7 +228,7 @@ export default function SnippingOverlay() {
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-black font-bold text-xs hover:bg-accent/90 transition shadow-sm active:scale-95 cursor-pointer"
                     >
                         <Check size={14} strokeWidth={3} />
-                        <span>Snip</span>
+                        <span>{t('pop.snip.snipBtn', null, 'Snip')}</span>
                     </button>
                     <button
                         onClick={() => {
@@ -225,7 +236,7 @@ export default function SnippingOverlay() {
                             setIsSnippingMode(false);
                         }}
                         className={`p-1.5 rounded-lg ${isBright ? 'hover:bg-black/5 text-zinc-600' : 'hover:bg-white/10 text-white/60'} hover:text-red-500 transition cursor-pointer`}
-                        title="Cancel (Esc)"
+                        title={t('pop.snip.cancelEsc', null, 'Cancel (Esc)')}
                     >
                         <X size={14} />
                     </button>

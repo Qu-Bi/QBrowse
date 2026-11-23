@@ -4,6 +4,7 @@ import { Terminal, Search, X, Command } from 'lucide-react';
 import useOmniboxEngine, { getCompletedSuggestionText } from '../../hooks/useOmniboxEngine';
 import OmniboxSuggestionsDropdown from '../common/OmniboxSuggestionsDropdown';
 import useUIStore from '../../store/useUIStore';
+import { useTranslation } from '../../i18n/index';
 
 const isOverlayBlockingHomepage = (state) => Boolean(
     state.isOmniboxOpen ||
@@ -41,6 +42,7 @@ export default function HomepageOmnibox({
     isActiveSpace = true,
     onDropdownOpenChange 
 }) {
+    const { t } = useTranslation();
     const isBlockedByOverlay = useUIStore(isOverlayBlockingHomepage);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
@@ -339,7 +341,7 @@ export default function HomepageOmnibox({
                             className={`p-0.5 rounded-full transition ml-0.5 cursor-pointer ${
                                 isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-800' : 'hover:bg-white/20 text-white/70 hover:text-white'
                             }`}
-                            title="Remove engine filter (Backspace)"
+                            title={t('chrome.omniboxRemoveEngine', null, 'Remove engine filter (Backspace)')}
                         >
                             <X size={12} />
                         </button>
@@ -373,12 +375,12 @@ export default function HomepageOmnibox({
                         }}
                         placeholder={
                             isCommandMode
-                                ? 'Type a browser command...'
+                                ? t('chrome.omniboxPlaceholderCommand', null, 'Type a browser command...')
                                 : activeBang
-                                    ? `Search ${activeBang.name} directly...`
+                                    ? t('chrome.omniboxPlaceholderBang', { engine: activeBang.name }, `Search ${activeBang.name} directly...`)
                                     : isTor
-                                        ? 'Search the web via Tor, enter .onion address...'
-                                        : 'Search the web, or type a command...'
+                                        ? t('chrome.omniboxPlaceholderTor', null, 'Search the web via Tor, enter .onion address...')
+                                        : t('chrome.omniboxPlaceholderDefault', null, 'Search the web, or type a command...')
                         }
                         className={`w-full bg-transparent border-none text-base md:text-lg font-medium focus:outline-none focus:ring-0 p-0 transition-colors ${
                             isCommandMode
@@ -405,7 +407,7 @@ export default function HomepageOmnibox({
                             className={`p-1 rounded-full transition-colors cursor-pointer ${
                                 isBright ? 'hover:bg-black/10 text-zinc-400 hover:text-zinc-700' : 'hover:bg-white/10 text-white/40 hover:text-white'
                             }`}
-                            title="Clear input (Esc)"
+                            title={t('chrome.omniboxClearInput', null, 'Clear input (Esc)')}
                         >
                             <X size={15} />
                         </button>

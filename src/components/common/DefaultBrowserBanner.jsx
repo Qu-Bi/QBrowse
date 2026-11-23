@@ -4,6 +4,7 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import qbrowseLogo from '../../assets/icon.png';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
+import { useTranslation, t as tStatic } from '../../i18n/index';
 
 const getPlatformId = () => {
     const p = (typeof window !== 'undefined' && (window.electronAPI?.platform || window.process?.platform))
@@ -20,6 +21,7 @@ const getPlatformId = () => {
 };
 
 export default function DefaultBrowserBanner() {
+    const { t } = useTranslation();
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -29,15 +31,15 @@ export default function DefaultBrowserBanner() {
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const platformId = getPlatformId();
     const defaultAppsLabel = platformId === 'linux'
-        ? 'Default Applications'
+        ? t('chrome.defaultAppsLinux', null, 'Default Applications')
         : platformId === 'darwin'
-            ? 'macOS System Settings'
-            : 'Windows Default Apps';
+            ? t('chrome.defaultAppsMac', null, 'macOS System Settings')
+            : t('chrome.defaultAppsWin', null, 'Windows Default Apps');
     const settingsWindowLabel = platformId === 'linux'
-        ? 'System Settings'
+        ? t('chrome.settingsWindowLinux', null, 'System Settings')
         : platformId === 'darwin'
-            ? 'macOS System Settings'
-            : 'Windows Settings';
+            ? t('chrome.settingsWindowMac', null, 'macOS System Settings')
+            : t('chrome.settingsWindowWin', null, 'Windows Settings');
 
     const [isVisible, setIsVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
@@ -182,7 +184,7 @@ export default function DefaultBrowserBanner() {
                     try {
                         sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
                     } catch (_) {}
-                    showToast('QBrowse is now your default browser!');
+                    showToast(tStatic('chrome.defaultBrowserSet', null, 'QBrowse is now your default browser!'));
                     if (pollIntervalRef.current) {
                         clearInterval(pollIntervalRef.current);
                         pollIntervalRef.current = null;
@@ -213,11 +215,11 @@ export default function DefaultBrowserBanner() {
             const res = await setDefaultApi();
             if (res && res.isDefault) {
                 setIsDefault(true);
-                showToast('QBrowse is now your default browser!');
+                showToast(tStatic('chrome.defaultBrowserSet', null, 'QBrowse is now your default browser!'));
                 closeBanner();
             } else {
                 setWaitingForConfirmation(true);
-                showToast(`Opening ${defaultAppsLabel}. Click "Set default" for QBrowse.`);
+                showToast(tStatic('chrome.defaultBrowserOpeningSettings', { label: defaultAppsLabel }, `Opening ${defaultAppsLabel}. Click "Set default" for QBrowse.`));
 
                 // Background poll every 2s for up to 30s while user interacts with system Settings window
                 if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -228,7 +230,7 @@ export default function DefaultBrowserBanner() {
                         const check = await checkDefaultApi(true);
                         if (check && check.isDefault) {
                             setIsDefault(true);
-                            showToast('QBrowse is now your default browser!');
+                            showToast(tStatic('chrome.defaultBrowserSet', null, 'QBrowse is now your default browser!'));
                             if (pollIntervalRef.current) {
                                 clearInterval(pollIntervalRef.current);
                                 pollIntervalRef.current = null;
@@ -247,7 +249,7 @@ export default function DefaultBrowserBanner() {
                 }, 2000);
             }
         } catch (err) {
-            showToast('Could not open default browser settings.');
+            showToast(tStatic('chrome.defaultBrowserOpenFailed', null, 'Could not open default browser settings.'));
             closeBanner();
         } finally {
             setIsSetting(false);
@@ -264,7 +266,7 @@ export default function DefaultBrowserBanner() {
             sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
         } catch (_) {}
         closeBanner(() => {
-            showToast('Default browser prompt silenced.');
+            showToast(tStatic('chrome.defaultBrowserSilenced', null, 'Default browser prompt silenced.'));
         });
     };
 
@@ -310,10 +312,10 @@ export default function DefaultBrowserBanner() {
                     {/* Content */}
                     <div className="flex-1 min-w-0 pr-1">
                         <h4 className={`text-[13px] font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                            Make QBrowse your default browser
+                            {t('chrome.defaultBrowserTitle', null, 'Make QBrowse your default browser')}
                         </h4>
                         <p className={`text-[11.5px] mt-0.5 leading-snug ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                            Open links with built-in Tor routing, isolated spaces, and encrypted sync.
+                            {t('chrome.defaultBrowserDesc', null, 'Open links with built-in Tor routing, isolated spaces, and encrypted sync.')}
                         </p>
 
                         {/* Action buttons */}
@@ -324,12 +326,12 @@ export default function DefaultBrowserBanner() {
                                 className="px-3 py-1 bg-accent text-black font-semibold rounded-lg text-[11px] transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm shadow-accent/20 flex items-center gap-1 cursor-pointer disabled:opacity-75"
                             >
                                 {waitingForConfirmation ? (
-                                    <span className="animate-pulse">Confirm in {settingsWindowLabel}...</span>
+                                    <span className="animate-pulse">{t('chrome.defaultBrowserConfirmIn', { label: settingsWindowLabel }, `Confirm in ${settingsWindowLabel}...`)}</span>
                                 ) : isSetting ? (
-                                    <span>Opening Settings...</span>
+                                    <span>{t('chrome.defaultBrowserOpening', null, 'Opening Settings...')}</span>
                                 ) : (
                                     <>
-                                        <span>Set as Default</span>
+                                        <span>{t('chrome.defaultBrowserSetBtn', null, 'Set as Default')}</span>
                                         <ArrowRight size={11} />
                                     </>
                                 )}
@@ -341,7 +343,7 @@ export default function DefaultBrowserBanner() {
                                     isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/45 hover:text-white/80'
                                 }`}
                             >
-                                Don't ask again
+                                {t('chrome.defaultBrowserDontAsk', null, "Don't ask again")}
                             </button>
                         </div>
                     </div>
@@ -352,7 +354,7 @@ export default function DefaultBrowserBanner() {
                         className={`p-1 rounded-md transition-colors cursor-pointer -mt-0.5 -mr-0.5 ${
                             isBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'
                         }`}
-                        title="Dismiss for now"
+                        title={t('chrome.dismissForNow', null, 'Dismiss for now')}
                     >
                         <X size={13} />
                     </button>

@@ -77,7 +77,7 @@ jobs:
       - name: Install system packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          sudo apt-get install -y libarchive-tools rpm
 
       - name: Install dependencies
         run: |
@@ -88,11 +88,12 @@ jobs:
       - name: Download Linux AI Binaries
         run: |
           mkdir -p electron/bin
-          curl -L -o llama.zip https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-ubuntu-x64.zip || true
-          unzip -o llama.zip -d electron/bin/ || true
+          curl -L -o /tmp/llama.zip https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-ubuntu-x64.zip || true
+          unzip -o /tmp/llama.zip -d electron/bin/ || true
+          rm -f /tmp/llama.zip
           chmod +x electron/bin/* || true
 
-      - name: Build Linux (DEB, AppImage, Pacman, Tar.gz)
+      - name: Build Linux (AppImage, DEB, RPM, Pacman, Tar.gz)
         run: npm run build:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -104,17 +105,30 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
 
+      - name: Verify Linux Artifacts & Auto-Update Metadata
+        run: |
+          ls -la dist_electron
+          test -f dist_electron/latest-linux.yml
+          ls dist_electron/*.AppImage dist_electron/*.deb dist_electron/*.rpm dist_electron/*.pacman dist_electron/*.tar.gz
+          # Ensure no spaces exist in Linux artifact filenames (prevents shell & latest-linux.yml mismatches)
+          for f in dist_electron/*.AppImage dist_electron/*.deb dist_electron/*.rpm dist_electron/*.pacman dist_electron/*.tar.gz; do
+            case "$(basename "$f")" in
+              *" "*) echo "ERROR: Space found in Linux artifact name: $f" >&2; exit 1 ;;
+            esac
+          done
+
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: qbrowse-linux
           path: |
             dist_electron/*.deb
+            dist_electron/*.rpm
             dist_electron/*.AppImage
             dist_electron/*.pacman
             dist_electron/*.tar.gz
             dist_electron/*.blockmap
-            dist_electron/latest-linux.yml
+            dist_electron/latest-linux*.yml
 
   publish-release:
     name: Publish Release (All Platforms)

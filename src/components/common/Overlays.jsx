@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Globe } from 'lucide-react';
-import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
+import useUIStore, { getAnimationTimeout, shouldOptimizeEcoVisuals } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import AuthModal from '../modals/AuthModal';
 import PresetStudioModal from '../modals/PresetStudioModal';
 import LiquidTooltip from './LiquidTooltip';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function Overlays() {
+    const { t } = useTranslation();
     const activeModal = useUIStore(state => state.activeModal);
     const hoverPreview = useUIStore(state => state.hoverPreview);
     const tabContextMenu = useUIStore(state => state.tabContextMenu);
@@ -18,7 +20,8 @@ export default function Overlays() {
     const draggedItem = useTabStore(state => state.draggedItem);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const activePerformanceTier = useUIStore(state => state.activePerformanceTier);
-    const isEco = activePerformanceTier === 'eco';
+    const reduceVisualsOnEco = useUIStore(state => state.reduceVisualsOnEco);
+    const isEco = shouldOptimizeEcoVisuals(activePerformanceTier, reduceVisualsOnEco);
 
     const [displayedPreview, setDisplayedPreview] = useState(null);
     const [isExiting, setIsExiting] = useState(false);
@@ -69,14 +72,14 @@ export default function Overlays() {
                             <Globe size={14} className={isBright ? "text-zinc-500" : "text-white/50"} />
                         )}
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>{activeCard.tab?.title || 'Untitled'}</span>
+                            <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>{activeCard.tab?.title || t('chrome.untitledTab', null, 'Untitled')}</span>
                             {activeCard.tab?.suspended && (
                                 <span className={`flex-shrink-0 px-1.5 py-0.2 rounded text-[9px] font-medium border ${
                                     isBright
                                         ? 'bg-amber-500/15 text-amber-800 border-amber-500/30'
                                         : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                                 }`}>
-                                    Sleeping
+                                    {t('chrome.sleepingBadge', null, 'Sleeping')}
                                 </span>
                             )}
                         </div>
@@ -91,7 +94,7 @@ export default function Overlays() {
                             </>
                         )}
                         <div className={`absolute bottom-2 left-2 right-2 px-2 py-1.5 ${isBright ? 'bg-white/90 border-black/10 text-zinc-700 shadow-md' : 'bg-black/60 border-white/10 text-white/50 shadow-lg'} backdrop-blur-md rounded-lg border truncate text-[10px] font-mono text-center`}>
-                            {activeCard.tab?.url || 'New Tab'}
+                            {activeCard.tab?.url || t('nav.newTab', null, 'New Tab')}
                         </div>
                     </div>
                 </div>

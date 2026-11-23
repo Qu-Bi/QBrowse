@@ -32,6 +32,11 @@ function WallpaperEngine() {
     const isReaderOpen = useUIStore(state => state.isReaderOpen);
     const isFullscreen = useUIStore((s) => s.isFullscreen);
     const htmlFullscreenTabId = useUIStore((s) => s.htmlFullscreenTabId);
+    const isWindowFocused = useUIStore(state => state.isWindowFocused);
+    const isWindowMinimized = useUIStore(state => state.isWindowMinimized);
+    const isWindowVisible = useUIStore(state => state.isWindowVisible);
+    const isTabMapOpen = useUIStore(state => state.isTabMapOpen);
+    const isTabMapClosing = useUIStore(state => state.isTabMapClosing);
     const isSplitView = useUIStore(state => state.isSplitView);
     const splitRightTabId = useUIStore(state => state.splitRightTabId);
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -55,12 +60,14 @@ function WallpaperEngine() {
     const [exitingUrl, setExitingUrl] = useState(null);
 
     // Pausing states for live media (Videos & GIFs)
-    const [isWindowFocused, setIsWindowFocused] = useState(true);
+    // Authoritative OS window focus/minimize/visibility comes from useUIStore (driven by Electron BrowserWindow events)
     const [isWebviewFocused, setIsWebviewFocused] = useState(
         () => hasWebUrl && document.activeElement?.tagName === 'WEBVIEW'
     );
-    const [isDocumentVisible, setIsDocumentVisible] = useState(true);
-    const [isEcoMode, setIsEcoMode] = useState(false);
+    const [isDocumentVisible, setIsDocumentVisible] = useState(
+        () => (typeof document !== 'undefined' ? !document.hidden : true)
+    );
+    const isEcoMode = useUIStore(state => state.activePerformanceTier === 'eco');
 
     const hasWebUrlRef = useRef(hasWebUrl);
     hasWebUrlRef.current = hasWebUrl;
@@ -68,8 +75,10 @@ function WallpaperEngine() {
     useEffect(() => {
         if (!hasWebUrl) {
             setIsWebviewFocused(false);
+        } else if (isWindowFocused) {
+            setIsWebviewFocused(document.activeElement?.tagName === 'WEBVIEW');
         }
-    }, [hasWebUrl]);
+    }, [hasWebUrl, isWindowFocused]);
 
     // Video Dual-Player (A/B roll) state for smooth cross-dissolve looping
     const [activeVideoSlot, setActiveVideoSlot] = useState('A');
@@ -101,9 +110,11 @@ function WallpaperEngine() {
         halfDipMs: gifDipHalfMs
     } = computeGifTransitionTimings(gifData?.duration, crossfadeDuration);
 
-    // Track window focus/blur, webview focus, and visibility for power & GPU optimization
+    // Track <webview> focus (for pauseWallpaperOnWebview) and document visibility.
+    // OS window focus/blur is tracked authoritatively via Electron BrowserWindow IPC in useUIStore
+    // so switching apps while a <webview> was last focused reliably pauses and resumes wallpapers.
     useEffect(() => {
-        let blurCheckTimer = null;
+        let webviewCheckTimer = null;
 
         const syncWebviewFocusState = () => {
             const onWebview = hasWebUrlRef.current && document.activeElement?.tagName === 'WEBVIEW';
@@ -111,29 +122,19 @@ function WallpaperEngine() {
             return onWebview;
         };
 
-        const handleFocus = () => {
-            if (blurCheckTimer) {
-                clearTimeout(blurCheckTimer);
-                blurCheckTimer = null;
+        const handleWindowFocus = () => {
+            if (webviewCheckTimer) {
+                clearTimeout(webviewCheckTimer);
+                webviewCheckTimer = null;
             }
-            setIsWindowFocused(true);
             syncWebviewFocusState();
         };
 
-        const handleBlur = () => {
-            if (blurCheckTimer) clearTimeout(blurCheckTimer);
-            blurCheckTimer = setTimeout(() => {
-                blurCheckTimer = null;
-                if (hasWebUrlRef.current && document.activeElement?.tagName === 'WEBVIEW') {
-                    // Clicking an Electron <webview> blurs the outer renderer window while remaining in QBrowse
-                    setIsWebviewFocused(true);
-                    setIsWindowFocused(true);
-                    return;
-                }
-                if (!document.hasFocus()) {
-                    setIsWindowFocused(false);
-                    setIsWebviewFocused(false);
-                }
+        const handleWindowBlur = () => {
+            if (webviewCheckTimer) clearTimeout(webviewCheckTimer);
+            webviewCheckTimer = setTimeout(() => {
+                webviewCheckTimer = null;
+                syncWebviewFocusState();
             }, 20);
         };
 
@@ -143,45 +144,32 @@ function WallpaperEngine() {
                 document.activeElement?.tagName === 'WEBVIEW'
             );
             setIsWebviewFocused(onWebview);
-            if (!onWebview) {
-                setIsWindowFocused(true);
-            }
         };
 
         const handleVisibilityChange = () => {
             setIsDocumentVisible(!document.hidden);
         };
 
-        window.addEventListener('focus', handleFocus);
-        window.addEventListener('blur', handleBlur);
+        window.addEventListener('focus', handleWindowFocus);
+        window.addEventListener('blur', handleWindowBlur);
         document.addEventListener('focusin', handleFocusIn);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
-            if (blurCheckTimer) clearTimeout(blurCheckTimer);
-            window.removeEventListener('focus', handleFocus);
-            window.removeEventListener('blur', handleBlur);
+            if (webviewCheckTimer) clearTimeout(webviewCheckTimer);
+            window.removeEventListener('focus', handleWindowFocus);
+            window.removeEventListener('blur', handleWindowBlur);
             document.removeEventListener('focusin', handleFocusIn);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, []);
 
-    // Track Eco Mode mutations on the root HTML element
-    useEffect(() => {
-        const checkEco = () => {
-            setIsEcoMode(document.documentElement.classList.contains('eco-mode'));
-        };
-        checkEco();
-
-        const observer = new MutationObserver(checkEco);
-        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-        return () => observer.disconnect();
-    }, []);
-
     // Calculate whether live media should be paused to preserve CPU, battery, and GPU
-    // Pauses when unfocused, optionally when a webview is focused, in background, in Eco Mode, in F11/HTML fullscreen, when reduced motion is enabled, or when Settings/modals/Reader Mode are open
+    // Pauses when unfocused, minimized/hidden, optionally when a webview is focused, in Eco Mode, in F11/HTML fullscreen, when reduced motion is enabled, or when Settings/modals/Reader Mode/TabMap are open
     const shouldPauseLiveMedia = Boolean(
         !isDocumentVisible ||
+        isWindowMinimized ||
+        !isWindowVisible ||
         (!isWindowFocused && pauseWallpaperInBackground) ||
         (isWebviewFocused && pauseWallpaperOnWebview) ||
         (isEcoMode && pauseWallpaperInEcoMode) ||
@@ -189,6 +177,7 @@ function WallpaperEngine() {
         Boolean(htmlFullscreenTabId) ||
         Boolean(activeModal) ||
         Boolean(isReaderOpen) ||
+        Boolean(isTabMapOpen && !isTabMapClosing) ||
         isReducedMotion
     );
     const shouldPauseRef = useRef(shouldPauseLiveMedia);
@@ -587,6 +576,12 @@ function WallpaperEngine() {
         }
     }, [activeVideoSlot, crossfadeDuration, wallpaperVideoLoopMode]);
 
+    const handlePlayerPlay = useCallback((e) => {
+        if (shouldPauseRef.current) {
+            try { e.currentTarget.pause(); } catch (_) {}
+        }
+    }, []);
+
     const isCurrentVideo = isVideoWallpaper(currentUrl);
     const isCurrentGif = isGifWallpaper(currentUrl);
     const cleanUrl = currentUrl ? currentUrl.split('?')[0].split('#')[0] : '';
@@ -624,6 +619,7 @@ function WallpaperEngine() {
                             muted
                             playsInline
                             preload="auto"
+                            onPlay={handlePlayerPlay}
                             onTimeUpdate={() => handlePlayerTimeUpdate('A')}
                             onEnded={() => handlePlayerEnded('A')}
                             disablePictureInPicture
@@ -643,6 +639,7 @@ function WallpaperEngine() {
                             muted
                             playsInline
                             preload="auto"
+                            onPlay={handlePlayerPlay}
                             onTimeUpdate={() => handlePlayerTimeUpdate('B')}
                             onEnded={() => handlePlayerEnded('B')}
                             disablePictureInPicture
@@ -667,6 +664,7 @@ function WallpaperEngine() {
                         muted
                         playsInline
                         preload="auto"
+                        onPlay={handlePlayerPlay}
                         onTimeUpdate={() => handlePlayerTimeUpdate('A')}
                         onEnded={() => handlePlayerEnded('A')}
                         disablePictureInPicture

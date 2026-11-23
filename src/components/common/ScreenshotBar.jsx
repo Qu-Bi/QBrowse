@@ -3,8 +3,10 @@ import { Crop, Monitor, ScrollText, X, Camera } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function ScreenshotBar() {
+    const { t } = useTranslation();
     const {
         isScreenshotBarOpen,
         setIsScreenshotBarOpen,
@@ -43,7 +45,7 @@ export default function ScreenshotBar() {
                 <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center text-accent shrink-0">
                     <Camera size={13} />
                 </div>
-                <span className="font-bold tracking-tight">Screenshot</span>
+                <span className="font-bold tracking-tight">{t('pop.screenshot.title', null, 'Screenshot')}</span>
             </div>
 
             <button
@@ -56,10 +58,10 @@ export default function ScreenshotBar() {
                         ? 'hover:bg-black/5 text-zinc-700 hover:text-zinc-950' 
                         : 'hover:bg-white/[0.08] text-white/85 hover:text-white'
                 }`}
-                title="Select a rectangular area to crop and capture"
+                title={t('pop.screenshot.snipTooltip', null, 'Select a rectangular area to crop and capture')}
             >
                 <Crop size={14} className={isBright ? 'text-amber-600' : 'text-amber-400'} />
-                <span>Snip Area</span>
+                <span>{t('pop.screenshot.snipArea', null, 'Snip Area')}</span>
             </button>
 
             <button
@@ -72,10 +74,10 @@ export default function ScreenshotBar() {
                         ? 'hover:bg-black/5 text-zinc-700 hover:text-zinc-950' 
                         : 'hover:bg-white/[0.08] text-white/85 hover:text-white'
                 }`}
-                title="Capture currently visible viewport"
+                title={t('pop.screenshot.viewportTooltip', null, 'Capture currently visible viewport')}
             >
                 <Monitor size={14} className={isBright ? 'text-cyan-600' : 'text-cyan-400'} />
-                <span>Visible Viewport</span>
+                <span>{t('pop.screenshot.visibleViewport', null, 'Visible Viewport')}</span>
             </button>
 
             <button
@@ -88,10 +90,10 @@ export default function ScreenshotBar() {
                         ? 'hover:bg-black/5 text-zinc-700 hover:text-zinc-950' 
                         : 'hover:bg-white/[0.08] text-white/85 hover:text-white'
                 }`}
-                title="Capture complete scrolling webpage from top to bottom"
+                title={t('pop.screenshot.fullPageTooltip', null, 'Capture complete scrolling webpage from top to bottom')}
             >
                 <ScrollText size={14} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} />
-                <span>Full Page</span>
+                <span>{t('pop.screenshot.fullPage', null, 'Full Page')}</span>
             </button>
 
             <div className={`w-px h-4 mx-0.5 ${isBright ? 'bg-black/[0.08]' : 'bg-white/[0.08]'}`} />
@@ -103,7 +105,7 @@ export default function ScreenshotBar() {
                         ? 'hover:bg-black/5 text-zinc-500 hover:text-red-500' 
                         : 'hover:bg-white/10 text-white/45 hover:text-rose-400'
                 }`}
-                title="Close (Esc)"
+                title={t('pop.screenshot.closeEsc', null, 'Close (Esc)')}
             >
                 <X size={14} />
             </button>

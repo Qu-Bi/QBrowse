@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Globe, Check } from 'lucide-react';
+import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Globe, Check, Usb } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useVaultStore, { enrichPasswords } from '../../store/useVaultStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 // Apple-style synthesized unlock chime using Web Audio API
 const playUnlockChime = () => {
@@ -44,17 +45,23 @@ const playUnlockChime = () => {
 };
 
 const PasskeyVerificationModal = () => {
+    const { t } = useTranslation();
     const { passkeyPrompt, setPasskeyPrompt, showToast, theme } = useUIStore();
     const activeSpace = useTabStore(state => state.activeSpace);
     const { pinEnabled, biometricsEnabled, isUnlocked, lockoutUntil } = useVaultStore();
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
-    const biometricLabel = osPlatform === 'darwin' ? 'Touch ID' : osPlatform === 'linux' ? 'System Biometrics' : 'Windows Hello';
-    const biometricPinHint = osPlatform === 'darwin'
-        ? 'Touch the Touch ID sensor or enter your macOS password'
-        : osPlatform === 'linux'
-            ? 'Touch your fingerprint sensor or enter your system password'
-            : 'Touch your fingerprint sensor or enter your Windows PIN';
+    const osKey = osPlatform === 'darwin' ? 'darwin' : osPlatform === 'linux' ? 'linux' : 'win32';
+    const biometricLabel = t(`tools.passkey.biometrics.${osKey}`, null, osKey === 'darwin' ? 'Touch ID' : osKey === 'linux' ? 'System Biometrics' : 'Windows Hello');
+    const biometricPinHint = t(
+        `tools.passkey.hints.${osKey}`,
+        null,
+        osKey === 'darwin'
+            ? 'Touch the Touch ID sensor or enter your macOS password'
+            : osKey === 'linux'
+                ? 'Touch your fingerprint sensor or enter your system password'
+                : 'Touch your fingerprint sensor or enter your Windows PIN'
+    );
 
     const [passwordInput, setPasswordInput] = useState('');
     const [showPass, setShowPass] = useState(false);
@@ -107,10 +114,43 @@ const PasskeyVerificationModal = () => {
     const handleCancel = async () => {
         if (authStatus === 'success') return;
         if (window.electronAPI && window.electronAPI.respondPasskeyVerification && activePrompt?.requestId) {
-            await window.electronAPI.respondPasskeyVerification(activePrompt.requestId, false);
+            await window.electronAPI.respondPasskeyVerification(activePrompt.requestId, {
+                approved: false,
+                verified: false,
+                fallbackToNative: false
+            });
         }
         setPasskeyPrompt(null);
     };
+
+    const handleHardwareFallback = async () => {
+        if (authStatus === 'success') return;
+        if (window.electronAPI && window.electronAPI.respondPasskeyVerification && activePrompt?.requestId) {
+            await window.electronAPI.respondPasskeyVerification(activePrompt.requestId, {
+                approved: false,
+                verified: false,
+                fallbackToNative: true
+            });
+        }
+        const domain = activePrompt?.rpId || activePrompt?.hostname || t('tools.passkey.websiteFallback', null, 'Website');
+        showToast(
+            t('tools.passkey.toastHardwareHandoff', { domain }, `Switching to Hardware / System Security Key for ${domain}...`),
+            'info'
+        );
+        setPasskeyPrompt(null);
+    };
+
+    const isWebAuthnPrompt = activePrompt?.mode !== 'autofill';
+    const canUseHardwareKey = isWebAuthnPrompt && activePrompt?.hardwareFallbackAvailable !== false;
+    const hardwareKeyHint = t(
+        `tools.passkey.useHardwareKeyHint.${osKey}`,
+        null,
+        osKey === 'darwin'
+            ? 'YubiKey · FIDO2 · Touch ID · Phone QR'
+            : osKey === 'linux'
+                ? 'YubiKey · FIDO2 · USB / NFC / BLE · Phone QR'
+                : 'YubiKey · FIDO2 · Windows Hello · Phone QR'
+    );
 
     const triggerSuccessSequence = async () => {
         setAuthStatus('success');
@@ -123,9 +163,16 @@ const PasskeyVerificationModal = () => {
         if (window.electronAPI && window.electronAPI.respondPasskeyVerification && activePrompt?.requestId) {
             await window.electronAPI.respondPasskeyVerification(activePrompt.requestId, true);
         }
-        const domain = activePrompt?.rpId || activePrompt?.hostname || 'Website';
+        const domain = activePrompt?.rpId || activePrompt?.hostname || t('tools.passkey.websiteFallback', null, 'Website');
         const isAutofill = activePrompt?.mode === 'autofill';
-        showToast(isAutofill ? `Vault unlocked & credentials autofilled for ${domain}!` : `Passkey verified for ${domain}!`);
+        const isCreate = activePrompt?.mode === 'passkey-create';
+        showToast(
+            isAutofill
+                ? t('tools.passkey.toastAutofill', { domain }, `Vault unlocked & credentials autofilled for ${domain}!`)
+                : isCreate
+                    ? t('tools.passkey.toastPasskeyCreated', { domain }, `Passkey verified & saving for ${domain}!`)
+                    : t('tools.passkey.toastPasskey', { domain }, `Passkey verified for ${domain}!`)
+        );
         setPasskeyPrompt(null);
     };
 
@@ -159,12 +206,15 @@ const PasskeyVerificationModal = () => {
                 }
             } else {
                 // If biometrics not bound to vault or vault already unlocked, verify identity directly
-                const domain = activePrompt?.rpId || activePrompt?.hostname || 'the website';
+                const domain = activePrompt?.rpId || activePrompt?.hostname || t('tools.passkey.theWebsiteFallback', null, 'the website');
                 if (window.electronAPI?.verifyWindowsHello) {
                     const isAutofill = activePrompt?.mode === 'autofill';
+                    const isCreate = activePrompt?.mode === 'passkey-create';
                     const promptMsg = isAutofill
-                        ? `Verify your identity to autofill credentials for ${domain}`
-                        : `Sign in to ${domain} with your QVault passkey`;
+                        ? t('tools.passkey.promptAutofill', { domain }, `Verify your identity to autofill credentials for ${domain}`)
+                        : isCreate
+                            ? t('tools.passkey.promptPasskeyCreate', { domain }, `Create and save a QVault passkey for ${domain}`)
+                            : t('tools.passkey.promptPasskey', { domain }, `Sign in to ${domain} with your QVault passkey`);
                     const res = await window.electronAPI.verifyWindowsHello(promptMsg);
                     if (res && (res.verified || res.success)) {
                         verified = true;
@@ -192,7 +242,7 @@ const PasskeyVerificationModal = () => {
             }
         } catch (e) {
             setAuthStatus('idle');
-            setErrorMessage('Biometric error: ' + (e.message || e));
+            setErrorMessage(t('tools.passkey.biometricError', { error: e.message || e }, 'Biometric error: ' + (e.message || e)));
         }
     };
 
@@ -206,7 +256,7 @@ const PasskeyVerificationModal = () => {
         // Check if vault is locked out from failed PIN attempts
         if (vaultState.lockoutUntil && Date.now() < vaultState.lockoutUntil) {
             const remainingSec = Math.max(1, Math.ceil((vaultState.lockoutUntil - Date.now()) / 1000));
-            setErrorMessage(`Vault locked due to failed attempts. Try again in ${remainingSec}s.`);
+            setErrorMessage(t('tools.passkey.vaultLockedOut', { seconds: remainingSec }, `Vault locked due to failed attempts. Try again in ${remainingSec}s.`));
             return;
         }
 
@@ -228,14 +278,20 @@ const PasskeyVerificationModal = () => {
                     if (updatedState.lockoutUntil && Date.now() < updatedState.lockoutUntil) {
                         setAuthStatus('idle');
                         const remainingSec = Math.max(1, Math.ceil((updatedState.lockoutUntil - Date.now()) / 1000));
-                        setErrorMessage(`Vault locked due to failed attempts. Try again in ${remainingSec}s.`);
+                        setErrorMessage(t('tools.passkey.vaultLockedOut', { seconds: remainingSec }, `Vault locked due to failed attempts. Try again in ${remainingSec}s.`));
                         return;
                     }
                 }
             }
 
-            // Step 2 (Master Password Check): verify password and unlock vault
-            if (window.electronAPI && window.electronAPI.checkVaultPassword) {
+            // Step 2 (Master Password Check): verify password and unlock vault (or initialize if first-time vault setup)
+            if (!vaultState.isInitialized) {
+                const initializedOk = await useVaultStore.getState().unlock(trimmed);
+                if (initializedOk) {
+                    await completeVerification(true);
+                    return;
+                }
+            } else if (window.electronAPI && window.electronAPI.checkVaultPassword) {
                 const res = await window.electronAPI.checkVaultPassword(trimmed);
                 const isValid = res === true || res?.valid === true || res?.success === true;
                 if (isValid) {
@@ -248,10 +304,10 @@ const PasskeyVerificationModal = () => {
             }
 
             setAuthStatus('idle');
-            setErrorMessage(pinFailedError || useVaultStore.getState().error || 'Incorrect Master Password or Quick PIN. Please try again.');
+            setErrorMessage(pinFailedError || useVaultStore.getState().error || t('tools.passkey.incorrectCreds', null, 'Incorrect Master Password or Quick PIN. Please try again.'));
         } catch (e) {
             setAuthStatus('idle');
-            setErrorMessage('Verification failed: ' + (e.message || e));
+            setErrorMessage(t('tools.passkey.verificationFailed', { error: e.message || e }, 'Verification failed: ' + (e.message || e)));
         }
     };
 
@@ -287,7 +343,7 @@ const PasskeyVerificationModal = () => {
                         className={`absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full transition cursor-pointer ${
                             isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'bg-white/5 hover:bg-white/10 text-white/50 hover:text-white'
                         }`}
-                        title="Cancel & Deny"
+                        title={t('tools.passkey.cancelDenyTitle', null, 'Cancel & Deny')}
                     >
                         <X size={16} />
                     </button>
@@ -341,17 +397,29 @@ const PasskeyVerificationModal = () => {
                             : (isBright ? 'text-zinc-900' : 'text-white')
                     }`}>
                         {authStatus === 'success' 
-                            ? 'Identity Verified!' 
+                            ? t('tools.passkey.verifiedTitle', null, 'Identity Verified!')
                             : authStatus === 'scanning'
-                                ? `Scanning ${biometricLabel}...`
-                                : (activePrompt?.mode === 'autofill' ? 'Autofill Saved Password' : 'Passkey Authentication')}
+                                ? t('tools.passkey.scanningTitle', { biometric: biometricLabel }, `Scanning ${biometricLabel}...`)
+                                : (activePrompt?.mode === 'autofill'
+                                    ? t('tools.passkey.autofillTitle', null, 'Autofill Saved Password')
+                                    : activePrompt?.mode === 'passkey-create'
+                                        ? t('tools.passkey.passkeyCreateTitle', null, 'Create QVault Passkey')
+                                        : t('tools.passkey.passkeyTitle', null, 'Passkey Authentication'))}
                     </h2>
                     <p className={`text-xs mt-1 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
                         {authStatus === 'success'
-                            ? (activePrompt?.mode === 'autofill' ? 'Vault unlocked and credentials autofilled' : 'Passkey released and signed successfully')
+                            ? (activePrompt?.mode === 'autofill'
+                                ? t('tools.passkey.verifiedAutofillDesc', null, 'Vault unlocked and credentials autofilled')
+                                : activePrompt?.mode === 'passkey-create'
+                                    ? t('tools.passkey.verifiedPasskeyCreateDesc', null, 'Identity verified — saving passkey to QVault')
+                                    : t('tools.passkey.verifiedPasskeyDesc', null, 'Passkey released and signed successfully'))
                             : authStatus === 'scanning'
                                 ? biometricPinHint
-                                : (activePrompt?.mode === 'autofill' ? 'Verification required to unlock vault & autofill' : 'Verification required to sign in with your passkey')}
+                                : (activePrompt?.mode === 'autofill'
+                                    ? t('tools.passkey.requireAutofillDesc', null, 'Verification required to unlock vault & autofill')
+                                    : activePrompt?.mode === 'passkey-create'
+                                        ? t('tools.passkey.requirePasskeyCreateDesc', null, 'Verification required to create and save this passkey')
+                                        : t('tools.passkey.requirePasskeyDesc', null, 'Verification required to sign in with your passkey'))}
                     </p>
                 </div>
 
@@ -363,14 +431,16 @@ const PasskeyVerificationModal = () => {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                             <span className={`text-sm font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                {activePrompt?.rpId || activePrompt?.hostname || 'Website'}
+                                {activePrompt?.rpId || activePrompt?.hostname || t('tools.passkey.websiteFallback', null, 'Website')}
                             </span>
                             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
-                                {activePrompt?.mode === 'autofill' ? 'Password' : 'Passkey'}
+                                {activePrompt?.mode === 'autofill'
+                                    ? t('tools.passkey.passwordBadge', null, 'Password')
+                                    : t('tools.passkey.passkeyBadge', null, 'Passkey')}
                             </span>
                         </div>
                         <p className={`text-xs truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                            Account: <span className={`font-medium ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{activePrompt?.username || (activePrompt?.mode === 'autofill' ? 'Saved Login' : 'Passkey User')}</span>
+                            {t('tools.passkey.accountLabel', null, 'Account:')} <span className={`font-medium ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{activePrompt?.username || (activePrompt?.mode === 'autofill' ? t('tools.passkey.savedLogin', null, 'Saved Login') : t('tools.passkey.passkeyUser', null, 'Passkey User'))}</span>
                         </p>
                     </div>
                 </div>
@@ -399,17 +469,17 @@ const PasskeyVerificationModal = () => {
                         {authStatus === 'scanning' ? (
                             <>
                                 <Loader2 size={18} className="animate-spin" />
-                                <span>Verifying with {biometricLabel}...</span>
+                                <span>{t('tools.passkey.verifyingWith', { biometric: biometricLabel }, `Verifying with ${biometricLabel}...`)}</span>
                             </>
                         ) : authStatus === 'success' ? (
                             <>
                                 <Check size={18} className="stroke-[3]" />
-                                <span>Verified!</span>
+                                <span>{t('tools.passkey.verifiedBtn', null, 'Verified!')}</span>
                             </>
                         ) : (
                             <>
                                 <Fingerprint size={20} />
-                                <span>Verify with {biometricLabel}</span>
+                                <span>{t('tools.passkey.verifyWith', { biometric: biometricLabel }, `Verify with ${biometricLabel}`)}</span>
                             </>
                         )}
                     </button>
@@ -418,7 +488,9 @@ const PasskeyVerificationModal = () => {
                     <div className="flex items-center gap-3">
                         <div className={`flex-1 h-px ${isBright ? 'bg-black/10' : 'bg-white/10'}`}></div>
                         <span className={`text-[10px] tracking-wider uppercase font-semibold ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
-                            {pinEnabled ? 'Or with Master Password / PIN' : 'Or with Master Password'}
+                            {pinEnabled
+                                ? t('tools.passkey.orPassPin', null, 'Or with Master Password / PIN')
+                                : t('tools.passkey.orPass', null, 'Or with Master Password')}
                         </span>
                         <div className={`flex-1 h-px ${isBright ? 'bg-black/10' : 'bg-white/10'}`}></div>
                     </div>
@@ -431,7 +503,9 @@ const PasskeyVerificationModal = () => {
                                 type={showPass ? 'text' : 'password'}
                                 value={passwordInput}
                                 onChange={e => setPasswordInput(e.target.value)}
-                                placeholder={pinEnabled ? 'Enter Master Password or 4–8 digit Quick PIN' : 'Enter QVault Master Password'}
+                                placeholder={pinEnabled
+                                    ? t('tools.passkey.placeholderPin', null, 'Enter Master Password or 4–8 digit Quick PIN')
+                                    : t('tools.passkey.placeholderPass', null, 'Enter QVault Master Password')}
                                 disabled={authStatus !== 'idle'}
                                 autoFocus
                                 className={`w-full border rounded-xl pl-9 pr-10 py-2.5 text-sm transition disabled:opacity-40 focus:outline-none focus:border-accent ${
@@ -464,13 +538,38 @@ const PasskeyVerificationModal = () => {
                             {authStatus === 'checking-pass' ? (
                                 <>
                                     <Loader2 size={14} className="animate-spin" />
-                                    <span>Checking credentials...</span>
+                                    <span>{t('tools.passkey.checking', null, 'Checking credentials...')}</span>
                                 </>
                             ) : (
-                                <span>Verify & Authenticate</span>
+                                <span>{t('tools.passkey.verifyAuth', null, 'Verify & Authenticate')}</span>
                             )}
                         </button>
                     </form>
+
+                    {/* Method 3: Hardware / System Security Key Fallback (YubiKey, FIDO2, Windows Hello, Touch ID, Phone QR) */}
+                    {canUseHardwareKey && authStatus !== 'success' && (
+                        <button
+                            type="button"
+                            onClick={handleHardwareFallback}
+                            className={`w-full py-2.5 px-4 rounded-xl border transition flex items-center justify-center gap-2.5 cursor-pointer active:scale-[0.98] ${
+                                isBright
+                                    ? 'bg-black/[0.03] hover:bg-black/[0.07] border-black/10 hover:border-accent/40 text-zinc-800'
+                                    : 'bg-white/[0.04] hover:bg-white/[0.09] border-white/10 hover:border-accent/40 text-white/90'
+                            }`}
+                        >
+                            <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent border border-accent/30 flex items-center justify-center shrink-0">
+                                <Usb size={14} />
+                            </div>
+                            <div className="flex flex-col items-start text-left min-w-0">
+                                <span className="text-xs font-semibold leading-tight truncate">
+                                    {t('tools.passkey.useHardwareKeyBtn', null, 'Use Hardware / System Key')}
+                                </span>
+                                <span className={`text-[10px] leading-tight truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
+                                    {hardwareKeyHint}
+                                </span>
+                            </div>
+                        </button>
+                    )}
                 </div>
 
                 {/* Footer Cancel */}
@@ -481,7 +580,7 @@ const PasskeyVerificationModal = () => {
                             onClick={handleCancel}
                             className={`text-xs transition cursor-pointer font-medium ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white/80'}`}
                         >
-                            Cancel & Deny Request
+                            {t('tools.passkey.cancelDenyBtn', null, 'Cancel & Deny Request')}
                         </button>
                     </div>
                 )}

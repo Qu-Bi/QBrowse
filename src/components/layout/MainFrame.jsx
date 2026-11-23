@@ -6,9 +6,13 @@ import {
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
     ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy,
-    Columns, Layers, Sparkles, CornerDownLeft
+    Columns, Layers, Sparkles, CornerDownLeft, Plus
 } from 'lucide-react';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
+import ElementEraserHUD from '../common/ElementEraserHUD';
+import { findDarkModeExclusionMatch } from '../../utils/darkModeWhitelist';
+import { useTranslation } from '../../i18n/index';
+import { formatTabCount } from '../../i18n/domains/chrome';
 
 function getToastIcon(message, isBright = false) {
     const iconClass = isBright ? "text-zinc-700 flex-shrink-0" : "text-white/80 flex-shrink-0";
@@ -23,7 +27,16 @@ function getToastIcon(message, isBright = false) {
         str.includes('not supported') ||
         str.includes('disabled') ||
         str.includes('disconnect') ||
-        str.includes('limit')
+        str.includes('limit') ||
+        str.includes('błąd') || str.includes('nie udało') || str.includes('maksymaln') || str.includes('wyłącz') ||
+        str.includes('fehler') || str.includes('fehlgeschlagen') || str.includes('deaktiv') ||
+        str.includes('erreur') || str.includes('échec') || str.includes('désactiv') ||
+        str.includes('fallo') || str.includes('erro') || str.includes('desativ') || str.includes('desactiv') ||
+        str.includes('errore') || str.includes('disattiv') ||
+        str.includes('ошибк') || str.includes('не удалось') || str.includes('помилк') || str.includes('не вдалося') || str.includes('вичерпано') ||
+        str.includes('失败') || str.includes('错误') || str.includes('已停用') ||
+        str.includes('エラー') || str.includes('失敗') || str.includes('無効') ||
+        str.includes('오류') || str.includes('실패') || str.includes('비활성화')
     ) {
         return <AlertCircle size={13} className={isBright ? "text-red-500 flex-shrink-0" : "text-red-400 flex-shrink-0"} />;
     }
@@ -35,7 +48,13 @@ function getToastIcon(message, isBright = false) {
         str.includes('mode:') || 
         str.includes('tier') ||
         str.includes('flags') ||
-        str.includes('reader')
+        str.includes('reader') ||
+        str.includes('podzielon') || str.includes('tryb:') ||
+        str.includes('trennansicht') || str.includes('modus:') ||
+        str.includes('vue scindée') || str.includes('mode :') ||
+        str.includes('vista dividida') || str.includes('divisão') || str.includes('affiancat') ||
+        str.includes('режим:') || str.includes('раздел') || str.includes('розділ') ||
+        str.includes('分屏') || str.includes('分割') || str.includes('분할')
     ) {
         return <Sliders size={13} className={iconClass} />;
     }
@@ -51,7 +70,19 @@ function getToastIcon(message, isBright = false) {
         str.includes('pinned') || 
         str.includes('unpinned') ||
         str.includes('freed') ||
-        str.includes('cleared')
+        str.includes('cleared') ||
+        str.includes('activated') ||
+        str.includes('woke') ||
+        str.includes('skopiow') || str.includes('zapisan') || str.includes('włącz') || str.includes('wyczyszcz') || str.includes('aktywow') ||
+        str.includes('gespeichert') || str.includes('kopiert') || str.includes('aktiviert') || str.includes('verbunden') || str.includes('gelöscht') ||
+        str.includes('enregistr') || str.includes('copié') || str.includes('activé') || str.includes('connecté') || str.includes('effacé') ||
+        str.includes('guardado') || str.includes('copiado') || str.includes('conectado') || str.includes('activado') ||
+        str.includes('salvo') || str.includes('ativado') || str.includes('salvat') || str.includes('copiat') || str.includes('connesso') || str.includes('attivato') ||
+        str.includes('сохран') || str.includes('скопир') || str.includes('подключ') || str.includes('включ') || str.includes('очищ') ||
+        str.includes('збереж') || str.includes('скопійов') || str.includes('підключ') || str.includes('увімкн') ||
+        str.includes('已保存') || str.includes('已复制') || str.includes('已连接') || str.includes('已启用') ||
+        str.includes('保存') || str.includes('コピー') || str.includes('接続') || str.includes('有効') ||
+        str.includes('저장') || str.includes('복사') || str.includes('연결') || str.includes('활성화')
     ) {
         return <Check size={13} className={isBright ? "text-emerald-600 flex-shrink-0" : "text-emerald-400 flex-shrink-0"} />;
     }
@@ -68,6 +99,7 @@ import WebViewContainer from './WebViewContainer';
 import QVaultPopover from '../popovers/QVaultPopover';
 import SavePasswordBanner from '../popovers/SavePasswordBanner';
 import SiteInfoPopover from '../popovers/SiteInfoPopover';
+import PermissionPromptPopup from '../popovers/PermissionPromptPopup';
 import { formatCompactNumber } from '../../utils/formatters';
 import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
@@ -81,6 +113,7 @@ import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 import HomepageOmnibox from '../features/HomepageOmnibox';
 
 const DownloadPopup = () => {
+    const { t } = useTranslation();
     const downloads = useUIStore(state => state.downloads);
     const activeDownloadPopup = useUIStore(state => state.activeDownloadPopup);
     const setActiveDownloadPopup = useUIStore(state => state.setActiveDownloadPopup);
@@ -114,11 +147,12 @@ const DownloadPopup = () => {
         setActiveDownloadPopup(null);
     };
 
-    return createPortal(
+    return (
         <div 
             id="download-toast-popup" 
+            onClick={e => e.stopPropagation()}
             style={getLiquidGlassInlineStyle(isBright)}
-            className={`fixed top-4 right-6 w-72 rounded-2xl p-1.5 select-none outline-none z-[70000] ${getLiquidGlassSurfaceClasses(isBright)} ${isClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
+            className={`absolute top-4 right-5 w-72 rounded-2xl p-1.5 select-none outline-none origin-top-right z-[70000] ${getLiquidGlassSurfaceClasses(isBright)} ${isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'}`}
         >
             {/* Header: Section Header matching right-click menu */}
             <div className={`flex items-center justify-between px-2.5 py-1 text-xs font-semibold border-b mb-1 ${
@@ -127,17 +161,27 @@ const DownloadPopup = () => {
                 <div className="flex items-center gap-2 truncate">
                     {popupData.isScreenshot ? (
                         <Camera size={13} className="text-accent flex-shrink-0" />
+                    ) : popupData.state === 'cancelled' ? (
+                        <XCircle size={13} className={isBright ? 'text-rose-500 flex-shrink-0' : 'text-rose-400 flex-shrink-0'} />
+                    ) : popupData.state === 'failed' || popupData.state === 'interrupted' ? (
+                        <AlertCircle size={13} className={isBright ? 'text-rose-500 flex-shrink-0' : 'text-rose-400 flex-shrink-0'} />
                     ) : (
                         <Download size={13} className="text-accent flex-shrink-0" />
                     )}
                     <span className="truncate">
                         {popupData.isScreenshot 
-                            ? (popupData.screenshotType ? `Screenshot (${popupData.screenshotType})` : 'Screenshot') 
+                            ? (popupData.screenshotType
+                                ? t('chrome.downloadScreenshotType', { type: popupData.screenshotType }, `Screenshot (${popupData.screenshotType})`)
+                                : t('chrome.downloadScreenshot', null, 'Screenshot')) 
                             : (popupData.state === 'completed' 
-                                ? (popupData.verified ? 'Verified Download' : 'Download Complete') 
-                                : popupData.state === 'failed' || popupData.state === 'interrupted'
-                                    ? 'Download Failed'
-                                    : 'Downloading...')}
+                                ? (popupData.verified
+                                    ? t('chrome.downloadVerifiedTitle', null, 'Verified Download')
+                                    : t('chrome.downloadCompleteTitle', null, 'Download Complete')) 
+                                : popupData.state === 'cancelled'
+                                    ? t('chrome.downloadCancelledTitle', null, 'Download Cancelled')
+                                    : popupData.state === 'failed' || popupData.state === 'interrupted'
+                                        ? t('chrome.downloadFailedTitle', null, 'Download Failed')
+                                        : t('chrome.downloadingTitle', null, 'Downloading...'))}
                     </span>
                 </div>
                 <button 
@@ -159,11 +203,15 @@ const DownloadPopup = () => {
                     <span>
                         {popupData.state === 'progressing' 
                             ? `${((popupData.receivedBytes || 0) / 1024 / 1024).toFixed(1)} / ${((popupData.totalBytes || 1) / 1024 / 1024).toFixed(1)} MB`
-                            : (popupData.actualBytes || popupData.totalBytes) > 0
-                                ? (popupData.actualBytes || popupData.totalBytes) < 1048576
-                                    ? `${((popupData.actualBytes || popupData.totalBytes) / 1024).toFixed(1)} KB`
-                                    : `${((popupData.actualBytes || popupData.totalBytes) / 1024 / 1024).toFixed(1)} MB`
-                                : 'Saved'
+                            : popupData.state === 'cancelled'
+                                ? <span className={isBright ? 'text-rose-600 font-semibold' : 'text-rose-400 font-semibold'}>{t('chrome.downloadCancelled', null, 'Cancelled')}</span>
+                                : (popupData.state === 'failed' || popupData.state === 'interrupted')
+                                    ? <span className={isBright ? 'text-rose-600 font-semibold' : 'text-rose-400 font-semibold'}>{popupData.error || t('chrome.downloadFailed', null, 'Failed')}</span>
+                                    : (popupData.actualBytes || popupData.totalBytes) > 0
+                                        ? (popupData.actualBytes || popupData.totalBytes) < 1048576
+                                            ? `${((popupData.actualBytes || popupData.totalBytes) / 1024).toFixed(1)} KB`
+                                            : `${((popupData.actualBytes || popupData.totalBytes) / 1024 / 1024).toFixed(1)} MB`
+                                        : t('chrome.downloadSaved', null, 'Saved')
                         }
                     </span>
                     {popupData.state === 'progressing' && popupData.speedBytesPerSec > 0 && (
@@ -173,16 +221,16 @@ const DownloadPopup = () => {
                     )}
                     {popupData.state === 'completed' && popupData.verified && (
                         <span className={`font-semibold flex items-center gap-0.5 ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>
-                            • <ShieldCheck size={11} className={`inline ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`} /> Verified
+                            • <ShieldCheck size={11} className={`inline ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`} /> {t('chrome.downloadVerified', null, 'Verified')}
                         </span>
                     )}
                     {popupData.state === 'completed' && popupData.verified === false && (
                         <span className={`font-semibold flex items-center gap-0.5 ${isBright ? 'text-amber-700' : 'text-amber-400'}`}>
-                            • <AlertCircle size={11} className={`inline ${isBright ? 'text-amber-600' : 'text-amber-400'}`} /> Unverified
+                            • <AlertCircle size={11} className={`inline ${isBright ? 'text-amber-600' : 'text-amber-400'}`} /> {t('chrome.downloadUnverified', null, 'Unverified')}
                         </span>
                     )}
                     {popupData.isScreenshot && (
-                        <span className={`font-sans ${isBright ? 'text-emerald-700' : 'text-emerald-400/90'}`}>• Copied to clipboard</span>
+                        <span className={`font-sans ${isBright ? 'text-emerald-700' : 'text-emerald-400/90'}`}>• {t('chrome.copiedToClipboard', null, 'Copied to clipboard')}</span>
                     )}
                 </div>
             </div>
@@ -208,7 +256,7 @@ const DownloadPopup = () => {
                         }`}
                     >
                         <ExternalLink size={13} className={isBright ? 'text-zinc-600' : 'text-white/60'} />
-                        <span>Open</span>
+                        <span>{t('chrome.open', null, 'Open')}</span>
                     </button>
                     <button 
                         onClick={() => window.electronAPI?.showItemInFolder?.(popupData.savePath)} 
@@ -219,13 +267,13 @@ const DownloadPopup = () => {
                         }`}
                     >
                         <FolderOpen size={13} className={isBright ? 'text-zinc-600' : 'text-white/60'} />
-                        <span>Folder</span>
+                        <span>{t('chrome.folder', null, 'Folder')}</span>
                     </button>
                     {popupData.checksum && (
                         <button 
                             onClick={() => {
                                 navigator.clipboard.writeText(popupData.checksum);
-                                useUIStore.getState().showToast('SHA-256 checksum copied to clipboard');
+                                useUIStore.getState().showToast(t('chrome.toastChecksumCopied', null, 'SHA-256 checksum copied to clipboard'));
                             }} 
                             title={`SHA-256: ${popupData.checksum}`}
                             className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
@@ -235,7 +283,7 @@ const DownloadPopup = () => {
                             }`}
                         >
                             <ShieldCheck size={13} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} />
-                            <span>Hash</span>
+                            <span>{t('chrome.hash', null, 'Hash')}</span>
                         </button>
                     )}
                     {popupData.isScreenshot && popupData.savePath && (
@@ -243,10 +291,10 @@ const DownloadPopup = () => {
                             onClick={async () => {
                                 if (window.electronAPI?.copyImageToClipboard) {
                                     await window.electronAPI.copyImageToClipboard(popupData.savePath);
-                                    useUIStore.getState().showToast('Screenshot copied to clipboard');
+                                    useUIStore.getState().showToast(t('chrome.toastScreenshotCopied', null, 'Screenshot copied to clipboard'));
                                 }
                             }} 
-                            title="Copy Image to Clipboard"
+                            title={t('chrome.copyImageTooltip', null, 'Copy Image to Clipboard')}
                             className={`p-1.5 rounded-xl transition cursor-pointer outline-none ${
                                 isBright
                                     ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:bg-black/10'
@@ -258,20 +306,27 @@ const DownloadPopup = () => {
                     )}
                 </div>
             )}
-        </div>,
-        document.body
+        </div>
     );
 };
 
 export default function MainFrame() {
+    const { t, resolvedLanguage, intlLocale } = useTranslation();
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const setIsFullscreen = useUIStore(state => state.setIsFullscreen);
     const theme = useUIStore(state => state.theme);
     const setTheme = useUIStore(state => state.setTheme);
     const isForceDark = useUIStore(state => state.isForceDark);
+    const darkExcludeMedia = useUIStore(state => state.darkExcludeMedia);
+    const setDarkExcludeMedia = useUIStore(state => state.setDarkExcludeMedia);
     const darkExclusions = useUIStore(state => state.darkExclusions);
-    const setDarkExclusions = useUIStore(state => state.setDarkExclusions);
+    const addDarkExclusion = useUIStore(state => state.addDarkExclusion);
+    const removeDarkExclusion = useUIStore(state => state.removeDarkExclusion);
+    const toggleDarkExclusionForUrl = useUIStore(state => state.toggleDarkExclusionForUrl);
+    const resetDarkExclusions = useUIStore(state => state.resetDarkExclusions);
     const setIsForceDark = useUIStore(state => state.setIsForceDark);
+    const openModal = useUIStore(state => state.openModal);
+    const setSettingsTab = useUIStore(state => state.setSettingsTab);
     const toast = useUIStore(state => state.toast);
     const isToastClosing = useUIStore(state => state.isToastClosing);
     const showToast = useUIStore(state => state.showToast);
@@ -315,12 +370,12 @@ export default function MainFrame() {
     const adblockAnchor = usePopoverAnchor('#tour-shield-trigger', 288, { defaultRight: 48 });
     const downloadsAnchor = usePopoverAnchor('#tour-downloads-trigger', 320, { defaultRight: 24 });
 
-    const [localDarkExclusions, setLocalDarkExclusions] = useState(() => (darkExclusions || []).join('\n'));
+    const [darkPopoverInput, setDarkPopoverInput] = useState('');
     const [hoveredThemePreview, setHoveredThemePreview] = useState(null);
 
     useEffect(() => {
         if (activePopover === 'darkmode') {
-            setLocalDarkExclusions((darkExclusions || []).join('\n'));
+            setDarkPopoverInput('');
         }
     }, [activePopover]);
     const peekWindow = useUIStore(state => state.peekWindow);
@@ -382,8 +437,8 @@ export default function MainFrame() {
         return () => clearInterval(timer);
     }, []);
 
-    const dateString = currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    const timeString = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const dateString = currentTime.toLocaleDateString(intlLocale, { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeString = currentTime.toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit', hour12: false });
 
     // Mock states for UI
     const [formEmail, setFormEmail] = useState('admin@qbrowse.local');
@@ -693,7 +748,7 @@ export default function MainFrame() {
                     {/* Section 1: Browser Appearance Theme */}
                     <div className={`p-4 border-b ${isBright ? 'border-black/[0.06] bg-black/[0.02]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
                         <span className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 block ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                            Browser Appearance
+                            {t('chrome.darkPopoverAppearance', null, 'Browser Appearance')}
                         </span>
                         <div 
                             onMouseLeave={() => setHoveredThemePreview(null)}
@@ -740,7 +795,7 @@ export default function MainFrame() {
                                 }`}
                             >
                                 <Moon size={14} className={theme === 'dark' ? 'fill-current' : ''} />
-                                <span>Dark</span>
+                                <span>{t('chrome.themeDark', null, 'Dark')}</span>
                             </button>
                             <button
                                 type="button"
@@ -753,7 +808,7 @@ export default function MainFrame() {
                                 }`}
                             >
                                 <Sun size={14} className={theme === 'light' ? 'text-amber-600 fill-amber-500/20' : ''} />
-                                <span>Bright</span>
+                                <span>{t('chrome.themeBright', null, 'Bright')}</span>
                             </button>
                         </div>
                     </div>
@@ -762,8 +817,8 @@ export default function MainFrame() {
                     <div className="p-4 flex flex-col gap-3">
                         <div className="flex items-center justify-between">
                             <div className="flex flex-col">
-                                <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>Web Smart Dark</span>
-                                <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Invert light webpages only</span>
+                                <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>{t('chrome.webSmartDark', null, 'Web Smart Dark')}</span>
+                                <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('chrome.webSmartDarkDesc', null, 'Invert light webpages only')}</span>
                             </div>
                             <button 
                                 type="button"
@@ -776,31 +831,186 @@ export default function MainFrame() {
                             </button>
                         </div>
 
-                        <div>
-                            <span className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 block ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                                Excluded Domains (One per line)
-                            </span>
-                            <textarea 
-                                className={`w-full h-24 rounded-xl p-2.5 text-xs font-mono resize-none outline-none transition-colors border ${
-                                    isBright
-                                        ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white/80'
-                                        : 'bg-white/[0.04] border-white/[0.08] text-white/90 placeholder-white/35 focus:border-accent/60'
+                        <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>{t('chrome.smartDarkExcludeMedia', null, 'Exclude Images & Videos')}</span>
+                                <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('chrome.smartDarkExcludeMediaDesc', null, 'Preserve photos, videos & embeds')}</span>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={() => setDarkExcludeMedia(!darkExcludeMedia)} 
+                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-colors duration-200 cursor-pointer ${
+                                    darkExcludeMedia ? 'bg-accent shadow-[0_0_8px_var(--accent)]' : (isBright ? 'bg-zinc-300' : 'bg-white/20')
                                 }`}
-                                value={localDarkExclusions}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setLocalDarkExclusions(val);
-                                    const newExclusions = val.split('\n').map(d => d.trim()).filter(Boolean);
-                                    setDarkExclusions(newExclusions);
-                                }}
-                                onBlur={() => {
-                                    const cleaned = (localDarkExclusions || '').split('\n').map(d => d.trim()).filter(Boolean);
-                                    setDarkExclusions(cleaned);
-                                    setLocalDarkExclusions(cleaned.join('\n'));
-                                }}
-                                placeholder="youtube.com&#10;github.com"
-                            />
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200 shadow-sm ${darkExcludeMedia ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                            </button>
                         </div>
+
+                        {(() => {
+                            const activeTabsList = getTabsForSpace
+                                ? (getTabsForSpace(activeSpace) || [])
+                                : (activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : activeSpace === 'ghost' ? ghostTabs : activeSpace === 'tor' ? torTabs : (customSpaceTabs[activeSpace] || []));
+                            const currentWebTab = activeTabsList.find(tb => tb.active) || activeTabsList[0];
+                            const darkMatch = findDarkModeExclusionMatch(currentWebTab?.url, darkExclusions);
+                            const isInheritedMatch = darkMatch.excluded && (darkMatch.matchType === 'subdomain' || darkMatch.matchType === 'wildcard');
+                            const exclusionsList = Array.isArray(darkExclusions) ? darkExclusions : [];
+
+                            const handleQuickAdd = (e) => {
+                                e.preventDefault();
+                                const raw = darkPopoverInput.trim();
+                                if (!raw) return;
+                                const res = addDarkExclusion(raw);
+                                if (!res.ok) {
+                                    showToast(
+                                        res.reason === 'duplicate'
+                                            ? t('cfg.appearance.whitelistDuplicate', { domain: res.entry }, `${res.entry} is already whitelisted.`)
+                                            : t('cfg.appearance.whitelistInvalid', null, 'Enter a valid domain, URL, or *.domain.com wildcard.')
+                                    );
+                                    return;
+                                }
+                                setDarkPopoverInput('');
+                                showToast(t('cfg.appearance.whitelistAddedToast', { domain: res.entry }, `Excluded ${res.entry} from Smart Dark Mode`));
+                            };
+
+                            return (
+                                <div className="flex flex-col gap-2.5">
+                                    {/* 1-Click Current Site Toggle */}
+                                    {darkMatch.hostname && (
+                                        <div className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border ${
+                                            darkMatch.excluded
+                                                ? (isBright ? 'bg-amber-500/[0.07] border-amber-500/20' : 'bg-amber-500/[0.08] border-amber-400/20')
+                                                : (isBright ? 'bg-black/[0.025] border-black/[0.07]' : 'bg-white/[0.03] border-white/[0.07]')
+                                        }`}>
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <Globe size={12} className={darkMatch.excluded ? 'text-amber-500 flex-shrink-0' : (isBright ? 'text-zinc-500 flex-shrink-0' : 'text-white/45 flex-shrink-0')} />
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className={`text-[11px] font-mono font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>
+                                                        {darkMatch.hostname}
+                                                    </span>
+                                                    <span className={`text-[9.5px] truncate ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
+                                                        {isInheritedMatch
+                                                            ? t('pop.site.darkExcludedVia', { rule: darkMatch.matchedRule }, `Excluded via ${darkMatch.matchedRule}`)
+                                                            : darkMatch.excluded
+                                                                ? t('pop.site.darkWhitelisted', null, 'Whitelisted (Native theme)')
+                                                                : isForceDark
+                                                                    ? t('pop.site.darkActiveOnSite', null, 'Active on this site')
+                                                                    : t('pop.site.darkGlobalOff', null, 'Force Dark is off')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const res = toggleDarkExclusionForUrl(currentWebTab?.url);
+                                                    if (!res.ok) return;
+                                                    if (res.action === 'added') {
+                                                        showToast(t('pop.site.darkExcludedToast', { domain: res.rule }, `Excluded ${res.rule} from Force Dark Mode`));
+                                                    } else {
+                                                        showToast(t('pop.site.darkIncludedToast', { domain: res.rule }, `Removed ${res.rule} from Force Dark whitelist`));
+                                                    }
+                                                }}
+                                                className={`flex-shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold border transition cursor-pointer active:scale-95 ${
+                                                    darkMatch.excluded
+                                                        ? (isBright ? 'bg-white border-amber-500/30 text-amber-800 hover:bg-amber-500/10' : 'bg-amber-500/15 border-amber-400/30 text-amber-300 hover:bg-amber-500/25')
+                                                        : (isBright ? 'bg-white border-black/10 text-zinc-700 hover:bg-black/5' : 'bg-white/[0.06] border-white/10 text-white/85 hover:bg-white/[0.12]')
+                                                }`}
+                                            >
+                                                {darkMatch.excluded
+                                                    ? t('pop.site.darkAllowBtn', null, 'Re-enable')
+                                                    : t('pop.site.darkExcludeBtn', null, 'Exclude')}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Whitelist Header & Quick Add */}
+                                    <div className="flex items-center justify-between">
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
+                                            {t('chrome.whitelistedDomainsLabel', null, 'Whitelisted Sites')}
+                                        </span>
+                                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isBright ? 'bg-black/[0.05] text-zinc-600' : 'bg-white/[0.06] text-white/55'}`}>
+                                            {exclusionsList.length}
+                                        </span>
+                                    </div>
+
+                                    <form onSubmit={handleQuickAdd} className="flex gap-1.5">
+                                        <input
+                                            type="text"
+                                            value={darkPopoverInput}
+                                            onChange={(e) => setDarkPopoverInput(e.target.value)}
+                                            placeholder="domain.com or *.site.com"
+                                            className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-xl text-[11px] font-mono outline-none transition-colors border ${
+                                                isBright
+                                                    ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white/90'
+                                                    : 'bg-white/[0.04] border-white/[0.08] text-white/90 placeholder-white/35 focus:border-accent/60'
+                                            }`}
+                                        />
+                                        <button
+                                            type="submit"
+                                            disabled={!darkPopoverInput.trim()}
+                                            className="px-2.5 py-1.5 rounded-xl bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 font-semibold text-xs transition cursor-pointer active:scale-95"
+                                            title={t('cfg.common.add', null, 'Add')}
+                                        >
+                                            <Plus size={13} strokeWidth={2.5} />
+                                        </button>
+                                    </form>
+
+                                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto hide-scroll">
+                                        {exclusionsList.length === 0 ? (
+                                            <span className={`text-[10px] italic py-0.5 ${isBright ? 'text-zinc-400' : 'text-white/35'}`}>
+                                                {t('chrome.whitelistEmptyShort', null, 'No sites excluded')}
+                                            </span>
+                                        ) : (
+                                            exclusionsList.map((domain) => (
+                                                <span
+                                                    key={domain}
+                                                    className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md text-[10px] font-mono border ${
+                                                        isBright
+                                                            ? 'bg-white/80 border-black/10 text-zinc-800'
+                                                            : 'bg-white/[0.05] border-white/10 text-white/85'
+                                                    }`}
+                                                >
+                                                    <span className="max-w-[140px] truncate">{domain}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeDarkExclusion(domain)}
+                                                        className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition cursor-pointer"
+                                                        title={t('cfg.common.remove', null, 'Remove')}
+                                                    >
+                                                        <X size={10} />
+                                                    </button>
+                                                </span>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    <div className={`pt-2 border-t flex items-center justify-between text-[10px] ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                resetDarkExclusions();
+                                                showToast(t('cfg.appearance.whitelistResetToastShort', null, 'Restored default Smart Dark whitelist'));
+                                            }}
+                                            className={`inline-flex items-center gap-1 transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/45 hover:text-white/85'}`}
+                                        >
+                                            <RotateCcw size={10} />
+                                            <span>{t('cfg.appearance.whitelistResetBtn', null, 'Reset Defaults')}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                closePopover();
+                                                setSettingsTab?.('appearance');
+                                                openModal?.('settings');
+                                            }}
+                                            className={`font-semibold hover:underline transition cursor-pointer ${isBright ? 'text-amber-700' : 'text-accent'}`}
+                                        >
+                                            {t('chrome.manageWhitelistSettings', null, 'Manage in Settings')}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
@@ -819,16 +1029,18 @@ export default function MainFrame() {
                     }`}>
                         <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? (isBright ? 'text-emerald-600' : 'text-green-400') : (isBright ? 'text-zinc-400' : 'text-white/25')}`} strokeWidth={1.5} />
                         <span 
-                            title={isAdblockActive ? `${Number(adblockStats.count || 0).toLocaleString()} blocked trackers` : 'Adblock inactive'}
+                            title={isAdblockActive
+                                ? t('chrome.adblockCountTooltip', { count: Number(adblockStats.count || 0).toLocaleString(intlLocale) }, `${Number(adblockStats.count || 0).toLocaleString(intlLocale)} blocked trackers`)
+                                : t('chrome.adblockInactive', null, 'Adblock inactive')}
                             className={`text-3xl font-black tracking-tight ${isAdblockActive ? (isBright ? 'text-zinc-900' : 'text-white') : (isBright ? 'text-zinc-500' : 'text-white/45')}`}
                         >
                             {isAdblockActive ? formatCompactNumber(adblockStats.count) : '0'}
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Blocked Trackers</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('chrome.blockedTrackers', null, 'Blocked Trackers')}</span>
                     </div>
                     <div className="p-4 bg-transparent flex flex-col gap-3">
                         <div className="flex items-center justify-between">
-                            <span className={`text-sm font-semibold ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>Native Interceptor</span>
+                            <span className={`text-sm font-semibold ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>{t('chrome.nativeInterceptor', null, 'Native Interceptor')}</span>
                             <button onClick={() => setIsAdblockActive(!isAdblockActive)} className={`w-10 h-6 rounded-full flex items-center p-1 transition-colors duration-300 cursor-pointer ${isAdblockActive ? 'bg-green-500' : (isBright ? 'bg-zinc-300' : 'bg-white/20')}`}>
                                 <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isAdblockActive ? 'translate-x-4' : 'translate-x-0'}`}></div>
                             </button>
@@ -836,9 +1048,9 @@ export default function MainFrame() {
                         <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 rounded-xl p-2.5 ${getLiquidGlassCardClasses(isBright)} ${
                             isBright ? 'text-zinc-800' : 'text-white/85'
                         } ${isAdblockActive ? 'opacity-100' : 'opacity-30'}`}>
-                            {adblockStats.domains.length === 0 && <div className={`text-center py-2 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>No trackers blocked yet</div>}
+                            {adblockStats.domains.length === 0 && <div className={`text-center py-2 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>{t('chrome.noTrackersBlocked', null, 'No trackers blocked yet')}</div>}
                             {adblockStats.domains.map((domain, i) => (
-                                <div key={i} className="flex justify-between"><span className="truncate mr-2">{domain}</span><span className={`flex-shrink-0 font-semibold ${isBright ? 'text-red-600' : 'text-red-400'}`}>Blocked</span></div>
+                                <div key={i} className="flex justify-between"><span className="truncate mr-2">{domain}</span><span className={`flex-shrink-0 font-semibold ${isBright ? 'text-red-600' : 'text-red-400'}`}>{t('chrome.blocked', null, 'Blocked')}</span></div>
                             ))}
                         </div>
                     </div>
@@ -858,9 +1070,9 @@ export default function MainFrame() {
                 >
                     <div className={`p-4 border-b flex items-center justify-between ${isBright ? 'border-black/[0.06] bg-black/[0.02] text-zinc-900' : 'border-white/[0.06] bg-white/[0.02] text-white'}`}>
                         <div className="flex items-center gap-2 font-semibold text-sm">
-                            <Download size={16} className="text-accent" /> Downloads
+                            <Download size={16} className="text-accent" /> {t('nav.downloads', null, 'Downloads')}
                         </div>
-                        <button className={`px-2 py-1 rounded-lg transition text-xs font-medium cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>Clear All</button>
+                        <button className={`px-2 py-1 rounded-lg transition text-xs font-medium cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>{t('chrome.clearAll', null, 'Clear All')}</button>
                     </div>
                     <div className="p-2 flex flex-col gap-1">
                         <div className={`p-3 rounded-xl flex flex-col gap-2 relative overflow-hidden group transition ${getLiquidGlassCardClasses(isBright)}`}>
@@ -873,8 +1085,8 @@ export default function MainFrame() {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <button className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`} title="Pause"><Pause size={14} /></button>
-                                    <button className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-red-600 hover:bg-red-500/10' : 'text-red-400 hover:bg-red-500/15'}`} title="Cancel"><XCircle size={14} /></button>
+                                    <button className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`} title={t('chrome.pause', null, 'Pause')}><Pause size={14} /></button>
+                                    <button className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-red-600 hover:bg-red-500/10' : 'text-red-400 hover:bg-red-500/15'}`} title={t('common.cancel', null, 'Cancel')}><XCircle size={14} /></button>
                                 </div>
                             </div>
                             <div className={`w-full h-1.5 rounded-full overflow-hidden mt-1 relative z-10 border ${isBright ? 'bg-black/10 border-black/5' : 'bg-black/40 border-white/5'}`}>
@@ -888,10 +1100,10 @@ export default function MainFrame() {
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 shadow-inner ${isBright ? 'bg-emerald-500/15 text-emerald-600' : 'bg-green-500/20 text-green-400'}`}><FolderOpen size={14} /></div>
                                 <div className="flex flex-col truncate">
                                     <span className={`text-sm font-medium truncate ${isBright ? 'text-zinc-800 group-hover:text-zinc-950' : 'text-white/85 group-hover:text-white'}`}>Q4_Financial_Report.pdf</span>
-                                    <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`}>Completed • 2.4 MB</span>
+                                    <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`}>{t('chrome.completed', null, 'Completed')} • 2.4 MB</span>
                                 </div>
                             </div>
-                            <button className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition shadow-sm cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`} title="Show in folder">
+                            <button className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition shadow-sm cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/60 hover:text-white hover:bg-white/10'}`} title={t('chrome.showInFolder', null, 'Show in folder')}>
                                 <FolderOpen size={14} />
                             </button>
                         </div>
@@ -935,8 +1147,10 @@ export default function MainFrame() {
                             }`}
                         >
                     <DownloadPopup />
+                    <PermissionPromptPopup />
                     <FindInPageBar />
                     <ScreenshotBar />
+                    <ElementEraserHUD />
                     <ReadAloudPlayer />
                     <SnippingOverlay />
                     <ReaderModeOverlay />
@@ -1024,7 +1238,7 @@ export default function MainFrame() {
                         <div 
                             onMouseDown={handleSplitMouseDown}
                             className="relative w-0 h-full z-40 flex items-center justify-center cursor-col-resize group shrink-0"
-                            title="Drag to resize split panes"
+                            title={t('chrome.dragResizeSplit', null, 'Drag to resize split panes')}
                         >
                             {/* Sleek 1px Hairline */}
                             <div className={`absolute top-0 bottom-0 w-[1px] pointer-events-none transition-all duration-200 ${
@@ -1101,7 +1315,7 @@ export default function MainFrame() {
                                                         ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
                                                         : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
                                                 }`} 
-                                                title="Swap Left/Right Panes"
+                                                title={t('chrome.swapPanesTooltip', null, 'Swap Left/Right Panes')}
                                             >
                                                 <ArrowLeftRight size={12} />
                                             </button>
@@ -1112,7 +1326,7 @@ export default function MainFrame() {
                                                         ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
                                                         : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
                                                 }`} 
-                                                title="Change Split Tab"
+                                                title={t('chrome.changeSplitTabTooltip', null, 'Change Split Tab')}
                                             >
                                                 <Search size={12} />
                                             </button>
@@ -1123,7 +1337,7 @@ export default function MainFrame() {
                                                         ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-rose-600 hover:bg-rose-500/10 hover:border-rose-500/25'
                                                         : 'border-white/[0.08] hover:border-rose-500/30 bg-white/[0.04] hover:bg-rose-500/15 text-white/75 hover:text-rose-300'
                                                 }`} 
-                                                title="Close Split View"
+                                                title={t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
                                             >
                                                 <X size={12} />
                                             </button>
@@ -1149,7 +1363,7 @@ export default function MainFrame() {
                                             <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${
                                                 isTor ? 'text-purple-300/60' : (!isBright ? 'text-white/50' : 'text-zinc-700 font-bold')
                                             }`}>
-                                                DUAL WORKSPACE
+                                                {t('chrome.dualWorkspace', null, 'DUAL WORKSPACE')}
                                             </span>
                                             <div className="h-[5rem] md:h-[8rem] flex flex-col items-center justify-center">
                                                 <h2 className={`text-3xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b leading-tight ${
@@ -1159,10 +1373,10 @@ export default function MainFrame() {
                                                             ? 'from-white via-white/90 to-white/20' 
                                                             : 'from-zinc-900 via-zinc-800 to-zinc-700')
                                                 }`} style={{ textShadow: !isBright ? '0 10px 30px rgba(0,0,0,0.4)' : 'none' }}>
-                                                    Split Screen
+                                                    {t('chrome.splitScreen', null, 'Split Screen')}
                                                 </h2>
                                                 <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/45'} mt-2 max-w-xs font-normal leading-relaxed`}>
-                                                    Search the web or choose an open tab to browse side-by-side
+                                                    {t('chrome.splitScreenDesc', null, 'Search the web or choose an open tab to browse side-by-side')}
                                                 </p>
                                             </div>
                                         </div>
@@ -1172,7 +1386,9 @@ export default function MainFrame() {
                                             <div ref={splitInputWrapperRef} className="relative w-full">
                                                 <input 
                                                     type="text"
-                                                    placeholder={`Search or enter URL for ${isSplitLeft ? 'Left' : 'Right'} Pane...`}
+                                                    placeholder={isSplitLeft
+                                                        ? t('chrome.splitSearchLeftPlaceholder', null, 'Search or enter URL for Left Pane...')
+                                                        : t('chrome.splitSearchRightPlaceholder', null, 'Search or enter URL for Right Pane...')}
                                                     value={splitSearchUrl}
                                                     onChange={e => setSplitSearchUrl(e.target.value)}
                                                     onKeyDown={handleSplitKeyDown}
@@ -1185,7 +1401,9 @@ export default function MainFrame() {
                                                 <button 
                                                     type="submit" 
                                                     className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-accent text-zinc-950 font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center justify-center"
-                                                    title={`Open in ${isSplitLeft ? 'Left' : 'Right'} Pane (Enter)`}
+                                                    title={isSplitLeft
+                                                        ? t('chrome.splitOpenLeftTooltip', null, 'Open in Left Pane (Enter)')
+                                                        : t('chrome.splitOpenRightTooltip', null, 'Open in Right Pane (Enter)')}
                                                 >
                                                     <Search size={13} />
                                                 </button>
@@ -1231,7 +1449,7 @@ export default function MainFrame() {
                                                                 <span className={`text-[10px] font-mono ml-2 shrink-0 ${
                                                                     isBright ? 'text-zinc-500' : 'text-white/40'
                                                                 }`}>
-                                                                    {item.isSite ? 'Website' : (item.isHistory ? 'History' : 'Google')}
+                                                                    {item.isSite ? t('chrome.splitSuggestWebsite', null, 'Website') : (item.isHistory ? t('nav.history', null, 'History') : 'Google')}
                                                                 </span>
                                                             </div>
                                                         ))}
@@ -1246,10 +1464,10 @@ export default function MainFrame() {
                                             <div className="flex items-center justify-between w-full mb-1 px-1">
                                                 <span className={`text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/45'}`}>
                                                     <Layers size={11} className="text-accent" />
-                                                    Open Tabs in this Space
+                                                    {t('chrome.openTabsInSpace', null, 'Open Tabs in this Space')}
                                                 </span>
                                                 <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isBright ? 'bg-black/[0.04] text-zinc-600' : 'bg-white/[0.04] text-white/45'}`}>
-                                                    {availableRightTabs.length} {availableRightTabs.length === 1 ? 'tab' : 'tabs'}
+                                                    {formatTabCount(availableRightTabs.length, resolvedLanguage, t)}
                                                 </span>
                                             </div>
 
@@ -1264,16 +1482,16 @@ export default function MainFrame() {
                                                     }`}>
                                                         <Sparkles size={13} />
                                                     </div>
-                                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>No other open tabs</span>
+                                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>{t('chrome.noOtherOpenTabs', null, 'No other open tabs')}</span>
                                                     <span className={`text-[11px] max-w-[240px] ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                                                        Type a search query or URL above to browse side-by-side.
+                                                        {t('chrome.noOtherOpenTabsDesc', null, 'Type a search query or URL above to browse side-by-side.')}
                                                     </span>
                                                 </div>
                                             ) : (
-                                                availableRightTabs.map(t => (
+                                                availableRightTabs.map(tabItem => (
                                                     <div 
-                                                        key={t.id} 
-                                                        onClick={() => setSplitRightTabId(t.id)}
+                                                        key={tabItem.id} 
+                                                        onClick={() => setSplitRightTabId(tabItem.id)}
                                                         className={`flex items-center justify-between px-3.5 py-2 rounded-2xl border cursor-pointer transition-all duration-200 group relative ${
                                                             isBright 
                                                                 ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.06] hover:border-accent/50 text-zinc-900 shadow-xs' 
@@ -1284,9 +1502,9 @@ export default function MainFrame() {
                                                             <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 group-hover:border-accent/30 transition-all ${
                                                                 isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.04] border-white/[0.06]'
                                                             }`}>
-                                                                {t.url ? (
+                                                                {tabItem.url ? (
                                                                     <img 
-                                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${t.url}`} 
+                                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${tabItem.url}`} 
                                                                         className="w-3.5 h-3.5 rounded-full flex-shrink-0" 
                                                                         onError={e => e.target.style.display = 'none'} 
                                                                     />
@@ -1298,13 +1516,13 @@ export default function MainFrame() {
                                                                 <span className={`text-xs font-semibold truncate transition-colors ${
                                                                     isBright ? 'text-zinc-900 group-hover:text-accent' : 'text-white/90 group-hover:text-accent'
                                                                 }`}>
-                                                                    {t.title}
+                                                                    {tabItem.title}
                                                                 </span>
-                                                                {t.url && (
+                                                                {tabItem.url && (
                                                                     <span className={`text-[10px] font-mono truncate mt-0.5 ${
                                                                         isBright ? 'text-zinc-500' : 'text-white/40'
                                                                     }`}>
-                                                                        {t.url}
+                                                                        {tabItem.url}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1314,12 +1532,12 @@ export default function MainFrame() {
                                                             type="button"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                setSplitRightTabId(t.id);
+                                                                setSplitRightTabId(tabItem.id);
                                                             }}
                                                             className="px-3 py-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent group-hover:bg-accent group-hover:text-zinc-950 text-[11px] font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-xs flex items-center gap-1.5 shrink-0"
                                                         >
                                                             <Columns size={12} strokeWidth={2.5} />
-                                                            <span>Open</span>
+                                                            <span>{t('chrome.open', null, 'Open')}</span>
                                                         </button>
                                                     </div>
                                                 ))
@@ -1347,7 +1565,7 @@ export default function MainFrame() {
                     </button>
                     <div className={`flex-1 flex flex-col items-center justify-center relative ${isBright ? 'text-zinc-900' : 'text-white'}`}>
                         <Globe size={32} className={isBright ? 'text-zinc-400 mb-4' : 'text-white/25 mb-4'} />
-                        <span className={`text-sm font-bold uppercase tracking-widest ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>Content Preview</span>
+                        <span className={`text-sm font-bold uppercase tracking-widest ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('chrome.contentPreview', null, 'Content Preview')}</span>
                     </div>
                 </div>
             )}
@@ -1366,15 +1584,15 @@ export default function MainFrame() {
                     >
                         <ZoomIn size={14} className="text-accent" />
                         <span className={`text-xs font-semibold tracking-tight select-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                            Canvas Zoom: <span className="font-mono font-bold">{canvasZoomLevel}%</span>
+                            {t('chrome.canvasZoom', null, 'Canvas Zoom:')} <span className="font-mono font-bold">{canvasZoomLevel}%</span>
                         </span>
                         {canvasZoomLevel !== 100 && (
                             <button 
                                 onClick={handleResetCanvasZoom}
                                 className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1 cursor-pointer"
-                                title="Reset Canvas Zoom (Ctrl+Alt+0)"
+                                title={t('chrome.resetCanvasZoomTooltip', null, 'Reset Canvas Zoom (Ctrl+Alt+0)')}
                             >
-                                <RotateCcw size={10} /> Reset
+                                <RotateCcw size={10} /> {t('common.reset', null, 'Reset')}
                             </button>
                         )}
                     </div>
@@ -1400,7 +1618,7 @@ export default function MainFrame() {
                                 className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${
                                     isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
                                 }`}
-                                title="Zoom Out (Ctrl -)"
+                                title={t('chrome.zoomOutTooltip', null, 'Zoom Out (Ctrl -)')}
                             >
                                 -
                             </button>
@@ -1409,7 +1627,7 @@ export default function MainFrame() {
                                 className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${
                                     isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
                                 }`}
-                                title="Zoom In (Ctrl +)"
+                                title={t('chrome.zoomInTooltip', null, 'Zoom In (Ctrl +)')}
                             >
                                 +
                             </button>
@@ -1417,9 +1635,9 @@ export default function MainFrame() {
                                 <button 
                                     onClick={() => resetZoom()}
                                     className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1 cursor-pointer"
-                                    title="Reset Zoom (Ctrl 0)"
+                                    title={t('chrome.resetZoomCtrl0', null, 'Reset Zoom (Ctrl 0)')}
                                 >
-                                    <RotateCcw size={10} /> Reset
+                                    <RotateCcw size={10} /> {t('common.reset', null, 'Reset')}
                                 </button>
                             )}
                         </div>
@@ -1427,13 +1645,13 @@ export default function MainFrame() {
                 </div>
             </div>
 
-            {/* TOAST POPUP (Minimalist Linear / Raycast Floating Bottom-Center Capsule) */}
-            {(toast || isToastClosing) && (
+            {/* TOAST POPUP (Minimalist Linear / Raycast Floating Bottom-Center Capsule - Portaled above modals) */}
+            {(toast || isToastClosing) && typeof document !== 'undefined' && createPortal(
                 <div 
                     role="status" 
                     aria-live="polite"
                     style={getLiquidGlassInlineStyle(isBright)}
-                    className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 !rounded-full text-xs font-medium ${getLiquidGlassSurfaceClasses(isBright)} ${
+                    className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 !rounded-full text-xs font-medium ${getLiquidGlassSurfaceClasses(isBright)} ${
                         isToastClosing ? 'animate-toast-out' : 'animate-toast'
                     } flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide ${
                         isBright ? 'text-zinc-900' : 'text-white/95'
@@ -1441,7 +1659,8 @@ export default function MainFrame() {
                 >
                     {getToastIcon(toast, isBright)}
                     <span className="truncate leading-none">{typeof toast === 'object' && toast !== null ? (toast.message || toast.text || '') : toast}</span>
-                </div>
+                </div>,
+                document.body
             )}
         </main>
     );

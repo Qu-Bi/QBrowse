@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { t } from '../i18n/index';
 import { unlockVault, unlockVaultWindowsHello, getPasswords, addPassword, deletePassword, updatePassword } from '../services/electronIPC.js';
 
 export function isRawCiphertextString(str) {
@@ -254,7 +255,7 @@ const useVaultStore = create((set, get) => ({
                 await runPostUnlockSync(get, set);
                 return true;
             } else {
-                set({ error: 'Invalid master password', isLoading: false });
+                set({ error: t('stores.vault.invalidMasterPassword', 'Invalid master password'), isLoading: false });
                 return false;
             }
         } catch (err) {
@@ -294,10 +295,14 @@ const useVaultStore = create((set, get) => ({
                 return true;
             } else {
                 const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
-                const bioLabel = osPlatform === 'darwin' ? 'Touch ID' : osPlatform === 'linux' ? 'System Biometrics' : 'Windows Hello';
+                const bioLabel = osPlatform === 'darwin'
+                    ? t('stores.vault.bioTouchId', 'Touch ID')
+                    : osPlatform === 'linux'
+                        ? t('stores.vault.bioLinux', 'System Biometrics')
+                        : t('stores.vault.bioWindowsHello', 'Windows Hello');
                 const errMsg = (typeof res === 'object' && res?.error)
                     ? res.error
-                    : `${bioLabel} verification failed — unlock with Master Password first`;
+                    : t('stores.vault.biometricFailed', { label: bioLabel }, `${bioLabel} verification failed — unlock with Master Password first`);
                 set({ error: errMsg, isLoading: false });
                 return false;
             }
@@ -317,7 +322,7 @@ const useVaultStore = create((set, get) => ({
                 set({
                     lockoutUntil: res.lockUntil,
                     failedAttempts: res.failedAttempts || 5,
-                    error: `Too many failed attempts. Vault locked for ${remainingSec}s.`,
+                    error: t('stores.vault.lockedOutSeconds', { seconds: remainingSec }, `Too many failed attempts. Vault locked for ${remainingSec}s.`),
                     isLoading: false
                 });
                 return false;
@@ -351,7 +356,7 @@ const useVaultStore = create((set, get) => ({
                 set({
                     failedAttempts: res?.failedAttempts || (get().failedAttempts + 1),
                     lockoutUntil: res?.lockUntil || null,
-                    error: res?.error || 'Incorrect PIN',
+                    error: res?.error || t('stores.vault.incorrectPin', 'Incorrect PIN'),
                     isLoading: false
                 });
                 return false;
@@ -432,7 +437,7 @@ const useVaultStore = create((set, get) => ({
             const res = await window.electronAPI?.changeMasterPassword?.(oldPass, newPass);
             const ok = res === true || res?.success === true;
             if (!ok) {
-                const errMsg = res?.error || 'Current master password is incorrect';
+                const errMsg = res?.error || t('stores.vault.currentPasswordIncorrect', 'Current master password is incorrect');
                 set({ error: errMsg, isLoading: false });
                 return { success: false, error: errMsg };
             }
@@ -459,7 +464,7 @@ const useVaultStore = create((set, get) => ({
             await get().syncVaultStatus();
             return { success: true };
         } catch (err) {
-            const errMsg = err.message || 'Failed to change master password';
+            const errMsg = err.message || t('stores.vault.changeMasterPasswordFailed', 'Failed to change master password');
             set({ error: errMsg, isLoading: false });
             return { success: false, error: errMsg };
         }

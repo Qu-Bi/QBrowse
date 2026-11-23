@@ -7,6 +7,8 @@ import {
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { isVideoWallpaper } from '../../utils/wallpaperHelpers';
+import { useTranslation } from '../../i18n/index';
+import { selectPluralForm, formatTabCount } from '../../i18n/domains/chrome';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
@@ -45,7 +47,10 @@ const MACRO_ZONE_GAP = 96;
 const SPACE_CONFIGS = [
     { 
         id: 'personal', 
-        title: 'Personal Space', 
+        title: 'Personal Space',
+        titleKey: 'chrome.personalSpace',
+        shortKey: 'nav.personal',
+        shortFallback: 'Personal',
         icon: User, 
         color: '#d4bc94', 
         bgTint: 'rgba(212, 188, 148, 0.12)', 
@@ -53,7 +58,10 @@ const SPACE_CONFIGS = [
     },
     { 
         id: 'work', 
-        title: 'Work Space', 
+        title: 'Work Space',
+        titleKey: 'chrome.workSpace',
+        shortKey: 'nav.work',
+        shortFallback: 'Work',
         icon: Layers, 
         color: '#60a5fa', 
         bgTint: 'rgba(96, 165, 250, 0.12)', 
@@ -61,7 +69,10 @@ const SPACE_CONFIGS = [
     },
     { 
         id: 'ghost', 
-        title: 'Ghost Session', 
+        title: 'Ghost Session',
+        titleKey: 'chrome.ghostSession',
+        shortKey: 'chrome.ghostShort',
+        shortFallback: 'Ghost',
         icon: Ghost, 
         color: '#a855f7', 
         bgTint: 'rgba(168, 85, 247, 0.12)', 
@@ -69,7 +80,10 @@ const SPACE_CONFIGS = [
     },
     { 
         id: 'tor', 
-        title: 'Tor Network', 
+        title: 'Tor Network',
+        titleKey: 'chrome.torNetwork',
+        shortKey: 'chrome.torShort',
+        shortFallback: 'Tor',
         icon: OnionIcon, 
         color: '#c084fc', 
         bgTint: 'rgba(192, 132, 252, 0.12)', 
@@ -91,16 +105,28 @@ function getCleanDomain(url) {
     }
 }
 
-function formatRelativeTime(timestamp) {
-    if (!timestamp) return 'recently';
+function formatRelativeTime(timestamp, tFn) {
+    if (!timestamp) return tFn('chrome.timeRecently', null, 'recently');
     const diff = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    if (diff < 60) return tFn('chrome.timeJustNow', null, 'just now');
+    if (diff < 3600) {
+        const mins = Math.floor(diff / 60);
+        return tFn('chrome.timeMinutesAgo', { count: mins }, `${mins}m ago`);
+    }
+    if (diff < 86400) {
+        const hours = Math.floor(diff / 3600);
+        return tFn('chrome.timeHoursAgo', { count: hours }, `${hours}h ago`);
+    }
+    const days = Math.floor(diff / 86400);
+    return tFn('chrome.timeDaysAgo', { count: days }, `${days}d ago`);
 }
 
 export default function TabMap() {
+    const { t, resolvedLanguage } = useTranslation();
+    const getSpaceTitle = (spaceId) => {
+        const cfg = SPACE_CONFIGS.find(s => s.id === spaceId);
+        return cfg ? t(cfg.titleKey, null, cfg.title) : spaceId;
+    };
     const isTabMapOpen = useUIStore(state => state.isTabMapOpen);
     const isTabMapClosing = useUIStore(state => state.isTabMapClosing);
     const handleCloseTabMap = useUIStore(state => state.closeTabMap);
@@ -111,6 +137,11 @@ export default function TabMap() {
     const splitRightTabId = useUIStore(state => state.splitRightTabId);
     const customWallpaper = useUIStore(state => state.settings?.customWallpaper);
     const wallpaperDimming = useUIStore(state => state.settings?.wallpaperDimming ?? 25);
+    const pauseWallpaperInBackground = useUIStore(state => state.settings?.pauseWallpaperInBackground ?? true);
+    const pauseWallpaperInEcoMode = useUIStore(state => state.settings?.pauseWallpaperInEcoMode ?? true);
+    const isWindowFocused = useUIStore(state => state.isWindowFocused);
+    const isWindowMinimized = useUIStore(state => state.isWindowMinimized);
+    const isWindowVisible = useUIStore(state => state.isWindowVisible);
     const activeWallpaper = customWallpaper || DEFAULT_STOCK_WALLPAPER;
 
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -127,6 +158,46 @@ export default function TabMap() {
     const a11yReducedMotion = useUIStore(state => state.settings?.a11yReducedMotion);
     const isSystemReducedMotion = useUIStore(state => state.isSystemReducedMotion);
     const isReducedMotion = !!(a11yReducedMotion || isSystemReducedMotion);
+
+    const [isDocumentVisible, setIsDocumentVisible] = useState(
+        () => (typeof document !== 'undefined' ? !document.hidden : true)
+    );
+    const isEcoMode = useUIStore(state => state.activePerformanceTier === 'eco');
+    const tabMapVideoRef = useRef(null);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => setIsDocumentVisible(!document.hidden);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
+    const shouldPauseTabMapVideo = Boolean(
+        !isTabMapOpen ||
+        !isDocumentVisible ||
+        isWindowMinimized ||
+        !isWindowVisible ||
+        (!isWindowFocused && pauseWallpaperInBackground) ||
+        (isEcoMode && pauseWallpaperInEcoMode) ||
+        isReducedMotion
+    );
+    const shouldPauseTabMapVideoRef = useRef(shouldPauseTabMapVideo);
+    shouldPauseTabMapVideoRef.current = shouldPauseTabMapVideo;
+
+    useEffect(() => {
+        if (!isTabMapOpen || !isVideoWallpaper(activeWallpaper)) return;
+        const vid = tabMapVideoRef.current;
+        if (!vid) return;
+        if (shouldPauseTabMapVideo) {
+            try { vid.pause(); } catch (_) {}
+        } else {
+            try {
+                const prom = vid.play();
+                if (prom) prom.catch(() => {});
+            } catch (_) {}
+        }
+    }, [isTabMapOpen, activeWallpaper, shouldPauseTabMapVideo]);
 
     // Camera Viewport State
     const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -677,14 +748,29 @@ export default function TabMap() {
                 else rem.push(t);
             });
             if (rem.length === 0) {
-                rem.push({ id: `t-${Date.now()}`, title: s.id === 'ghost' ? 'New Incognito Tab' : 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false });
+                rem.push({
+                    id: `t-${Date.now()}`,
+                    title: s.id === 'ghost'
+                        ? t('chrome.newIncognitoTab', null, 'New Incognito Tab')
+                        : (s.id === 'tor' ? t('chrome.newTorTab', null, 'New Tor Tab') : t('nav.newTab', null, 'New Tab')),
+                    url: '',
+                    active: true,
+                    folderId: null,
+                    lastActiveAt: Date.now(),
+                    suspended: false
+                });
             }
             s.setList(rem);
         });
         const target = spaces.find(s => s.id === targetSpace);
         if (target && moved.length > 0) {
             target.setList([...target.list, ...moved]);
-            showToast(`Moved ${moved.length} tab(s) to ${targetSpace}`);
+            const targetLabel = getSpaceTitle(targetSpace);
+            showToast(t(
+                selectPluralForm(moved.length, resolvedLanguage, 'chrome.tabMapMovedTabsOne', 'chrome.tabMapMovedTabsFew', 'chrome.tabMapMovedTabsMany'),
+                { count: moved.length, space: targetLabel },
+                `Moved ${moved.length} tab(s) to ${targetLabel}`
+            ));
         }
     };
 
@@ -697,10 +783,10 @@ export default function TabMap() {
         // Failsafe fallback
         const space = targetSpace || store.activeSpace;
         const targetNode = layout.nodePositions.get(targetTabId);
-        const folderName = targetNode?.domain ? targetNode.domain : 'Group';
+        const folderName = targetNode?.domain ? targetNode.domain : t('chrome.tabMapDefaultGroup', null, 'Group');
         const folderId = store.createFolder(space, folderName);
         dispatchMoveTabsToZone([...sourceTabIds, targetTabId], space, folderId);
-        showToast(`Grouped into "${folderName}"`);
+        showToast(t('chrome.tabMapGroupedInto', { name: folderName }, `Grouped into "${folderName}"`));
     };
 
     const dispatchAutoCluster = () => {
@@ -709,9 +795,11 @@ export default function TabMap() {
             const res = store.autoClusterByDomain();
             const count = res?.clusteredTabCount || 0;
             const created = res?.createdFolderCount || 0;
-            showToast(count > 0 ? `Grouped ${count} tabs into ${created} domain folders` : 'No ungrouped domain clusters found');
+            showToast(count > 0
+                ? t('chrome.tabMapAutoClustered', { countLabel: formatTabCount(count, resolvedLanguage, t), folders: created }, `Grouped ${count} tabs into ${created} domain folders`)
+                : t('chrome.tabMapNoClusters', null, 'No ungrouped domain clusters found'));
         } else {
-            showToast('Domain grouping complete');
+            showToast(t('chrome.tabMapDomainGroupingDone', null, 'Domain grouping complete'));
         }
     };
 
@@ -719,9 +807,15 @@ export default function TabMap() {
         const store = useTabStore.getState();
         if (store.closeDuplicateTabs) {
             const closed = store.closeDuplicateTabs();
-            showToast(closed > 0 ? `Closed ${closed} duplicate tab(s)` : 'No duplicate tabs found');
+            showToast(closed > 0
+                ? t(
+                    selectPluralForm(closed, resolvedLanguage, 'chrome.tabMapClosedDupOne', 'chrome.tabMapClosedDupFew', 'chrome.tabMapClosedDupMany'),
+                    { count: closed },
+                    `Closed ${closed} duplicate tab(s)`
+                )
+                : t('chrome.tabMapNoDuplicates', null, 'No duplicate tabs found'));
         } else {
-            showToast('Scan complete: no duplicates found');
+            showToast(t('chrome.tabMapScanNoDuplicates', null, 'Scan complete: no duplicates found'));
         }
     };
 
@@ -729,7 +823,13 @@ export default function TabMap() {
         const store = useTabStore.getState();
         if (store.suspendAllInactiveTabs) {
             const count = store.suspendAllInactiveTabs();
-            showToast(count > 0 ? `Hibernated ${count} inactive tab(s)` : 'All inactive tabs are already hibernating');
+            showToast(count > 0
+                ? t(
+                    selectPluralForm(count, resolvedLanguage, 'chrome.tabMapHibernatedOne', 'chrome.tabMapHibernatedFew', 'chrome.tabMapHibernatedMany'),
+                    { count },
+                    `Hibernated ${count} inactive tab(s)`
+                )
+                : t('chrome.tabMapAlreadyHibernating', null, 'All inactive tabs are already hibernating'));
         } else {
             let count = 0;
             const susp = (list) => list.map(t => {
@@ -743,7 +843,13 @@ export default function TabMap() {
             store.setWorkTabs(susp(store.workTabs));
             store.setGhostTabs(susp(store.ghostTabs));
             store.setTorTabs(susp(store.torTabs || []));
-            showToast(count > 0 ? `Hibernated ${count} inactive tab(s)` : 'All inactive tabs are already hibernating');
+            showToast(count > 0
+                ? t(
+                    selectPluralForm(count, resolvedLanguage, 'chrome.tabMapHibernatedOne', 'chrome.tabMapHibernatedFew', 'chrome.tabMapHibernatedMany'),
+                    { count },
+                    `Hibernated ${count} inactive tab(s)`
+                )
+                : t('chrome.tabMapAlreadyHibernating', null, 'All inactive tabs are already hibernating'));
         }
     };
 
@@ -753,7 +859,7 @@ export default function TabMap() {
             store.clearAllTabNodeOffsets();
         }
         frameAll(380);
-        showToast('Reset card positions and centered view');
+        showToast(t('chrome.tabMapResetLayoutToast', null, 'Reset card positions and centered view'));
     };
 
     // ==========================================
@@ -1135,7 +1241,7 @@ export default function TabMap() {
             splitRightTabId: tab.id,
             isTabMapOpen: false
         });
-        showToast('Opened in Split View');
+        showToast(t('chrome.tabMapOpenedSplitToast', null, 'Opened in Split View'));
     };
 
     const handleToggleSleep = (e, tab, spaceId) => {
@@ -1182,16 +1288,20 @@ export default function TabMap() {
         const newFolderId = store.createFolder(cluster.spaceId, cluster.domain);
         const tabIds = cluster.tabs.map(t => t.id);
         dispatchMoveTabsToZone(tabIds, cluster.spaceId, newFolderId);
-        showToast(`Created folder "${cluster.domain}" with ${tabIds.length} tabs`);
+        showToast(t('chrome.tabMapCreatedFolderToast', {
+            name: cluster.domain,
+            countLabel: formatTabCount(tabIds.length, resolvedLanguage, t)
+        }, `Created folder "${cluster.domain}" with ${tabIds.length} tabs`));
     };
 
     // Inline Folder Creation in Space Header
     const handleCreateFolderInSpace = (e, spaceId) => {
         e.stopPropagation();
         const store = useTabStore.getState();
-        const fId = store.createFolder(spaceId, 'New Folder');
+        const defaultFolderName = t('chrome.tabMapDefaultNewFolder', null, 'New Folder');
+        const fId = store.createFolder(spaceId, defaultFolderName);
         setEditingFolderId(fId);
-        setEditingFolderName('New Folder');
+        setEditingFolderName(defaultFolderName);
     };
 
     // Create New Tab in a Space
@@ -1206,7 +1316,7 @@ export default function TabMap() {
             createdAt: now,
             openerTabId: null
         });
-        showToast(`Opened new tab in ${SPACE_CONFIGS.find(s => s.id === spaceId)?.title || spaceId}`);
+        showToast(t('chrome.tabMapOpenedNewTabToast', { space: getSpaceTitle(spaceId) }, `Opened new tab in ${getSpaceTitle(spaceId)}`));
     };
 
     // Save Folder Rename
@@ -1274,12 +1384,22 @@ export default function TabMap() {
             <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
                 {isVideoWallpaper(activeWallpaper) ? (
                     <video
+                        ref={tabMapVideoRef}
                         src={activeWallpaper}
-                        autoPlay
+                        autoPlay={!shouldPauseTabMapVideo}
                         loop
                         muted
                         playsInline
-                        onEnded={(e) => { e.currentTarget.currentTime = 0; e.currentTarget.play().catch(() => {}); }}
+                        onPlay={(e) => {
+                            if (shouldPauseTabMapVideoRef.current) {
+                                try { e.currentTarget.pause(); } catch (_) {}
+                            }
+                        }}
+                        onEnded={(e) => {
+                            if (shouldPauseTabMapVideoRef.current) return;
+                            e.currentTarget.currentTime = 0;
+                            e.currentTarget.play().catch(() => {});
+                        }}
                         className="absolute inset-0 w-full h-full object-cover will-change-transform"
                         style={{ filter: 'saturate(1.04) contrast(1.02)' }}
                     />
@@ -1326,11 +1446,11 @@ export default function TabMap() {
                         }`}>
                             <Layers size={14} className="text-accent" />
                             <span className="text-xs font-semibold tracking-tight">
-                                Tab Map
+                                {t('nav.tabMap', null, 'Tab Map')}
                             </span>
                             <span className="w-1 h-1 rounded-full bg-accent/60" />
                             <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                                {layout.nodePositions.size} {layout.nodePositions.size === 1 ? 'tab' : 'tabs'}
+                                {formatTabCount(layout.nodePositions.size, resolvedLanguage, t)}
                             </span>
                         </div>
                     </div>
@@ -1347,7 +1467,7 @@ export default function TabMap() {
                                     setSearchQuery(e.target.value);
                                     setFocusedMatchIndex(0);
                                 }}
-                                placeholder="Search tabs, domains, or spaces... (or type anywhere)"
+                                placeholder={t('chrome.tabMapSearchPlaceholder', null, 'Search tabs, domains, or spaces... (or type anywhere)')}
                                 className={`w-full h-9 pl-9 pr-20 rounded-full text-xs font-medium transition-all outline-none ${
                                     isBright 
                                         ? 'bg-black/5 hover:bg-black/8 focus:bg-white border border-black/10 focus:border-accent text-zinc-900 placeholder-zinc-400' 
@@ -1356,7 +1476,7 @@ export default function TabMap() {
                             />
                             {searchQuery ? (
                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-[10px] font-mono text-white/50">
-                                    <span>{searchMatches.length > 0 ? `${focusedMatchIndex + 1}/${searchMatches.length}` : '0 matches'}</span>
+                                    <span>{searchMatches.length > 0 ? `${focusedMatchIndex + 1}/${searchMatches.length}` : t('chrome.tabMapZeroMatches', null, '0 matches')}</span>
                                     <button onClick={() => setSearchQuery('')} className="p-0.5 hover:text-white rounded">
                                         <X size={11} />
                                     </button>
@@ -1374,25 +1494,25 @@ export default function TabMap() {
                         {/* Group Domains */}
                         <button
                             onClick={dispatchAutoCluster}
-                            title="Group Domains: Automatically cluster 2+ same-domain tabs into dedicated Folders"
+                            title={t('chrome.tabMapGroupDomainsTooltip', null, 'Group Domains: Automatically cluster 2+ same-domain tabs into dedicated Folders')}
                             className={`h-9 px-3.5 rounded-full flex items-center gap-2 text-xs font-semibold transition-all hover:scale-[1.03] active:scale-95 outline-none focus:outline-none group ${
                                 isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                             }`}
                         >
                             <FolderPlus size={14} strokeWidth={1.75} className="text-white/70 group-hover:text-accent transition-colors" />
-                            <span className="hidden sm:inline">Group Domains</span>
+                            <span className="hidden sm:inline">{t('chrome.tabMapGroupDomainsBtn', null, 'Group Domains')}</span>
                         </button>
 
                         {/* Deduplicate */}
                         <button
                             onClick={dispatchCloseDuplicates}
-                            title="Deduplicate: Close duplicate URL tabs across all spaces"
+                            title={t('chrome.tabMapDeduplicateTooltip', null, 'Deduplicate: Close duplicate URL tabs across all spaces')}
                             className={`h-9 px-3.5 rounded-full flex items-center gap-2 text-xs font-semibold transition-all hover:scale-[1.03] active:scale-95 outline-none focus:outline-none group relative ${
                                 isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                             }`}
                         >
                             <Copy size={14} strokeWidth={1.75} className="text-white/70 group-hover:text-accent transition-colors" />
-                            <span className="hidden sm:inline">Deduplicate</span>
+                            <span className="hidden sm:inline">{t('chrome.tabMapDeduplicateBtn', null, 'Deduplicate')}</span>
                             {duplicateCount > 0 && (
                                 <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-accent text-zinc-950">
                                     {duplicateCount}
@@ -1403,19 +1523,19 @@ export default function TabMap() {
                         {/* Hibernate Idle */}
                         <button
                             onClick={dispatchSuspendAllInactive}
-                            title="Hibernate Idle: Suspend background inactive tabs to reclaim memory"
+                            title={t('chrome.tabMapHibernateTooltip', null, 'Hibernate Idle: Suspend background inactive tabs to reclaim memory')}
                             className={`h-9 px-3.5 rounded-full flex items-center gap-2 text-xs font-semibold transition-all hover:scale-[1.03] active:scale-95 outline-none focus:outline-none group ${
                                 isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                             }`}
                         >
                             <Feather size={14} strokeWidth={1.75} className="text-white/70 group-hover:text-accent transition-colors" />
-                            <span className="hidden sm:inline">Hibernate Idle</span>
+                            <span className="hidden sm:inline">{t('chrome.tabMapHibernateBtn', null, 'Hibernate Idle')}</span>
                         </button>
 
                         {/* Reset Layout */}
                         <button
                             onClick={handleResetLayout}
-                            title="Reset Layout: Snap freeform cards back into clean grid & re-center camera"
+                            title={t('chrome.tabMapResetLayoutTooltip', null, 'Reset Layout: Snap freeform cards back into clean grid & re-center camera')}
                             className={`h-9 px-3.5 rounded-full flex items-center gap-2 text-xs font-semibold transition-all hover:scale-[1.03] active:scale-95 outline-none focus:outline-none group ${
                                 hasCustomOffsets
                                     ? 'bg-accent/20 hover:bg-accent/30 text-accent border border-accent/40 shadow-sm'
@@ -1423,13 +1543,13 @@ export default function TabMap() {
                             }`}
                         >
                             <RotateCcw size={13.5} strokeWidth={1.75} className={hasCustomOffsets ? 'text-accent' : 'text-white/70 group-hover:text-accent transition-colors'} />
-                            <span className="hidden sm:inline">Reset Layout</span>
+                            <span className="hidden sm:inline">{t('chrome.tabMapResetLayoutBtn', null, 'Reset Layout')}</span>
                         </button>
 
                         {/* Close TabMap Button */}
                         <button
                             onClick={handleCloseTabMap}
-                            title="Close Tab Canvas (ESC)"
+                            title={t('chrome.tabMapCloseTooltip', null, 'Close Tab Canvas (ESC)')}
                             className="w-9 h-9 rounded-full bg-white/10 hover:bg-red-500/80 text-white/80 hover:text-white flex items-center justify-center transition-colors active:scale-95 ml-1 border border-white/10 outline-none focus:outline-none"
                         >
                             <X size={15} />
@@ -1598,19 +1718,19 @@ export default function TabMap() {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <h2 className="text-sm font-semibold tracking-tight">
-                                                {space.title}
+                                                {getSpaceTitle(space.id)}
                                             </h2>
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
                                                 isBright ? 'bg-zinc-100 border-zinc-200 text-zinc-600' : 'bg-white/[0.04] border-white/10 text-white/60'
                                             }`}>
-                                                {space.tabCount} {space.tabCount === 1 ? 'tab' : 'tabs'}
+                                                {formatTabCount(space.tabCount, resolvedLanguage, t)}
                                             </span>
                                             {isActiveSpaceZone && (
                                                 <span 
                                                     className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-semibold"
                                                     style={{ backgroundColor: space.bgTint, color: space.color }}
                                                 >
-                                                    Current
+                                                    {t('chrome.tabMapCurrentBadge', null, 'Current')}
                                                 </span>
                                             )}
                                         </div>
@@ -1626,7 +1746,7 @@ export default function TabMap() {
                                                     : 'bg-white/[0.05] hover:bg-white/10 text-white border-white/10'
                                             }`}
                                         >
-                                            <Plus size={13} /> New Tab
+                                            <Plus size={13} /> {t('nav.newTab', null, 'New Tab')}
                                         </button>
                                         <button
                                             onClick={(e) => handleCreateFolderInSpace(e, space.id)}
@@ -1636,7 +1756,7 @@ export default function TabMap() {
                                                     : 'bg-white/[0.05] hover:bg-white/10 text-white/80 border-white/10'
                                             }`}
                                         >
-                                            <FolderPlus size={13} /> New Folder
+                                            <FolderPlus size={13} /> {t('chrome.tabMapNewFolderBtn', null, 'New Folder')}
                                         </button>
                                     </div>
                                 </div>
@@ -1666,10 +1786,10 @@ export default function TabMap() {
                                             <span className={`text-xs font-medium transition-colors ${
                                                 isBright ? 'text-zinc-700 group-hover/ghost:text-zinc-950' : 'text-white/70 group-hover/ghost:text-white'
                                             }`}>
-                                                Open New Tab
+                                                {t('chrome.tabMapOpenNewTab', null, 'Open New Tab')}
                                             </span>
                                             <span className={`text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-400' : 'text-white/35'}`}>
-                                                Click to launch in {space.title}
+                                                {t('chrome.tabMapClickToLaunch', { space: getSpaceTitle(space.id) }, `Click to launch in ${getSpaceTitle(space.id)}`)}
                                             </span>
                                         </div>
                                     </button>
@@ -1730,7 +1850,7 @@ export default function TabMap() {
                                                                     setEditingFolderId(subzone.id);
                                                                     setEditingFolderName(subzone.name);
                                                                 }}
-                                                                title="Double-click to rename folder"
+                                                                title={t('chrome.tabMapDoubleClickRename', null, 'Double-click to rename folder')}
                                                                 className={`text-sm font-bold tracking-tight truncate cursor-text ${isBright ? 'text-zinc-800' : 'text-white/90'}`}
                                                             >
                                                                 {subzone.name}
@@ -1739,7 +1859,7 @@ export default function TabMap() {
                                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold ${
                                                             isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/10 text-white/60'
                                                         }`}>
-                                                            {subzone.tabs.length} {subzone.tabs.length === 1 ? 'tab' : 'tabs'}
+                                                            {formatTabCount(subzone.tabs.length, resolvedLanguage, t)}
                                                         </span>
 
                                                         <div className="ml-auto flex items-center gap-1 opacity-60 group-hover/subzone:opacity-100 transition-opacity">
@@ -1748,14 +1868,14 @@ export default function TabMap() {
                                                                     setEditingFolderId(subzone.id);
                                                                     setEditingFolderName(subzone.name);
                                                                 }}
-                                                                title="Rename folder"
+                                                                title={t('chrome.tabMapRenameFolder', null, 'Rename folder')}
                                                                 className="p-1.5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
                                                             >
                                                                 <Edit3 size={12} />
                                                             </button>
                                                             <button 
                                                                 onClick={() => useTabStore.getState().deleteFolder?.(subzone.id)}
-                                                                title="Dissolve folder"
+                                                                title={t('chrome.tabMapDissolveFolder', null, 'Dissolve folder')}
                                                                 className="p-1.5 rounded-lg hover:bg-red-500/20 text-white/60 hover:text-red-400 transition-colors"
                                                             >
                                                                 <Trash2 size={12} />
@@ -1779,25 +1899,25 @@ export default function TabMap() {
                                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-medium shrink-0 ${
                                                                 isBright ? 'bg-black/[0.05] text-zinc-600' : 'bg-white/10 text-white/50'
                                                             }`}>
-                                                                {subzone.tabs.length} tabs
+                                                                {formatTabCount(subzone.tabs.length, resolvedLanguage, t)}
                                                             </span>
                                                         </div>
                                                         <button
                                                             onClick={(e) => handleFolderizeCluster(e, subzone)}
-                                                            title="Folderize: Convert domain cluster into a dedicated folder"
+                                                            title={t('chrome.tabMapFolderizeTooltip', null, 'Folderize: Convert domain cluster into a dedicated folder')}
                                                             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shrink-0 border ${
                                                                 isBright
                                                                     ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-800 border-black/10'
                                                                     : 'bg-white/[0.06] hover:bg-white/10 text-white/80 hover:text-white border-white/10'
                                                             }`}
                                                         >
-                                                            <FolderPlus size={12} /> Folderize
+                                                            <FolderPlus size={12} /> {t('chrome.tabMapFolderizeBtn', null, 'Folderize')}
                                                         </button>
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center gap-2 text-xs font-bold text-white/55">
                                                         <Layers size={14} className="text-white/40" />
-                                                        <span>Ungrouped Tabs</span>
+                                                        <span>{t('chrome.tabMapUngroupedTabs', null, 'Ungrouped Tabs')}</span>
                                                         <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 font-mono">
                                                             {subzone.tabs.length}
                                                         </span>
@@ -1810,7 +1930,7 @@ export default function TabMap() {
                                                 <div className="flex flex-col items-center justify-center h-[calc(100%-50px)] p-6 text-center pointer-events-none">
                                                     <FolderPlus size={22} className="text-accent/40 mb-1.5" />
                                                     <span className="text-xs font-semibold text-white/45">
-                                                        Drag & drop tabs here
+                                                        {t('chrome.tabMapDragDropHint', null, 'Drag & drop tabs here')}
                                                     </span>
                                                 </div>
                                             )}
@@ -1858,19 +1978,19 @@ export default function TabMap() {
                                             {dragState.target.type === 'tab' && (
                                                 <>
                                                     <FolderPlus size={13} className="text-accent" />
-                                                    <span>Merge into new folder</span>
+                                                    <span>{t('chrome.tabMapMergeNewFolder', null, 'Merge into new folder')}</span>
                                                 </>
                                             )}
                                             {dragState.target.type === 'folder' && (
                                                 <>
                                                     <Folder size={13} className="text-accent" />
-                                                    <span>Move to folder: {dragState.target.name || 'Folder'}</span>
+                                                    <span>{t('chrome.tabMapMoveToFolder', { name: dragState.target.name || t('chrome.tabMapDefaultFolderWord', null, 'Folder') }, `Move to folder: ${dragState.target.name || 'Folder'}`)}</span>
                                                 </>
                                             )}
                                             {dragState.target.type === 'space' && (
                                                 <>
                                                     <ArrowRight size={13} className="text-accent" />
-                                                    <span>Move to {SPACE_CONFIGS.find(s => s.id === dragState.target.id)?.title || 'Space'}</span>
+                                                    <span>{t('chrome.tabMapMoveToSpace', { space: getSpaceTitle(dragState.target.id) || t('chrome.tabMapDefaultSpaceWord', null, 'Space') }, `Move to ${getSpaceTitle(dragState.target.id) || 'Space'}`)}</span>
                                                 </>
                                             )}
                                         </div>
@@ -1921,7 +2041,7 @@ export default function TabMap() {
                                                     </div>
                                                 )}
                                                 <span className="text-[11px] font-medium text-white/50 max-w-[210px] truncate">
-                                                    {tab.title || (node.spaceId === 'ghost' ? 'Ghost Session' : (node.spaceId === 'tor' ? 'Tor Session' : 'Zen Dashboard'))}
+                                                    {tab.title || (node.spaceId === 'ghost' ? t('chrome.ghostSession', null, 'Ghost Session') : (node.spaceId === 'tor' ? t('chrome.torSession', null, 'Tor Session') : t('chrome.zenDashboard', null, 'Zen Dashboard')))}
                                                 </span>
                                             </div>
                                         )}
@@ -1930,22 +2050,22 @@ export default function TabMap() {
                                         <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10 pointer-events-none">
                                             {tab.active && (
                                                 <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-accent/20 border border-accent/40 text-accent flex items-center gap-1.5">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-accent" /> Active
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-accent" /> {t('common.active', null, 'Active')}
                                                 </span>
                                             )}
                                             {tab.suspended && (
                                                 <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-purple-500/15 border border-purple-500/25 text-purple-300 flex items-center gap-1">
-                                                    <Feather size={10} /> Sleep
+                                                    <Feather size={10} /> {t('chrome.tabMapBadgeSleep', null, 'Sleep')}
                                                 </span>
                                             )}
                                             {(tab.isAudible || tab.isAudioPlaying) && (
                                                 <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 border border-amber-500/25 text-amber-300 flex items-center gap-1">
-                                                    <Volume2 size={10} /> Audio
+                                                    <Volume2 size={10} /> {t('chrome.tabMapBadgeAudio', null, 'Audio')}
                                                 </span>
                                             )}
                                             {isSplitView && splitRightTabId === tab.id && (
                                                 <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-sky-500/15 border border-sky-500/25 text-sky-300 flex items-center gap-1">
-                                                    <Columns size={10} /> Split
+                                                    <Columns size={10} /> {t('chrome.tabMapBadgeSplit', null, 'Split')}
                                                 </span>
                                             )}
                                         </div>
@@ -1953,35 +2073,35 @@ export default function TabMap() {
                                         {/* Hover Quick-Action Toolbar */}
                                         <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-zinc-950/90 backdrop-blur-md rounded-lg p-0.5 border border-white/10 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150 shadow-md z-30 pointer-events-auto">
                                             <button 
-                                                title="Open in Split View" 
+                                                title={t('chrome.tabMapOpenSplitTooltip', null, 'Open in Split View')} 
                                                 onClick={(e) => handleOpenSplit(e, tab, node.spaceId)}
                                                 className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
                                                 <Columns size={11} />
                                             </button>
                                             <button 
-                                                title={tab.suspended ? "Wake tab" : "Sleep tab"} 
+                                                title={tab.suspended ? t('chrome.tabMapWakeTabTooltip', null, 'Wake tab') : t('chrome.tabMapSleepTabTooltip', null, 'Sleep tab')} 
                                                 onClick={(e) => handleToggleSleep(e, tab, node.spaceId)}
                                                 className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
                                                 {tab.suspended ? <Zap size={11} className="text-amber-400" /> : <Feather size={11} />}
                                             </button>
                                             <button 
-                                                title={tab.isMuted ? "Unmute" : "Mute"} 
+                                                title={tab.isMuted ? t('chrome.tabMapUnmuteTooltip', null, 'Unmute') : t('chrome.tabMapMuteTooltip', null, 'Mute')} 
                                                 onClick={(e) => handleToggleMute(e, tab, node.spaceId)}
                                                 className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
                                                 {tab.isMuted ? <VolumeX size={11} className="text-red-400" /> : <Volume2 size={11} />}
                                             </button>
                                             <button 
-                                                title="Pin domain to sidebar" 
+                                                title={t('chrome.tabMapPinDomainTooltip', null, 'Pin domain to sidebar')} 
                                                 onClick={(e) => handleTogglePin(e, tab)}
                                                 className="w-5 h-5 rounded hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
                                                 <Pin size={11} className={isPinned ? "text-accent fill-accent" : ""} />
                                             </button>
                                             <button 
-                                                title="Close tab" 
+                                                title={t('nav.closeTab', null, 'Close tab')} 
                                                 onClick={(e) => handleCloseCard(e, tab)}
                                                 className="w-5 h-5 rounded hover:bg-red-500/80 text-white/70 hover:text-white flex items-center justify-center transition-colors"
                                             >
@@ -2004,27 +2124,27 @@ export default function TabMap() {
                                                 <Globe size={13} className="text-white/40 shrink-0" />
                                             )}
                                             <span className={`text-xs font-medium truncate ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
-                                                {tab.title || (node.spaceId === 'ghost' ? 'Ghost Session' : (node.spaceId === 'tor' ? 'Tor Session' : 'Zen Dashboard'))}
+                                                {tab.title || (node.spaceId === 'ghost' ? t('chrome.ghostSession', null, 'Ghost Session') : (node.spaceId === 'tor' ? t('chrome.torSession', null, 'Tor Session') : t('chrome.zenDashboard', null, 'Zen Dashboard')))}
                                             </span>
                                         </div>
                                         <div className={`flex items-center justify-between text-[11px] font-mono mt-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                             <span className="truncate max-w-[170px]">
-                                                {node.domain || (node.spaceId === 'ghost' ? 'Ghost Session' : (node.spaceId === 'tor' ? 'Tor Session' : 'Zen Dashboard'))}
+                                                {node.domain || (node.spaceId === 'ghost' ? t('chrome.ghostSession', null, 'Ghost Session') : (node.spaceId === 'tor' ? t('chrome.torSession', null, 'Tor Session') : t('chrome.zenDashboard', null, 'Zen Dashboard')))}
                                             </span>
-                                            <span>{formatRelativeTime(tab.lastActiveAt)}</span>
+                                            <span>{formatRelativeTime(tab.lastActiveAt, t)}</span>
                                         </div>
                                     </div>
 
                                     {/* Freeform Dragged indicator badge */}
                                     {node.isOffset && (
-                                        <div className="absolute bottom-2 right-2 w-1.5 h-1.5 rounded-full bg-accent/60" title="Custom freeform position" />
+                                        <div className="absolute bottom-2 right-2 w-1.5 h-1.5 rounded-full bg-accent/60" title={t('chrome.tabMapCustomPositionTooltip', null, 'Custom freeform position')} />
                                     )}
 
                                     {/* Merge Into New Folder Hover Beacon */}
                                     {isMergeTarget && (
                                         <div className="absolute inset-0 bg-accent/20 flex items-center justify-center pointer-events-none z-30">
                                             <div className="px-3 py-1.5 rounded-lg bg-accent text-zinc-950 font-bold text-xs shadow-lg flex items-center gap-1.5">
-                                                <FolderPlus size={13} /> Merge into Folder
+                                                <FolderPlus size={13} /> {t('chrome.tabMapMergeIntoFolder', null, 'Merge into Folder')}
                                             </div>
                                         </div>
                                     )}
@@ -2058,14 +2178,14 @@ export default function TabMap() {
                     isBright ? 'tabmap-hud-glass-bright' : 'tabmap-hud-glass-dark'
                 }`}>
                     <span className="text-xs font-bold text-accent flex items-center gap-1.5">
-                        <Check size={14} /> {selectedTabIds.size} selected
+                        <Check size={14} /> {t('chrome.tabMapSelectedCount', { count: selectedTabIds.size }, `${selectedTabIds.size} selected`)}
                     </span>
 
                     <div className="h-4 w-px bg-white/15" />
 
                     {/* Move to Space */}
                     <div className="flex items-center gap-1">
-                        <span className="text-[10px] font-mono text-white/50 uppercase">Move:</span>
+                        <span className="text-[10px] font-mono text-white/50 uppercase">{t('chrome.tabMapMoveLabel', null, 'Move:')}</span>
                         {SPACE_CONFIGS.map(s => (
                             <button
                                 key={s.id}
@@ -2077,7 +2197,7 @@ export default function TabMap() {
                                     isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                                 }`}
                             >
-                                {s.title.split(' ')[0]}
+                                {t(s.shortKey, null, s.shortFallback)}
                             </button>
                         ))}
                     </div>
@@ -2095,21 +2215,23 @@ export default function TabMap() {
                         }}
                         className="px-3 py-1 rounded-full bg-accent hover:bg-accent/80 text-zinc-950 text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg"
                     >
-                        <FolderPlus size={13} /> Group Folder
+                        <FolderPlus size={13} /> {t('chrome.tabMapGroupFolderBtn', null, 'Group Folder')}
                     </button>
 
                     {/* Sleep Selected */}
                     <button
                         onClick={() => {
                             selectedTabIds.forEach(id => useTabStore.getState().suspendTab?.(id, true));
-                            showToast(`Put ${selectedTabIds.size} tabs to sleep`);
+                            showToast(t('chrome.tabMapPutToSleepToast', {
+                                countLabel: formatTabCount(selectedTabIds.size, resolvedLanguage, t)
+                            }, `Put ${selectedTabIds.size} tabs to sleep`));
                             setSelectedTabIds(new Set());
                         }}
                         className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
                             isBright ? 'liquid-pill-bright text-purple-700' : 'liquid-pill-dark text-purple-300'
                         }`}
                     >
-                        <Feather size={13} /> Sleep
+                        <Feather size={13} /> {t('chrome.tabMapSleepBtn', null, 'Sleep')}
                     </button>
 
                     {/* Close Selected */}
@@ -2122,19 +2244,23 @@ export default function TabMap() {
                             } else {
                                 ids.forEach(id => store.closeTabById?.(id));
                             }
-                            showToast(`Closed ${ids.length} tab(s)`);
+                            showToast(t(
+                                selectPluralForm(ids.length, resolvedLanguage, 'chrome.tabMapClosedBatchOne', 'chrome.tabMapClosedBatchFew', 'chrome.tabMapClosedBatchMany'),
+                                { count: ids.length },
+                                `Closed ${ids.length} tab(s)`
+                            ));
                             setSelectedTabIds(new Set());
                         }}
                         className="px-3 py-1 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
                     >
-                        <Trash2 size={13} /> Close
+                        <Trash2 size={13} /> {t('common.close', null, 'Close')}
                     </button>
 
                     {/* Clear selection */}
                     <button
                         onClick={() => setSelectedTabIds(new Set())}
                         className="p-1 rounded-full text-white/40 hover:text-white"
-                        title="Deselect"
+                        title={t('chrome.tabMapDeselect', null, 'Deselect')}
                     >
                         <X size={14} />
                     </button>
@@ -2213,7 +2339,7 @@ export default function TabMap() {
                                     size={13}
                                     style={{ color: s.color }}
                                 />
-                                <span>{s.title.split(' ')[0]}</span>
+                                <span>{t(s.shortKey, null, s.shortFallback)}</span>
                             </button>
                         );
                     })}
@@ -2224,7 +2350,7 @@ export default function TabMap() {
                         ref={el => { cameraBtnRefs.current['all'] = el; }}
                         onMouseEnter={() => setHoveredCameraTarget('all')}
                         onClick={() => frameAll()}
-                        title="Fit All Spaces (0 / F)"
+                        title={t('chrome.tabMapFitAllTooltip', null, 'Fit All Spaces (0 / F)')}
                         className={`relative z-10 px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 transition-all duration-150 active:scale-95 outline-none focus:outline-none ${
                             activeCameraTarget === 'all'
                                 ? 'text-accent font-bold'
@@ -2235,7 +2361,7 @@ export default function TabMap() {
                             size={13}
                             className={activeCameraTarget === 'all' ? 'text-accent' : ''}
                         />
-                        <span>Fit All</span>
+                        <span>{t('chrome.tabMapFitAllBtn', null, 'Fit All')}</span>
                         <kbd className={`text-[9px] font-mono transition-opacity ${activeCameraTarget === 'all' ? 'opacity-85' : 'opacity-50'}`}>0</kbd>
                     </button>
                 </div>
@@ -2276,26 +2402,26 @@ export default function TabMap() {
                     <button
                         onMouseEnter={() => setHoveredToolMode('pan')}
                         onClick={() => setToolMode('pan')}
-                        title="Pan Tool (V / H)"
+                        title={t('chrome.tabMapPanTooltip', null, 'Pan Tool (V / H)')}
                         className={`relative z-10 w-24 py-1.5 rounded-full text-xs flex items-center justify-center gap-1.5 transition-all duration-300 active:scale-95 outline-none focus:outline-none cursor-pointer ${
                             toolMode === 'pan' 
                                 ? (isBright ? 'text-zinc-950 font-bold' : 'text-white font-bold') 
                                 : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/55 hover:text-white font-medium')
                         }`}
                     >
-                        <Hand size={13} /> Pan
+                        <Hand size={13} /> {t('chrome.tabMapPanBtn', null, 'Pan')}
                     </button>
                     <button
                         onMouseEnter={() => setHoveredToolMode('select')}
                         onClick={() => setToolMode('select')}
-                        title="Lasso Selection Tool (S / Shift+Drag)"
+                        title={t('chrome.tabMapLassoTooltip', null, 'Lasso Selection Tool (S / Shift+Drag)')}
                         className={`relative z-10 w-24 py-1.5 rounded-full text-xs flex items-center justify-center gap-1.5 transition-all duration-300 active:scale-95 outline-none focus:outline-none cursor-pointer ${
                             toolMode === 'select' 
                                 ? 'text-accent font-bold' 
                                 : (isBright ? 'text-zinc-600 hover:text-zinc-950 font-medium' : 'text-white/55 hover:text-white font-medium')
                         }`}
                     >
-                        <MousePointer size={13} /> Lasso
+                        <MousePointer size={13} /> {t('chrome.tabMapLassoBtn', null, 'Lasso')}
                     </button>
                 </div>
 
@@ -2408,7 +2534,7 @@ export default function TabMap() {
                         })()}
                     </svg>
                     <div className="absolute top-2 right-2.5 text-[9px] font-mono text-white/40 tracking-wider">
-                        MINIMAP
+                        {t('chrome.tabMapMinimap', null, 'MINIMAP')}
                     </div>
                 </div>
             </footer>

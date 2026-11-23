@@ -11,6 +11,8 @@ import useTabStore from '../store/useTabStore';
 import useHistoryStore from '../store/useHistoryStore';
 import useAIStore from '../store/useAIStore';
 import useTorStore from '../store/useTorStore';
+import { t, resolveActiveLanguage } from '../i18n/index';
+import { selectPluralForm } from '../i18n/domains/chrome.js';
 import { topSites } from '../utils/topSites';
 import { 
     getAllBangs, 
@@ -63,7 +65,8 @@ export const availableCommands = [
     { id: 'pdf', title: 'Save page as Clean PDF', cmd: 'pdf', icon: FileDown, color: 'text-rose-400' },
     { id: 'screenshot', title: 'Capture Webpage Screenshot (Ctrl+Shift+S)', cmd: 'screenshot', icon: Camera, color: 'text-pink-400' },
     { id: 'snip', title: 'Interactive Snip Area (Ctrl+Shift+S)', cmd: 'snip', icon: Crop, color: 'text-rose-400' },
-    { id: 'reader', title: 'Toggle Distraction-Free Reader Mode (Ctrl+Alt+R)', cmd: 'reader', icon: BookOpen, color: 'text-amber-400' }
+    { id: 'reader', title: 'Toggle Distraction-Free Reader Mode (Ctrl+Alt+R)', cmd: 'reader', icon: BookOpen, color: 'text-amber-400' },
+    { id: 'hide', title: 'Hide Distracting Items on page', cmd: 'hide items', icon: XCircle, color: 'text-amber-400' }
 ];
 
 export const parseUrlInput = (input, activeBang = null, customBangs = []) => {
@@ -264,7 +267,9 @@ export default function useOmniboxEngine({
     const commandQuery = isCommandMode ? inputValue.slice(1).trim().toLowerCase() : '';
     const filteredCommands = useMemo(() => {
         if (!isCommandMode) return [];
-        return availableCommands.filter(c => c.cmd.includes(commandQuery) || c.title.toLowerCase().includes(commandQuery));
+        return availableCommands
+            .map(c => ({ ...c, title: t(`chrome.cmd_${c.id}`, null, c.title) }))
+            .filter(c => c.cmd.includes(commandQuery) || c.title.toLowerCase().includes(commandQuery));
     }, [isCommandMode, commandQuery]);
 
     // Live suggestion fetcher
@@ -418,7 +423,7 @@ export default function useOmniboxEngine({
             try {
                 // eslint-disable-next-line no-new-func
                 const res = new Function(`return (${q})`)();
-                if (isFinite(res)) return { isMath: true, url: `= ${res}`, title: `Calculator: ${q}`, score: 10000 };
+                if (isFinite(res)) return { isMath: true, url: `= ${res}`, title: t('chrome.omniboxCalculatorExpr', { expr: q }, `Calculator: ${q}`), score: 10000 };
             } catch (e) { }
         }
         return null;
@@ -428,10 +433,11 @@ export default function useOmniboxEngine({
         const q = inputValue.trim();
         if (q.startsWith('?')) {
             const queryText = q.slice(1).trim();
+            const qDisplay = queryText || t('chrome.omniboxAskAiPlaceholder', 'Type your question...');
             return {
                 isAI: true,
                 query: queryText,
-                title: `Ask Qu-AI (llama.cpp Gemma 4): "${queryText || 'Type your question...'}"`,
+                title: t('chrome.omniboxAskAi', { query: qDisplay }, `Ask Qu-AI (llama.cpp Gemma 4): "${qDisplay}"`),
                 score: 200000
             };
         }
@@ -440,7 +446,13 @@ export default function useOmniboxEngine({
 
     const filteredPredictions = useMemo(() => {
         const normalizeUrl = (u) => (u || '').trim().toLowerCase().replace(/\/$/, '');
-        const normalizeTitle = (t) => (t || '').replace(/^Search [^:]+:\s*"?/i, '').replace(/"$/, '').trim().toLowerCase();
+        const normalizeTitle = (tStr, isSearch = false) => {
+            const s = (tStr || '').trim().toLowerCase();
+            if (isSearch && s.includes(':')) {
+                return s.replace(/^[^:]+:\s*"?/, '').replace(/"$/, '').trim();
+            }
+            return s.replace(/^search [^:]+:\s*"?/i, '').replace(/"$/, '').trim();
+        };
 
         const basePredictions = getSmartPredictions(inputValue);
         const apiPredictions = liveSuggestions.map(s => ({
@@ -457,7 +469,7 @@ export default function useOmniboxEngine({
 
         [...basePredictions, ...apiPredictions].forEach(p => {
             const normU = normalizeUrl(p.url);
-            const normT = normalizeTitle(p.title);
+            const normT = normalizeTitle(p.title, p.isSearch);
             if ((normU && seenMergedUrls.has(normU)) || (normT && seenMergedTitles.has(normT))) return;
             if (normU) seenMergedUrls.add(normU);
             if (normT) seenMergedTitles.add(normT);
@@ -478,12 +490,15 @@ export default function useOmniboxEngine({
                                   parsedInput.includes('duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion');
         const isDirectUrl = parsedInput && !isSearchEngineUrl;
         const isLocalInput = parsedInput && parsedInput.startsWith('file://');
+        const isDir = parsedInput.endsWith('/') || parsedInput.endsWith('\\');
         const directUrlPrediction = isDirectUrl ? { 
             url: parsedInput, 
-            title: isLocalInput ? `Open ${parsedInput.endsWith('/') || parsedInput.endsWith('\\') ? 'Folder' : 'File'}: ${inputValue}` : `Go to ${parsedInput}`, 
+            title: isLocalInput
+                ? t(isDir ? 'chrome.omniboxOpenFolder' : 'chrome.omniboxOpenFile', { path: inputValue }, `Open ${isDir ? 'Folder' : 'File'}: ${inputValue}`)
+                : t('chrome.omniboxGoTo', { target: parsedInput }, `Go to ${parsedInput}`), 
             score: 100000,
             isLocalFile: isLocalInput,
-            isDirectory: parsedInput.endsWith('/') || parsedInput.endsWith('\\')
+            isDirectory: isDir
         } : null;
 
         const searchPrediction = (!isDirectUrl && (effectiveQueryText.length > 0 || effectiveBang || keywordEngineMatch)) ? [{
@@ -493,10 +508,10 @@ export default function useOmniboxEngine({
                     ? buildSearchEngineUrl(keywordEngineMatch.engine, keywordEngineMatch.queryText, customSearchEngines, isTor) 
                     : parsedInput),
             title: effectiveBang 
-                ? (effectiveQueryText ? `Search ${effectiveBang.name}: "${effectiveQueryText}"` : `Go to ${effectiveBang.name}`) 
+                ? (effectiveQueryText ? t('chrome.omniboxSearchWith', { engine: effectiveBang.name, query: effectiveQueryText }, `Search ${effectiveBang.name}: "${effectiveQueryText}"`) : t('chrome.omniboxGoTo', { target: effectiveBang.name }, `Go to ${effectiveBang.name}`)) 
                 : (keywordEngineMatch 
-                    ? `Search ${keywordEngineMatch.engine.name}: "${keywordEngineMatch.queryText}"`
-                    : `Search ${currentEngineName}: "${inputValue.trim()}"`),
+                    ? t('chrome.omniboxSearchWith', { engine: keywordEngineMatch.engine.name, query: keywordEngineMatch.queryText }, `Search ${keywordEngineMatch.engine.name}: "${keywordEngineMatch.queryText}"`)
+                    : t('chrome.omniboxSearchWith', { engine: currentEngineName, query: inputValue.trim() }, `Search ${currentEngineName}: "${inputValue.trim()}"`)),
             score: 150000,
             isSearch: true,
             bang: effectiveBang
@@ -598,7 +613,7 @@ export default function useOmniboxEngine({
             case 'ls':
             case 'tab_map':
                 openTabMap();
-                showToast('Terminal: Tab Map activated');
+                showToast(t('chrome.toastCmdTabMap', 'Terminal: Tab Map activated'));
                 break;
 
             case 'clear':
@@ -606,7 +621,7 @@ export default function useOmniboxEngine({
                 if (window.electronAPI && window.electronAPI.clearAllData) {
                     window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
                 }
-                showToast('Terminal: History & browser cache cleared!');
+                showToast(t('chrome.toastCmdClear', 'Terminal: History & browser cache cleared!'));
                 break;
 
             case 'top':
@@ -615,7 +630,7 @@ export default function useOmniboxEngine({
             case 'ps': {
                 onClose?.(true);
                 uiStore.openModal('tasks');
-                showToast('Terminal: Resource & Task Manager opened');
+                showToast(t('chrome.toastCmdTasks', 'Terminal: Resource & Task Manager opened'));
                 break;
             }
 
@@ -624,24 +639,24 @@ export default function useOmniboxEngine({
                 const activeTab = spaceTabs.find(t => t.active);
                 if (activeTab) {
                     tabStore.handleCloseTab(activeTab.id);
-                    showToast('Terminal: Active tab closed');
+                    showToast(t('chrome.toastCmdKill', 'Terminal: Active tab closed'));
                 }
                 break;
             }
 
             case 'new':
                 tabStore.handleNewTab();
-                showToast('Terminal: New tab opened');
+                showToast(t('chrome.toastCmdNew', 'Terminal: New tab opened'));
                 break;
 
             case 'reload':
                 uiStore.refresh();
-                showToast('Terminal: Reloading tab...');
+                showToast(t('chrome.toastCmdReload', 'Terminal: Reloading tab...'));
                 break;
 
             case 'find':
                 uiStore.setIsFindOpen(true);
-                showToast('Find in page opened');
+                showToast(t('chrome.toastCmdFind', 'Find in page opened'));
                 break;
 
             case 'print':
@@ -671,10 +686,15 @@ export default function useOmniboxEngine({
                 uiStore.toggleReaderMode();
                 break;
 
+            case 'hide':
+                onClose?.(true);
+                uiStore.toggleElementEraser(true);
+                break;
+
             case 'mute':
             case 'unmute': {
                 const isMuting = cmdId === 'mute';
-                const muteAll = (list, setList) => setList(list.map(t => ({ ...t, isMuted: isMuting })));
+                const muteAll = (list, setList) => setList(list.map(tb => ({ ...tb, isMuted: isMuting })));
                 muteAll(tabStore.privateTabs, tabStore.setPrivateTabs); 
                 muteAll(tabStore.workTabs, tabStore.setWorkTabs); 
                 muteAll(tabStore.ghostTabs, tabStore.setGhostTabs);
@@ -686,19 +706,19 @@ export default function useOmniboxEngine({
                         }
                     });
                 }
-                showToast(`Terminal: All tabs ${isMuting ? 'muted' : 'unmuted'}`);
+                showToast(t(isMuting ? 'chrome.toastCmdMute' : 'chrome.toastCmdUnmute', isMuting ? 'Terminal: All tabs muted' : 'Terminal: All tabs unmuted'));
                 break;
             }
 
             case 'sleep': {
                 let count = 0;
                 const suspendList = (tabs, setTabs) => {
-                    const updated = tabs.map(t => {
-                        if (!t.active && !t.suspended && t.url && t.url !== 'about:blank') {
+                    const updated = tabs.map(tb => {
+                        if (!tb.active && !tb.suspended && tb.url && tb.url !== 'about:blank') {
                             count++;
-                            return { ...t, suspended: true };
+                            return { ...tb, suspended: true };
                         }
-                        return t;
+                        return tb;
                     });
                     setTabs(updated);
                 };
@@ -706,19 +726,21 @@ export default function useOmniboxEngine({
                 suspendList(tabStore.workTabs, tabStore.setWorkTabs);
                 suspendList(tabStore.ghostTabs, tabStore.setGhostTabs);
                 suspendList(tabStore.torTabs || [], tabStore.setTorTabs);
-                showToast(`Terminal: Suspended ${count} background tab${count === 1 ? '' : 's'} (Freed RAM)`);
+                const activeLang = resolveActiveLanguage(useUIStore.getState().settings?.appLanguage);
+                const sleepKey = selectPluralForm(count, activeLang, 'chrome.toastCmdSleepOne', 'chrome.toastCmdSleepFew', 'chrome.toastCmdSleepMany');
+                showToast(t(sleepKey, { count }, `Terminal: Suspended ${count} background tab${count === 1 ? '' : 's'} (Freed RAM)`));
                 break;
             }
 
             case 'wake': {
                 let count = 0;
                 const wakeList = (tabs, setTabs) => {
-                    const updated = tabs.map(t => {
-                        if (t.suspended) {
+                    const updated = tabs.map(tb => {
+                        if (tb.suspended) {
                             count++;
-                            return { ...t, suspended: false };
+                            return { ...tb, suspended: false };
                         }
-                        return t;
+                        return tb;
                     });
                     setTabs(updated);
                 };
@@ -726,24 +748,26 @@ export default function useOmniboxEngine({
                 wakeList(tabStore.workTabs, tabStore.setWorkTabs);
                 wakeList(tabStore.ghostTabs, tabStore.setGhostTabs);
                 wakeList(tabStore.torTabs || [], tabStore.setTorTabs);
-                showToast(`Terminal: Woke ${count} suspended tab${count === 1 ? '' : 's'}`);
+                const activeLang = resolveActiveLanguage(useUIStore.getState().settings?.appLanguage);
+                const wakeKey = selectPluralForm(count, activeLang, 'chrome.toastCmdWakeOne', 'chrome.toastCmdWakeFew', 'chrome.toastCmdWakeMany');
+                showToast(t(wakeKey, { count }, `Terminal: Woke ${count} suspended tab${count === 1 ? '' : 's'}`));
                 break;
             }
 
             case 'dark':
                 setIsForceDark(true);
-                showToast('Terminal: Smart Dark Mode enabled');
+                showToast(t('chrome.toastCmdDark', 'Terminal: Smart Dark Mode enabled'));
                 break;
 
             case 'light':
                 setIsForceDark(false);
-                showToast('Terminal: Smart Dark Mode disabled');
+                showToast(t('chrome.toastCmdLight', 'Terminal: Smart Dark Mode disabled'));
                 break;
 
             case 'zen': {
                 const nextHidden = !uiStore.isSidebarHidden;
                 uiStore.setIsSidebarHidden(nextHidden);
-                showToast(`Terminal: Zen Mode ${nextHidden ? 'activated (Sidebar hidden)' : 'deactivated (Sidebar visible)'}`);
+                showToast(t(nextHidden ? 'chrome.toastCmdZenOn' : 'chrome.toastCmdZenOff', `Terminal: Zen Mode ${nextHidden ? 'activated (Sidebar hidden)' : 'deactivated (Sidebar visible)'}`));
                 break;
             }
 
@@ -751,7 +775,7 @@ export default function useOmniboxEngine({
                 const nextOpen = !uiStore.isRightPanelOpen;
                 uiStore.setIsRightPanelOpen(nextOpen);
                 if (nextOpen) uiStore.setRightPanelTab('ai');
-                showToast(`Terminal: Tool Hub ${nextOpen ? 'opened' : 'closed'}`);
+                showToast(t(nextOpen ? 'chrome.toastCmdToolHubOpen' : 'chrome.toastCmdToolHubClose', `Terminal: Tool Hub ${nextOpen ? 'opened' : 'closed'}`));
                 break;
             }
 
@@ -761,18 +785,18 @@ export default function useOmniboxEngine({
 
             case 'settings':
                 uiStore.openModal('settings');
-                showToast('Terminal: Settings opened');
+                showToast(t('chrome.toastCmdSettings', 'Terminal: Settings opened'));
                 break;
 
             case 'history':
                 uiStore.openModal('history');
-                showToast('Terminal: History opened');
+                showToast(t('chrome.toastCmdHistory', 'Terminal: History opened'));
                 break;
 
             case 'downloads':
                 uiStore.setIsRightPanelOpen(true);
                 uiStore.setRightPanelTab('downloads');
-                showToast('Terminal: Downloads opened');
+                showToast(t('chrome.toastCmdDownloads', 'Terminal: Downloads opened'));
                 break;
 
             case 'fullscreen': {
@@ -781,19 +805,19 @@ export default function useOmniboxEngine({
                     window.electronAPI.setFullscreen(nextFull);
                 }
                 uiStore.setIsFullscreen(nextFull);
-                showToast(`Terminal: Fullscreen ${nextFull ? 'enabled' : 'exited'}`);
+                showToast(t(nextFull ? 'chrome.toastCmdFullscreenOn' : 'chrome.toastCmdFullscreenOff', `Terminal: Fullscreen ${nextFull ? 'enabled' : 'exited'}`));
                 break;
             }
 
             case 'vault':
                 uiStore.togglePopover('vault');
-                showToast('Terminal: QVault opened');
+                showToast(t('chrome.toastCmdVault', 'Terminal: QVault opened'));
                 break;
 
             case 'profiles':
             case 'profile':
                 uiStore.openPopover('userProfile');
-                showToast('Terminal: Profiles & Cloud Sync opened');
+                showToast(t('chrome.toastCmdProfiles', 'Terminal: Profiles & Cloud Sync opened'));
                 break;
 
             case 'tor': {
@@ -807,13 +831,13 @@ export default function useOmniboxEngine({
                 import('../store/useTorStore').then(m => {
                     m.default.getState().newCircuit();
                 }).catch(() => {});
-                showToast('Terminal: Requesting new Tor identity...');
+                showToast(t('chrome.toastCmdNewnym', 'Terminal: Requesting new Tor identity...'));
                 break;
             }
 
             case 'circuit':
                 uiStore.openPopover('tor');
-                showToast('Terminal: Tor Circuit HUD opened');
+                showToast(t('chrome.toastCmdCircuit', 'Terminal: Tor Circuit HUD opened'));
                 break;
 
             default:
@@ -835,8 +859,9 @@ export default function useOmniboxEngine({
         }
 
         if (pred.isMath) {
-            navigator.clipboard.writeText(pred.url.replace('= ', ''));
-            showToast(`Copied to clipboard: ${pred.url.replace('= ', '')}`);
+            const val = pred.url.replace('= ', '');
+            navigator.clipboard.writeText(val);
+            showToast(t('chrome.toastCopiedValue', { value: val }, `Copied to clipboard: ${val}`));
             onClose?.(false);
             return;
         }

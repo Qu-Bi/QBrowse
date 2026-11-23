@@ -3,8 +3,10 @@ import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function FindInPageBar() {
+    const { t } = useTranslation();
     const {
         isFindOpen,
         findQuery,
@@ -97,7 +99,7 @@ export default function FindInPageBar() {
                 value={findQuery}
                 onChange={(e) => setFindQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Find in page..."
+                placeholder={t('pop.find.placeholder', null, 'Find in page...')}
                 className={`w-44 md:w-56 bg-transparent text-xs outline-none border-none pr-1 ${
                     isBright ? 'text-zinc-900 placeholder-zinc-400 font-medium' : 'text-white placeholder-white/40 font-medium'
                 }`}
@@ -113,9 +115,9 @@ export default function FindInPageBar() {
                         : (isBright ? 'bg-red-500/10 text-red-600' : 'bg-rose-500/15 text-rose-300')
                 }`}>
                     {hasMatches ? (
-                        <span>{findResults.activeMatchOrdinal} of {findResults.matches}</span>
+                        <span>{t('pop.find.matchCount', { current: findResults.activeMatchOrdinal, total: findResults.matches }, '{current} of {total}')}</span>
                     ) : (
-                        <span>0 of 0</span>
+                        <span>{t('pop.find.matchCount', { current: 0, total: 0 }, '{current} of {total}')}</span>
                     )}
                 </div>
             )}
@@ -131,7 +133,7 @@ export default function FindInPageBar() {
                         ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' 
                         : 'text-white/60 hover:text-white hover:bg-white/10'
                 }`}
-                title="Previous match (Shift+Enter / Shift+F3)"
+                title={t('pop.find.prevMatch', null, 'Previous match (Shift+Enter / Shift+F3)')}
             >
                 <ChevronUp size={14} />
             </button>
@@ -145,7 +147,7 @@ export default function FindInPageBar() {
                         ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' 
                         : 'text-white/60 hover:text-white hover:bg-white/10'
                 }`}
-                title="Next match (Enter / F3)"
+                title={t('pop.find.nextMatch', null, 'Next match (Enter / F3)')}
             >
                 <ChevronDown size={14} />
             </button>
@@ -158,7 +160,7 @@ export default function FindInPageBar() {
                         ? 'bg-accent/20 text-accent font-bold' 
                         : (isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-white/50 hover:text-white hover:bg-white/5')
                 }`}
-                title="Match Case (Case Sensitive)"
+                title={t('pop.find.matchCase', null, 'Match Case (Case Sensitive)')}
             >
                 Aa
             </button>
@@ -169,7 +171,7 @@ export default function FindInPageBar() {
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-95 ml-0.5 ${
                     isBright ? 'text-zinc-500 hover:text-rose-600 hover:bg-black/5' : 'text-white/40 hover:text-rose-400 hover:bg-white/10'
                 }`}
-                title="Close (Esc)"
+                title={t('pop.find.closeEsc', null, 'Close (Esc)')}
             >
                 <X size={14} />
             </button>

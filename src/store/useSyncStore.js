@@ -1,7 +1,9 @@
 import { create } from 'zustand';
+import { t } from '../i18n/index';
 import useUIStore from './useUIStore';
 import useVaultStore from './useVaultStore';
 import useTabStore, { isValidSyncTab, getCleanTabTitle } from './useTabStore';
+import { stripEphemeralTabMediaFields } from '../utils/mediaStateHelpers.js';
 import useHistoryStore from './useHistoryStore';
 import { saveCustomPresetsToStorage, setSavedPresetId } from '../utils/experiencePresets';
 import { auth, db } from '../services/firebase';
@@ -111,7 +113,9 @@ async function deriveKey(passphrase, saltInput) {
     );
     const salt = toUint8Array(saltInput);
     if (salt.length === 0) {
-        throw new Error('Malformed encrypted payload structure');
+        const err = new Error(t('stores.sync.errMalformedPayload', 'Malformed encrypted payload structure'));
+        err.isStructureError = true;
+        throw err;
     }
     return await window.crypto.subtle.deriveKey(
         {
@@ -304,7 +308,7 @@ async function deleteIndexedDBBackup(backupId) {
 async function decryptData(encryptedObj, passphrase) {
     try {
         if (!encryptedObj || !passphrase) {
-            throw new Error("Missing encrypted data or encryption passphrase");
+            throw new Error(t('stores.sync.errMissingEncryptedData', "Missing encrypted data or encryption passphrase"));
         }
 
         let payload = encryptedObj;
@@ -320,7 +324,9 @@ async function decryptData(encryptedObj, passphrase) {
         const cipher = normalized.cipher || normalized.ciphertext || normalized.data || normalized.encryptedContent;
 
         if (!salt || !iv || !cipher) {
-            throw new Error("Malformed encrypted payload structure");
+            const err = new Error(t('stores.sync.errMalformedPayload', "Malformed encrypted payload structure"));
+            err.isStructureError = true;
+            throw err;
         }
 
         const key = await deriveKey(passphrase, salt);
@@ -329,7 +335,9 @@ async function decryptData(encryptedObj, passphrase) {
         const cipherArray = toUint8Array(cipher);
 
         if (ivArray.length === 0 || cipherArray.length === 0) {
-            throw new Error("Invalid IV or Cipher length in backup data");
+            const err = new Error(t('stores.sync.errInvalidIvCipher', "Invalid IV or Cipher length in backup data"));
+            err.isStructureError = true;
+            throw err;
         }
 
         const decryptedBytes = await window.crypto.subtle.decrypt(
@@ -347,10 +355,10 @@ async function decryptData(encryptedObj, passphrase) {
         return decoded;
     } catch(e) {
         console.warn("[Decryption Error] Passphrase mismatch or corrupted payload", e);
-        if (e.message?.includes("Malformed") || e.message?.includes("Invalid IV")) {
+        if (e?.isStructureError || e.message?.includes("Malformed") || e.message?.includes("Invalid IV")) {
             throw e;
         }
-        throw new Error("Invalid Master Encryption Password or corrupted cloud data");
+        throw new Error(t('stores.sync.errInvalidMasterOrCorrupt', "Invalid Master Encryption Password or corrupted cloud data"));
     }
 }
 
@@ -360,25 +368,25 @@ function formatAuthError(error) {
     const message = error.message || '';
 
     if (code === 'auth/configuration-not-found' || message.includes('configuration-not-found')) {
-        return 'Email/Password Authentication is not enabled in Firebase Console. Please enable Email/Password under Firebase Console -> Authentication -> Sign-in method.';
+        return t('stores.sync.authConfigNotFound', 'Email/Password Authentication is not enabled in Firebase Console. Please enable Email/Password under Firebase Console -> Authentication -> Sign-in method.');
     }
     if (code === 'auth/api-key-not-valid' || message.includes('api-key-not-valid') || message.includes('API key not valid')) {
-        return 'Firebase API key is invalid or expired. Check your .env configuration.';
+        return t('stores.sync.authInvalidApiKey', 'Firebase API key is invalid or expired. Check your .env configuration.');
     }
     if (code === 'auth/network-request-failed' || message.includes('network-request-failed')) {
-        return 'Network connection error. Please check your internet connection.';
+        return t('stores.sync.authNetworkError', 'Network connection error. Please check your internet connection.');
     }
     if (code === 'auth/email-already-in-use') {
-        return 'An account with this email already exists. Try signing in instead.';
+        return t('stores.sync.authEmailInUse', 'An account with this email already exists. Try signing in instead.');
     }
     if (code === 'auth/weak-password') {
-        return 'Password should be at least 6 characters long.';
+        return t('stores.sync.authWeakPassword', 'Password should be at least 6 characters long.');
     }
     if (code === 'auth/invalid-email') {
-        return 'Please enter a valid email address.';
+        return t('stores.sync.authInvalidEmail', 'Please enter a valid email address.');
     }
     if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        return 'Invalid email or password combination.';
+        return t('stores.sync.authInvalidCredential', 'Invalid email or password combination.');
     }
     return message.replace(/^Firebase:\s*/, '');
 }
@@ -528,12 +536,12 @@ async function parseRemoteDevicesFromSnapshot(data, masterPassword, currentDevic
         if (dec) {
             let tabs = Array.isArray(dec.tabs) ? dec.tabs.filter(isValidSyncTab) : [];
             if (tabs.length === 0) {
-                const p = (dec.privateTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'personal', spaceName: 'Personal' }));
-                const w = (dec.workTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'work', spaceName: 'Work' }));
+                const p = (dec.privateTabs || []).filter(isValidSyncTab).map(tb => ({ ...tb, spaceId: 'personal', spaceName: t('stores.sync.spacePersonal', 'Personal') }));
+                const w = (dec.workTabs || []).filter(isValidSyncTab).map(tb => ({ ...tb, spaceId: 'work', spaceName: t('stores.sync.spaceWork', 'Work') }));
                 const c = [];
                 if (dec.customSpaceTabs && typeof dec.customSpaceTabs === 'object') {
                     Object.entries(dec.customSpaceTabs).forEach(([sId, list]) => {
-                        (list || []).filter(isValidSyncTab).forEach(t => c.push({ ...t, spaceId: sId, spaceName: sId }));
+                        (list || []).filter(isValidSyncTab).forEach(tb => c.push({ ...tb, spaceId: sId, spaceName: sId }));
                     });
                 }
                 tabs = [...p, ...w, ...c];
@@ -541,7 +549,7 @@ async function parseRemoteDevicesFromSnapshot(data, masterPassword, currentDevic
 
             remoteList.push({
                 deviceId: dId,
-                deviceName: dec.deviceName || devData.deviceName || 'Remote Device',
+                deviceName: dec.deviceName || devData.deviceName || t('stores.sync.remoteDevice', 'Remote Device'),
                 lastSynced: dec.lastSynced || devData.lastSynced || (devData.updatedAt ? new Date(devData.updatedAt).getTime() : Date.now()),
                 tabs
             });
@@ -554,19 +562,19 @@ async function parseRemoteDevicesFromSnapshot(data, masterPassword, currentDevic
         try {
             const dec = await decryptData(data.tabs.encrypted, masterPassword);
             if (dec) {
-                const p = (dec.privateTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'personal', spaceName: 'Personal' }));
-                const w = (dec.workTabs || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: 'work', spaceName: 'Work' }));
+                const p = (dec.privateTabs || []).filter(isValidSyncTab).map(tb => ({ ...tb, spaceId: 'personal', spaceName: t('stores.sync.spacePersonal', 'Personal') }));
+                const w = (dec.workTabs || []).filter(isValidSyncTab).map(tb => ({ ...tb, spaceId: 'work', spaceName: t('stores.sync.spaceWork', 'Work') }));
                 const c = [];
                 if (dec.customSpaceTabs && typeof dec.customSpaceTabs === 'object') {
                     Object.entries(dec.customSpaceTabs).forEach(([sId, list]) => {
-                        (list || []).filter(isValidSyncTab).forEach(t => c.push({ ...t, spaceId: sId, spaceName: sId }));
+                        (list || []).filter(isValidSyncTab).forEach(tb => c.push({ ...tb, spaceId: sId, spaceName: sId }));
                     });
                 }
                 const tabs = [...p, ...w, ...c];
                 if (tabs.length > 0) {
                     remoteList.push({
                         deviceId: 'legacy-remote',
-                        deviceName: data.userAgent?.includes('Mac') ? 'Mac' : data.userAgent?.includes('Windows') ? 'Windows PC' : 'Remote Client',
+                        deviceName: data.userAgent?.includes('Mac') ? 'Mac' : data.userAgent?.includes('Windows') ? 'Windows PC' : t('stores.sync.remoteClient', 'Remote Client'),
                         lastSynced: data.tabs.updatedAt ? new Date(data.tabs.updatedAt).getTime() : Date.now(),
                         tabs
                     });
@@ -710,7 +718,9 @@ function computeSettingsWatcherSignature(uiState) {
     return JSON.stringify({
         s,
         theme: uiState.theme || 'dark',
-        accentColor: uiState.accentColor || '#d4bc94'
+        accentColor: uiState.accentColor || '#d4bc94',
+        isForceDark: Boolean(uiState.isForceDark),
+        darkExclusions: Array.isArray(uiState.darkExclusions) ? uiState.darkExclusions : []
     });
 }
 
@@ -1164,6 +1174,25 @@ function applyRemoteSettingsToUIStore(decryptedSettings, remoteUpdatedAtMs = 0) 
                 uiStore.setAccentColor(decryptedSettings._syncAccentColor);
             } catch (_) {}
         }
+        if (typeof decryptedSettings._syncIsForceDark === 'boolean' && decryptedSettings._syncIsForceDark !== uiStore.isForceDark && typeof uiStore.setIsForceDark === 'function') {
+            try {
+                uiStore.setIsForceDark(decryptedSettings._syncIsForceDark);
+            } catch (_) {}
+        }
+        if (Array.isArray(decryptedSettings._syncDarkExclusions) && typeof uiStore.setDarkExclusions === 'function') {
+            try {
+                const currentSig = JSON.stringify(uiStore.darkExclusions || []);
+                const nextSig = JSON.stringify(decryptedSettings._syncDarkExclusions);
+                if (currentSig !== nextSig) {
+                    uiStore.setDarkExclusions(decryptedSettings._syncDarkExclusions);
+                }
+            } catch (_) {}
+        }
+        if (typeof decryptedSettings._syncDarkExcludeMedia === 'boolean' && decryptedSettings._syncDarkExcludeMedia !== uiStore.darkExcludeMedia && typeof uiStore.setDarkExcludeMedia === 'function') {
+            try {
+                uiStore.setDarkExcludeMedia(decryptedSettings._syncDarkExcludeMedia);
+            } catch (_) {}
+        }
     } finally {
         restoreTimestampKey(SETTINGS_UPDATED_AT_KEY, prevSettingsTs, remoteUpdatedAtMs, { adoptRemote: remoteUpdatedAtMs > 0 });
         endRemoteApply(0);
@@ -1283,6 +1312,25 @@ function applySyncedUIPresetsAndTheme(decryptedSettings, remoteUpdatedAtMs = 0) 
         if (decryptedSettings._syncAccentColor && decryptedSettings._syncAccentColor !== uiStore.accentColor && typeof uiStore.setAccentColor === 'function') {
             try {
                 uiStore.setAccentColor(decryptedSettings._syncAccentColor);
+            } catch (_) {}
+        }
+        if (typeof decryptedSettings._syncIsForceDark === 'boolean' && decryptedSettings._syncIsForceDark !== uiStore.isForceDark && typeof uiStore.setIsForceDark === 'function') {
+            try {
+                uiStore.setIsForceDark(decryptedSettings._syncIsForceDark);
+            } catch (_) {}
+        }
+        if (Array.isArray(decryptedSettings._syncDarkExclusions) && typeof uiStore.setDarkExclusions === 'function') {
+            try {
+                const currentSig = JSON.stringify(uiStore.darkExclusions || []);
+                const nextSig = JSON.stringify(decryptedSettings._syncDarkExclusions);
+                if (currentSig !== nextSig) {
+                    uiStore.setDarkExclusions(decryptedSettings._syncDarkExclusions);
+                }
+            } catch (_) {}
+        }
+        if (typeof decryptedSettings._syncDarkExcludeMedia === 'boolean' && decryptedSettings._syncDarkExcludeMedia !== uiStore.darkExcludeMedia && typeof uiStore.setDarkExcludeMedia === 'function') {
+            try {
+                uiStore.setDarkExcludeMedia(decryptedSettings._syncDarkExcludeMedia);
             } catch (_) {}
         }
     } finally {
@@ -1461,10 +1509,10 @@ function applyRemoteOpenTabsToTabStore(targetTabs, { preserveCloudTabs = false }
     }
 
     const prevActiveId = tabStore.activeTabId || null;
-    cleanPrivate = normalizeTabListActiveFlag(cleanPrivate, prevActiveId);
-    cleanWork = normalizeTabListActiveFlag(cleanWork, prevActiveId);
+    cleanPrivate = normalizeTabListActiveFlag(cleanPrivate.map(t => stripEphemeralTabMediaFields(t)), prevActiveId);
+    cleanWork = normalizeTabListActiveFlag(cleanWork.map(t => stripEphemeralTabMediaFields(t)), prevActiveId);
     Object.keys(cleanCustom).forEach(sId => {
-        cleanCustom[sId] = normalizeTabListActiveFlag(cleanCustom[sId], prevActiveId);
+        cleanCustom[sId] = normalizeTabListActiveFlag(cleanCustom[sId].map(t => stripEphemeralTabMediaFields(t)), prevActiveId);
     });
 
     if (!preserveCloudTabs) {
@@ -1600,7 +1648,8 @@ async function applySnapshotPayload(get, payloadRoot, passToUse) {
         if (Array.isArray(targetVault)) {
             if (targetVault.length > 0) {
                 const vaultState = useVaultStore.getState();
-                if (!vaultState.isUnlocked && !vaultState.isInitialized && passToUse && passToUse !== 'qbrowse_local') {
+                const wasVaultUnlockedBefore = Boolean(vaultState.isUnlocked);
+                if (!wasVaultUnlockedBefore && !vaultState.isInitialized && passToUse && passToUse !== 'qbrowse_local') {
                     try {
                         const unlocked = await vaultState.unlock(passToUse);
                         if (!unlocked) useVaultStore.setState({ error: null });
@@ -1609,6 +1658,9 @@ async function applySnapshotPayload(get, payloadRoot, passToUse) {
                 if (useVaultStore.getState().isUnlocked) {
                     await get().mergeRemoteVault(targetVault, passToUse, [], { isSnapshotRestore: true });
                     await useVaultStore.getState().fetchPasswords?.();
+                    if (!wasVaultUnlockedBefore) {
+                        await useVaultStore.getState().lock?.();
+                    }
                 } else {
                     const cleanRestoreVault = targetVault.filter(item => item && !isRawCiphertextString(item.password));
                     if (cleanRestoreVault.length > 0) {
@@ -2411,10 +2463,10 @@ const useSyncStore = create((set, get) => ({
         localStorage.setItem('qbrowse_auto_sync', next ? 'true' : 'false');
         if (next) {
             get().startAutoSync();
-            useUIStore.getState().showToast("Auto-Sync active (syncs periodically & on changes)");
+            useUIStore.getState().showToast(t('stores.sync.autoSyncActive', "Auto-Sync active (syncs periodically & on changes)"));
         } else {
             get().stopAutoSync();
-            useUIStore.getState().showToast("Auto-Sync turned off");
+            useUIStore.getState().showToast(t('stores.sync.autoSyncOff', "Auto-Sync turned off"));
         }
     },
 
@@ -2503,7 +2555,7 @@ const useSyncStore = create((set, get) => ({
             if (get().autoSyncEnabled) {
                 get().startAutoSync();
             }
-            useUIStore.getState().showToast("Account Created & Cloud Sync Active!");
+            useUIStore.getState().showToast(t('stores.sync.accountCreatedSyncActive', "Account Created & Cloud Sync Active!"));
             return true;
         } catch (error) {
             const formatted = formatAuthError(error);
@@ -2525,14 +2577,6 @@ const useSyncStore = create((set, get) => ({
             localPresetsDirty = false;
             set({ user: userCred.user });
             await get().setMasterPassword(passToUse);
-            if (passToUse) {
-                try {
-                    const unlocked = await useVaultStore.getState().unlock(passToUse);
-                    if (!unlocked) {
-                        useVaultStore.setState({ error: null });
-                    }
-                } catch (_) {}
-            }
             if (unsubscribeCloudListeners.length === 0) {
                 get().listenToCloudSync();
             }
@@ -2546,7 +2590,7 @@ const useSyncStore = create((set, get) => ({
             if (get().autoSyncEnabled) {
                 get().startAutoSync();
             }
-            useUIStore.getState().showToast("Signed In to QBrowse Cloud Sync");
+            useUIStore.getState().showToast(t('stores.sync.signedInCloudSync', "Signed In to QBrowse Cloud Sync"));
             return true;
         } catch (error) {
             const formatted = formatAuthError(error);
@@ -2578,22 +2622,22 @@ const useSyncStore = create((set, get) => ({
             syncStatus: 'offline',
             authError: null 
         });
-        useUIStore.getState().showToast("Signed out of QBrowse Cloud");
+        useUIStore.getState().showToast(t('stores.sync.signedOutCloud', "Signed out of QBrowse Cloud"));
     },
 
     changePassword: async (currentPassword, newPassword) => {
         const { user } = get();
-        if (!user || !user.email) throw new Error("No active user logged in");
+        if (!user || !user.email) throw new Error(t('stores.sync.noActiveUser', "No active user logged in"));
         try {
             const credential = EmailAuthProvider.credential(user.email, currentPassword);
             await reauthenticateWithCredential(user, credential);
             await updatePassword(user, newPassword);
-            useUIStore.getState().showToast("Account password updated successfully!");
+            useUIStore.getState().showToast(t('stores.sync.accountPasswordUpdated', "Account password updated successfully!"));
             return true;
         } catch(error) {
             console.error("Change password error:", error);
             const msg = (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential')
-                ? "Incorrect current password"
+                ? t('stores.sync.incorrectCurrentPassword', "Incorrect current password")
                 : error.message.replace(/^Firebase:\s*/, '');
             throw new Error(msg);
         }
@@ -2614,7 +2658,7 @@ const useSyncStore = create((set, get) => ({
         }
         if (!masterPassword) {
             console.warn('[Sync] Cannot sync to cloud: Master Password not set');
-            throw new Error("Master Password or Account Passphrase required for encryption");
+            throw new Error(t('stores.sync.masterPasswordRequired', "Master Password or Account Passphrase required for encryption"));
         }
         
         const prevLastLocalWriteIso = lastLocalWriteIso;
@@ -2685,11 +2729,11 @@ const useSyncStore = create((set, get) => ({
         const isInitialLogin = typeof options === 'object' && options !== null ? Boolean(options.isInitialLogin) : false;
         const { user, masterPassword, syncCategories, isSyncing } = get();
         if (!user) {
-            if (!silent) useUIStore.getState().showToast("Sign in to sync your data");
+            if (!silent) useUIStore.getState().showToast(t('stores.sync.signInToSync', "Sign in to sync your data"));
             return;
         }
         if (!masterPassword) {
-            if (!silent) useUIStore.getState().showToast("Encryption key required. Please enter your account password in profile.");
+            if (!silent) useUIStore.getState().showToast(t('stores.sync.encryptionKeyRequiredProfile', "Encryption key required. Please enter your account password in profile."));
             set({ syncStatus: 'error', authError: 'Master encryption passphrase missing.' });
             return;
         }
@@ -2843,21 +2887,17 @@ const useSyncStore = create((set, get) => ({
                                 const hasTombstones = Object.keys(mergedVaultDeletedIds.deletedIds).length > 0
                                     || Object.keys(mergedVaultDeletedIds.deletedKeys).length > 0;
 
-                                let vaultNow = useVaultStore.getState();
-                                if (isInitialLogin && !vaultNow.isInitialized && !vaultNow.isUnlocked && masterPassword) {
-                                    try {
-                                        await vaultNow.unlock?.(masterPassword);
-                                    } catch (_) {}
-                                    vaultNow = useVaultStore.getState();
-                                }
-
+                                const vaultNow = useVaultStore.getState();
                                 if (vaultNow.isUnlocked) {
                                     if (cleanRemoteVault.length > 0 || hasTombstones) {
                                         await get().mergeRemoteVault(cleanRemoteVault, masterPassword, mergedVaultDeletedIds);
                                     }
                                 } else if (cleanRemoteVault.length > 0) {
-                                    // Keep QVault locked; stash decrypted backup in RAM so unlocking QVault merges it immediately
-                                    useVaultStore.setState({ cloudVaultBackup: cleanRemoteVault });
+                                    // Keep QVault locked after login/sync; stash decrypted backup in RAM so unlocking QVault merges it immediately
+                                    useVaultStore.setState({
+                                        cloudVaultBackup: cleanRemoteVault,
+                                        ...(vaultNow.vaultItemCount === 0 ? { vaultItemCount: cleanRemoteVault.length } : {})
+                                    });
                                 }
                             } catch (_) {}
                         }
@@ -2922,21 +2962,8 @@ const useSyncStore = create((set, get) => ({
                                     adoptRemoteTimestamp: isInitialLogin || (remoteEffectiveTabsUpdatedAt > localTabsUpdatedAt)
                                 });
                             }
-
-                            if (
-                                isInitialLogin &&
-                                remoteTabsData &&
-                                (
-                                    Array.isArray(remoteTabsData) ||
-                                    Array.isArray(remoteTabsData.privateTabs) ||
-                                    Array.isArray(remoteTabsData.workTabs) ||
-                                    (remoteTabsData.customSpaceTabs && typeof remoteTabsData.customSpaceTabs === 'object')
-                                )
-                            ) {
-                                applyRemoteOpenTabsToTabStore(remoteTabsData, {
-                                    preserveCloudTabs: remoteDevicesCount > 0
-                                });
-                            }
+                            // Note: Open tabs from other devices are exposed via remoteDeviceTabs / cloudTabs
+                            // in the "Tabs from Other Devices" restore section rather than auto-opening during sync.
                         }
 
                         // 0e. History union merge
@@ -2975,6 +3002,9 @@ const useSyncStore = create((set, get) => ({
                 uiSettings._syncDeletedPresetIds = deletedPresetIds;
                 uiSettings._syncTheme = uiState.theme || 'dark';
                 uiSettings._syncAccentColor = uiState.accentColor || '#d4bc94';
+                uiSettings._syncIsForceDark = Boolean(uiState.isForceDark);
+                uiSettings._syncDarkExclusions = Array.isArray(uiState.darkExclusions) ? uiState.darkExclusions : [];
+                uiSettings._syncDarkExcludeMedia = uiState.darkExcludeMedia !== false;
 
                 const settingsSig = JSON.stringify(uiSettings);
                 totalItems += Object.keys(uiSettings).length;
@@ -3247,7 +3277,7 @@ const useSyncStore = create((set, get) => ({
             localStorage.setItem('qbrowse_last_sync', nowTime);
             set({ isSyncing: false, syncStatus: 'synced', lastSyncTime: nowTime, syncedItemsCount: totalItems, authError: null });
             if (!silent) {
-                useUIStore.getState().showToast(`Cloud Sync Complete! (${totalItems} items encrypted)`);
+                useUIStore.getState().showToast(t('stores.sync.cloudSyncComplete', { count: totalItems }, `Cloud Sync Complete! (${totalItems} items encrypted)`));
             }
         } catch(e) {
             lastLocalWriteIso = prevLastLocalWriteIso;
@@ -3258,7 +3288,7 @@ const useSyncStore = create((set, get) => ({
                 authError: null 
             });
             if (!silent) {
-                useUIStore.getState().showToast("Cloud sync paused. Changes saved locally.");
+                useUIStore.getState().showToast(t('stores.sync.cloudSyncPausedSavedLocal', "Cloud sync paused. Changes saved locally."));
             }
         }
     },
@@ -3267,17 +3297,17 @@ const useSyncStore = create((set, get) => ({
     pushManualBackup: async (customLabel = '') => {
         const { user, masterPassword } = get();
         if (!user) {
-            useUIStore.getState().showToast("Sign in to push a cloud backup");
+            useUIStore.getState().showToast(t('stores.sync.signInToPushBackup', "Sign in to push a cloud backup"));
             return false;
         }
         if (!masterPassword) {
-            useUIStore.getState().showToast("Encryption passphrase required");
+            useUIStore.getState().showToast(t('stores.sync.encryptionPassphraseRequired', "Encryption passphrase required"));
             return false;
         }
 
         const vaultBeforeBackup = useVaultStore.getState();
         if (vaultBeforeBackup.isInitialized && !vaultBeforeBackup.isUnlocked) {
-            const errMsg = 'Please unlock QVault with your PIN or Master Password before creating a cloud snapshot.';
+            const errMsg = t('stores.sync.unlockVaultBeforeSnapshot', 'Please unlock QVault with your PIN or Master Password before creating a cloud snapshot.');
             useUIStore.getState().showToast(errMsg);
             throw new Error(errMsg);
         }
@@ -3304,6 +3334,9 @@ const useSyncStore = create((set, get) => ({
             cleanSettings._syncPresetOverrides = uiState.presetOverrides || {};
             cleanSettings._syncTheme = uiState.theme || 'dark';
             cleanSettings._syncAccentColor = uiState.accentColor || '#d4bc94';
+            cleanSettings._syncIsForceDark = Boolean(uiState.isForceDark);
+            cleanSettings._syncDarkExclusions = Array.isArray(uiState.darkExclusions) ? uiState.darkExclusions : [];
+            cleanSettings._syncDarkExcludeMedia = uiState.darkExcludeMedia !== false;
 
             const tabState = useTabStore.getState();
             const cleanCustomSpaceTabs = {};
@@ -3473,10 +3506,10 @@ const useSyncStore = create((set, get) => ({
             }));
 
             if (cloudSaved) {
-                useUIStore.getState().showToast(`Cloud Snapshot "${payload.label}" pushed successfully!`);
+                useUIStore.getState().showToast(t('stores.sync.snapshotPushedSuccess', { label: payload.label }, `Cloud Snapshot "${payload.label}" pushed successfully!`));
                 return true;
             } else {
-                useUIStore.getState().showToast(`Snapshot saved to local storage (cloud sync offline).`);
+                useUIStore.getState().showToast(t('stores.sync.snapshotSavedOffline', "Snapshot saved to local storage (cloud sync offline)."));
                 return true;
             }
         } catch(e) {
@@ -3486,8 +3519,8 @@ const useSyncStore = create((set, get) => ({
                 syncStatus: 'offline', 
                 authError: null 
             });
-            const errMsg = e?.message ? e.message.replace(/^Firebase:\s*/, '') : "Network or size issue";
-            useUIStore.getState().showToast(`Backup notice: ${errMsg}`);
+            const errMsg = e?.message ? e.message.replace(/^Firebase:\s*/, '') : t('stores.sync.networkOrSizeIssue', "Network or size issue");
+            useUIStore.getState().showToast(t('stores.sync.backupNotice', { error: errMsg }, `Backup notice: ${errMsg}`));
             return false;
         }
     },
@@ -3662,7 +3695,7 @@ const useSyncStore = create((set, get) => ({
 
         if (!passToUse) {
             set({ isRestoringBackup: false, restoringBackupId: null });
-            useUIStore.getState().showToast("Enter encryption key in Account Security to restore snapshot");
+            useUIStore.getState().showToast(t('stores.sync.enterKeyToRestoreSnapshot', "Enter encryption key in Account Security to restore snapshot"));
             return false;
         }
 
@@ -3849,12 +3882,12 @@ const useSyncStore = create((set, get) => ({
             }
 
             if (!encryptedPayload) {
-                throw new Error("Backup encrypted data not found in cloud or local cache");
+                throw new Error(t('stores.sync.backupDataNotFound', "Backup encrypted data not found in cloud or local cache"));
             }
 
             // Decrypt backup payload with master key
             const decrypted = await decryptData(encryptedPayload, passToUse);
-            if (!decrypted) throw new Error("Could not decrypt backup payload");
+            if (!decrypted) throw new Error(t('stores.sync.couldNotDecryptBackup', "Could not decrypt backup payload"));
 
             // Cache the retrieved encrypted payload back into memory and localStorage for immediate subsequent restores
             if (targetId) {
@@ -3890,14 +3923,14 @@ const useSyncStore = create((set, get) => ({
             // Trigger debounced cloud sync to broadcast the restored state
             get().triggerDebouncedSync(1500);
 
-            const displayLabel = backupItem.label || backupItem.name || 'Snapshot';
-            useUIStore.getState().showToast(`Successfully restored "${displayLabel}"!`);
+            const displayLabel = backupItem.label || backupItem.name || t('stores.sync.snapshotDefault', 'Snapshot');
+            useUIStore.getState().showToast(t('stores.sync.successfullyRestored', { label: displayLabel }, `Successfully restored "${displayLabel}"!`));
             set({ isRestoringBackup: false, restoringBackupId: null });
             return true;
         } catch(e) {
             console.error("[Sync] restoreCloudBackup error:", e);
             set({ isRestoringBackup: false, restoringBackupId: null });
-            useUIStore.getState().showToast(`Restore failed: ${e.message}`);
+            useUIStore.getState().showToast(t('stores.sync.restoreFailed', { error: e.message }, `Restore failed: ${e.message}`));
             return false;
         }
     },
@@ -3947,7 +3980,7 @@ const useSyncStore = create((set, get) => ({
                 } catch(e) {}
             }
 
-            useUIStore.getState().showToast("Backup deleted");
+            useUIStore.getState().showToast(t('stores.sync.backupDeleted', "Backup deleted"));
         } catch(e) {
             console.error("[Sync] deleteCloudBackup error:", e);
         }
@@ -3957,7 +3990,7 @@ const useSyncStore = create((set, get) => ({
     refreshCloudTabs: async (showToastNotice = true) => {
         const { user, masterPassword } = get();
         if (!user || !masterPassword) {
-            if (showToastNotice) useUIStore.getState().showToast("Sign in to sync remote tabs");
+            if (showToastNotice) useUIStore.getState().showToast(t('stores.sync.signInToSyncRemoteTabs', "Sign in to sync remote tabs"));
             return;
         }
 
@@ -3998,7 +4031,12 @@ const useSyncStore = create((set, get) => ({
 
             if (showToastNotice) {
                 const count = remoteDevices.reduce((acc, d) => acc + (d.tabs?.length || 0), 0);
-                useUIStore.getState().showToast(`Cloud tabs refreshed (${count} tabs from ${remoteDevices.length} device${remoteDevices.length === 1 ? '' : 's'})`);
+                const devCount = remoteDevices.length;
+                useUIStore.getState().showToast(
+                    devCount === 1
+                        ? t('stores.sync.cloudTabsRefreshedSingleDevice', { count }, `Cloud tabs refreshed (${count} tabs from 1 device)`)
+                        : t('stores.sync.cloudTabsRefreshedMultiDevice', { count, devices: devCount }, `Cloud tabs refreshed (${count} tabs from ${devCount} devices)`)
+                );
             }
         } catch (e) {
             console.warn('[Sync] refreshCloudTabs notice:', e);
@@ -4031,6 +4069,9 @@ const useSyncStore = create((set, get) => ({
             cleanSettings._syncPresetOverrides = uiState.presetOverrides || {};
             cleanSettings._syncTheme = uiState.theme || 'dark';
             cleanSettings._syncAccentColor = uiState.accentColor || '#d4bc94';
+            cleanSettings._syncIsForceDark = Boolean(uiState.isForceDark);
+            cleanSettings._syncDarkExclusions = Array.isArray(uiState.darkExclusions) ? uiState.darkExclusions : [];
+            cleanSettings._syncDarkExcludeMedia = uiState.darkExcludeMedia !== false;
 
             const tabState = useTabStore.getState();
             const cleanCustomSpaceTabs = {};
@@ -4069,10 +4110,10 @@ const useSyncStore = create((set, get) => ({
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            useUIStore.getState().showToast("Encrypted backup exported to file (.qsync)");
+            useUIStore.getState().showToast(t('stores.sync.exportedBackupFile', "Encrypted backup exported to file (.qsync)"));
         } catch(e) {
             console.error("Export backup error:", e);
-            useUIStore.getState().showToast("Export failed: " + e.message);
+            useUIStore.getState().showToast(t('stores.sync.exportFailed', { error: e.message }, "Export failed: " + e.message));
         }
     },
 
@@ -4110,17 +4151,17 @@ const useSyncStore = create((set, get) => ({
                     lastDecryptErr = decErr;
                 }
             }
-            if (!data) throw lastDecryptErr || new Error("Invalid format");
+            if (!data) throw lastDecryptErr || new Error(t('stores.sync.invalidFormat', "Invalid format"));
 
             const payloadRoot = data.payload || data.data || data;
             await applySnapshotPayload(get, payloadRoot, usedPass);
 
-            useUIStore.getState().showToast("Backup imported successfully!");
+            useUIStore.getState().showToast(t('stores.sync.backupImported', "Backup imported successfully!"));
             get().triggerDebouncedSync(1500);
             return true;
         } catch(e) {
             console.error("Import backup error:", e);
-            useUIStore.getState().showToast("Import failed: check password or file format");
+            useUIStore.getState().showToast(t('stores.sync.importFailedCheck', "Import failed: check password or file format"));
             return false;
         }
     },

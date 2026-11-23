@@ -7,8 +7,9 @@ import useVaultStore from '../../store/useVaultStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
-const getBiometricLabel = () => {
+const getBiometricLabel = (t) => {
     const p = (typeof window !== 'undefined' && (window.electronAPI?.platform || window.process?.platform))
         || (typeof process !== 'undefined' && process?.platform)
         || '';
@@ -23,11 +24,12 @@ const getBiometricLabel = () => {
         else os = 'win32';
     }
     if (os === 'darwin') return 'Touch ID';
-    if (os === 'linux') return 'System Biometrics';
+    if (os === 'linux') return t ? t('pop.vault.systemBiometrics', null, 'System Biometrics') : 'System Biometrics';
     return 'Windows Hello';
 };
 
 export default function SavePasswordBanner() {
+    const { t } = useTranslation();
     const { 
         pendingSavePrompt, dismissSavePrompt, addNeverSaveDomain, 
         saveOrUpdateCredential, isUnlocked, pinEnabled, unlockWithPin, 
@@ -38,7 +40,7 @@ export default function SavePasswordBanner() {
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
-    const biometricLabel = getBiometricLabel();
+    const biometricLabel = getBiometricLabel(t);
 
     const [usernameInput, setUsernameInput] = useState('');
     const [passwordInput, setPasswordInput] = useState('');
@@ -87,7 +89,7 @@ export default function SavePasswordBanner() {
 
     const handleSaveDirect = async () => {
         if (!passwordInput.trim()) {
-            showToast('Password cannot be empty', 'error');
+            showToast(t('pop.savePwd.emptyPass', null, 'Password cannot be empty'), 'error');
             return;
         }
 
@@ -109,9 +111,11 @@ export default function SavePasswordBanner() {
                 isUpdate,
                 existingId
             });
-            showToast(isUpdate ? `Updated password for ${domain}` : `Saved password for ${domain}!`, 'success');
+            showToast(isUpdate
+                ? t('pop.savePwd.updatedFor', { domain }, 'Updated password for {domain}')
+                : t('pop.savePwd.savedFor', { domain }, 'Saved password for {domain}!'), 'success');
         } catch (err) {
-            showToast(`Failed to save: ${err.message || err}`, 'error');
+            showToast(t('pop.savePwd.saveFailed', { error: err.message || err }, 'Failed to save: {error}'), 'error');
         } finally {
             setIsSaving(false);
         }
@@ -126,14 +130,14 @@ export default function SavePasswordBanner() {
             let unlocked = false;
             if (unlockMode === 'pin') {
                 if (!pinInput.trim()) {
-                    setUnlockError('Please enter your PIN');
+                    setUnlockError(t('pop.savePwd.enterPin', null, 'Please enter your PIN'));
                     setIsSaving(false);
                     return;
                 }
                 unlocked = await unlockWithPin(pinInput.trim());
             } else {
                 if (!masterPassInput.trim()) {
-                    setUnlockError('Please enter your Master Password');
+                    setUnlockError(t('pop.savePwd.enterMasterPass', null, 'Please enter your Master Password'));
                     setIsSaving(false);
                     return;
                 }
@@ -152,12 +156,16 @@ export default function SavePasswordBanner() {
                     isUpdate,
                     existingId
                 });
-                showToast(isUpdate ? `Updated password for ${domain}` : `Saved password for ${domain}!`, 'success');
+                showToast(isUpdate
+                    ? t('pop.savePwd.updatedFor', { domain }, 'Updated password for {domain}')
+                    : t('pop.savePwd.savedFor', { domain }, 'Saved password for {domain}!'), 'success');
             } else {
-                setUnlockError(unlockMode === 'pin' ? 'Incorrect PIN code' : 'Invalid Master Password');
+                setUnlockError(unlockMode === 'pin'
+                    ? t('pop.savePwd.incorrectPin', null, 'Incorrect PIN code')
+                    : t('pop.savePwd.invalidMasterPass', null, 'Invalid Master Password'));
             }
         } catch (err) {
-            setUnlockError(err.message || 'Authentication failed');
+            setUnlockError(err.message || t('pop.savePwd.authFailed', null, 'Authentication failed'));
         } finally {
             setIsSaving(false);
         }
@@ -177,12 +185,14 @@ export default function SavePasswordBanner() {
                     isUpdate,
                     existingId
                 });
-                showToast(isUpdate ? `Updated password for ${domain}` : `Saved password for ${domain}!`, 'success');
+                showToast(isUpdate
+                    ? t('pop.savePwd.updatedFor', { domain }, 'Updated password for {domain}')
+                    : t('pop.savePwd.savedFor', { domain }, 'Saved password for {domain}!'), 'success');
             } else {
-                setUnlockError(`${biometricLabel} verification failed`);
+                setUnlockError(t('pop.savePwd.bioVerifyFailed', { label: biometricLabel }, '{label} verification failed'));
             }
         } catch (err) {
-            setUnlockError(err.message || `${biometricLabel} error`);
+            setUnlockError(err.message || t('pop.savePwd.bioError', { label: biometricLabel }, '{label} error'));
         } finally {
             setIsSaving(false);
         }
@@ -190,7 +200,7 @@ export default function SavePasswordBanner() {
 
     const handleNeverForSite = () => {
         addNeverSaveDomain(domain);
-        showToast(`QVault will never ask to save passwords for ${domain}`);
+        showToast(t('pop.savePwd.neverForSiteToast', { domain }, 'QVault will never ask to save passwords for {domain}'));
     };
 
     return (
@@ -214,8 +224,8 @@ export default function SavePasswordBanner() {
                     <div className="min-w-0">
                         <h4 className={`text-xs font-bold leading-tight truncate ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>
                             {isUnlocking 
-                                ? 'Unlock QVault to Save' 
-                                : (isUpdate ? 'Update Password?' : 'Save Password?')
+                                ? t('pop.savePwd.unlockTitle', null, 'Unlock QVault to Save')
+                                : (isUpdate ? t('pop.savePwd.updateTitle', null, 'Update Password?') : t('pop.savePwd.saveTitle', null, 'Save Password?'))
                             }
                         </h4>
                         <p className={`text-[11px] truncate mt-0.5 ${isBright ? 'text-zinc-600' : 'text-white/70'}`} title={domain}>
@@ -228,7 +238,7 @@ export default function SavePasswordBanner() {
                     className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
                         isBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-white/65 hover:text-white'
                     }`}
-                    title="Dismiss"
+                    title={t('pop.savePwd.dismiss', null, 'Dismiss')}
                 >
                     <X size={13} />
                 </button>
@@ -246,7 +256,7 @@ export default function SavePasswordBanner() {
                             type="text"
                             value={usernameInput}
                             onChange={e => setUsernameInput(e.target.value)}
-                            placeholder="Username or Email"
+                            placeholder={t('pop.savePwd.usernamePlaceholder', null, 'Username or Email')}
                             className={`w-full bg-transparent text-xs outline-none font-medium ${
                                 isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                             }`}
@@ -262,7 +272,7 @@ export default function SavePasswordBanner() {
                             type={showPassword ? 'text' : 'password'}
                             value={passwordInput}
                             onChange={e => setPasswordInput(e.target.value)}
-                            placeholder="Password"
+                            placeholder={t('pop.savePwd.passwordPlaceholder', null, 'Password')}
                             className={`w-full bg-transparent text-xs outline-none font-mono ${
                                 isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                             }`}
@@ -287,7 +297,7 @@ export default function SavePasswordBanner() {
                                 isBright ? 'text-zinc-500 hover:text-red-600' : 'text-white/65 hover:text-red-400'
                             }`}
                         >
-                            Never for this site
+                            {t('pop.savePwd.neverForSite', null, 'Never for this site')}
                         </button>
                         <div className="flex items-center gap-2">
                             <button 
@@ -296,7 +306,7 @@ export default function SavePasswordBanner() {
                                     isBright ? 'text-zinc-600 hover:text-zinc-900 hover:bg-black/5' : 'text-white/75 hover:text-white hover:bg-white/10'
                                 }`}
                             >
-                                Not now
+                                {t('pop.savePwd.notNow', null, 'Not now')}
                             </button>
                             <button 
                                 onClick={handleSaveDirect}
@@ -304,7 +314,7 @@ export default function SavePasswordBanner() {
                                 className="px-4 py-1.5 rounded-xl text-xs font-bold bg-accent text-black hover:bg-accent/90 shadow-sm transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                             >
                                 {isSaving ? <RefreshCw size={12} className="animate-spin" /> : null}
-                                <span>{isUpdate ? 'Update' : 'Save'}</span>
+                                <span>{isUpdate ? t('pop.savePwd.update', null, 'Update') : t('common.save', null, 'Save')}</span>
                             </button>
                         </div>
                     </div>
@@ -313,7 +323,7 @@ export default function SavePasswordBanner() {
                 /* Inline Unlock Body */
                 <form onSubmit={handleInlineUnlockAndSave} className="pt-3.5 space-y-3">
                     <p className={`text-[11px] leading-snug ${isBright ? 'text-zinc-600' : 'text-white/75'}`}>
-                        Your vault is locked. Enter authentication to encrypt and store this login:
+                        {t('pop.savePwd.lockedDesc', null, 'Your vault is locked. Enter authentication to encrypt and store this login:')}
                     </p>
 
                     {/* Unlock Mode Selector (Quick PIN vs Master Password) */}
@@ -334,7 +344,7 @@ export default function SavePasswordBanner() {
                             }`}
                         >
                             <KeyRound size={11} className={unlockMode === 'pin' ? (isBright ? 'text-amber-700' : 'text-accent') : 'opacity-60'} />
-                            <span>Quick PIN</span>
+                            <span>{t('pop.vault.quickPin', null, 'Quick PIN')}</span>
                         </button>
                         <button
                             type="button"
@@ -350,7 +360,7 @@ export default function SavePasswordBanner() {
                             }`}
                         >
                             <Lock size={11} className={unlockMode === 'password' ? (isBright ? 'text-amber-700' : 'text-accent') : 'opacity-60'} />
-                            <span>Master Password</span>
+                            <span>{t('pop.vault.masterPassword', null, 'Master Password')}</span>
                         </button>
                     </div>
 
@@ -366,7 +376,7 @@ export default function SavePasswordBanner() {
                                 maxLength={6}
                                 value={pinInput}
                                 onChange={e => { setPinInput(e.target.value.replace(/\D/g, '')); setUnlockError(''); }}
-                                placeholder="Enter Quick PIN (4-6 digits)..."
+                                placeholder={t('pop.savePwd.pinPlaceholder', null, 'Enter Quick PIN (4-6 digits)...')}
                                 className={`w-full bg-transparent text-xs outline-none font-mono tracking-widest ${
                                     isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                                 }`}
@@ -383,7 +393,7 @@ export default function SavePasswordBanner() {
                                 type="password"
                                 value={masterPassInput}
                                 onChange={e => { setMasterPassInput(e.target.value); setUnlockError(''); }}
-                                placeholder="Master Password..."
+                                placeholder={t('pop.savePwd.masterPlaceholder', null, 'Master Password...')}
                                 className={`w-full bg-transparent text-xs outline-none font-mono ${
                                     isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/45'
                                 }`}
@@ -408,7 +418,7 @@ export default function SavePasswordBanner() {
                             }`}
                         >
                             <ArrowLeft size={12} />
-                            <span>Back</span>
+                            <span>{t('common.back', null, 'Back')}</span>
                         </button>
 
                         <div className="flex items-center gap-2">
@@ -420,7 +430,7 @@ export default function SavePasswordBanner() {
                                     className={`p-1.5 rounded-lg border transition cursor-pointer ${
                                         isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700 hover:text-zinc-900' : 'bg-white/[0.08] hover:bg-white/[0.12] border-white/10 text-white/80 hover:text-white'
                                     }`}
-                                    title={`Unlock with ${biometricLabel}`}
+                                    title={t('pop.profile.unlockWith', { method: biometricLabel }, 'Unlock with {method}')}
                                 >
                                     <Fingerprint size={14} />
                                 </button>
@@ -432,7 +442,7 @@ export default function SavePasswordBanner() {
                                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-accent text-black hover:bg-accent/90 transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                             >
                                 {isSaving ? <RefreshCw size={12} className="animate-spin" /> : null}
-                                <span>Unlock & Save</span>
+                                <span>{t('pop.savePwd.unlockAndSave', null, 'Unlock & Save')}</span>
                             </button>
                         </div>
                     </div>

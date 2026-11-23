@@ -3,6 +3,7 @@ import { performWebSearch } from '../utils/webSearch';
 import { speakLocal, stopLocalTTS } from '../utils/localTTS';
 import useTabStore from './useTabStore';
 import useUIStore from './useUIStore';
+import { t } from '../i18n/index';
 
 export const MODEL_PRESETS = [
     {
@@ -195,7 +196,7 @@ const useAIStore = create((set, get) => ({
         if (!modelPath) {
             const preset = MODEL_PRESETS.find(m => m.id === activeModelId) || MODEL_PRESETS[0];
             get().downloadModel(preset);
-            return { success: false, downloading: true, message: `Downloading ${preset.name}...` };
+            return { success: false, downloading: true, message: t('stores.ai.downloadingPreset', { name: preset.name }, `Downloading ${preset.name}...`) };
         }
 
         if (window.electronAPI && typeof window.electronAPI.startAiServer === 'function') {
@@ -215,7 +216,7 @@ const useAIStore = create((set, get) => ({
                 set({ 
                     isRunning: false, 
                     status: 'error', 
-                    lastError: res?.message || res?.error || 'Failed to start AI server'
+                    lastError: res?.message || res?.error || t('stores.ai.startServerFailed', 'Failed to start AI server')
                 });
                 return res;
             }
@@ -257,12 +258,12 @@ const useAIStore = create((set, get) => ({
                     set({ status: 'stopped', lastError: null });
                     return res;
                 } else {
-                    set({ status: 'error', lastError: res?.error || 'Engine update failed' });
+                    set({ status: 'error', lastError: res?.error || t('stores.ai.engineUpdateFailed', 'Engine update failed') });
                     return res;
                 }
             }
         } catch (err) {
-            set({ status: 'error', lastError: err?.message || 'Engine update failed' });
+            set({ status: 'error', lastError: err?.message || t('stores.ai.engineUpdateFailed', 'Engine update failed') });
             return { success: false, error: err?.message };
         }
     },
@@ -373,7 +374,7 @@ const useAIStore = create((set, get) => ({
                 }, 300);
             } catch(e) {
                 if (unsub) unsub();
-                set({ status: 'error', downloadProgress: null, lastError: `Download failed: ${e?.message || e}` });
+                set({ status: 'error', downloadProgress: null, lastError: t('stores.ai.downloadFailed', { error: e?.message || e }, `Download failed: ${e?.message || e}`) });
             }
         } else {
             // Web browser simulated progress stream
@@ -750,7 +751,7 @@ const useAIStore = create((set, get) => ({
                 }
                 return;
             } else {
-                let errorText = 'Unknown Error';
+                let errorText = t('stores.ai.unknownError', 'Unknown Error');
                 try {
                     const errJson = await response.json();
                     errorText = errJson.error?.message || JSON.stringify(errJson);
@@ -768,7 +769,7 @@ const useAIStore = create((set, get) => ({
             set(state => {
                 const updated = [...state.chatHistory];
                 if (updated[aiMsgIndex]) {
-                    updated[aiMsgIndex] = { role: 'ai', content: `Unable to connect to llama-server on http://127.0.0.1:8080. Error: ${err.message}` };
+                    updated[aiMsgIndex] = { role: 'ai', content: t('stores.ai.connectionError', { error: err.message }, `Unable to connect to llama-server on http://127.0.0.1:8080. Error: ${err.message}`) };
                 }
                 
                 // If llama-server complains that image input is not supported, strip the image from the previous user message

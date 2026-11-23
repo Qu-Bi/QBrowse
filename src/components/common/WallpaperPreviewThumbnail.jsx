@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import useUIStore from '../../store/useUIStore';
 import { isVideoWallpaper, isGifWallpaper } from '../../utils/wallpaperHelpers';
 import { loadGifData, computeGifTransitionTimings, startGifLoopTransitions } from '../../utils/gifParser';
+import { useTranslation } from '../../i18n/index';
 
 /**
  * WallpaperPreviewThumbnail provides real-time, interactive preview of live wallpaper
@@ -18,6 +20,30 @@ function WallpaperPreviewThumbnail({
     defaultThumbnail = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=600&auto=format&fit=crop',
     className = ''
 }) {
+    const { t } = useTranslation();
+    const isWindowFocused = useUIStore(state => state.isWindowFocused);
+    const isWindowMinimized = useUIStore(state => state.isWindowMinimized);
+    const isWindowVisible = useUIStore(state => state.isWindowVisible);
+    const pauseWallpaperInBackground = useUIStore(state => state.settings?.pauseWallpaperInBackground ?? true);
+    const [isDocumentVisible, setIsDocumentVisible] = useState(
+        () => (typeof document !== 'undefined' ? !document.hidden : true)
+    );
+
+    useEffect(() => {
+        const handleVisibilityChange = () => setIsDocumentVisible(!document.hidden);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
+
+    const shouldPausePreview = Boolean(
+        !isDocumentVisible ||
+        isWindowMinimized ||
+        !isWindowVisible ||
+        (!isWindowFocused && pauseWallpaperInBackground)
+    );
+    const shouldPausePreviewRef = useRef(shouldPausePreview);
+    shouldPausePreviewRef.current = shouldPausePreview;
+
     const isVideo = isVideoWallpaper(customWallpaper);
     const isGif = isGifWallpaper(customWallpaper);
 
@@ -89,8 +115,45 @@ function WallpaperPreviewThumbnail({
         return () => { isCancelled = true; };
     }, [cleanUrl, isGif]);
 
+    // Sync preview video playback with authoritative window focus & visibility state
+    useEffect(() => {
+        if (!isVideo) return;
+        const pA = videoRefA.current;
+        const pB = videoRefB.current;
+        if (shouldPausePreview) {
+            if (videoCrossfadeTimerRef.current) {
+                clearTimeout(videoCrossfadeTimerRef.current);
+                videoCrossfadeTimerRef.current = null;
+            }
+            if (videoDipTimerRef.current) {
+                clearTimeout(videoDipTimerRef.current);
+                videoDipTimerRef.current = null;
+            }
+            isVideoCrossfadingRef.current = false;
+            isVideoDippingRef.current = false;
+            setVideoDipPhase('idle');
+            try { if (pA) pA.pause(); } catch (_) {}
+            try { if (pB) pB.pause(); } catch (_) {}
+        } else {
+            const activePlayer = (loopMode === 'crossfade' && activeVideoSlot === 'B') ? pB : pA;
+            if (activePlayer) {
+                try {
+                    const p = activePlayer.play();
+                    if (p) p.catch(() => {});
+                } catch (_) {}
+            }
+        }
+    }, [isVideo, shouldPausePreview, customWallpaper, loopMode, activeVideoSlot]);
+
+    const handlePreviewVideoPlay = useCallback((e) => {
+        if (shouldPausePreviewRef.current) {
+            try { e.currentTarget.pause(); } catch (_) {}
+        }
+    }, []);
+
     // Video loop transition handlers
     const handleVideoTimeUpdate = useCallback((slot) => {
+        if (shouldPausePreviewRef.current) return;
         const pA = videoRefA.current;
         const pB = videoRefB.current;
         const activePlayer = slot === 'A' ? pA : pB;
@@ -161,6 +224,13 @@ function WallpaperPreviewThumbnail({
         const pB = videoRefB.current;
         const player = slot === 'A' ? pA : pB;
 
+        if (shouldPausePreviewRef.current) {
+            if (player) {
+                try { player.pause(); } catch (_) {}
+            }
+            return;
+        }
+
         if (loopMode === 'crossfade') {
             if (slot !== activeVideoSlot) {
                 if (player) {
@@ -223,7 +293,7 @@ function WallpaperPreviewThumbnail({
 
     // GIF loop transition manager (Cross-Dissolve, Ambient Dip, or Native Loop/Cut)
     useEffect(() => {
-        if (!isGif || !gifData || (loopMode !== 'dip' && loopMode !== 'crossfade')) {
+        if (!isGif || !gifData || shouldPausePreview || (loopMode !== 'dip' && loopMode !== 'crossfade')) {
             setIsGifCrossfading(false);
             setGifDipOverlayOpacity(0);
             setActiveGifSlot('A');
@@ -242,7 +312,7 @@ function WallpaperPreviewThumbnail({
             setCrossfading: setIsGifCrossfading,
             setDipOverlayOpacity: setGifDipOverlayOpacity
         });
-    }, [isGif, gifData, loopMode, safeDuration, cleanUrl]);
+    }, [isGif, gifData, loopMode, safeDuration, cleanUrl, shouldPausePreview]);
 
     const visualFilter = (blurEnabled && blur > 0)
         ? `saturate(1.1) blur(${Math.min(8, blur * 0.2)}px)`
@@ -258,10 +328,11 @@ function WallpaperPreviewThumbnail({
                             ref={videoRefA}
                             key={`${cleanUrl}-pv-slotA`}
                             src={cleanUrl}
-                            autoPlay
+                            autoPlay={!shouldPausePreview}
                             muted
                             playsInline
                             preload="auto"
+                            onPlay={handlePreviewVideoPlay}
                             onTimeUpdate={() => handleVideoTimeUpdate('A')}
                             onEnded={() => handleVideoEnded('A')}
                             className="absolute inset-0 w-full h-full object-cover will-change-transform"
@@ -279,6 +350,7 @@ function WallpaperPreviewThumbnail({
                             muted
                             playsInline
                             preload="auto"
+                            onPlay={handlePreviewVideoPlay}
                             onTimeUpdate={() => handleVideoTimeUpdate('B')}
                             onEnded={() => handleVideoEnded('B')}
                             className="absolute inset-0 w-full h-full object-cover will-change-transform"
@@ -295,11 +367,12 @@ function WallpaperPreviewThumbnail({
                         ref={videoRefA}
                         key={`${cleanUrl}-pv-single`}
                         src={cleanUrl}
-                        autoPlay
+                        autoPlay={!shouldPausePreview}
                         loop={loopMode === 'cut' || loopMode === 'loop'}
                         muted
                         playsInline
                         preload="auto"
+                        onPlay={handlePreviewVideoPlay}
                         onTimeUpdate={() => handleVideoTimeUpdate('A')}
                         onEnded={() => handleVideoEnded('A')}
                         className="absolute inset-0 w-full h-full object-cover will-change-transform"
@@ -379,7 +452,7 @@ function WallpaperPreviewThumbnail({
             ) : (
                 <img
                     src={cleanUrl || defaultThumbnail}
-                    alt="Wallpaper preview"
+                    alt={t('tools.wallpaperPreview.alt', null, 'Wallpaper preview')}
                     loading="lazy"
                     decoding="async"
                     className="w-full h-full object-cover transition-all duration-300"
@@ -402,7 +475,7 @@ function WallpaperPreviewThumbnail({
             {/* Clean Simple Preview Badge */}
             <div className="absolute bottom-1 left-1 pointer-events-none">
                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white/80 border border-white/10">
-                    Preview
+                    {t('tools.wallpaperPreview.badge', null, 'Preview')}
                 </span>
             </div>
         </div>

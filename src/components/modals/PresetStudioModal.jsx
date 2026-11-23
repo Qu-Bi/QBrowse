@@ -19,17 +19,20 @@ import {
     getPresetIcon, 
     PRESET_ICON_MAP 
 } from '../../utils/experiencePresets';
+import { useTranslation } from '../../i18n/index';
+
+const BUILTIN_PRESET_IDS = new Set(['balanced', 'developer', 'classic_reverse', 'bottom_bar', 'minimalist', 'privacy']);
 
 const ACCENT_SWATCHES = [
-    { name: 'Amber Gold', hex: '#d4bc94', rgb: '212, 188, 148' },
-    { name: 'Ocean', hex: '#3b82f6', rgb: '59, 130, 246' },
-    { name: 'Sky Blue', hex: '#0284c7', rgb: '2, 132, 199' },
-    { name: 'Cyber Emerald', hex: '#10b981', rgb: '16, 185, 129' },
-    { name: 'Royal Violet', hex: '#8b5cf6', rgb: '139, 92, 246' },
-    { name: 'Rose Gold', hex: '#f43f5e', rgb: '244, 63, 94' },
-    { name: 'Sunset Orange', hex: '#f97316', rgb: '249, 115, 22' },
-    { name: 'Cyber Cyan', hex: '#06b6d4', rgb: '6, 182, 212' },
-    { name: 'Slate Gray', hex: '#94a3b8', rgb: '148, 163, 184' }
+    { key: 'amberGold', name: 'Amber Gold', hex: '#d4bc94', rgb: '212, 188, 148' },
+    { key: 'ocean', name: 'Ocean', hex: '#3b82f6', rgb: '59, 130, 246' },
+    { key: 'skyBlue', name: 'Sky Blue', hex: '#0284c7', rgb: '2, 132, 199' },
+    { key: 'cyberEmerald', name: 'Cyber Emerald', hex: '#10b981', rgb: '16, 185, 129' },
+    { key: 'royalViolet', name: 'Royal Violet', hex: '#8b5cf6', rgb: '139, 92, 246' },
+    { key: 'roseGold', name: 'Rose Gold', hex: '#f43f5e', rgb: '244, 63, 94' },
+    { key: 'sunsetOrange', name: 'Sunset Orange', hex: '#f97316', rgb: '249, 115, 22' },
+    { key: 'cyberCyan', name: 'Cyber Cyan', hex: '#06b6d4', rgb: '6, 182, 212' },
+    { key: 'slateGray', name: 'Slate Gray', hex: '#94a3b8', rgb: '148, 163, 184' }
 ];
 
 const SELECTABLE_ICONS = [
@@ -109,6 +112,7 @@ function StudioSlidingPillSwitcher({ options = [], value, onChange, isBright, si
 }
 
 export default function PresetStudioModal({ initialPresetId = null }) {
+    const { t, intlLocale } = useTranslation();
     const activeModal = useUIStore(state => state.activeModal);
     const closeModal = useUIStore(state => state.closeModal);
     const showToast = useUIStore(state => state.showToast);
@@ -269,22 +273,25 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
     // Live Clock & Date for Live Preview
     const [previewTime, setPreviewTime] = useState(() => {
-        return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return new Date().toLocaleTimeString(intlLocale || 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     });
     const [previewDate, setPreviewDate] = useState(() => {
-        return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
+        return new Date().toLocaleDateString(intlLocale || 'en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
     });
 
     useEffect(() => {
-        const timer = setInterval(() => {
+        const syncNow = () => {
             const now = new Date();
-            const nextTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-            const nextDate = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
+            const loc = intlLocale || 'en-US';
+            const nextTime = now.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', hour12: false });
+            const nextDate = now.toLocaleDateString(loc, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
             setPreviewTime(prev => (prev === nextTime ? prev : nextTime));
             setPreviewDate(prev => (prev === nextDate ? prev : nextDate));
-        }, 15000);
+        };
+        syncNow();
+        const timer = setInterval(syncNow, 15000);
         return () => clearInterval(timer);
-    }, []);
+    }, [intlLocale]);
 
     // Save Preset Dialog State
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
@@ -499,7 +506,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             uiStore.setAccentColor(draft.accentColor);
         }
 
-        showToast('Layout applied to browser!');
+        showToast(t('tools.studio.toasts.applied', null, 'Layout applied to browser!'));
         playSnapAudio();
     };
 
@@ -529,7 +536,23 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             appFontSizeScale: typeof s.appFontSizeScale === 'number' ? s.appFontSizeScale : 100,
             appFontWeightShift: s.appFontWeightShift || 'normal'
         });
-        showToast('Studio draft reset to browser setup');
+        showToast(t('tools.studio.toasts.reset', null, 'Studio draft reset to browser setup'));
+    };
+
+    const getPresetDisplayName = (preset) => {
+        if (!preset) return '';
+        if (!preset.isCustom && BUILTIN_PRESET_IDS.has(preset.id)) {
+            return t(`tools.presets.names.${preset.id}`, null, preset.name);
+        }
+        return preset.name;
+    };
+
+    const getPresetDisplayTagline = (preset) => {
+        if (!preset) return '';
+        if (!preset.isCustom && BUILTIN_PRESET_IDS.has(preset.id)) {
+            return t(`tools.presets.taglines.${preset.id}`, null, preset.tagline);
+        }
+        return preset.tagline;
     };
 
     // Load preset into Studio
@@ -564,9 +587,10 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             setEditingPresetId(null);
         }
         setActiveTab('studio');
+        const displayName = getPresetDisplayName(preset);
         showToast(isCustomEdit || preset.isCustom 
-            ? `Editing "${preset.name}" in Studio` 
-            : `Loaded "${preset.name}" into Studio Canvas`
+            ? t('tools.studio.toasts.editingPreset', { name: displayName }, `Editing "${displayName}" in Studio`)
+            : t('tools.studio.toasts.loadedPreset', { name: displayName }, `Loaded "${displayName}" into Studio Canvas`)
         );
     };
 
@@ -578,8 +602,13 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             setPresetDescInput(existingPreset.tagline || '');
             setPresetIconInput(typeof existingPreset.icon === 'string' ? existingPreset.icon : 'Sparkles');
         } else {
-            setPresetNameInput(`${draft.topBarPosition === 'bottom' ? 'Bottom' : 'Top'} ${draft.sidebarPosition === 'right' ? 'Arc' : 'Flow'}`);
-            setPresetDescInput(`Custom layout: ${draft.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'}, ${draft.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}, ${draft.tabPresentation} tabs`);
+            const barWord = draft.topBarPosition === 'bottom' ? t('tools.studio.posBottom', null, 'Bottom') : t('tools.studio.posTop', null, 'Top');
+            const sideStyleWord = draft.sidebarPosition === 'right' ? t('tools.studio.defaultNewNameArc', null, 'Arc') : t('tools.studio.defaultNewNameFlow', null, 'Flow');
+            const barLabel = draft.topBarPosition === 'bottom' ? t('tools.studio.bottomBarLabel', null, 'Bottom Bar') : t('tools.studio.topBarLabel', null, 'Top Bar');
+            const sidebarLabel = draft.sidebarPosition === 'right' ? t('tools.studio.rightSidebarLabel', null, 'Right Sidebar') : t('tools.studio.leftSidebarLabel', null, 'Left Sidebar');
+            const tabsLabel = t(`tools.studio.tabStyles.${draft.tabPresentation}`, null, draft.tabPresentation);
+            setPresetNameInput(t('tools.studio.defaultNewNameFormat', { bar: barWord, side: sideStyleWord }, `${barWord} ${sideStyleWord}`));
+            setPresetDescInput(t('tools.studio.defaultNewDescFormat', { bar: barLabel, sidebar: sidebarLabel, tabs: tabsLabel }, `Custom layout: ${barLabel}, ${sidebarLabel}, ${draft.tabPresentation} tabs`));
             setPresetIconInput('Sparkles');
         }
         setIsSaveModalOpen(true);
@@ -592,12 +621,15 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             return;
         }
         const existing = customPresets.find(p => p.id === editingPresetId);
-        const name = existing?.name || presetNameInput.trim() || 'Custom Preset';
-        const tagline = existing?.tagline || presetDescInput.trim() || 'Custom user configuration';
+        const name = existing?.name || presetNameInput.trim() || t('tools.studio.defaultCustomName', null, 'Custom Preset');
+        const tagline = existing?.tagline || presetDescInput.trim() || t('tools.studio.defaultCustomDesc', null, 'Custom user configuration');
         const icon = existing?.icon || 'Sparkles';
 
-        const layoutTag = `${draft.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${draft.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`;
-        const layoutSummary = `${layoutTag} · ${draft.toolHubPosition === 'left' ? 'Left ToolHub' : 'Right ToolHub'}`;
+        const barLabel = draft.topBarPosition === 'bottom' ? t('tools.studio.bottomBarLabel', null, 'Bottom Bar') : t('tools.studio.topBarLabel', null, 'Top Bar');
+        const sidebarLabel = draft.sidebarPosition === 'right' ? t('tools.studio.rightSidebarLabel', null, 'Right Sidebar') : t('tools.studio.leftSidebarLabel', null, 'Left Sidebar');
+        const toolhubLabel = draft.toolHubPosition === 'left' ? t('tools.studio.leftToolhubLabel', null, 'Left ToolHub') : t('tools.studio.rightToolhubLabel', null, 'Right ToolHub');
+        const layoutTag = t('tools.studio.layoutTagFormat', { bar: barLabel, sidebar: sidebarLabel }, `${barLabel} · ${sidebarLabel}`);
+        const layoutSummary = t('tools.studio.layoutSummaryFormat', { tag: layoutTag, toolhub: toolhubLabel }, `${layoutTag} · ${toolhubLabel}`);
 
         const updates = {
             name,
@@ -627,8 +659,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             layoutSummary,
             highlights: [
                 layoutTag,
-                draft.tabPresentation.charAt(0).toUpperCase() + draft.tabPresentation.slice(1) + ' Tabs',
-                draft.uiScale === 'compact' ? 'Compact Scale' : 'Comfortable Scale'
+                t('tools.studio.tabsHighlight', { style: t(`tools.studio.tabStyles.${draft.tabPresentation}`, null, draft.tabPresentation) }, `${draft.tabPresentation} Tabs`),
+                draft.uiScale === 'compact' ? t('tools.studio.compactScaleLabel', null, 'Compact Scale') : t('tools.studio.comfortableScaleLabel', null, 'Comfortable Scale')
             ]
         };
 
@@ -645,11 +677,14 @@ export default function PresetStudioModal({ initialPresetId = null }) {
     // Handle Save Custom Preset
     const handleSavePreset = (e) => {
         e?.preventDefault();
-        const trimmedName = presetNameInput.trim() || 'Custom Preset';
-        const trimmedDesc = presetDescInput.trim() || 'Custom user configuration';
+        const trimmedName = presetNameInput.trim() || t('tools.studio.defaultCustomName', null, 'Custom Preset');
+        const trimmedDesc = presetDescInput.trim() || t('tools.studio.defaultCustomDesc', null, 'Custom user configuration');
 
-        const layoutTag = `${draft.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${draft.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`;
-        const layoutSummary = `${layoutTag} · ${draft.toolHubPosition === 'left' ? 'Left ToolHub' : 'Right ToolHub'}`;
+        const barLabel = draft.topBarPosition === 'bottom' ? t('tools.studio.bottomBarLabel', null, 'Bottom Bar') : t('tools.studio.topBarLabel', null, 'Top Bar');
+        const sidebarLabel = draft.sidebarPosition === 'right' ? t('tools.studio.rightSidebarLabel', null, 'Right Sidebar') : t('tools.studio.leftSidebarLabel', null, 'Left Sidebar');
+        const toolhubLabel = draft.toolHubPosition === 'left' ? t('tools.studio.leftToolhubLabel', null, 'Left ToolHub') : t('tools.studio.rightToolhubLabel', null, 'Right ToolHub');
+        const layoutTag = t('tools.studio.layoutTagFormat', { bar: barLabel, sidebar: sidebarLabel }, `${barLabel} · ${sidebarLabel}`);
+        const layoutSummary = t('tools.studio.layoutSummaryFormat', { tag: layoutTag, toolhub: toolhubLabel }, `${layoutTag} · ${toolhubLabel}`);
 
         const presetPayload = {
             name: trimmedName,
@@ -682,8 +717,8 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             badge: 'Custom',
             highlights: [
                 layoutTag,
-                draft.tabPresentation.charAt(0).toUpperCase() + draft.tabPresentation.slice(1) + ' Tabs',
-                draft.uiScale === 'compact' ? 'Compact Scale' : 'Comfortable Scale'
+                t('tools.studio.tabsHighlight', { style: t(`tools.studio.tabStyles.${draft.tabPresentation}`, null, draft.tabPresentation) }, `${draft.tabPresentation} Tabs`),
+                draft.uiScale === 'compact' ? t('tools.studio.compactScaleLabel', null, 'Compact Scale') : t('tools.studio.comfortableScaleLabel', null, 'Comfortable Scale')
             ]
         };
 
@@ -729,14 +764,16 @@ export default function PresetStudioModal({ initialPresetId = null }) {
             if (libraryFilter === 'custom' && !p.isCustom) return false;
             if (librarySearch.trim()) {
                 const q = librarySearch.toLowerCase();
-                const matchName = (p.name || '').toLowerCase().includes(q);
-                const matchTag = (p.tagline || '').toLowerCase().includes(q);
+                const displayName = getPresetDisplayName(p);
+                const displayTagline = getPresetDisplayTagline(p);
+                const matchName = (p.name || '').toLowerCase().includes(q) || (displayName || '').toLowerCase().includes(q);
+                const matchTag = (p.tagline || '').toLowerCase().includes(q) || (displayTagline || '').toLowerCase().includes(q);
                 const matchLayout = (p.layoutTag || '').toLowerCase().includes(q);
                 return matchName || matchTag || matchLayout;
             }
             return true;
         });
-    }, [allPresets, libraryFilter, librarySearch]);
+    }, [allPresets, libraryFilter, librarySearch, t]);
 
     // Curvature classes for the mini frame
     const getCurvatureClass = (curvature) => {
@@ -795,10 +832,10 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-base font-bold tracking-tight">Preset Studio</h2>
+                                <h2 className="text-base font-bold tracking-tight">{t('tools.studio.title', null, 'Preset Studio')}</h2>
                             </div>
                             <p className={`text-xs ${isSystemBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                Visually re-dock components, sculpt curvatures, customize themes, and manage custom presets.
+                                {t('tools.studio.subtitle', null, 'Visually re-dock components, sculpt curvatures, customize themes, and manage custom presets.')}
                             </p>
                         </div>
                     </div>
@@ -830,7 +867,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 }`}
                             >
                                 <Layout size={13} className="shrink-0" />
-                                <span className="whitespace-nowrap truncate">Canvas</span>
+                                <span className="whitespace-nowrap truncate">{t('tools.studio.tabCanvas', null, 'Canvas')}</span>
                             </button>
 
                             <button
@@ -843,7 +880,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 }`}
                             >
                                 <Bookmark size={13} className="shrink-0" />
-                                <span className="whitespace-nowrap truncate">Presets</span>
+                                <span className="whitespace-nowrap truncate">{t('tools.studio.tabPresets', null, 'Presets')}</span>
                                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono transition-colors shrink-0 ${
                                     activeTab === 'library' 
                                         ? (isSystemBright ? 'bg-black/10 text-zinc-900 font-bold' : 'bg-white/20 text-white font-bold') 
@@ -858,7 +895,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         <button
                             type="button"
                             onClick={handleCloseModal}
-                            aria-label="Close Preset Studio"
+                            aria-label={t('tools.studio.closeAria', null, 'Close Preset Studio')}
                             className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
                                 isSystemBright 
                                     ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600 hover:text-zinc-900' 
@@ -946,7 +983,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 ) : (
                                                     <span className="text-[11px] font-mono font-medium text-accent text-center px-2 flex flex-col items-center gap-1.5 drop-shadow-sm">
                                                         <ArrowLeftRight size={14} className="animate-pulse" />
-                                                        <span>Dock Sidebar on Left</span>
+                                                        <span>{t('tools.studio.dockLeftSidebar', null, 'Dock Sidebar on Left')}</span>
                                                     </span>
                                                 )}
                                             </div>
@@ -985,7 +1022,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     ) : (
                                                         <span className="text-[11px] font-mono font-medium text-accent flex items-center gap-1.5 drop-shadow-sm">
                                                             <ArrowUpDown size={12} className="animate-bounce" />
-                                                            <span>Dock Navigation Bar at Top</span>
+                                                            <span>{t('tools.studio.dockTopBar', null, 'Dock Navigation Bar at Top')}</span>
                                                         </span>
                                                     )}
                                                 </div>
@@ -1038,7 +1075,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                         }`}>
                                                             <div className="flex items-center gap-2 min-w-0 truncate">
                                                                 <Search size={11} className="opacity-60 shrink-0" />
-                                                                <span className="truncate">Search the web, or type a command...</span>
+                                                                <span className="truncate">{t('tools.studio.searchBarPlaceholder', null, 'Search the web, or type a command...')}</span>
                                                             </div>
                                                             <kbd className={`px-1.5 py-0.5 rounded text-[9px] font-mono tracking-normal leading-none whitespace-nowrap border font-semibold shrink-0 select-none ${
                                                                 draft.theme === 'light'
@@ -1056,7 +1093,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                         onDragStart={(e) => handleDragStart(e, 'toolhub')}
                                                         onDragEnd={handleDragEnd}
                                                         onClick={swapToolHubPosition}
-                                                        title={`ToolHub Dock: ${draft.toolHubPosition.toUpperCase()} (Click or drag to swap)`}
+                                                        title={t('tools.studio.toolhubDockTitle', { pos: (draft.toolHubPosition === 'left' ? t('tools.studio.posLeft', null, 'Left') : t('tools.studio.posRight', null, 'Right')).toUpperCase() }, `ToolHub Dock: ${draft.toolHubPosition.toUpperCase()} (Click or drag to swap)`)}
                                                         className={`absolute top-1/2 -translate-y-1/2 ${
                                                             draft.toolHubPosition === 'left' ? 'left-1.5' : 'right-1.5'
                                                         } ${isCompactScale ? 'w-3.5 h-8' : 'w-4 h-10'} rounded-full border backdrop-blur-xl flex flex-col items-center justify-center gap-1 cursor-grab active:cursor-grabbing transition-all duration-300 shadow-md group hover:scale-105 active:scale-95 ${
@@ -1100,7 +1137,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     ) : (
                                                         <span className="text-[11px] font-mono font-medium text-accent flex items-center gap-1.5 drop-shadow-sm">
                                                             <ArrowUpDown size={12} className="animate-bounce" />
-                                                            <span>Dock Navigation Bar at Bottom</span>
+                                                            <span>{t('tools.studio.dockBottomBar', null, 'Dock Navigation Bar at Bottom')}</span>
                                                         </span>
                                                     )}
                                                 </div>
@@ -1136,7 +1173,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 ) : (
                                                     <span className="text-[11px] font-mono font-medium text-accent text-center px-2 flex flex-col items-center gap-1.5 drop-shadow-sm">
                                                         <ArrowLeftRight size={14} className="animate-pulse" />
-                                                        <span>Dock Sidebar on Right</span>
+                                                        <span>{t('tools.studio.dockRightSidebar', null, 'Dock Sidebar on Right')}</span>
                                                     </span>
                                                 )}
                                             </div>
@@ -1152,14 +1189,18 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 isSystemBright ? 'border-black/[0.07] text-zinc-500' : 'border-white/[0.06] text-zinc-400'
                             }`}>
                                 <div className="flex items-center gap-3">
-                                    <span>Dock: <strong className="text-accent">{draft.topBarPosition.toUpperCase()}</strong> Bar</span>
+                                    <span>{t('tools.studio.legendDock', null, 'Dock:')} <strong className="text-accent">{t('tools.studio.legendBarValue', { pos: (draft.topBarPosition === 'bottom' ? t('tools.studio.posBottom', null, 'Bottom') : t('tools.studio.posTop', null, 'Top')).toUpperCase() }, `${draft.topBarPosition.toUpperCase()} Bar`)}</strong></span>
                                     <span>·</span>
-                                    <span>Sidebar: <strong className="text-accent">{draft.sidebarPosition.toUpperCase()}</strong> ({draft.sidebarStyle})</span>
+                                    <span>{t('tools.studio.legendSidebar', null, 'Sidebar:')} <strong className="text-accent">{(draft.sidebarPosition === 'right' ? t('tools.studio.posRight', null, 'Right') : t('tools.studio.posLeft', null, 'Left')).toUpperCase()}</strong> ({t(`tools.studio.sidebarModes.${draft.sidebarStyle || 'classic'}`, null, draft.sidebarStyle)})</span>
                                     <span>·</span>
-                                    <span>ToolHub: <strong className="text-accent">{draft.toolHubPosition.toUpperCase()}</strong></span>
+                                    <span>{t('tools.studio.legendToolhub', null, 'ToolHub:')} <strong className="text-accent">{(draft.toolHubPosition === 'left' ? t('tools.studio.posLeft', null, 'Left') : t('tools.studio.posRight', null, 'Right')).toUpperCase()}</strong></span>
                                 </div>
                                 <span className="text-[10px] opacity-70">
-                                    Curvature: {draft.frameCurvature} · Omnibox: {draft.omniboxStyle} · Tabs: {draft.tabPresentation}
+                                    {t('tools.studio.legendSummary', {
+                                        curvature: t(`tools.studio.curvatures.${draft.frameCurvature === 'sharp' ? 'square' : draft.frameCurvature}`, null, draft.frameCurvature),
+                                        omnibox: t(`tools.studio.omniboxStyles.${draft.omniboxStyle}`, null, draft.omniboxStyle),
+                                        tabs: t(`tools.studio.tabStyles.${draft.tabPresentation}`, null, draft.tabPresentation)
+                                    }, `Curvature: ${draft.frameCurvature} · Omnibox: ${draft.omniboxStyle} · Tabs: ${draft.tabPresentation}`)}
                                 </span>
                             </div>
 
@@ -1175,12 +1216,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 }`}>
                                     <h3 className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
                                         <Sliders size={13} />
-                                        Layout Controls
+                                        {t('tools.studio.layoutControls', null, 'Layout Controls')}
                                     </h3>
                                     <button
                                         type="button"
                                         onClick={handleResetDraft}
-                                        title="Reset draft to current browser setup"
+                                        title={t('tools.studio.resetTitle', null, 'Reset draft to current browser setup')}
                                         className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition flex items-center gap-1 cursor-pointer ${
                                             isSystemBright
                                                 ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600'
@@ -1188,7 +1229,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         }`}
                                     >
                                         <RotateCcw size={10} />
-                                        <span>Reset</span>
+                                        <span>{t('tools.studio.reset', null, 'Reset')}</span>
                                     </button>
                                 </div>
 
@@ -1198,35 +1239,35 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     }`}>
                                         <div className="flex items-center gap-1.5 min-w-0">
                                             <Edit3 size={13} className="text-accent shrink-0" />
-                                            <span className="truncate">Editing: <strong className="text-accent">{editingPreset.name}</strong></span>
+                                            <span className="truncate">{t('tools.studio.editingLabel', null, 'Editing:')} <strong className="text-accent">{editingPreset.name}</strong></span>
                                         </div>
                                         <button
                                             type="button"
                                             onClick={() => {
                                                 setEditingPresetId(null);
-                                                showToast('Switched to new draft');
+                                                showToast(t('tools.studio.toasts.switchedNewDraft', null, 'Switched to new draft'));
                                             }}
                                             className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition cursor-pointer ${
                                                 isSystemBright
                                                     ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600'
                                                     : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/10 text-zinc-400 hover:text-white'
                                             }`}
-                                            title="Cancel editing and create a new preset"
+                                            title={t('tools.studio.cancelEditTitle', null, 'Cancel editing and create a new preset')}
                                         >
-                                            Cancel
+                                            {t('tools.studio.cancel', null, 'Cancel')}
                                         </button>
                                     </div>
                                 )}
 
                                 {/* 0. SIDEBAR STYLE */}
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1.5">Sidebar Mode</label>
+                                    <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.sidebarMode', null, 'Sidebar Mode')}</label>
                                     <StudioSlidingPillSwitcher
                                         options={[
-                                            { id: 'classic', label: 'Classic' },
-                                            { id: 'floating', label: 'Floating' },
-                                            { id: 'compact', label: 'Compact' },
-                                            { id: 'hidden', label: 'Hidden' }
+                                            { id: 'classic', label: t('tools.studio.sidebarModes.classic', null, 'Classic') },
+                                            { id: 'floating', label: t('tools.studio.sidebarModes.floating', null, 'Floating') },
+                                            { id: 'compact', label: t('tools.studio.sidebarModes.compact', null, 'Compact') },
+                                            { id: 'hidden', label: t('tools.studio.sidebarModes.hidden', null, 'Hidden') }
                                         ]}
                                         value={draft.sidebarStyle || 'classic'}
                                         onChange={(val) => updateDraft('sidebarStyle', val)}
@@ -1236,12 +1277,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                 {/* 1. CURVATURE */}
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1.5">Window Curvature</label>
+                                    <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.windowCurvature', null, 'Window Curvature')}</label>
                                     <StudioSlidingPillSwitcher
                                         options={[
-                                            { id: 'default', label: 'Default' },
-                                            { id: 'cohesive', label: 'Cohesive' },
-                                            { id: 'square', label: 'Sharp' }
+                                            { id: 'default', label: t('tools.studio.curvatures.default', null, 'Default') },
+                                            { id: 'cohesive', label: t('tools.studio.curvatures.cohesive', null, 'Cohesive') },
+                                            { id: 'square', label: t('tools.studio.curvatures.square', null, 'Sharp') }
                                         ]}
                                         value={draft.frameCurvature}
                                         onChange={(val) => updateDraft('frameCurvature', val)}
@@ -1251,12 +1292,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                 {/* 2. OMNIBOX STYLE */}
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1.5">Omnibox Architecture</label>
+                                    <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.omniboxArch', null, 'Omnibox Architecture')}</label>
                                     <StudioSlidingPillSwitcher
                                         options={[
-                                            { id: 'capsule', label: 'Capsule' },
-                                            { id: 'wide', label: 'Wide' },
-                                            { id: 'minimal', label: 'Minimal' }
+                                            { id: 'capsule', label: t('tools.studio.omniboxStyles.capsule', null, 'Capsule') },
+                                            { id: 'wide', label: t('tools.studio.omniboxStyles.wide', null, 'Wide') },
+                                            { id: 'minimal', label: t('tools.studio.omniboxStyles.minimal', null, 'Minimal') }
                                         ]}
                                         value={draft.omniboxStyle}
                                         onChange={(val) => updateDraft('omniboxStyle', val)}
@@ -1266,12 +1307,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                 {/* 3. TAB PRESENTATION */}
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1.5">Tab Presentation</label>
+                                    <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.tabPresentation', null, 'Tab Presentation')}</label>
                                     <StudioSlidingPillSwitcher
                                         options={[
-                                            { id: 'pills', label: 'Pills' },
-                                            { id: 'compact', label: 'Compact' },
-                                            { id: 'cards', label: 'Cards' }
+                                            { id: 'pills', label: t('tools.studio.tabStyles.pills', null, 'Pills') },
+                                            { id: 'compact', label: t('tools.studio.tabStyles.compact', null, 'Compact') },
+                                            { id: 'cards', label: t('tools.studio.tabStyles.cards', null, 'Cards') }
                                         ]}
                                         value={draft.tabPresentation}
                                         onChange={(val) => updateDraft('tabPresentation', val)}
@@ -1281,12 +1322,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                 {/* 4. WINDOW CONTROLS STYLE */}
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1.5">Window Controls Style</label>
+                                    <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.windowControlsStyle', null, 'Window Controls Style')}</label>
                                     <StudioSlidingPillSwitcher
                                         options={[
-                                            { id: 'mac', label: 'macOS' },
-                                            { id: 'windows', label: 'Windows' },
-                                            { id: 'minimal', label: 'Minimal' }
+                                            { id: 'mac', label: t('tools.studio.controlsStyles.mac', null, 'macOS') },
+                                            { id: 'windows', label: t('tools.studio.controlsStyles.windows', null, 'Windows') },
+                                            { id: 'minimal', label: t('tools.studio.controlsStyles.minimal', null, 'Minimal') }
                                         ]}
                                         value={draft.windowControlsStyle}
                                         onChange={(val) => updateDraft('windowControlsStyle', val)}
@@ -1296,12 +1337,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                 {/* 4b. WINDOW CONTROLS LAYOUT */}
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1.5">Window Controls Layout</label>
+                                    <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.windowControlsLayout', null, 'Window Controls Layout')}</label>
                                     <StudioSlidingPillSwitcher
                                         options={[
-                                            { id: 'auto', label: 'Smart Corner' },
-                                            { id: 'close-first', label: 'Close First' },
-                                            { id: 'minimize-first', label: 'Minimize First' }
+                                            { id: 'auto', label: t('tools.studio.controlsOrders.auto', null, 'Smart Corner') },
+                                            { id: 'close-first', label: t('tools.studio.controlsOrders.close-first', null, 'Close First') },
+                                            { id: 'minimize-first', label: t('tools.studio.controlsOrders.minimize-first', null, 'Minimize First') }
                                         ]}
                                         value={draft.windowControlsOrder || 'auto'}
                                         onChange={(val) => updateDraft('windowControlsOrder', val)}
@@ -1312,11 +1353,11 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 {/* 5. THEME & UI SCALE */}
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
-                                        <label className="text-xs font-semibold block mb-1.5">Theme</label>
+                                        <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.themeLabel', null, 'Theme')}</label>
                                         <StudioSlidingPillSwitcher
                                             options={[
-                                                { id: 'dark', label: 'Dark', icon: Moon },
-                                                { id: 'light', label: 'Light', icon: Sun }
+                                                { id: 'dark', label: t('tools.studio.themes.dark', null, 'Dark'), icon: Moon },
+                                                { id: 'light', label: t('tools.studio.themes.light', null, 'Light'), icon: Sun }
                                             ]}
                                             value={draft.theme}
                                             onChange={(val) => updateDraft('theme', val)}
@@ -1325,11 +1366,11 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     </div>
 
                                     <div>
-                                        <label className="text-xs font-semibold block mb-1.5">UI Scale</label>
+                                        <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.uiScaleLabel', null, 'UI Scale')}</label>
                                         <StudioSlidingPillSwitcher
                                             options={[
-                                                { id: 'comfortable', label: 'Normal' },
-                                                { id: 'compact', label: 'Compact' }
+                                                { id: 'comfortable', label: t('tools.studio.uiScales.comfortable', null, 'Normal') },
+                                                { id: 'compact', label: t('tools.studio.uiScales.compact', null, 'Compact') }
                                             ]}
                                             value={draft.uiScale}
                                             onChange={(val) => updateDraft('uiScale', val)}
@@ -1340,7 +1381,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                 {/* 6. ACCENT COLOR PALETTE */}
                                 <div>
-                                    <label className="text-xs font-semibold block mb-1.5">Accent Color Swatch</label>
+                                    <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.accentSwatchLabel', null, 'Accent Color Swatch')}</label>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         {ACCENT_SWATCHES.map(swatch => (
                                             <button
@@ -1350,7 +1391,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     updateDraft('accentColor', swatch.hex);
                                                     updateDraft('accentRgb', swatch.rgb);
                                                 }}
-                                                title={swatch.name}
+                                                title={t(`tools.presets.accents.${swatch.key}`, null, swatch.name)}
                                                 className={`w-7 h-7 rounded-full shadow-md transition-all cursor-pointer flex items-center justify-center ${
                                                     draft.accentColor === swatch.hex 
                                                         ? (isSystemBright
@@ -1376,7 +1417,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             <button 
                                                 type="button"
                                                 onClick={() => colorInputRef.current?.click()}
-                                                title="Open System Color Picker"
+                                                title={t('tools.studio.openColorPickerTitle', null, 'Open System Color Picker')}
                                                 className={`pl-2.5 pr-2 py-1.5 border-r transition cursor-pointer flex items-center justify-center ${
                                                     isSystemBright 
                                                         ? 'border-black/[0.07] hover:bg-black/5 text-zinc-500 hover:text-zinc-800' 
@@ -1439,7 +1480,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             className="w-full py-2.5 rounded-2xl bg-accent text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.99] hover:brightness-105"
                                         >
                                             <Check size={14} strokeWidth={2.5} />
-                                            <span>Save Changes</span>
+                                            <span>{t('tools.studio.saveChanges', null, 'Save Changes')}</span>
                                         </button>
 
                                         <div className="grid grid-cols-2 gap-2">
@@ -1453,7 +1494,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 }`}
                                             >
                                                 <Sparkles size={13} />
-                                                <span>Apply Live</span>
+                                                <span>{t('tools.studio.applyLive', null, 'Apply Live')}</span>
                                             </button>
 
                                             <button
@@ -1466,7 +1507,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 }`}
                                             >
                                                 <Plus size={13} />
-                                                <span>Save as New</span>
+                                                <span>{t('tools.studio.saveAsNew', null, 'Save as New')}</span>
                                             </button>
                                         </div>
                                     </>
@@ -1478,7 +1519,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             className="w-full py-2.5 rounded-2xl bg-accent text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.99] hover:brightness-105"
                                         >
                                             <Check size={14} strokeWidth={2.5} />
-                                            <span>Apply to Browser</span>
+                                            <span>{t('tools.studio.applyToBrowser', null, 'Apply to Browser')}</span>
                                         </button>
 
                                         <button
@@ -1491,7 +1532,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             }`}
                                         >
                                             <Plus size={14} />
-                                            <span>Save as Custom Preset</span>
+                                            <span>{t('tools.studio.saveAsCustom', null, 'Save as Custom Preset')}</span>
                                         </button>
                                     </>
                                 )}
@@ -1514,7 +1555,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                     <Search size={13} className="text-zinc-400 mr-2 shrink-0" />
                                     <input 
                                         type="text"
-                                        placeholder="Search presets..."
+                                        placeholder={t('tools.studio.searchPresetsPlaceholder', null, 'Search presets...')}
                                         value={librarySearch}
                                         onChange={(e) => setLibrarySearch(e.target.value)}
                                         className="bg-transparent border-none outline-none w-full text-xs"
@@ -1533,9 +1574,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 <div className="shrink-0 w-64 sm:w-72">
                                     <StudioSlidingPillSwitcher
                                         options={[
-                                            { id: 'all', label: 'All' },
-                                            { id: 'builtin', label: 'Built-in' },
-                                            { id: 'custom', label: `Custom (${customPresets.length})` }
+                                            { id: 'all', label: t('tools.studio.filterAll', null, 'All') },
+                                            { id: 'builtin', label: t('tools.studio.filterBuiltin', null, 'Built-in') },
+                                            { id: 'custom', label: t('tools.studio.filterCustom', { count: customPresets.length }, `Custom (${customPresets.length})`) }
                                         ]}
                                         value={libraryFilter}
                                         onChange={setLibraryFilter}
@@ -1551,7 +1592,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 className="px-3.5 py-1.5 rounded-full bg-accent/20 border border-accent/40 text-accent font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer hover:bg-accent/30 active:scale-95 shrink-0"
                             >
                                 <Sparkles size={13} />
-                                <span>Save Active Browser Setup</span>
+                                <span>{t('tools.studio.saveActiveSetup', null, 'Save Active Browser Setup')}</span>
                             </button>
                         </div>
 
@@ -1561,6 +1602,17 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 const PresetIcon = getPresetIcon(preset.icon);
                                 const isCurrentlyActive = activePresetId === preset.id;
                                 const isEditingThis = editingPresetId === preset.id;
+                                const presetTitle = getPresetDisplayName(preset);
+                                const presetDesc = getPresetDisplayTagline(preset);
+                                const presetBar = preset.topBarPosition === 'bottom' ? t('tools.studio.bottomBarLabel', null, 'Bottom Bar') : t('tools.studio.topBarLabel', null, 'Top Bar');
+                                const presetSide = preset.sidebarPosition === 'right' ? t('tools.studio.rightSidebarLabel', null, 'Right Sidebar') : t('tools.studio.leftSidebarLabel', null, 'Left Sidebar');
+                                const presetHub = preset.toolHubPosition === 'left' ? t('tools.studio.leftToolhubLabel', null, 'Left ToolHub') : t('tools.studio.rightToolhubLabel', null, 'Right ToolHub');
+                                const computedLayoutTag = t('tools.studio.layoutTagFormat', { bar: presetBar, sidebar: presetSide }, `${presetBar} · ${presetSide}`);
+                                const computedLayoutSummary = preset.topBarPosition
+                                    ? (preset.toolHubPosition
+                                        ? t('tools.studio.layoutSummaryFormat', { tag: computedLayoutTag, toolhub: presetHub }, `${computedLayoutTag} · ${presetHub}`)
+                                        : computedLayoutTag)
+                                    : (preset.layoutSummary || preset.layoutTag);
 
                                 return (
                                     <div
@@ -1588,7 +1640,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 {isCurrentlyActive && (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/20 text-accent border border-accent/30">
                                                         <Check size={10} />
-                                                        <span>Active</span>
+                                                        <span>{t('tools.studio.activeBadge', null, 'Active')}</span>
                                                     </span>
                                                 )}
                                             </div>
@@ -1605,20 +1657,20 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                                             {/* Title & Tagline */}
                                             <h4 className="text-sm font-bold tracking-tight mb-1 flex items-center gap-1.5">
-                                                <span>{preset.name}</span>
+                                                <span>{presetTitle}</span>
                                                 {isEditingThis && (
-                                                    <span className="text-[10px] font-mono font-normal text-accent">(Editing)</span>
+                                                    <span className="text-[10px] font-mono font-normal text-accent">{t('tools.studio.editingBadge', null, '(Editing)')}</span>
                                                 )}
                                             </h4>
                                             <p className={`text-xs line-clamp-2 mb-2 ${isSystemBright ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                                {preset.tagline}
+                                                {presetDesc}
                                             </p>
 
                                             {/* Subtle layout description line */}
                                             <div className={`text-[11px] font-mono truncate mb-1 ${
                                                 isSystemBright ? 'text-zinc-500' : 'text-white/45'
                                             }`}>
-                                                {preset.layoutSummary || preset.layoutTag || `${preset.topBarPosition === 'bottom' ? 'Bottom Bar' : 'Top Bar'} · ${preset.sidebarPosition === 'right' ? 'Right Sidebar' : 'Left Sidebar'}`}
+                                                {computedLayoutSummary}
                                             </div>
                                         </div>
 
@@ -1643,7 +1695,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                             : 'bg-accent text-zinc-950 hover:brightness-105 shadow-sm'
                                                     }`}
                                                 >
-                                                    {isCurrentlyActive ? 'Reapply' : 'Apply'}
+                                                    {isCurrentlyActive ? t('tools.studio.reapply', null, 'Reapply') : t('tools.studio.apply', null, 'Apply')}
                                                 </button>
 
                                                 {/* Edit in Studio (for custom) or Customize (for built-in) */}
@@ -1655,10 +1707,10 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                             ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-700'
                                                             : 'border-white/[0.06] hover:border-white/[0.10] hover:bg-white/5 text-zinc-300'
                                                     }`}
-                                                    title={preset.isCustom ? 'Edit preset in studio' : 'Customize layout in studio'}
+                                                    title={preset.isCustom ? t('tools.studio.editPresetTitle', null, 'Edit preset in studio') : t('tools.studio.customizePresetTitle', null, 'Customize layout in studio')}
                                                 >
                                                     <Edit3 size={12} className="text-accent" />
-                                                    <span>{preset.isCustom ? 'Edit in Studio' : 'Customize'}</span>
+                                                    <span>{preset.isCustom ? t('tools.studio.editInStudio', null, 'Edit in Studio') : t('tools.studio.customize', null, 'Customize')}</span>
                                                 </button>
                                             </div>
 
@@ -1667,7 +1719,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDuplicate(preset)}
-                                                    title="Duplicate preset"
+                                                    title={t('tools.studio.duplicateTitle', null, 'Duplicate preset')}
                                                     className={`p-1.5 rounded-xl border transition cursor-pointer ${
                                                         isSystemBright
                                                             ? 'border-black/[0.07] hover:border-black/[0.12] hover:bg-black/5 text-zinc-600'
@@ -1681,7 +1733,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                                     <button
                                                         type="button"
                                                         onClick={() => setPresetToDelete(preset)}
-                                                        title="Delete custom preset"
+                                                        title={t('tools.studio.deleteTitle', null, 'Delete custom preset')}
                                                         className="p-1.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 transition cursor-pointer"
                                                     >
                                                         <Trash2 size={13} />
@@ -1714,7 +1766,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-bold flex items-center gap-2">
                                 <Sparkles size={16} className="text-accent" />
-                                <span>{editingPresetId ? 'Edit Custom Preset' : 'Save as Custom Preset'}</span>
+                                <span>{editingPresetId ? t('tools.studio.editCustomModalTitle', null, 'Edit Custom Preset') : t('tools.studio.saveCustomModalTitle', null, 'Save as Custom Preset')}</span>
                             </h3>
                             <button 
                                 onClick={() => setIsSaveModalOpen(false)}
@@ -1728,13 +1780,13 @@ export default function PresetStudioModal({ initialPresetId = null }) {
 
                         <form onSubmit={handleSavePreset} className="space-y-4">
                             <div>
-                                <label className="text-xs font-semibold block mb-1">Preset Name</label>
+                                <label className="text-xs font-semibold block mb-1">{t('tools.studio.presetNameLabel', null, 'Preset Name')}</label>
                                 <input 
                                     type="text" 
                                     required
                                     value={presetNameInput}
                                     onChange={(e) => setPresetNameInput(e.target.value)}
-                                    placeholder="e.g. Ergonomic Workflow, Minimalist Arc"
+                                    placeholder={t('tools.studio.presetNamePlaceholder', null, 'e.g. Ergonomic Workflow, Minimalist Arc')}
                                     className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none focus:border-accent/50 ${
                                         isSystemBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-900' : 'bg-white/[0.02] border-white/[0.06] text-white'
                                     }`}
@@ -1742,12 +1794,12 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             </div>
 
                             <div>
-                                <label className="text-xs font-semibold block mb-1">Tagline / Description</label>
+                                <label className="text-xs font-semibold block mb-1">{t('tools.studio.presetDescLabel', null, 'Tagline / Description')}</label>
                                 <textarea 
                                     rows={2}
                                     value={presetDescInput}
                                     onChange={(e) => setPresetDescInput(e.target.value)}
-                                    placeholder="Short description of this configuration..."
+                                    placeholder={t('tools.studio.presetDescPlaceholder', null, 'Short description of this configuration...')}
                                     className={`w-full px-3.5 py-2 rounded-2xl border text-xs outline-none resize-none focus:border-accent/50 ${
                                         isSystemBright ? 'bg-black/[0.02] border-black/[0.07] text-zinc-900' : 'bg-white/[0.02] border-white/[0.06] text-white'
                                     }`}
@@ -1755,7 +1807,7 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                             </div>
 
                             <div>
-                                <label className="text-xs font-semibold block mb-1.5">Preset Icon</label>
+                                <label className="text-xs font-semibold block mb-1.5">{t('tools.studio.presetIconLabel', null, 'Preset Icon')}</label>
                                 <div className="grid grid-cols-8 gap-2">
                                     {SELECTABLE_ICONS.map(iconName => {
                                         const IconComp = PRESET_ICON_MAP[iconName] || Sparkles;
@@ -1788,13 +1840,13 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             : 'border-white/[0.06] hover:border-white/[0.10] text-zinc-300'
                                     }`}
                                 >
-                                    Cancel
+                                    {t('tools.studio.cancel', null, 'Cancel')}
                                 </button>
                                 <button
                                     type="submit"
                                     className="px-5 py-2 rounded-2xl bg-accent text-zinc-950 font-bold text-xs transition cursor-pointer hover:brightness-105 shadow-md"
                                 >
-                                    {editingPresetId ? 'Save Changes' : 'Create Preset'}
+                                    {editingPresetId ? t('tools.studio.saveChanges', null, 'Save Changes') : t('tools.studio.createPreset', null, 'Create Preset')}
                                 </button>
                             </div>
                         </form>
@@ -1821,9 +1873,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 <Trash2 size={20} />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold">Delete Custom Preset?</h3>
+                                <h3 className="text-sm font-bold">{t('tools.studio.deleteConfirmTitle', null, 'Delete Custom Preset?')}</h3>
                                 <p className={`text-xs ${isSystemBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Are you sure you want to delete <strong className={isSystemBright ? 'text-zinc-950' : 'text-white'}>"{presetToDelete.name}"</strong>? This cannot be undone.
+                                    {t('tools.studio.deleteConfirmDescBefore', null, 'Are you sure you want to delete ')}<strong className={isSystemBright ? 'text-zinc-950' : 'text-white'}>"{presetToDelete.name}"</strong>{t('tools.studio.deleteConfirmDescAfter', null, '? This cannot be undone.')}
                                 </p>
                             </div>
                         </div>
@@ -1838,14 +1890,14 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                         : 'border-white/[0.06] hover:border-white/[0.10] text-zinc-300'
                                 }`}
                             >
-                                Cancel
+                                {t('tools.studio.cancel', null, 'Cancel')}
                             </button>
                             <button
                                 type="button"
                                 onClick={confirmDeletePreset}
                                 className="px-4 py-1.5 rounded-2xl bg-red-500 text-white font-bold text-xs transition cursor-pointer hover:bg-red-600 shadow-md"
                             >
-                                Delete Preset
+                                {t('tools.studio.deletePresetBtn', null, 'Delete Preset')}
                             </button>
                         </div>
                     </div>
@@ -1900,6 +1952,7 @@ function MiniWindowControls({ draft, isBright, controlsOnRight = false, compact 
 
 // Subcomponent: Miniature Navigation Bar in Canvas
 function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewFont, previewSpacing }) {
+    const { t } = useTranslation();
     const isTop = draft.topBarPosition === 'top';
     const isRight = draft.sidebarPosition === 'right';
     const isSidebarHidden = draft.sidebarStyle === 'hidden';
@@ -1930,7 +1983,7 @@ function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewFo
                     e.stopPropagation();
                     onSwap();
                 }}
-                title={`Move to ${isTop ? 'Bottom' : 'Top'}`}
+                title={t('tools.studio.moveTo', { pos: isTop ? t('tools.studio.posBottom', null, 'Bottom') : t('tools.studio.posTop', null, 'Top') }, `Move to ${isTop ? 'Bottom' : 'Top'}`)}
                 className={`p-1 rounded transition cursor-pointer ${
                     isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
                 }`}
@@ -1956,7 +2009,7 @@ function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewFo
                     ? 'bg-black/[0.02] border-black/[0.07] text-zinc-800'
                     : 'bg-white/[0.02] border-white/[0.06] text-white'
             }`}
-            title="Draggable Navigation Bar: Drag to Top or Bottom zone, or click swap"
+            title={t('tools.studio.draggableNavTitle', null, 'Draggable Navigation Bar: Drag to Top or Bottom zone, or click swap')}
         >
             {/* Left Side: Nav cluster when left sidebar, Extensions/Actions when right sidebar */}
             <div className="flex-1 flex items-center justify-start gap-1 min-w-0">
@@ -2000,6 +2053,7 @@ function MiniNavBar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewFo
 
 // Subcomponent: Miniature Sidebar in Canvas
 function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewFont, previewSpacing }) {
+    const { t } = useTranslation();
     const isLeft = draft.sidebarPosition === 'left';
     const isRight = !isLeft;
     const isCompactScale = draft.uiScale === 'compact';
@@ -2035,7 +2089,7 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewF
             onDragEnd={onDragEnd}
             style={{ fontFamily: previewFont, letterSpacing: previewSpacing }}
             className={`h-full w-full ${isSidebarCompact ? 'p-1.5 items-center' : isCompactScale ? 'p-1.5' : 'p-2'} ${curvatureClass} border shadow-sm flex flex-col justify-between cursor-grab active:cursor-grabbing group select-none transition-all duration-300 ${surfaceClasses}`}
-            title="Draggable Sidebar: Drag between Left and Right dock zones"
+            title={t('tools.studio.draggableSidebarTitle', null, 'Draggable Sidebar: Drag between Left and Right dock zones')}
         >
             {/* Sidebar Top: Window Controls + Workspaces Strip */}
             <div className={isSidebarCompact ? 'flex flex-col items-center w-full' : 'w-full'}>
@@ -2061,7 +2115,7 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewF
                                 e.stopPropagation();
                                 onSwap();
                             }}
-                            title={`Swap to ${isLeft ? 'Right' : 'Left'}`}
+                            title={t('tools.studio.swapTo', { pos: isLeft ? t('tools.studio.posRight', null, 'Right') : t('tools.studio.posLeft', null, 'Left') }, `Swap to ${isLeft ? 'Right' : 'Left'}`)}
                             className={`p-0.5 rounded transition cursor-pointer ${
                                 isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
                             }`}
@@ -2129,7 +2183,7 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewF
                                         }`}
                                     >
                                         <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: i === 1 ? draft.accentColor : '#888' }} />
-                                        <span className="truncate">Tab #{i}</span>
+                                        <span className="truncate">{t('tools.studio.miniTab', { num: i }, `Tab #${i}`)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -2145,7 +2199,7 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewF
                                         }`}
                                     >
                                         <div className={`w-4 h-4 ${isSquare ? 'rounded-none' : 'rounded'} bg-black/20 shrink-0`} />
-                                        <span className="truncate">Card View #{i}</span>
+                                        <span className="truncate">{t('tools.studio.miniCardView', { num: i }, `Card View #${i}`)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -2161,7 +2215,7 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewF
                                         }`}
                                     >
                                         <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: i === 1 ? draft.accentColor : '#888' }} />
-                                        <span className="truncate">Active Space Tab</span>
+                                        <span className="truncate">{t('tools.studio.miniActiveSpaceTab', null, 'Active Space Tab')}</span>
                                     </div>
                                 ))}
                             </div>
@@ -2181,7 +2235,7 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewF
                             e.stopPropagation();
                             onSwap();
                         }}
-                        title={`Swap to ${isLeft ? 'Right' : 'Left'}`}
+                        title={t('tools.studio.swapTo', { pos: isLeft ? t('tools.studio.posRight', null, 'Right') : t('tools.studio.posLeft', null, 'Left') }, `Swap to ${isLeft ? 'Right' : 'Left'}`)}
                         className={`p-0.5 rounded transition cursor-pointer ${
                             isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-900' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
                         }`}
@@ -2194,7 +2248,13 @@ function MiniSidebar({ draft, onDragStart, onDragEnd, onSwap, isBright, previewF
                 <div className={`pt-2 border-t flex items-center justify-between text-zinc-500 ${
                     isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
                 }`}>
-                    <span className="text-[8px] opacity-70 truncate">Sidebar ({draft.sidebarPosition})</span>
+                    <span className="text-[8px] opacity-70 truncate">
+                        {t('tools.studio.miniSidebarPos', {
+                            pos: draft.sidebarPosition === 'right'
+                                ? t('tools.studio.posRight', null, 'Right')
+                                : t('tools.studio.posLeft', null, 'Left')
+                        }, `Sidebar (${draft.sidebarPosition})`)}
+                    </span>
                     <div className="group-hover:text-accent cursor-grab shrink-0">
                         <GripVertical size={11} />
                     </div>

@@ -4,18 +4,20 @@ import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useTabStore from '../../store/useTabStore';
 import { cleanAndDeduplicateHistory, formatDisplayDomain } from '../../utils/historyExtractors';
+import { useTranslation } from '../../i18n/index';
 
-const formatTime = (timestamp) => {
+const formatTime = (timestamp, intlLocale) => {
     if (!timestamp) return '';
     try {
         const d = new Date(timestamp);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return d.toLocaleTimeString(intlLocale || undefined, { hour: '2-digit', minute: '2-digit' });
     } catch {
         return '';
     }
 };
 
 export default function HistoryModal() {
+    const { t, intlLocale } = useTranslation();
     const {
         activeModal,
         isModalClosing,
@@ -54,7 +56,7 @@ export default function HistoryModal() {
     const handleClearHistory = () => {
         clearHistory();
         setHistorySearchQuery('');
-        useUIStore.getState().showToast('Archive cleared');
+        useUIStore.getState().showToast(t('tools.history.toastCleared', null, 'Archive cleared'));
     };
 
     const handleDeleteItem = (e, url) => {
@@ -67,7 +69,7 @@ export default function HistoryModal() {
         if (!url) return;
         navigator.clipboard?.writeText(url);
         setCopiedUrl(url);
-        useUIStore.getState().showToast('Copied link');
+        useUIStore.getState().showToast(t('tools.history.toastCopied', null, 'Copied link'));
         setTimeout(() => setCopiedUrl(null), 1500);
     };
 
@@ -75,7 +77,7 @@ export default function HistoryModal() {
         if (!url) return;
         if (inBackground) {
             useTabStore.getState().handleNewTab(url, false);
-            useUIStore.getState().showToast('Opened in background tab');
+            useUIStore.getState().showToast(t('tools.history.toastOpenedBg', null, 'Opened in background tab'));
         } else {
             const activeTab = useTabStore.getState().getActiveTab();
             if (activeTab) {
@@ -124,27 +126,27 @@ export default function HistoryModal() {
 
     // Segments with accurate live counts
     const availableSegments = useMemo(() => [
-        { id: 'all', label: 'All', count: searchedHistory.length },
-        { id: 'today', label: 'Today', count: groups.Today.length },
-        { id: 'yesterday', label: 'Yesterday', count: groups.Yesterday.length },
-        { id: 'week', label: 'Last 7 Days', count: groups['Last 7 Days'].length },
-        { id: 'older', label: 'Older', count: groups.Older.length }
-    ].filter(s => s.count > 0 || s.id === 'all'), [searchedHistory.length, groups]);
+        { id: 'all', label: t('tools.history.segments.all', null, 'All'), count: searchedHistory.length },
+        { id: 'today', label: t('tools.history.segments.today', null, 'Today'), count: groups.Today.length },
+        { id: 'yesterday', label: t('tools.history.segments.yesterday', null, 'Yesterday'), count: groups.Yesterday.length },
+        { id: 'week', label: t('tools.history.segments.week', null, 'Last 7 Days'), count: groups['Last 7 Days'].length },
+        { id: 'older', label: t('tools.history.segments.older', null, 'Older'), count: groups.Older.length }
+    ].filter(s => s.count > 0 || s.id === 'all'), [searchedHistory.length, groups, t]);
 
     // Active displayed groups based on selectedSegment
     const displayedGroups = useMemo(() => {
         const allGroups = [
-            { id: 'today', name: 'Today', items: groups.Today },
-            { id: 'yesterday', name: 'Yesterday', items: groups.Yesterday },
-            { id: 'week', name: 'Last 7 Days', items: groups['Last 7 Days'] },
-            { id: 'older', name: 'Older', items: groups.Older }
+            { id: 'today', name: t('tools.history.segments.today', null, 'Today'), items: groups.Today },
+            { id: 'yesterday', name: t('tools.history.segments.yesterday', null, 'Yesterday'), items: groups.Yesterday },
+            { id: 'week', name: t('tools.history.segments.week', null, 'Last 7 Days'), items: groups['Last 7 Days'] },
+            { id: 'older', name: t('tools.history.segments.older', null, 'Older'), items: groups.Older }
         ];
         return allGroups.filter(g => {
             if (g.items.length === 0) return false;
             if (selectedSegment === 'all') return true;
             return g.id === selectedSegment;
         });
-    }, [groups, selectedSegment]);
+    }, [groups, selectedSegment, t]);
 
     if (activeModal !== 'history' && !isClosingThis) return null;
 
@@ -214,7 +216,7 @@ export default function HistoryModal() {
                                 ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-800' 
                                 : 'hover:bg-white/[0.08] text-zinc-400 hover:text-white'
                         }`}
-                        title="Copy link"
+                        title={t('tools.history.copyLinkTitle', null, 'Copy link')}
                     >
                         {copiedUrl === item.url ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
                     </button>
@@ -229,7 +231,7 @@ export default function HistoryModal() {
                                 ? 'hover:bg-black/[0.06] text-zinc-500 hover:text-zinc-800' 
                                 : 'hover:bg-white/[0.08] text-zinc-400 hover:text-white'
                         }`}
-                        title="Open in new tab"
+                        title={t('tools.history.openNewTabTitle', null, 'Open in new tab')}
                     >
                         <ExternalLink size={13} />
                     </button>
@@ -241,7 +243,7 @@ export default function HistoryModal() {
                                 ? 'hover:bg-red-50 text-zinc-400 hover:text-red-600' 
                                 : 'hover:bg-red-500/10 text-zinc-500 hover:text-red-400'
                         }`}
-                        title="Remove from archive"
+                        title={t('tools.history.removeTitle', null, 'Remove from archive')}
                     >
                         <Trash2 size={13} />
                     </button>
@@ -250,7 +252,7 @@ export default function HistoryModal() {
                 <span className={`text-[11px] tabular-nums font-mono text-right min-w-12 ${
                     isBright ? 'text-zinc-400' : 'text-zinc-500'
                 }`}>
-                    {formatTime(item.lastVisit)}
+                    {formatTime(item.lastVisit, intlLocale)}
                 </span>
             </div>
         </div>
@@ -287,9 +289,11 @@ export default function HistoryModal() {
                             <Archive size={18} strokeWidth={2} />
                         </div>
                         <div>
-                            <h2 className="text-base font-bold tracking-tight">Archive</h2>
+                            <h2 className="text-base font-bold tracking-tight">{t('tools.history.title', null, 'Archive')}</h2>
                             <span className={`text-[11px] font-medium ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                                {cleanedHistory.length} {cleanedHistory.length === 1 ? 'entry' : 'entries'} saved
+                                {cleanedHistory.length === 1
+                                    ? t('tools.history.entrySingular', { count: cleanedHistory.length }, `${cleanedHistory.length} entry saved`)
+                                    : t('tools.history.entryPlural', { count: cleanedHistory.length }, `${cleanedHistory.length} entries saved`)}
                             </span>
                         </div>
                     </div>
@@ -304,7 +308,7 @@ export default function HistoryModal() {
                                 type="text"
                                 value={historySearchQuery}
                                 onChange={(e) => setHistorySearchQuery(e.target.value)}
-                                placeholder="Search archive..."
+                                placeholder={t('tools.history.searchPlaceholder', null, 'Search archive...')}
                                 className={`border rounded-full py-1.5 pl-9 pr-7 text-xs focus:outline-none transition-all w-64 sm:w-80 ${
                                     isBright 
                                         ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white' 
@@ -333,9 +337,9 @@ export default function HistoryModal() {
                                         ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200' 
                                         : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'
                                 }`}
-                                title="Clear all browsing history"
+                                title={t('tools.history.clearAllTitle', null, 'Clear all browsing history')}
                             >
-                                Clear
+                                {t('tools.history.clear', null, 'Clear')}
                             </button>
                         )}
 
@@ -347,7 +351,7 @@ export default function HistoryModal() {
                                     ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-600' 
                                     : 'bg-white/[0.05] hover:bg-white/10 border-white/10 text-white/70 hover:text-white'
                             }`}
-                            title="Close (Esc)"
+                            title={t('tools.history.closeTitle', null, 'Close (Esc)')}
                         >
                             <X size={15} />
                         </button>
@@ -396,10 +400,14 @@ export default function HistoryModal() {
                                 <Archive size={22} strokeWidth={1.75} />
                             </div>
                             <p className={`text-xs font-semibold mb-1 ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                {query ? `No results matching "${historySearchQuery}"` : 'Archive is empty'}
+                                {query
+                                    ? t('tools.history.emptySearch', { query: historySearchQuery }, `No results matching "${historySearchQuery}"`)
+                                    : t('tools.history.emptyTitle', null, 'Archive is empty')}
                             </p>
                             <p className={`text-[11px] max-w-xs ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                {query ? 'Try checking your spelling or selecting another filter.' : 'Pages you visit will be saved here for quick reference.'}
+                                {query
+                                    ? t('tools.history.emptySearchDesc', null, 'Try checking your spelling or selecting another filter.')
+                                    : t('tools.history.emptyDesc', null, 'Pages you visit will be saved here for quick reference.')}
                             </p>
                         </div>
                     ) : (
@@ -420,7 +428,9 @@ export default function HistoryModal() {
                                         {group.name}
                                     </span>
                                     <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                        {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
+                                        {group.items.length === 1
+                                            ? t('tools.history.itemSingular', { count: group.items.length }, `${group.items.length} item`)
+                                            : t('tools.history.itemPlural', { count: group.items.length }, `${group.items.length} items`)}
                                     </span>
                                 </div>
 

@@ -13,6 +13,8 @@ import useAIStore from '../../store/useAIStore';
 import useTorStore from '../../store/useTorStore';
 import OmniboxSuggestionsDropdown from '../common/OmniboxSuggestionsDropdown';
 import { topSites } from '../../utils/topSites';
+import { useTranslation } from '../../i18n/index';
+import { selectPluralForm } from '../../i18n/domains/chrome';
 import { 
     getAllBangs, 
     parseBangFromQuery, 
@@ -64,7 +66,8 @@ const availableCommands = [
     { id: 'pdf', title: 'Save page as Clean PDF', cmd: 'pdf', icon: FileDown, color: 'text-rose-400' },
     { id: 'screenshot', title: 'Capture Webpage Screenshot (Ctrl+Shift+S)', cmd: 'screenshot', icon: Camera, color: 'text-pink-400' },
     { id: 'snip', title: 'Interactive Snip Area (Ctrl+Shift+S)', cmd: 'snip', icon: Crop, color: 'text-rose-400' },
-    { id: 'reader', title: 'Toggle Distraction-Free Reader Mode (Ctrl+Alt+R)', cmd: 'reader', icon: BookOpen, color: 'text-amber-400' }
+    { id: 'reader', title: 'Toggle Distraction-Free Reader Mode (Ctrl+Alt+R)', cmd: 'reader', icon: BookOpen, color: 'text-amber-400' },
+    { id: 'hide', title: 'Hide Distracting Items on page', cmd: 'hide items', icon: XCircle, color: 'text-amber-400' }
 ];
 
 const parseUrlInput = (input, activeBang = null, customBangs = []) => {
@@ -197,6 +200,7 @@ const getCompletedSuggestionText = (target, currentInput) => {
 };
 
 export default function Omnibox() {
+    const { t, resolvedLanguage } = useTranslation();
     const isOmniboxOpen = useUIStore(state => state.isOmniboxOpen);
     const isOmniboxClosing = useUIStore(state => state.isOmniboxClosing);
     const searchQuery = useUIStore(state => state.searchQuery);
@@ -577,7 +581,16 @@ export default function Omnibox() {
 
     const isCommandMode = searchQuery.startsWith('>');
     const commandQuery = searchQuery.slice(1).trim().toLowerCase();
-    const filteredCommands = availableCommands.filter(c => c.cmd.includes(commandQuery) || c.title.toLowerCase().includes(commandQuery));
+    const localizedCommands = availableCommands.map(c => ({
+        ...c,
+        defaultTitle: c.title,
+        title: t(`chrome.cmd_${c.id}`, null, c.title)
+    }));
+    const filteredCommands = localizedCommands.filter(c =>
+        c.cmd.includes(commandQuery) ||
+        c.title.toLowerCase().includes(commandQuery) ||
+        c.defaultTitle.toLowerCase().includes(commandQuery)
+    );
 
     const handleExecuteCommand = async (cmdId) => {
         const tabStore = useTabStore.getState();
@@ -593,7 +606,7 @@ export default function Omnibox() {
             case 'ls':
             case 'tab_map':
                 openTabMap();
-                showToast('Terminal: Tab Map activated');
+                showToast(t('chrome.toastCmdTabMap', null, 'Terminal: Tab Map activated'));
                 break;
 
             case 'clear':
@@ -601,7 +614,7 @@ export default function Omnibox() {
                 if (window.electronAPI && window.electronAPI.clearAllData) {
                     window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
                 }
-                showToast('Terminal: History & browser cache cleared!');
+                showToast(t('chrome.toastCmdClear', null, 'Terminal: History & browser cache cleared!'));
                 break;
 
             case 'top':
@@ -610,7 +623,7 @@ export default function Omnibox() {
             case 'ps': {
                 closeOmnibox();
                 uiStore.openModal('tasks');
-                showToast('Terminal: Resource & Task Manager opened');
+                showToast(t('chrome.toastCmdTasks', null, 'Terminal: Resource & Task Manager opened'));
                 break;
             }
 
@@ -619,24 +632,24 @@ export default function Omnibox() {
                 const activeTab = spaceTabs.find(t => t.active);
                 if (activeTab) {
                     tabStore.handleCloseTab(activeTab.id);
-                    showToast('Terminal: Active tab closed');
+                    showToast(t('chrome.toastCmdKill', null, 'Terminal: Active tab closed'));
                 }
                 break;
             }
 
             case 'new':
                 tabStore.handleNewTab();
-                showToast('Terminal: New tab opened');
+                showToast(t('chrome.toastCmdNew', null, 'Terminal: New tab opened'));
                 break;
 
             case 'reload':
                 uiStore.refresh();
-                showToast('Terminal: Reloading tab...');
+                showToast(t('chrome.toastCmdReload', null, 'Terminal: Reloading tab...'));
                 break;
 
             case 'find':
                 uiStore.setIsFindOpen(true);
-                showToast('Find in page opened');
+                showToast(t('chrome.toastCmdFind', null, 'Find in page opened'));
                 break;
 
             case 'print':
@@ -666,6 +679,11 @@ export default function Omnibox() {
                 uiStore.toggleReaderMode();
                 break;
 
+            case 'hide':
+                closeOmnibox();
+                uiStore.toggleElementEraser(true);
+                break;
+
             case 'mute':
             case 'unmute': {
                 const isMuting = cmdId === 'mute';
@@ -681,7 +699,7 @@ export default function Omnibox() {
                         }
                     });
                 }
-                showToast(`Terminal: All tabs ${isMuting ? 'muted' : 'unmuted'}`);
+                showToast(isMuting ? t('chrome.toastCmdMute', null, 'Terminal: All tabs muted') : t('chrome.toastCmdUnmute', null, 'Terminal: All tabs unmuted'));
                 break;
             }
 
@@ -701,7 +719,11 @@ export default function Omnibox() {
                 suspendList(tabStore.workTabs, tabStore.setWorkTabs);
                 suspendList(tabStore.ghostTabs, tabStore.setGhostTabs);
                 suspendList(tabStore.torTabs || [], tabStore.setTorTabs);
-                showToast(`Terminal: Suspended ${count} background tab${count === 1 ? '' : 's'} (Freed RAM)`);
+                showToast(t(
+                    selectPluralForm(count, resolvedLanguage, 'chrome.toastCmdSleepOne', 'chrome.toastCmdSleepFew', 'chrome.toastCmdSleepMany'),
+                    { count },
+                    `Terminal: Suspended ${count} background tab${count === 1 ? '' : 's'} (Freed RAM)`
+                ));
                 break;
             }
 
@@ -721,24 +743,28 @@ export default function Omnibox() {
                 wakeList(tabStore.workTabs, tabStore.setWorkTabs);
                 wakeList(tabStore.ghostTabs, tabStore.setGhostTabs);
                 wakeList(tabStore.torTabs || [], tabStore.setTorTabs);
-                showToast(`Terminal: Woke ${count} suspended tab${count === 1 ? '' : 's'}`);
+                showToast(t(
+                    selectPluralForm(count, resolvedLanguage, 'chrome.toastCmdWakeOne', 'chrome.toastCmdWakeFew', 'chrome.toastCmdWakeMany'),
+                    { count },
+                    `Terminal: Woke ${count} suspended tab${count === 1 ? '' : 's'}`
+                ));
                 break;
             }
 
             case 'dark':
                 setIsForceDark(true);
-                showToast('Terminal: Smart Dark Mode enabled');
+                showToast(t('chrome.toastCmdDark', null, 'Terminal: Smart Dark Mode enabled'));
                 break;
 
             case 'light':
                 setIsForceDark(false);
-                showToast('Terminal: Smart Dark Mode disabled');
+                showToast(t('chrome.toastCmdLight', null, 'Terminal: Smart Dark Mode disabled'));
                 break;
 
             case 'zen': {
                 const nextHidden = !uiStore.isSidebarHidden;
                 uiStore.setIsSidebarHidden(nextHidden);
-                showToast(`Terminal: Zen Mode ${nextHidden ? 'activated (Sidebar hidden)' : 'deactivated (Sidebar visible)'}`);
+                showToast(nextHidden ? t('chrome.toastCmdZenOn', null, 'Terminal: Zen Mode activated (Sidebar hidden)') : t('chrome.toastCmdZenOff', null, 'Terminal: Zen Mode deactivated (Sidebar visible)'));
                 break;
             }
 
@@ -746,7 +772,7 @@ export default function Omnibox() {
                 const nextOpen = !uiStore.isRightPanelOpen;
                 uiStore.setIsRightPanelOpen(nextOpen);
                 if (nextOpen) uiStore.setRightPanelTab('ai');
-                showToast(`Terminal: Tool Hub ${nextOpen ? 'opened' : 'closed'}`);
+                showToast(nextOpen ? t('chrome.toastCmdToolHubOpen', null, 'Terminal: Tool Hub opened') : t('chrome.toastCmdToolHubClose', null, 'Terminal: Tool Hub closed'));
                 break;
             }
 
@@ -756,18 +782,18 @@ export default function Omnibox() {
 
             case 'settings':
                 uiStore.openModal('settings');
-                showToast('Terminal: Settings opened');
+                showToast(t('chrome.toastCmdSettings', null, 'Terminal: Settings opened'));
                 break;
 
             case 'history':
                 uiStore.openModal('history');
-                showToast('Terminal: History opened');
+                showToast(t('chrome.toastCmdHistory', null, 'Terminal: History opened'));
                 break;
 
             case 'downloads':
                 uiStore.setIsRightPanelOpen(true);
                 uiStore.setRightPanelTab('downloads');
-                showToast('Terminal: Downloads opened');
+                showToast(t('chrome.toastCmdDownloads', null, 'Terminal: Downloads opened'));
                 break;
 
             case 'fullscreen': {
@@ -776,19 +802,19 @@ export default function Omnibox() {
                     window.electronAPI.setFullscreen(nextFull);
                 }
                 uiStore.setIsFullscreen(nextFull);
-                showToast(`Terminal: Fullscreen ${nextFull ? 'enabled' : 'exited'}`);
+                showToast(nextFull ? t('chrome.toastCmdFullscreenOn', null, 'Terminal: Fullscreen enabled') : t('chrome.toastCmdFullscreenOff', null, 'Terminal: Fullscreen exited'));
                 break;
             }
 
             case 'vault':
                 uiStore.togglePopover('vault');
-                showToast('Terminal: QVault opened');
+                showToast(t('chrome.toastCmdVault', null, 'Terminal: QVault opened'));
                 break;
 
             case 'profiles':
             case 'profile':
                 uiStore.openPopover('userProfile');
-                showToast('Terminal: Profiles & Cloud Sync opened');
+                showToast(t('chrome.toastCmdProfiles', null, 'Terminal: Profiles & Cloud Sync opened'));
                 break;
 
             case 'tor': {
@@ -802,13 +828,13 @@ export default function Omnibox() {
                 import('../../store/useTorStore').then(m => {
                     m.default.getState().newCircuit();
                 }).catch(() => {});
-                showToast('Terminal: Requesting new Tor identity...');
+                showToast(t('chrome.toastCmdNewnym', null, 'Terminal: Requesting new Tor identity...'));
                 break;
             }
 
             case 'circuit':
                 uiStore.openPopover('tor');
-                showToast('Terminal: Tor Circuit HUD opened');
+                showToast(t('chrome.toastCmdCircuit', null, 'Terminal: Tor Circuit HUD opened'));
                 break;
 
             default:
@@ -847,8 +873,9 @@ export default function Omnibox() {
         }
 
         if (pred.isMath) {
-            navigator.clipboard.writeText(pred.url.replace('= ', ''));
-            showToast(`Copied to clipboard: ${pred.url.replace('= ', '')}`);
+            const mathValue = pred.url.replace('= ', '');
+            navigator.clipboard.writeText(mathValue);
+            showToast(t('chrome.toastCopiedValue', { value: mathValue }, `Copied to clipboard: ${mathValue}`));
             handleCloseOmnibox(false);
         } else if (pred.isLocalFile || (pred.url && pred.url.startsWith('file://'))) {
             useTabStore.getState().openLocalFiles([pred.url]);
@@ -1180,7 +1207,7 @@ export default function Omnibox() {
                                 className={`p-0.5 rounded-full transition ml-0.5 cursor-pointer ${
                                     isBright ? 'hover:bg-black/10 text-zinc-500 hover:text-zinc-800' : 'hover:bg-white/20 text-white/70 hover:text-white'
                                 }`}
-                                title="Remove engine filter (Backspace)"
+                                title={t('chrome.omniboxRemoveEngine', null, 'Remove engine filter (Backspace)')}
                             >
                                 <X size={12} />
                             </button>
@@ -1198,12 +1225,12 @@ export default function Omnibox() {
 
                         placeholder={
                             isCommandMode 
-                                ? "Type a browser command..." 
+                                ? t('chrome.omniboxPlaceholderCommand', null, 'Type a browser command...') 
                                 : activeBang 
-                                    ? `Search ${activeBang.name} directly...` 
+                                    ? t('chrome.omniboxPlaceholderBang', { engine: activeBang.name }, `Search ${activeBang.name} directly...`) 
                                     : isTor
-                                        ? "Search the web via Tor, enter .onion address..."
-                                        : "Search the web, or type a command..."
+                                        ? t('chrome.omniboxPlaceholderTor', null, 'Search the web via Tor, enter .onion address...')
+                                        : t('chrome.omniboxPlaceholderDefault', null, 'Search the web, or type a command...')
                         }
                         className={`flex-1 min-w-0 bg-transparent border-none text-base md:text-lg font-normal focus:outline-none focus:ring-0 transition-all duration-300 ${
                             isCommandMode 

@@ -17,6 +17,7 @@ import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationS
 import { isTabForPin } from '../layout/PinnedStackPopup';
 import { buildSearchEngineUrl, getSearchEngineById, isLikelyWebUrl } from '../../utils/searchEngines';
 import { isLikelyDownloadUrl } from '../../utils/downloadHelpers';
+import { useTranslation } from '../../i18n/index';
 
 // Helper: Search URL generation based on active space and user settings
 const getSearchUrl = (query) => {
@@ -65,7 +66,7 @@ const ContextMenuThemeContext = React.createContext({ isBright: false });
 
 // Shared Liquid Glass surface styling for context menus, popovers & submenus
 export const getLiquidGlassSurfaceClasses = (isBright) =>
-    `border transition-colors ${
+    `liquid-glass-surface border transition-colors ${
         isBright
             ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]'
             : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
@@ -524,13 +525,14 @@ function MenuItemWithSubmenu({ icon: Icon, label, children, accent = false, disa
 
 // Highlight Color Swatches
 function HighlightSwatches({ onSelectColor }) {
+    const { t } = useTranslation();
     const { isBright } = React.useContext(ContextMenuThemeContext);
     const colors = [
-        { id: 'accent', bg: '#d4bc94', title: 'Accent' },
-        { id: 'yellow', bg: '#fde047', title: 'Yellow' },
-        { id: 'green',  bg: '#86efac', title: 'Green' },
-        { id: 'blue',   bg: '#93c5fd', title: 'Blue' },
-        { id: 'pink',   bg: '#f472b6', title: 'Pink' }
+        { id: 'accent', bg: '#d4bc94', titleKey: 'pop.ctx.colorAccent', fallback: 'Accent' },
+        { id: 'yellow', bg: '#fde047', titleKey: 'pop.ctx.colorYellow', fallback: 'Yellow' },
+        { id: 'green',  bg: '#86efac', titleKey: 'pop.ctx.colorGreen', fallback: 'Green' },
+        { id: 'blue',   bg: '#93c5fd', titleKey: 'pop.ctx.colorBlue', fallback: 'Blue' },
+        { id: 'pink',   bg: '#f472b6', titleKey: 'pop.ctx.colorPink', fallback: 'Pink' }
     ];
 
     return (
@@ -539,39 +541,43 @@ function HighlightSwatches({ onSelectColor }) {
         }`}>
             <div className={`flex items-center gap-2 text-xs font-medium ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
                 <Highlighter size={13} className="text-accent" />
-                <span>Highlight</span>
+                <span>{t('pop.ctx.highlight', null, 'Highlight')}</span>
             </div>
             <div className="flex items-center gap-1.5">
-                {colors.map(c => (
+                {colors.map(c => {
+                    const colorName = t(c.titleKey, null, c.fallback);
+                    return (
                     <button
                         key={c.id}
                         onClick={(e) => {
                             e.stopPropagation();
                             onSelectColor(c.id);
                         }}
-                        title={`Highlight with ${c.title}`}
+                        title={t('pop.ctx.highlightWith', { color: colorName }, `Highlight with ${c.fallback}`)}
                         className={`w-3.5 h-3.5 rounded-full border hover:scale-125 transition-transform cursor-pointer ${
                             isBright ? 'border-black/20' : 'border-white/30'
                         }`}
                         style={{ backgroundColor: c.bg }}
                     />
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
 }
 
 export const TOPBAR_EXTENSION_ICONS = [
-    { id: 'splitview', label: 'Split View' },
-    { id: 'theme', label: 'Theme & Smart Dark' },
-    { id: 'shield', label: 'QShield Tracker Blocker' },
-    { id: 'media', label: 'Media Player' },
-    { id: 'downloads', label: 'Downloads' },
-    { id: 'tor', label: 'Tor Onion Network' },
-    { id: 'vault', label: 'QVault Passwords' },
+    { id: 'splitview', label: 'Split View', labelKey: 'pop.ctx.extSplitView' },
+    { id: 'theme', label: 'Theme & Smart Dark', labelKey: 'pop.ctx.extTheme' },
+    { id: 'shield', label: 'QShield Tracker Blocker', labelKey: 'pop.ctx.extShield' },
+    { id: 'media', label: 'Media Player', labelKey: 'pop.ctx.extMedia' },
+    { id: 'downloads', label: 'Downloads', labelKey: 'pop.ctx.extDownloads' },
+    { id: 'tor', label: 'Tor Onion Network', labelKey: 'pop.ctx.extTor' },
+    { id: 'vault', label: 'QVault Passwords', labelKey: 'pop.ctx.extVault' },
 ];
 
 export default function ContextMenuProvider({ children }) {
+    const { t } = useTranslation();
     const contextMenu = useUIStore(state => state.contextMenu);
     const isContextMenuClosing = useUIStore(state => state.isContextMenuClosing);
     const closeContextMenu = useUIStore(state => state.closeContextMenu);
@@ -648,15 +654,28 @@ export default function ContextMenuProvider({ children }) {
     ];
     const customSpaceTabs = useTabStore(state => state.customSpaceTabs) || {};
 
+    const getLocalizedSpaceName = (sp) => {
+        if (!sp) return '';
+        if (sp.id === 'personal' && sp.name === 'Personal') return t('nav.personal', null, 'Personal');
+        if (sp.id === 'work' && sp.name === 'Work') return t('nav.work', null, 'Work');
+        return sp.name;
+    };
+
+    const formatTabCount = (count) => (
+        count === 1
+            ? t('pop.ctx.tabOne', { count }, '1 tab')
+            : t('pop.ctx.tabsMany', { count }, `${count} tabs`)
+    );
+
     const spaces = [
         ...customSpaces.map(sp => ({
             id: sp.id,
-            name: sp.name,
+            name: getLocalizedSpaceName(sp),
             icon: getSpaceIcon(sp.icon),
             count: (useTabStore.getState().getTabsForSpace?.(sp.id) || []).length
         })),
-        { id: 'ghost', name: 'Ghost Space', icon: EyeOff, count: (ghostTabs || []).length },
-        { id: 'tor', name: 'Tor Space', icon: Shield, count: (torTabs || []).length }
+        { id: 'ghost', name: t('pop.ctx.ghostSpace', null, 'Ghost Space'), icon: EyeOff, count: (ghostTabs || []).length },
+        { id: 'tor', name: t('pop.ctx.torSpace', null, 'Tor Space'), icon: Shield, count: (torTabs || []).length }
     ];
 
     // Webview reference resolver
@@ -720,25 +739,25 @@ export default function ContextMenuProvider({ children }) {
                     if (pngDataUrl) {
                         const writeRes = await window.electronAPI.writeClipboardImageDataUrl(pngDataUrl);
                         if (writeRes?.success) {
-                            showToast('Image copied to clipboard');
+                            showToast(t('pop.ctx.imageCopied', null, 'Image copied to clipboard'));
                             return;
                         }
                     }
                 }
                 if (res?.success) {
-                    showToast('Image copied to clipboard');
+                    showToast(t('pop.ctx.imageCopied', null, 'Image copied to clipboard'));
                     return;
                 }
             }
             if (wv && typeof wv.copyImageAt === 'function') {
                 wv.copyImageAt(Math.round(cm.localX ?? cm.x ?? 0), Math.round(cm.localY ?? cm.y ?? 0));
-                showToast('Image copied to clipboard');
+                showToast(t('pop.ctx.imageCopied', null, 'Image copied to clipboard'));
                 return;
             }
-            showToast('Could not copy image');
+            showToast(t('pop.ctx.couldNotCopyImage', null, 'Could not copy image'));
         } catch (err) {
             console.error('Failed to copy image:', err);
-            showToast('Could not copy image');
+            showToast(t('pop.ctx.couldNotCopyImage', null, 'Could not copy image'));
         }
     };
 
@@ -848,7 +867,7 @@ export default function ContextMenuProvider({ children }) {
                 const headerPillItems = [
                     {
                         icon: ArrowLeft,
-                        title: 'Back',
+                        title: t('common.back', null, 'Back'),
                         disabled: !cm.canGoBack,
                         onClick: () => {
                             if (wv && typeof wv.goBack === 'function') wv.goBack();
@@ -857,7 +876,7 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: ArrowRight,
-                        title: 'Forward',
+                        title: t('common.forward', null, 'Forward'),
                         disabled: !cm.canGoForward,
                         onClick: () => {
                             if (wv && typeof wv.goForward === 'function') wv.goForward();
@@ -866,7 +885,7 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: RefreshCw,
-                        title: 'Reload',
+                        title: t('nav.reload', null, 'Reload'),
                         onClick: () => {
                             if (wv && typeof wv.reload === 'function') wv.reload();
                             closeContextMenu();
@@ -874,7 +893,7 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: Pin,
-                        title: 'Pin Tab',
+                        title: t('nav.pinTab', null, 'Pin Tab'),
                         onClick: () => {
                             if (activeTab) handlePinTab(activeTab);
                             closeContextMenu();
@@ -882,11 +901,11 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: Copy,
-                        title: 'Copy Page URL',
+                        title: t('pop.ctx.copyPageUrl', null, 'Copy Page URL'),
                         onClick: () => {
                             if (pageURL) {
                                 copyTextToClipboard(pageURL);
-                                showToast('Page URL copied to clipboard');
+                                showToast(t('pop.ctx.pageUrlCopied', null, 'Page URL copied to clipboard'));
                             }
                             closeContextMenu();
                         }
@@ -909,11 +928,11 @@ export default function ContextMenuProvider({ children }) {
                         {hasImage && (
                             <>
                                 <div className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/65'}`}>
-                                    Image
+                                    {t('pop.ctx.image', null, 'Image')}
                                 </div>
                                 <MenuItem
                                     icon={Copy}
-                                    label="Copy Image"
+                                    label={t('pop.ctx.copyImage', null, 'Copy Image')}
                                     accent
                                     onClick={() => {
                                         handleCopyWebviewImage(cm, wv);
@@ -924,7 +943,7 @@ export default function ContextMenuProvider({ children }) {
                                     <>
                                         <MenuItem
                                             icon={ImageIcon}
-                                            label="Open Image in New Tab"
+                                            label={t('pop.ctx.openImageNewTab', null, 'Open Image in New Tab')}
                                             onClick={() => {
                                                 handleNewTab(srcURL);
                                                 closeContextMenu();
@@ -932,21 +951,21 @@ export default function ContextMenuProvider({ children }) {
                                         />
                                         <MenuItem
                                             icon={Copy}
-                                            label="Copy Image Address"
+                                            label={t('pop.ctx.copyImageAddress', null, 'Copy Image Address')}
                                             onClick={() => {
                                                 copyTextToClipboard(srcURL);
-                                                showToast('Image address copied');
+                                                showToast(t('pop.ctx.imageAddressCopied', null, 'Image address copied'));
                                                 closeContextMenu();
                                             }}
                                         />
                                         <MenuItem
                                             icon={Download}
-                                            label="Save Image As..."
+                                            label={t('pop.ctx.saveImageAs', null, 'Save Image As...')}
                                             onClick={() => {
                                                 if (wv && typeof wv.downloadURL === 'function') {
                                                     wv.downloadURL(srcURL);
                                                 }
-                                                showToast('Downloading image...');
+                                                showToast(t('pop.ctx.downloadingImage', null, 'Downloading image...'));
                                                 closeContextMenu();
                                             }}
                                         />
@@ -964,7 +983,7 @@ export default function ContextMenuProvider({ children }) {
                                 </div>
                                 <MenuItem
                                     icon={ExternalLink}
-                                    label="Open Link in New Tab"
+                                    label={t('pop.ctx.openLinkNewTab', null, 'Open Link in New Tab')}
                                     onClick={() => {
                                         const isLikelyDownload = isLikelyDownloadUrl(linkURL);
                                         handleNewTab(linkURL, !isLikelyDownload, {
@@ -977,7 +996,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={Layers}
-                                    label="Open in Background Tab"
+                                    label={t('pop.ctx.openBackgroundTab', null, 'Open in Background Tab')}
                                     onClick={() => {
                                         handleNewTab(linkURL, false, {
                                             isOpenedByNewWindow: true,
@@ -989,13 +1008,13 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={MonitorPlay}
-                                    label="Open Link in Split View"
+                                    label={t('pop.ctx.openLinkSplitView', null, 'Open Link in Split View')}
                                     accent
                                     onClick={() => {
                                         const newTabId = `t-${Date.now()}`;
                                         useTabStore.getState().addTab({
                                             id: newTabId,
-                                            title: 'Link Split',
+                                            title: t('pop.ctx.linkSplit', null, 'Link Split'),
                                             url: linkURL,
                                             active: false,
                                             folderId: null
@@ -1006,24 +1025,24 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={Copy}
-                                    label="Copy Link Address"
+                                    label={t('pop.ctx.copyLinkAddress', null, 'Copy Link Address')}
                                     shortcut="Ctrl+C"
                                     onClick={() => {
                                         copyTextToClipboard(linkURL);
-                                        showToast('Link address copied');
+                                        showToast(t('pop.ctx.linkAddressCopied', null, 'Link address copied'));
                                         closeContextMenu();
                                     }}
                                 />
                                 <MenuItem
                                     icon={Download}
-                                    label="Download Link Target"
+                                    label={t('pop.ctx.downloadLinkTarget', null, 'Download Link Target')}
                                     onClick={() => {
                                         if (wv && typeof wv.downloadURL === 'function') {
                                             wv.downloadURL(linkURL);
                                         } else if (window.electronAPI?.openExternal) {
                                             window.electronAPI.openExternal(linkURL);
                                         }
-                                        showToast('Download started...');
+                                        showToast(t('pop.ctx.downloadStarted', null, 'Download started...'));
                                         closeContextMenu();
                                     }}
                                 />
@@ -1036,24 +1055,24 @@ export default function ContextMenuProvider({ children }) {
                             <>
                                 <div className={`px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold border-b mb-1 ${isBright ? 'text-zinc-600 border-black/[0.06]' : 'text-white/70 border-white/[0.08]'}`}>
                                     <span className="truncate max-w-[150px]">"{selectionText}"</span>
-                                    <span className="text-[10px] text-accent font-mono">Selected</span>
+                                    <span className="text-[10px] text-accent font-mono">{t('pop.ctx.selected', null, 'Selected')}</span>
                                 </div>
 
                                 <MenuItem
                                     icon={Copy}
-                                    label="Copy"
+                                    label={t('common.copy', null, 'Copy')}
                                     shortcut="Ctrl+C"
                                     onClick={() => {
                                         try { wv?.focus?.(); wv?.copy?.(); } catch (_) {}
                                         copyTextToClipboard(selectionText);
-                                        showToast('Selected text copied');
+                                        showToast(t('pop.ctx.selectedTextCopied', null, 'Selected text copied'));
                                         closeContextMenu();
                                     }}
                                 />
 
                                 <MenuItem
                                     icon={Search}
-                                    label={`Search with ${engineName}`}
+                                    label={t('pop.ctx.searchWith', { engine: engineName }, `Search with ${engineName}`)}
                                     onClick={() => {
                                         handleNewTab(getSearchUrl(selectionText));
                                         closeContextMenu();
@@ -1069,7 +1088,7 @@ export default function ContextMenuProvider({ children }) {
 
                                 <MenuItem
                                     icon={StickyNote}
-                                    label="Add Note..."
+                                    label={t('pop.ctx.addNote', null, 'Add Note...')}
                                     onClick={() => {
                                         handleContextAddNote();
                                         closeContextMenu();
@@ -1079,12 +1098,12 @@ export default function ContextMenuProvider({ children }) {
                                 {/* AI Actions Submenu */}
                                 <MenuItemWithSubmenu
                                     icon={Sparkles}
-                                    label="AI Actions"
+                                    label={t('pop.ctx.aiActions', null, 'AI Actions')}
                                     accent
                                 >
                                     <MenuItem
                                         icon={HelpCircle}
-                                        label="Explain Selection"
+                                        label={t('pop.ctx.explainSelection', null, 'Explain Selection')}
                                         onClick={() => {
                                             handleAIAction('Please explain this concisely in simple terms', selectionText);
                                             closeContextMenu();
@@ -1092,7 +1111,7 @@ export default function ContextMenuProvider({ children }) {
                                     />
                                     <MenuItem
                                         icon={FileText}
-                                        label="Summarize Selection"
+                                        label={t('pop.ctx.summarizeSelection', null, 'Summarize Selection')}
                                         onClick={() => {
                                             handleAIAction('Please provide a bulleted summary of this text', selectionText);
                                             closeContextMenu();
@@ -1100,7 +1119,7 @@ export default function ContextMenuProvider({ children }) {
                                     />
                                     <MenuItem
                                         icon={Globe}
-                                        label="Translate to English"
+                                        label={t('pop.ctx.translateToEnglish', null, 'Translate to English')}
                                         onClick={() => {
                                             handleAIAction('Please translate this to English and explain key nuances', selectionText);
                                             closeContextMenu();
@@ -1108,7 +1127,7 @@ export default function ContextMenuProvider({ children }) {
                                     />
                                     <MenuItem
                                         icon={MessageSquare}
-                                        label="Send to AI Chat"
+                                        label={t('pop.ctx.sendToAiChat', null, 'Send to AI Chat')}
                                         onClick={() => {
                                             handleAIAction('', selectionText, false);
                                             closeContextMenu();
@@ -1125,7 +1144,7 @@ export default function ContextMenuProvider({ children }) {
                             <>
                                 <MenuItem
                                     icon={RotateCcw}
-                                    label="Undo"
+                                    label={t('pop.ctx.undo', null, 'Undo')}
                                     shortcut="Ctrl+Z"
                                     disabled={editFlags.canUndo === false}
                                     onClick={() => {
@@ -1138,7 +1157,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={RotateCw}
-                                    label="Redo"
+                                    label={t('pop.ctx.redo', null, 'Redo')}
                                     shortcut="Ctrl+Y"
                                     disabled={editFlags.canRedo === false}
                                     onClick={() => {
@@ -1152,7 +1171,7 @@ export default function ContextMenuProvider({ children }) {
                                 <MenuDivider />
                                 <MenuItem
                                     icon={Scissors}
-                                    label="Cut"
+                                    label={t('pop.ctx.cut', null, 'Cut')}
                                     shortcut="Ctrl+X"
                                     disabled={editFlags.canCut === false && !hasSelection}
                                     onClick={() => {
@@ -1166,7 +1185,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={Copy}
-                                    label="Copy"
+                                    label={t('common.copy', null, 'Copy')}
                                     shortcut="Ctrl+C"
                                     disabled={editFlags.canCopy === false && !hasSelection}
                                     onClick={() => {
@@ -1180,7 +1199,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={Clipboard}
-                                    label="Paste"
+                                    label={t('pop.ctx.paste', null, 'Paste')}
                                     shortcut="Ctrl+V"
                                     onClick={() => {
                                         if (wv) {
@@ -1192,7 +1211,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={FileText}
-                                    label="Paste as Plain Text"
+                                    label={t('pop.ctx.pastePlainText', null, 'Paste as Plain Text')}
                                     shortcut="Ctrl+Shift+V"
                                     onClick={() => {
                                         if (wv) {
@@ -1208,7 +1227,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={CheckSquare}
-                                    label="Select All"
+                                    label={t('pop.ctx.selectAll', null, 'Select All')}
                                     shortcut="Ctrl+A"
                                     onClick={() => {
                                         if (wv) {
@@ -1227,7 +1246,7 @@ export default function ContextMenuProvider({ children }) {
                             <>
                                 <MenuItem
                                     icon={Clipboard}
-                                    label="Paste"
+                                    label={t('pop.ctx.paste', null, 'Paste')}
                                     shortcut="Ctrl+V"
                                     onClick={() => {
                                         if (wv) {
@@ -1239,7 +1258,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={CheckSquare}
-                                    label="Select All"
+                                    label={t('pop.ctx.selectAll', null, 'Select All')}
                                     shortcut="Ctrl+A"
                                     onClick={() => {
                                         if (wv) {
@@ -1252,7 +1271,7 @@ export default function ContextMenuProvider({ children }) {
                                 <MenuDivider />
                                 <MenuItem
                                     icon={BookOpen}
-                                    label="Toggle Reader Mode"
+                                    label={t('pop.ctx.toggleReaderMode', null, 'Toggle Reader Mode')}
                                     shortcut="Ctrl+Alt+R"
                                     onClick={() => {
                                         useUIStore.getState().toggleReaderMode();
@@ -1260,8 +1279,39 @@ export default function ContextMenuProvider({ children }) {
                                     }}
                                 />
                                 <MenuItem
+                                    icon={Sparkles}
+                                    label={t('pop.ctx.hideDistractingItems', null, 'Hide Distracting Items...')}
+                                    onClick={() => {
+                                        useUIStore.getState().toggleElementEraser(true);
+                                        closeContextMenu();
+                                    }}
+                                />
+                                {(() => {
+                                    const uiState = useUIStore.getState();
+                                    const isEphemeral = activeSpace === 'ghost' || activeSpace === 'tor';
+                                    let cleanHost = '';
+                                    try {
+                                        if (pageURL) cleanHost = new URL(pageURL).hostname.replace(/^www\./i, '').toLowerCase();
+                                    } catch (_) {}
+                                    const rules = isEphemeral
+                                        ? (uiState.eraserSessionRules?.[activeTab?.id] || [])
+                                        : (cleanHost ? (uiState.hiddenElementsByDomain?.[cleanHost] || []) : []);
+                                    if (!rules.length) return null;
+                                    return (
+                                        <MenuItem
+                                            icon={RotateCcw}
+                                            label={t('pop.ctx.showHiddenItemsCount', { count: rules.length }, `Show Hidden Items (${rules.length})`)}
+                                            onClick={() => {
+                                                uiState.clearHiddenElementsForDomain(cleanHost, { ephemeral: isEphemeral, tabId: activeTab?.id });
+                                                showToast(t('chrome.eraserRestoredAllToast', null, 'Restored all hidden items on this page'));
+                                                closeContextMenu();
+                                            }}
+                                        />
+                                    );
+                                })()}
+                                <MenuItem
                                     icon={Search}
-                                    label="Find in Page..."
+                                    label={t('pop.ctx.findInPage', null, 'Find in Page...')}
                                     shortcut="Ctrl+F"
                                     onClick={() => {
                                         useUIStore.getState().setIsFindOpen(true);
@@ -1272,7 +1322,7 @@ export default function ContextMenuProvider({ children }) {
                                     <>
                                         <MenuItem
                                             icon={activeTab.isMuted ? Volume2 : VolumeX}
-                                            label={activeTab.isMuted ? "Unmute Tab" : "Mute Tab"}
+                                            label={activeTab.isMuted ? t('nav.unmuteTab', null, 'Unmute Tab') : t('nav.muteTab', null, 'Mute Tab')}
                                             onClick={() => {
                                                 handleToggleMute(activeTab.id, activeSpace);
                                                 closeContextMenu();
@@ -1280,7 +1330,7 @@ export default function ContextMenuProvider({ children }) {
                                         />
                                         <MenuItem
                                             icon={Layers}
-                                            label="Duplicate Tab"
+                                            label={t('pop.ctx.duplicateTab', null, 'Duplicate Tab')}
                                             onClick={() => {
                                                 duplicateTab(activeTab.id, activeSpace);
                                                 closeContextMenu();
@@ -1288,9 +1338,9 @@ export default function ContextMenuProvider({ children }) {
                                         />
                                         <MenuItemWithSubmenu
                                             icon={ArrowRightLeft}
-                                            label="Move Tab to Space"
+                                            label={t('pop.ctx.moveTabToSpace', null, 'Move Tab to Space')}
                                         >
-                                            <MenuSectionHeader label="Destination Space" icon={ArrowRightLeft} />
+                                            <MenuSectionHeader label={t('pop.ctx.destinationSpace', null, 'Destination Space')} icon={ArrowRightLeft} />
                                             {spaces.map(sp => {
                                                 const isCurrent = sp.id === activeSpace;
                                                 return (
@@ -1298,7 +1348,7 @@ export default function ContextMenuProvider({ children }) {
                                                         key={sp.id}
                                                         icon={sp.icon}
                                                         label={sp.name}
-                                                        shortcut={isCurrent ? 'Current' : `${sp.count} tab${sp.count === 1 ? '' : 's'}`}
+                                                        shortcut={isCurrent ? t('pop.ctx.current', null, 'Current') : formatTabCount(sp.count)}
                                                         disabled={isCurrent}
                                                         onClick={() => {
                                                             moveTabToSpace(activeTab.id, activeSpace, sp.id);
@@ -1312,7 +1362,7 @@ export default function ContextMenuProvider({ children }) {
                                 )}
                                 <MenuItem
                                     icon={FileDown}
-                                    label="Save as Clean PDF..."
+                                    label={t('pop.ctx.saveCleanPdf', null, 'Save as Clean PDF...')}
                                     onClick={() => {
                                         useUIStore.getState().saveActivePageAsPDF();
                                         closeContextMenu();
@@ -1320,7 +1370,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={Printer}
-                                    label="Print..."
+                                    label={t('pop.ctx.print', null, 'Print...')}
                                     shortcut="Ctrl+P"
                                     onClick={() => {
                                         useUIStore.getState().printActivePage();
@@ -1329,7 +1379,7 @@ export default function ContextMenuProvider({ children }) {
                                 />
                                 <MenuItem
                                     icon={Code}
-                                    label="View Page Source"
+                                    label={t('pop.ctx.viewPageSource', null, 'View Page Source')}
                                     onClick={() => {
                                         if (pageURL) {
                                             handleNewTab(`view-source:${pageURL}`);
@@ -1343,7 +1393,7 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Terminal}
-                            label="Inspect Element"
+                            label={t('pop.ctx.inspectElement', null, 'Inspect Element')}
                             onClick={() => {
                                 if (wv && typeof wv.inspectElement === 'function' && cm.x != null && cm.y != null) {
                                     wv.inspectElement(cm.x, cm.y);
@@ -1368,7 +1418,7 @@ export default function ContextMenuProvider({ children }) {
                 const tabPillItems = [
                     {
                         icon: RefreshCw,
-                        title: 'Reload Tab',
+                        title: t('pop.ctx.reloadTab', null, 'Reload Tab'),
                         onClick: () => {
                             reloadTab(tab.id);
                             closeTabContextMenu();
@@ -1376,7 +1426,7 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: tab.isMuted ? Volume2 : VolumeX,
-                        title: tab.isMuted ? 'Unmute Tab' : 'Mute Tab',
+                        title: tab.isMuted ? t('nav.unmuteTab', null, 'Unmute Tab') : t('nav.muteTab', null, 'Mute Tab'),
                         onClick: () => {
                             handleToggleMute(tab.id, spaceType);
                             closeTabContextMenu();
@@ -1384,7 +1434,7 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: spaceType === 'pinned' ? Minus : Pin,
-                        title: spaceType === 'pinned' ? 'Unpin Tab' : 'Pin Tab',
+                        title: spaceType === 'pinned' ? t('nav.unpinTab', null, 'Unpin Tab') : t('nav.pinTab', null, 'Pin Tab'),
                         onClick: () => {
                             if (spaceType === 'pinned') handleUnpinTab(tab);
                             else handlePinTab(tab);
@@ -1393,7 +1443,7 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: MonitorPlay,
-                        title: 'Open in Split View',
+                        title: t('pop.ctx.openInSplitView', null, 'Open in Split View'),
                         accent: true,
                         onClick: () => {
                             useUIStore.getState().toggleSplitView(tab.id);
@@ -1402,7 +1452,7 @@ export default function ContextMenuProvider({ children }) {
                     },
                     {
                         icon: X,
-                        title: 'Close Tab',
+                        title: t('nav.closeTab', null, 'Close Tab'),
                         danger: true,
                         onClick: () => {
                             handleCloseTab(tab.id);
@@ -1425,12 +1475,12 @@ export default function ContextMenuProvider({ children }) {
 
                         {/* Tab Title preview */}
                         <MenuSectionHeader>
-                            {tab.title || 'Tab Actions'}
+                            {tab.title || t('pop.ctx.tabActions', null, 'Tab Actions')}
                         </MenuSectionHeader>
 
                         <MenuItem
                             icon={Layers}
-                            label="Duplicate Tab"
+                            label={t('pop.ctx.duplicateTab', null, 'Duplicate Tab')}
                             onClick={() => {
                                 duplicateTab(tab.id, spaceType);
                                 closeTabContextMenu();
@@ -1440,7 +1490,7 @@ export default function ContextMenuProvider({ children }) {
                         {spaceType !== 'pinned' && tab.url && tab.url !== 'about:blank' && (
                             <MenuItem
                                 icon={Pin}
-                                label="Pin to App Bar"
+                                label={t('pop.ctx.pinToAppBar', null, 'Pin to App Bar')}
                                 onClick={() => {
                                     handlePinTab(tab);
                                     closeTabContextMenu();
@@ -1450,11 +1500,11 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Copy}
-                            label="Copy Tab URL"
+                            label={t('pop.ctx.copyTabUrl', null, 'Copy Tab URL')}
                             onClick={() => {
                                 if (tab.url) {
                                     navigator.clipboard.writeText(tab.url);
-                                    showToast('Tab URL copied');
+                                    showToast(t('pop.ctx.tabUrlCopied', null, 'Tab URL copied'));
                                 }
                                 closeTabContextMenu();
                             }}
@@ -1462,7 +1512,7 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={MonitorPlay}
-                            label="Open in Split View"
+                            label={t('pop.ctx.openInSplitView', null, 'Open in Split View')}
                             accent
                             onClick={() => {
                                 useUIStore.getState().toggleSplitView(tab.id);
@@ -1473,7 +1523,7 @@ export default function ContextMenuProvider({ children }) {
                         {!tab.suspended && (
                             <MenuItem
                                 icon={Moon}
-                                label="Suspend Tab (Save RAM)"
+                                label={t('pop.ctx.suspendTab', null, 'Suspend Tab (Save RAM)')}
                                 onClick={() => {
                                     suspendTab(tab.id);
                                     closeTabContextMenu();
@@ -1486,9 +1536,9 @@ export default function ContextMenuProvider({ children }) {
                         {/* Move to Space Submenu */}
                         <MenuItemWithSubmenu
                             icon={ArrowRightLeft}
-                            label="Move to Space"
+                            label={t('pop.ctx.moveToSpace', null, 'Move to Space')}
                         >
-                            <MenuSectionHeader label="Destination Space" icon={ArrowRightLeft} />
+                            <MenuSectionHeader label={t('pop.ctx.destinationSpace', null, 'Destination Space')} icon={ArrowRightLeft} />
                             {spaces.map(sp => {
                                 const isCurrent = sp.id === spaceType;
                                 return (
@@ -1496,7 +1546,7 @@ export default function ContextMenuProvider({ children }) {
                                         key={sp.id}
                                         icon={sp.icon}
                                         label={sp.name}
-                                        shortcut={isCurrent ? 'Current' : `${sp.count} tab${sp.count === 1 ? '' : 's'}`}
+                                        shortcut={isCurrent ? t('pop.ctx.current', null, 'Current') : formatTabCount(sp.count)}
                                         disabled={isCurrent}
                                         onClick={() => {
                                             moveTabToSpace(tab.id, spaceType, sp.id);
@@ -1511,7 +1561,7 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Layers}
-                            label="Close Other Tabs"
+                            label={t('pop.ctx.closeOtherTabs', null, 'Close Other Tabs')}
                             danger
                             onClick={() => {
                                 closeOtherTabs(tab.id, spaceType);
@@ -1520,7 +1570,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={ArrowRight}
-                            label="Close Tabs Below"
+                            label={t('pop.ctx.closeTabsBelow', null, 'Close Tabs Below')}
                             danger
                             onClick={() => {
                                 closeTabsBelow(tab.id, spaceType);
@@ -1529,7 +1579,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={X}
-                            label="Close Tab"
+                            label={t('nav.closeTab', null, 'Close Tab')}
                             shortcut="Ctrl+W"
                             danger
                             onClick={() => {
@@ -1590,7 +1640,7 @@ export default function ContextMenuProvider({ children }) {
 
                 const handleCloseAllInStack = () => {
                     pinTabs.forEach(t => handleCloseTab(t.id));
-                    showToast(`Closed ${pinTabs.length} tabs for ${pin.title}`);
+                    showToast(t('pop.ctx.closedStackTabs', { count: pinTabs.length, title: pin.title || t('pop.ctx.appFallback', null, 'App') }, `Closed ${pinTabs.length} tabs for ${pin.title}`));
                     closePinnedContextMenu();
                 };
 
@@ -1622,7 +1672,7 @@ export default function ContextMenuProvider({ children }) {
                                     <span className={`text-xs font-semibold truncate max-w-[120px] ${
                                         isBright ? 'text-zinc-900' : 'text-white'
                                     }`}>
-                                        {pin.title || pin.domain || 'Pinned App'}
+                                        {pin.title || pin.domain || t('pop.ctx.pinnedApp', null, 'Pinned App')}
                                     </span>
                                     <span className={`text-[9px] font-mono truncate max-w-[120px] ${
                                         isBright ? 'text-zinc-500' : 'text-white/40'
@@ -1634,7 +1684,7 @@ export default function ContextMenuProvider({ children }) {
                             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full border flex-shrink-0 ${
                                 isBright ? 'bg-black/5 text-zinc-700 border-black/10' : 'bg-white/10 text-white/70 border-white/10'
                             }`}>
-                                {pinTabs.length} {pinTabs.length === 1 ? 'tab' : 'tabs'}
+                                {formatTabCount(pinTabs.length)}
                             </span>
                         </div>
 
@@ -1644,7 +1694,7 @@ export default function ContextMenuProvider({ children }) {
                                 <div className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                     isBright ? 'text-zinc-500' : 'text-white/40'
                                 }`}>
-                                    Active Tabs in Stack
+                                    {t('pop.ctx.activeTabsInStack', null, 'Active Tabs in Stack')}
                                 </div>
                                 <div className="max-h-40 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex flex-col gap-0.5">
                                     {pinTabs.map((tab) => {
@@ -1676,7 +1726,7 @@ export default function ContextMenuProvider({ children }) {
                                                     <span className={`truncate max-w-[130px] text-[11px] ${
                                                         isBright ? (tab.active ? 'text-zinc-950 font-semibold' : 'text-zinc-700') : (tab.active ? 'text-white font-medium' : 'text-white/80')
                                                     }`}>
-                                                        {tab.title || 'New Tab'}
+                                                        {tab.title || t('nav.newTab', null, 'New Tab')}
                                                     </span>
                                                 </div>
 
@@ -1695,7 +1745,7 @@ export default function ContextMenuProvider({ children }) {
                                                         className={`p-1 rounded transition opacity-0 group-hover:opacity-100 ${
                                                             isBright ? 'text-zinc-400 hover:text-red-500 hover:bg-black/5' : 'text-white/30 hover:text-red-400 hover:bg-white/10'
                                                         }`}
-                                                        title="Close tab"
+                                                        title={t('nav.closeTab', null, 'Close Tab')}
                                                     >
                                                         <X size={10} />
                                                     </button>
@@ -1711,19 +1761,19 @@ export default function ContextMenuProvider({ children }) {
                         {/* Stack Actions */}
                         <MenuItem
                             icon={Plus}
-                            label={`New ${pin.title || 'App'} Tab`}
+                            label={t('pop.ctx.newPinnedAppTab', { title: pin.title || t('pop.ctx.appFallback', null, 'App') }, `New ${pin.title || 'App'} Tab`)}
                             accent
                             onClick={handleNewTabForPin}
                         />
 
                         <MenuItem
                             icon={MonitorPlay}
-                            label="Open in Split View"
+                            label={t('pop.ctx.openInSplitView', null, 'Open in Split View')}
                             onClick={() => {
                                 const newTabId = `t-${Date.now()}`;
                                 useTabStore.getState().addTab({
                                     id: newTabId,
-                                    title: pin.title || 'Pinned App',
+                                    title: pin.title || t('pop.ctx.pinnedApp', null, 'Pinned App'),
                                     url: pinUrl,
                                     active: false,
                                     folderId: null
@@ -1735,11 +1785,11 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Copy}
-                            label="Copy App URL"
+                            label={t('pop.ctx.copyAppUrl', null, 'Copy App URL')}
                             onClick={() => {
                                 if (pinUrl) {
                                     navigator.clipboard.writeText(pinUrl);
-                                    showToast('App URL copied');
+                                    showToast(t('pop.ctx.appUrlCopied', null, 'App URL copied'));
                                 }
                                 closePinnedContextMenu();
                             }}
@@ -1750,7 +1800,7 @@ export default function ContextMenuProvider({ children }) {
                         {pinTabs.length > 1 && (
                             <MenuItem
                                 icon={Trash2}
-                                label={`Close All in Stack (${pinTabs.length})`}
+                                label={t('pop.ctx.closeAllInStack', { count: pinTabs.length }, `Close All in Stack (${pinTabs.length})`)}
                                 danger
                                 onClick={handleCloseAllInStack}
                             />
@@ -1758,7 +1808,7 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Minus}
-                            label="Unpin from Bar"
+                            label={t('pop.ctx.unpinFromBar', null, 'Unpin from Bar')}
                             danger
                             onClick={() => {
                                 handleUnpinTab(pin);
@@ -1787,12 +1837,12 @@ export default function ContextMenuProvider({ children }) {
                         className="w-56"
                     >
                         <MenuSectionHeader>
-                            {folder.name || 'Folder'}
+                            {folder.name || t('pop.ctx.folder', null, 'Folder')}
                         </MenuSectionHeader>
 
                         <MenuItem
                             icon={Plus}
-                            label="New Tab in Folder"
+                            label={t('pop.ctx.newTabInFolder', null, 'New Tab in Folder')}
                             onClick={() => {
                                 useTabStore.getState().addTabToFolder(folder.id, spaceType);
                                 closeFolderContextMenu();
@@ -1800,7 +1850,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={Pencil}
-                            label="Rename Folder"
+                            label={t('pop.ctx.renameFolder', null, 'Rename Folder')}
                             onClick={() => {
                                 closeFolderContextMenu();
                                 useTabStore.getState().setRenamingFolderId(folder.id);
@@ -1811,7 +1861,7 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Layers}
-                            label="Close All Tabs in Folder"
+                            label={t('pop.ctx.closeAllTabsInFolder', null, 'Close All Tabs in Folder')}
                             danger
                             onClick={() => {
                                 useTabStore.getState().closeAllTabsInFolder(folder.id, spaceType);
@@ -1820,12 +1870,12 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={Trash2}
-                            label="Delete Folder"
+                            label={t('pop.ctx.deleteFolder', null, 'Delete Folder')}
                             danger
                             onClick={() => {
                                 closeFolderContextMenu();
                                 useTabStore.getState().deleteFolder(folder.id);
-                                showToast('Folder deleted');
+                                showToast(t('pop.ctx.folderDeleted', null, 'Folder deleted'));
                             }}
                         />
                     </MenuContainer>
@@ -1840,6 +1890,34 @@ export default function ContextMenuProvider({ children }) {
                 const url = tbm.url || useUIStore.getState().currentUrl || '';
                 const wv = getTargetWebview(tbm.tabId);
                 const hiddenIcons = useUIStore.getState().settings?.hiddenTopBarIcons || [];
+                const iconMeta = tbm.iconId ? TOPBAR_EXTENSION_ICONS.find(i => i.id === tbm.iconId) : null;
+                const localizedIconLabel = iconMeta
+                    ? t(iconMeta.labelKey, null, iconMeta.label)
+                    : (tbm.iconLabel || t('pop.ctx.toolbarIcon', null, 'Toolbar Icon'));
+                const localizedShortIconLabel = iconMeta
+                    ? t(iconMeta.labelKey, null, iconMeta.label)
+                    : (tbm.iconLabel || t('pop.ctx.iconFallback', null, 'Icon'));
+
+                const renderToolbarIconMenuItems = () => TOPBAR_EXTENSION_ICONS.map((item) => {
+                    const isItemVisible = !hiddenIcons.includes(item.id);
+                    const itemLabel = t(item.labelKey, null, item.label);
+                    return (
+                        <MenuItem
+                            key={item.id}
+                            icon={isItemVisible ? Check : EyeOff}
+                            label={itemLabel}
+                            accent={isItemVisible}
+                            onClick={() => {
+                                useUIStore.getState().toggleTopBarIcon(item.id);
+                                showToast(
+                                    isItemVisible
+                                        ? t('pop.ctx.iconHidden', { label: itemLabel }, `Hidden ${item.label}`)
+                                        : t('pop.ctx.iconShowing', { label: itemLabel }, `Showing ${item.label}`)
+                                );
+                            }}
+                        />
+                    );
+                });
 
                 if (tbm.iconId) {
                     return (
@@ -1852,15 +1930,15 @@ export default function ContextMenuProvider({ children }) {
                             className="w-60"
                         >
                             <MenuSectionHeader>
-                                {tbm.iconLabel || 'Toolbar Icon'}
+                                {localizedIconLabel}
                             </MenuSectionHeader>
 
                             <MenuItem
                                 icon={EyeOff}
-                                label={`Hide "${tbm.iconLabel || 'Icon'}"`}
+                                label={t('pop.ctx.hideIcon', { label: localizedShortIconLabel }, `Hide "${tbm.iconLabel || 'Icon'}"`)}
                                 onClick={() => {
                                     useUIStore.getState().hideTopBarIcon(tbm.iconId);
-                                    showToast(`Hidden "${tbm.iconLabel || 'Icon'}" from toolbar`);
+                                    showToast(t('pop.ctx.hiddenIconToast', { label: localizedShortIconLabel }, `Hidden "${tbm.iconLabel || 'Icon'}" from toolbar`));
                                     closeTopBarContextMenu();
                                 }}
                             />
@@ -1869,38 +1947,24 @@ export default function ContextMenuProvider({ children }) {
 
                             <MenuItemWithSubmenu
                                 icon={SlidersHorizontal}
-                                label="Manage Toolbar Icons"
+                                label={t('pop.ctx.manageToolbarIcons', null, 'Manage Toolbar Icons')}
                             >
-                                {TOPBAR_EXTENSION_ICONS.map((item) => {
-                                    const isItemVisible = !hiddenIcons.includes(item.id);
-                                    return (
-                                        <MenuItem
-                                            key={item.id}
-                                            icon={isItemVisible ? Check : EyeOff}
-                                            label={item.label}
-                                            accent={isItemVisible}
-                                            onClick={() => {
-                                                useUIStore.getState().toggleTopBarIcon(item.id);
-                                                showToast(`${isItemVisible ? 'Hidden' : 'Showing'} ${item.label}`);
-                                            }}
-                                        />
-                                    );
-                                })}
+                                {renderToolbarIconMenuItems()}
                             </MenuItemWithSubmenu>
 
                             <MenuItem
                                 icon={RotateCcw}
-                                label="Restore All Icons"
+                                label={t('pop.ctx.restoreAllIcons', null, 'Restore All Icons')}
                                 onClick={() => {
                                     useUIStore.getState().resetTopBarIcons();
-                                    showToast('All toolbar icons restored');
+                                    showToast(t('pop.ctx.allIconsRestored', null, 'All toolbar icons restored'));
                                     closeTopBarContextMenu();
                                 }}
                             />
 
                             <MenuItem
                                 icon={Settings}
-                                label="Toolbar Settings..."
+                                label={t('pop.ctx.toolbarSettings', null, 'Toolbar Settings...')}
                                 onClick={() => {
                                     useUIStore.getState().openModal('settings');
                                     closeTopBarContextMenu();
@@ -1921,43 +1985,29 @@ export default function ContextMenuProvider({ children }) {
                             className="w-60"
                         >
                             <MenuSectionHeader>
-                                Toolbar &amp; Extensions
+                                {t('pop.ctx.toolbarExtensions', null, 'Toolbar & Extensions')}
                             </MenuSectionHeader>
 
                             <MenuItemWithSubmenu
                                 icon={SlidersHorizontal}
-                                label="Manage Toolbar Icons"
+                                label={t('pop.ctx.manageToolbarIcons', null, 'Manage Toolbar Icons')}
                             >
-                                {TOPBAR_EXTENSION_ICONS.map((item) => {
-                                    const isItemVisible = !hiddenIcons.includes(item.id);
-                                    return (
-                                        <MenuItem
-                                            key={item.id}
-                                            icon={isItemVisible ? Check : EyeOff}
-                                            label={item.label}
-                                            accent={isItemVisible}
-                                            onClick={() => {
-                                                useUIStore.getState().toggleTopBarIcon(item.id);
-                                                showToast(`${isItemVisible ? 'Hidden' : 'Showing'} ${item.label}`);
-                                            }}
-                                        />
-                                    );
-                                })}
+                                {renderToolbarIconMenuItems()}
                             </MenuItemWithSubmenu>
 
                             <MenuItem
                                 icon={RotateCcw}
-                                label="Restore All Icons"
+                                label={t('pop.ctx.restoreAllIcons', null, 'Restore All Icons')}
                                 onClick={() => {
                                     useUIStore.getState().resetTopBarIcons();
-                                    showToast('All toolbar icons restored');
+                                    showToast(t('pop.ctx.allIconsRestored', null, 'All toolbar icons restored'));
                                     closeTopBarContextMenu();
                                 }}
                             />
 
                             <MenuItem
                                 icon={Settings}
-                                label="Toolbar Settings..."
+                                label={t('pop.ctx.toolbarSettings', null, 'Toolbar Settings...')}
                                 onClick={() => {
                                     useUIStore.getState().openModal('settings');
                                     closeTopBarContextMenu();
@@ -1977,12 +2027,12 @@ export default function ContextMenuProvider({ children }) {
                         className="w-60"
                     >
                         <MenuSectionHeader>
-                            Address Bar
+                            {t('pop.ctx.addressBar', null, 'Address Bar')}
                         </MenuSectionHeader>
 
                         <MenuItem
                             icon={Scissors}
-                            label="Cut"
+                            label={t('pop.ctx.cut', null, 'Cut')}
                             shortcut="Ctrl+X"
                             onClick={() => {
                                 window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'cut' } }));
@@ -1991,7 +2041,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={Copy}
-                            label="Copy"
+                            label={t('common.copy', null, 'Copy')}
                             shortcut="Ctrl+C"
                             onClick={() => {
                                 window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'copy' } }));
@@ -2000,7 +2050,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={Clipboard}
-                            label="Paste"
+                            label={t('pop.ctx.paste', null, 'Paste')}
                             shortcut="Ctrl+V"
                             onClick={() => {
                                 window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'paste' } }));
@@ -2009,7 +2059,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={CornerDownLeft}
-                            label="Paste & Go"
+                            label={t('pop.ctx.pasteAndGo', null, 'Paste & Go')}
                             accent
                             onClick={async () => {
                                 await handlePasteAndGo();
@@ -2018,7 +2068,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={CheckSquare}
-                            label="Select All"
+                            label={t('pop.ctx.selectAll', null, 'Select All')}
                             shortcut="Ctrl+A"
                             onClick={() => {
                                 window.dispatchEvent(new CustomEvent('qbrowse-omnibox-edit', { detail: { action: 'selectAll' } }));
@@ -2030,18 +2080,18 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Copy}
-                            label="Copy Current URL"
+                            label={t('pop.ctx.copyCurrentUrl', null, 'Copy Current URL')}
                             onClick={() => {
                                 if (url) {
                                     copyTextToClipboard(url);
-                                    showToast('URL copied to clipboard');
+                                    showToast(t('pop.ctx.urlCopied', null, 'URL copied to clipboard'));
                                 }
                                 closeTopBarContextMenu();
                             }}
                         />
                         <MenuItem
                             icon={RefreshCw}
-                            label="Hard Reload (Bypass Cache)"
+                            label={t('pop.ctx.hardReload', null, 'Hard Reload (Bypass Cache)')}
                             shortcut="Ctrl+Shift+R"
                             onClick={() => {
                                 if (wv && typeof wv.reloadIgnoringCache === 'function') {
@@ -2049,13 +2099,13 @@ export default function ContextMenuProvider({ children }) {
                                 } else if (wv && typeof wv.reload === 'function') {
                                     wv.reload();
                                 }
-                                showToast('Reloading without cache...');
+                                showToast(t('pop.ctx.reloadingNoCache', null, 'Reloading without cache...'));
                                 closeTopBarContextMenu();
                             }}
                         />
                         <MenuItem
                             icon={BookOpen}
-                            label="Toggle Reader Mode"
+                            label={t('pop.ctx.toggleReaderMode', null, 'Toggle Reader Mode')}
                             shortcut="Ctrl+Alt+R"
                             onClick={() => {
                                 useUIStore.getState().toggleReaderMode();
@@ -2067,37 +2117,23 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItemWithSubmenu
                             icon={SlidersHorizontal}
-                            label="Toolbar Icons"
+                            label={t('pop.ctx.toolbarIcons', null, 'Toolbar Icons')}
                         >
-                            {TOPBAR_EXTENSION_ICONS.map((item) => {
-                                const isItemVisible = !hiddenIcons.includes(item.id);
-                                return (
-                                    <MenuItem
-                                        key={item.id}
-                                        icon={isItemVisible ? Check : EyeOff}
-                                        label={item.label}
-                                        accent={isItemVisible}
-                                        onClick={() => {
-                                            useUIStore.getState().toggleTopBarIcon(item.id);
-                                            showToast(`${isItemVisible ? 'Hidden' : 'Showing'} ${item.label}`);
-                                        }}
-                                    />
-                                );
-                            })}
+                            {renderToolbarIconMenuItems()}
                             <MenuDivider />
                             <MenuItem
                                 icon={RotateCcw}
-                                label="Restore All Icons"
+                                label={t('pop.ctx.restoreAllIcons', null, 'Restore All Icons')}
                                 onClick={() => {
                                     useUIStore.getState().resetTopBarIcons();
-                                    showToast('All toolbar icons restored');
+                                    showToast(t('pop.ctx.allIconsRestored', null, 'All toolbar icons restored'));
                                 }}
                             />
                         </MenuItemWithSubmenu>
 
                         <MenuItem
                             icon={Terminal}
-                            label="Inspect Page"
+                            label={t('pop.ctx.inspectPage', null, 'Inspect Page')}
                             onClick={() => {
                                 if (window.electronAPI?.openDevTools) {
                                     window.electronAPI.openDevTools();
@@ -2127,7 +2163,7 @@ export default function ContextMenuProvider({ children }) {
                         className="w-56"
                     >
                         {type === 'download' && (() => {
-                            const fileName = item.fileName || item.filename || 'Download';
+                            const fileName = item.fileName || item.filename || t('pop.ctx.downloadFallback', null, 'Download');
                             const ext = (fileName.split('.').pop() || '').toLowerCase();
                             const isImg = item.isScreenshot || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
 
@@ -2140,7 +2176,7 @@ export default function ContextMenuProvider({ children }) {
                                         <>
                                             <MenuItem
                                                 icon={ExternalLink}
-                                                label="Open File"
+                                                label={t('pop.ctx.openFile', null, 'Open File')}
                                                 onClick={() => {
                                                     if (window.electronAPI?.openFile) {
                                                         window.electronAPI.openFile(item.savePath);
@@ -2150,7 +2186,7 @@ export default function ContextMenuProvider({ children }) {
                                             />
                                             <MenuItem
                                                 icon={FolderOpen}
-                                                label="Show in Folder"
+                                                label={t('pop.ctx.showInFolder', null, 'Show in Folder')}
                                                 onClick={() => {
                                                     if (window.electronAPI?.showItemInFolder) {
                                                         window.electronAPI.showItemInFolder(item.savePath);
@@ -2160,7 +2196,7 @@ export default function ContextMenuProvider({ children }) {
                                             />
                                             <MenuItem
                                                 icon={ShieldCheck}
-                                                label={item.checksum ? "Copy SHA-256 Checksum" : "Verify & Copy Checksum"}
+                                                label={item.checksum ? t('pop.ctx.copyChecksum', null, 'Copy SHA-256 Checksum') : t('pop.ctx.verifyCopyChecksum', null, 'Verify & Copy Checksum')}
                                                 onClick={async () => {
                                                     let hash = item.checksum;
                                                     if (!hash && window.electronAPI?.verifyDownloadFile && item.savePath) {
@@ -2172,9 +2208,9 @@ export default function ContextMenuProvider({ children }) {
                                                     }
                                                     if (hash) {
                                                         navigator.clipboard.writeText(hash);
-                                                        showToast('SHA-256 checksum copied to clipboard');
+                                                        showToast(t('pop.ctx.checksumCopied', null, 'SHA-256 checksum copied to clipboard'));
                                                     } else {
-                                                        showToast('Verification failed - file not found');
+                                                        showToast(t('pop.ctx.verificationFailed', null, 'Verification failed - file not found'));
                                                     }
                                                     closeToolHubContextMenu();
                                                 }}
@@ -2184,13 +2220,13 @@ export default function ContextMenuProvider({ children }) {
                                     {item.savePath && isImg && (
                                         <MenuItem
                                             icon={Copy}
-                                            label="Copy Image to Clipboard"
+                                            label={t('pop.ctx.copyImageToClipboard', null, 'Copy Image to Clipboard')}
                                             onClick={async () => {
                                                 if (window.electronAPI?.copyImageToClipboard) {
                                                     await window.electronAPI.copyImageToClipboard(item.savePath);
-                                                    showToast('Image copied to clipboard');
+                                                    showToast(t('pop.ctx.imageCopied', null, 'Image copied to clipboard'));
                                                 } else {
-                                                    showToast('Image copied');
+                                                    showToast(t('pop.ctx.imageCopied', null, 'Image copied to clipboard'));
                                                 }
                                                 closeToolHubContextMenu();
                                             }}
@@ -2199,10 +2235,10 @@ export default function ContextMenuProvider({ children }) {
                                     {item.url && !item.url.startsWith('file://') && (
                                         <MenuItem
                                             icon={Copy}
-                                            label="Copy Download Link"
+                                            label={t('pop.ctx.copyDownloadLink', null, 'Copy Download Link')}
                                             onClick={() => {
                                                 navigator.clipboard.writeText(item.url);
-                                                showToast('Download link copied');
+                                                showToast(t('pop.ctx.downloadLinkCopied', null, 'Download link copied'));
                                                 closeToolHubContextMenu();
                                             }}
                                         />
@@ -2211,21 +2247,21 @@ export default function ContextMenuProvider({ children }) {
                                     {item.savePath && (
                                         <MenuItem
                                             icon={Trash2}
-                                            label="Delete File from Disk"
+                                            label={t('pop.ctx.deleteFileFromDisk', null, 'Delete File from Disk')}
                                             danger
                                             onClick={async () => {
                                                 await useUIStore.getState().removeDownload?.(item.id, true);
-                                                showToast('File deleted from disk');
+                                                showToast(t('pop.ctx.fileDeletedFromDisk', null, 'File deleted from disk'));
                                                 closeToolHubContextMenu();
                                             }}
                                         />
                                     )}
                                     <MenuItem
                                         icon={X}
-                                        label="Remove from List Only"
+                                        label={t('pop.ctx.removeFromList', null, 'Remove from List Only')}
                                         onClick={() => {
                                             useUIStore.getState().removeDownload?.(item.id, false);
-                                            showToast('Removed from history');
+                                            showToast(t('pop.ctx.removedFromHistory', null, 'Removed from history'));
                                             closeToolHubContextMenu();
                                         }}
                                     />
@@ -2236,16 +2272,16 @@ export default function ContextMenuProvider({ children }) {
                         {type === 'note' && (
                             <>
                                 <MenuSectionHeader>
-                                    {item.title || item.domain || 'Web Note'}
+                                    {item.title || item.domain || t('pop.ctx.webNote', null, 'Web Note')}
                                 </MenuSectionHeader>
                                 <MenuItem
                                     icon={Copy}
-                                    label="Copy Note Text"
+                                    label={t('pop.ctx.copyNoteText', null, 'Copy Note Text')}
                                     onClick={() => {
                                         const noteText = item.note || item.text || '';
                                         if (noteText) {
                                             navigator.clipboard.writeText(noteText);
-                                            showToast('Note copied');
+                                            showToast(t('pop.ctx.noteCopied', null, 'Note copied'));
                                         }
                                         closeToolHubContextMenu();
                                     }}
@@ -2253,48 +2289,51 @@ export default function ContextMenuProvider({ children }) {
                                 {item.text && item.note && (
                                     <MenuItem
                                         icon={Copy}
-                                        label="Copy Highlighted Passage"
+                                        label={t('pop.ctx.copyHighlightedPassage', null, 'Copy Highlighted Passage')}
                                         onClick={() => {
                                             navigator.clipboard.writeText(item.text);
-                                            showToast('Highlighted passage copied');
+                                            showToast(t('pop.ctx.passageCopied', null, 'Highlighted passage copied'));
                                             closeToolHubContextMenu();
                                         }}
                                     />
                                 )}
                                 {(() => {
-                                    const spaces = useUIStore.getState().settings?.customSpaces || [
+                                    const noteSpaces = useUIStore.getState().settings?.customSpaces || [
                                         { id: 'personal', name: 'Personal' },
                                         { id: 'work', name: 'Work' }
                                     ];
-                                    const otherSpaces = spaces.filter(sp => sp.id !== (item.space || 'personal'));
+                                    const otherSpaces = noteSpaces.filter(sp => sp.id !== (item.space || 'personal'));
                                     if (otherSpaces.length === 0) return null;
                                     return (
                                         <>
                                             <MenuDivider />
-                                            <MenuSectionHeader>Move Note to Space</MenuSectionHeader>
-                                            {otherSpaces.map(sp => (
+                                            <MenuSectionHeader>{t('pop.ctx.moveNoteToSpace', null, 'Move Note to Space')}</MenuSectionHeader>
+                                            {otherSpaces.map(sp => {
+                                                const localizedName = getLocalizedSpaceName(sp);
+                                                return (
                                                 <MenuItem
                                                     key={sp.id}
                                                     icon={ArrowRightLeft}
-                                                    label={`Move to ${sp.name}`}
+                                                    label={t('pop.ctx.moveToSpaceName', { name: localizedName }, `Move to ${sp.name}`)}
                                                     onClick={() => {
                                                         useAnnotationStore.getState().updateAnnotation(item.id, { space: sp.id });
-                                                        showToast(`Moved note to ${sp.name}`);
+                                                        showToast(t('pop.ctx.movedNoteToSpace', { name: localizedName }, `Moved note to ${sp.name}`));
                                                         closeToolHubContextMenu();
                                                     }}
                                                 />
-                                            ))}
+                                                );
+                                            })}
                                         </>
                                     );
                                 })()}
                                 <MenuDivider />
                                 <MenuItem
                                     icon={Trash2}
-                                    label="Delete Note"
+                                    label={t('pop.ctx.deleteNote', null, 'Delete Note')}
                                     danger
                                     onClick={() => {
                                         useAnnotationStore.getState().removeAnnotation(item.id);
-                                        showToast('Note deleted');
+                                        showToast(t('pop.ctx.noteDeleted', null, 'Note deleted'));
                                         closeToolHubContextMenu();
                                     }}
                                 />
@@ -2304,22 +2343,22 @@ export default function ContextMenuProvider({ children }) {
                         {type === 'ai-chat' && (
                             <>
                                 <MenuSectionHeader>
-                                    {item.role === 'ai' ? 'AI Response' : 'User Message'}
+                                    {item.role === 'ai' ? t('pop.ctx.aiResponse', null, 'AI Response') : t('pop.ctx.userMessage', null, 'User Message')}
                                 </MenuSectionHeader>
                                 <MenuItem
                                     icon={Copy}
-                                    label="Copy Message Markdown"
+                                    label={t('pop.ctx.copyMessageMarkdown', null, 'Copy Message Markdown')}
                                     onClick={() => {
                                         if (item.content) {
                                             navigator.clipboard.writeText(item.content);
-                                            showToast('Message copied to clipboard');
+                                            showToast(t('pop.ctx.messageCopied', null, 'Message copied to clipboard'));
                                         }
                                         closeToolHubContextMenu();
                                     }}
                                 />
                                 <MenuItem
                                     icon={Volume2}
-                                    label="Speak Aloud (TTS)"
+                                    label={t('pop.ctx.speakAloud', null, 'Speak Aloud (TTS)')}
                                     onClick={() => {
                                         if (item.content && window.speechSynthesis) {
                                             window.speechSynthesis.cancel();
@@ -2332,14 +2371,14 @@ export default function ContextMenuProvider({ children }) {
                                 <MenuDivider />
                                 <MenuItem
                                     icon={Trash2}
-                                    label="Delete Message"
+                                    label={t('pop.ctx.deleteMessage', null, 'Delete Message')}
                                     danger
                                     onClick={() => {
                                         const ai = useAIStore.getState();
                                         const filtered = ai.chatHistory.filter(m => m !== item);
                                         ai.clearChat();
                                         filtered.forEach(m => ai.addChatMessage(m));
-                                        showToast('Message deleted');
+                                        showToast(t('pop.ctx.messageDeleted', null, 'Message deleted'));
                                         closeToolHubContextMenu();
                                     }}
                                 />
@@ -2358,6 +2397,7 @@ export default function ContextMenuProvider({ children }) {
                 if (!sp) return null;
                 const SpaceIcon = getSpaceIcon(sp.icon);
                 const isBuiltIn = sp.isBuiltIn || sp.id === 'personal';
+                const localizedSpaceName = getLocalizedSpaceName(sp);
 
                 return (
                     <MenuContainer
@@ -2373,7 +2413,7 @@ export default function ContextMenuProvider({ children }) {
                         }`}>
                             <div className="flex items-center gap-1.5 truncate min-w-0">
                                 <SpaceIcon size={12} className="opacity-70 shrink-0" />
-                                <span className="truncate">{sp.name.toUpperCase()}</span>
+                                <span className="truncate uppercase">{localizedSpaceName}</span>
                             </div>
                             {sp.showGitHub && (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 font-semibold border border-blue-500/20 shrink-0 ml-1">
@@ -2384,7 +2424,7 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Pencil}
-                            label="Rename Workspace"
+                            label={t('pop.ctx.renameWorkspace', null, 'Rename Workspace')}
                             onClick={() => {
                                 closeSpaceContextMenu();
                                 setRenamingSpaceId(sp.id);
@@ -2393,35 +2433,39 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={GitBranch}
-                            label="Toggle GitHub Live"
+                            label={t('pop.ctx.toggleGithubLive', null, 'Toggle GitHub Live')}
                             shortcut={
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide font-mono ${
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide font-mono uppercase ${
                                     sp.showGitHub 
                                         ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
                                         : (isBright ? 'bg-black/5 text-zinc-500' : 'bg-white/10 text-white/50')
                                 }`}>
-                                    {sp.showGitHub ? 'ON' : 'OFF'}
+                                    {sp.showGitHub ? t('common.on', null, 'ON') : t('common.off', null, 'OFF')}
                                 </span>
                             }
                             onClick={() => {
                                 updateSpace(sp.id, { showGitHub: !sp.showGitHub });
-                                showToast(sp.showGitHub ? `GitHub Live disabled for ${sp.name}` : `GitHub Live enabled for ${sp.name}`);
+                                showToast(
+                                    sp.showGitHub
+                                        ? t('pop.ctx.githubLiveDisabled', { name: localizedSpaceName }, `GitHub Live disabled for ${sp.name}`)
+                                        : t('pop.ctx.githubLiveEnabled', { name: localizedSpaceName }, `GitHub Live enabled for ${sp.name}`)
+                                );
                                 closeSpaceContextMenu();
                             }}
                         />
 
                         <MenuItem
                             icon={Plus}
-                            label={customSpaces.length >= 8 ? "Add Workspace (Max 8 Reached)" : "Add New Workspace..."}
+                            label={customSpaces.length >= 8 ? t('pop.ctx.addWorkspaceMax', null, 'Add Workspace (Max 8 Reached)') : t('pop.ctx.addWorkspace', null, 'Add New Workspace...')}
                             disabled={customSpaces.length >= 8}
                             onClick={() => {
                                 closeSpaceContextMenu();
                                 if (customSpaces.length >= 8) {
-                                    showToast('Maximum of 8 workspaces reached');
+                                    showToast(t('pop.ctx.maxWorkspacesReached', null, 'Maximum of 8 workspaces reached'));
                                     return;
                                 }
                                 const nextIdx = customSpaces.length + 1;
-                                const newName = `Workspace ${nextIdx}`;
+                                const newName = t('pop.ctx.workspaceDefaultName', { index: nextIdx }, `Workspace ${nextIdx}`);
                                 const newSp = addSpace(newName, 'Layers', false);
                                 if (newSp?.id) {
                                     setActiveSpace(newSp.id);
@@ -2433,12 +2477,12 @@ export default function ContextMenuProvider({ children }) {
                         {!isBuiltIn && (
                             <MenuItem
                                 icon={Trash2}
-                                label="Delete Workspace"
+                                label={t('pop.ctx.deleteWorkspace', null, 'Delete Workspace')}
                                 danger
                                 onClick={() => {
                                     closeSpaceContextMenu();
                                     removeSpace(sp.id);
-                                    showToast(`Deleted workspace "${sp.name}"`);
+                                    showToast(t('pop.ctx.deletedWorkspace', { name: localizedSpaceName }, `Deleted workspace "${sp.name}"`));
                                 }}
                             />
                         )}
@@ -2447,7 +2491,7 @@ export default function ContextMenuProvider({ children }) {
 
                         <MenuItem
                             icon={Settings}
-                            label="Manage Workspaces..."
+                            label={t('pop.ctx.manageWorkspaces', null, 'Manage Workspaces...')}
                             onClick={() => {
                                 closeSpaceContextMenu();
                                 openSettings('spaces');
@@ -2492,7 +2536,7 @@ export default function ContextMenuProvider({ children }) {
                     >
                         <MenuItem
                             icon={Scissors}
-                            label="Cut"
+                            label={t('pop.ctx.cut', null, 'Cut')}
                             shortcut="Ctrl+X"
                             disabled={icm.readOnly || icm.isPassword}
                             onClick={async () => {
@@ -2516,7 +2560,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={Copy}
-                            label="Copy"
+                            label={t('common.copy', null, 'Copy')}
                             shortcut="Ctrl+C"
                             disabled={icm.isPassword}
                             onClick={async () => {
@@ -2528,13 +2572,13 @@ export default function ContextMenuProvider({ children }) {
                                         const selected = start !== end ? el.value.slice(start, end) : el.value;
                                         if (selected) {
                                             await copyTextToClipboard(selected);
-                                            showToast('Copied to clipboard');
+                                            showToast(t('pop.ctx.copiedToClipboard', null, 'Copied to clipboard'));
                                         }
                                     } else {
                                         const sel = window.getSelection?.()?.toString() || el.innerText || '';
                                         if (sel) {
                                             await copyTextToClipboard(sel);
-                                            showToast('Copied to clipboard');
+                                            showToast(t('pop.ctx.copiedToClipboard', null, 'Copied to clipboard'));
                                         }
                                     }
                                 }
@@ -2543,7 +2587,7 @@ export default function ContextMenuProvider({ children }) {
                         />
                         <MenuItem
                             icon={Clipboard}
-                            label="Paste"
+                            label={t('pop.ctx.paste', null, 'Paste')}
                             shortcut="Ctrl+V"
                             disabled={icm.readOnly}
                             onClick={async () => {
@@ -2576,7 +2620,7 @@ export default function ContextMenuProvider({ children }) {
                         <MenuDivider />
                         <MenuItem
                             icon={CheckSquare}
-                            label="Select All"
+                            label={t('pop.ctx.selectAll', null, 'Select All')}
                             shortcut="Ctrl+A"
                             onClick={() => {
                                 const el = window.__qbrowseContextInput;

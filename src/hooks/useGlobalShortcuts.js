@@ -3,6 +3,7 @@ import useUIStore from '../store/useUIStore';
 import useTabStore from '../store/useTabStore';
 import useTorStore from '../store/useTorStore';
 import { isTabForPin } from '../components/layout/PinnedStackPopup';
+import { t } from '../i18n/index';
 
 export const handleEscapeDismissal = () => {
     const uiStore = useUIStore.getState();
@@ -41,7 +42,11 @@ export const handleEscapeDismissal = () => {
         return true;
     }
 
-    // 5. Snipping & Screenshot Overlays
+    // 5. Snipping, Screenshot & Element Eraser Overlays
+    if (uiStore.isElementEraserActive) {
+        uiStore.toggleElementEraser(false);
+        return true;
+    }
     if (uiStore.isSnippingMode) {
         uiStore.setIsSnippingMode(false);
         return true;
@@ -172,13 +177,18 @@ export const executeShortcut = (key, shift = false, alt = false) => {
         if (spaceIdx < customSpaces.length) {
             const target = customSpaces[spaceIdx];
             tabStore.setActiveSpace(target.id);
-            uiStore.showToast(`Space: ${target.name}`);
+            const spaceDisplayName = (target.id === 'personal' && target.name === 'Personal')
+                ? t('nav.personal', null, 'Personal')
+                : (target.id === 'work' && target.name === 'Work')
+                    ? t('nav.work', null, 'Work')
+                    : target.name;
+            uiStore.showToast(t('stores.shortcuts.spaceNamed', { name: spaceDisplayName }, `Space: ${spaceDisplayName}`));
             return;
         } else if (spaceIdx === customSpaces.length) {
             // Next position corresponds to Ghost / Tor morphing button
             const isTor = useTorStore.getState().isTorEnabled;
             tabStore.setActiveSpace(isTor ? 'tor' : 'ghost');
-            uiStore.showToast(isTor ? 'Space: Tor Onion' : 'Space: Ghost Mode');
+            uiStore.showToast(isTor ? t('stores.shortcuts.spaceTor', 'Space: Tor Onion') : t('stores.shortcuts.spaceGhost', 'Space: Ghost Mode'));
             return;
         }
     }
@@ -193,16 +203,16 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                 const targetSpace = isTor ? 'tor' : 'ghost';
                 if (window.electronAPI && window.electronAPI.openNewWindow) {
                     window.electronAPI.openNewWindow({ space: targetSpace });
-                    uiStore.showToast(isTor ? 'Opening new Tor window...' : 'Opening new private window...');
+                    uiStore.showToast(isTor ? t('stores.shortcuts.openingTorWindow', 'Opening new Tor window...') : t('stores.shortcuts.openingPrivateWindow', 'Opening new private window...'));
                 } else {
                     tabStore.setActiveSpace(targetSpace);
-                    uiStore.showToast(isTor ? 'Tor Space: Activated' : 'Ghost Mode: Activated');
+                    uiStore.showToast(isTor ? t('stores.shortcuts.torActivated', 'Tor Space: Activated') : t('stores.shortcuts.ghostActivated', 'Ghost Mode: Activated'));
                 }
             } else {
                 // New Window
                 if (window.electronAPI && window.electronAPI.openNewWindow) {
                     window.electronAPI.openNewWindow({ space: 'personal' });
-                    uiStore.showToast('Opening new window...');
+                    uiStore.showToast(t('stores.shortcuts.openingWindow', 'Opening new window...'));
                 } else {
                     tabStore.handleNewTab();
                 }
@@ -216,10 +226,10 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                 const targetSpace = isTor ? 'tor' : 'ghost';
                 if (window.electronAPI && window.electronAPI.openNewWindow) {
                     window.electronAPI.openNewWindow({ space: targetSpace });
-                    uiStore.showToast(isTor ? 'Opening new Tor window...' : 'Opening new private window...');
+                    uiStore.showToast(isTor ? t('stores.shortcuts.openingTorWindow', 'Opening new Tor window...') : t('stores.shortcuts.openingPrivateWindow', 'Opening new private window...'));
                 } else {
                     tabStore.setActiveSpace(targetSpace);
-                    uiStore.showToast(isTor ? 'Tor Space: Activated' : 'Ghost Mode: Activated');
+                    uiStore.showToast(isTor ? t('stores.shortcuts.torActivated', 'Tor Space: Activated') : t('stores.shortcuts.ghostActivated', 'Ghost Mode: Activated'));
                 }
             } else {
                 uiStore.printActivePage();
@@ -315,7 +325,7 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                     window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
                 }
                 uiStore.refresh();
-                uiStore.showToast('Hard Reload: Cache purged & refreshed');
+                uiStore.showToast(t('stores.shortcuts.hardReload', 'Hard Reload: Cache purged & refreshed'));
             } else {
                 uiStore.refresh();
             }
@@ -413,7 +423,7 @@ export const executeShortcut = (key, shift = false, alt = false) => {
         // Sidebar Toggle (Cmd+B)
         case 'b':
             uiStore.setIsSidebarHidden(!uiStore.isSidebarHidden);
-            uiStore.showToast(uiStore.isSidebarHidden ? 'Sidebar: Hidden' : 'Sidebar: Visible');
+            uiStore.showToast(uiStore.isSidebarHidden ? t('stores.shortcuts.sidebarHidden', 'Sidebar: Hidden') : t('stores.shortcuts.sidebarVisible', 'Sidebar: Visible'));
             break;
 
         // Tool Hub / Right Panel (Cmd+J)
@@ -522,7 +532,7 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                     window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
                 }
                 uiStore.refresh();
-                uiStore.showToast('Hard Reload: Cache purged & refreshed');
+                uiStore.showToast(t('stores.shortcuts.hardReload', 'Hard Reload: Cache purged & refreshed'));
             } else {
                 uiStore.refresh();
             }
@@ -560,7 +570,7 @@ export const executeShortcut = (key, shift = false, alt = false) => {
         case 'f7': {
             const next = !uiStore.settings?.a11yCaretBrowsing;
             uiStore.toggleSetting('a11yCaretBrowsing');
-            uiStore.showToast(next ? 'Caret Browsing enabled (Arrow keys navigate page text)' : 'Caret Browsing disabled');
+            uiStore.showToast(next ? t('stores.shortcuts.caretEnabled', 'Caret Browsing enabled (Arrow keys navigate page text)') : t('stores.shortcuts.caretDisabled', 'Caret Browsing disabled'));
             break;
         }
 

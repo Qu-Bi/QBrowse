@@ -5,6 +5,60 @@ import {
     ChevronDown, Terminal, Copy, Check, ExternalLink, Lock, Unlock
 } from 'lucide-react';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from './ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
+
+const CATEGORY_KEY_MAP = {
+    'SECURITY WARNING': 'errCat_securityWarning',
+    'NAVIGATION ERROR': 'errCat_navigationError',
+    'DNS RESOLUTION': 'errCat_dnsResolution',
+    'NETWORK OFFLINE': 'errCat_networkOffline',
+    'CONNECTION REFUSED': 'errCat_connectionRefused',
+    'UNREACHABLE HOST': 'errCat_unreachableHost',
+    'CONNECTION TIMEOUT': 'errCat_connectionTimeout',
+    'CONNECTION RESET': 'errCat_connectionReset',
+    'CONNECTION CLOSED': 'errCat_connectionClosed',
+    'CONNECTION FAILED': 'errCat_connectionFailed',
+    'TUNNEL FAILED': 'errCat_tunnelFailed',
+    'INVALID ADDRESS': 'errCat_invalidAddress',
+    'REDIRECT LOOP': 'errCat_redirectLoop',
+    'RENDERER HALTED': 'errCat_rendererHalted',
+    'RENDER PROCESS GONE': 'errCat_renderProcessGone'
+};
+
+const BADGE_KEY_MAP = {
+    'UNENCRYPTED HTTP': 'errBadge_unencryptedHttp',
+    'INVALID CERTIFICATE': 'errBadge_invalidCert',
+    'EXPIRED CERTIFICATE': 'errBadge_expiredCert',
+    'UNTRUSTED CERTIFICATE': 'errBadge_untrustedCert',
+    'CIPHER MISMATCH': 'errBadge_cipherMismatch',
+    'SSL PROTOCOL ERROR': 'errBadge_sslProtocolError',
+    'CORRUPTED CERTIFICATE': 'errBadge_corruptedCert',
+    'NO REVOCATION CHECK': 'errBadge_noRevocationCheck',
+    'REVOCATION UNREACHABLE': 'errBadge_revocationUnreachable',
+    'REVOKED CERTIFICATE': 'errBadge_revokedCert',
+    'WEAK CRYPTOGRAPHY': 'errBadge_weakCrypto',
+    'NON-UNIQUE NAME': 'errBadge_nonUniqueName',
+    'WEAK KEY': 'errBadge_weakKey',
+    'NAME CONSTRAINT': 'errBadge_nameConstraint',
+    'EXCESSIVE VALIDITY': 'errBadge_excessiveValidity',
+    'NO TRANSPARENCY': 'errBadge_noTransparency',
+    'INTERCEPTION BLOCKED': 'errBadge_interceptionBlocked',
+    'INSECURE RESPONSE': 'errBadge_insecureResponse',
+    'HOST NOT FOUND': 'errBadge_hostNotFound',
+    'DISCONNECTED': 'errBadge_disconnected',
+    'PORT CLOSED': 'errBadge_portClosed',
+    'NO ROUTE': 'errBadge_noRoute',
+    'TIMED OUT': 'errBadge_timedOut',
+    'RESET BY PEER': 'errBadge_resetByPeer',
+    'CLOSED': 'errBadge_closed',
+    'SOCKET FAILED': 'errBadge_socketFailed',
+    'PROXY FAILED': 'errBadge_proxyFailed',
+    'LOOKUP FAILED': 'errBadge_lookupFailed',
+    'BAD URL': 'errBadge_badUrl',
+    'TOO MANY REDIRECTS': 'errBadge_tooManyRedirects',
+    'CRASHED': 'errBadge_crashed',
+    'FAILED': 'errBadge_failed'
+};
 
 const getPlatformLabel = () => {
     const p = (typeof window !== 'undefined' && (window.electronAPI?.platform || window.process?.platform))
@@ -363,6 +417,7 @@ export default function WebviewErrorOverlay({
     onNavigateHome,
     onProceedInsecure
 }) {
+    const { t } = useTranslation();
     const [copiedUrl, setCopiedUrl] = useState(false);
     const [copiedDiag, setCopiedDiag] = useState(false);
     const [isDiagOpen, setIsDiagOpen] = useState(false);
@@ -372,13 +427,22 @@ export default function WebviewErrorOverlay({
     const errorDesc = error?.errorDescription || (error?.isHttpWarning ? 'ERR_UNENCRYPTED_HTTP' : 'ERR_FAILED');
     const targetUrl = error?.validatedURL || tab?.url || '';
 
-    const meta = ERROR_METADATA[errorCode] || {
-        category: error?.isHttpWarning ? 'SECURITY WARNING' : 'NAVIGATION ERROR',
-        badge: error?.isHttpWarning ? 'UNENCRYPTED HTTP' : 'FAILED',
-        title: error?.isHttpWarning ? 'Unencrypted Connection (HTTP)' : 'This Site Can’t Be Reached',
+    const rawMeta = ERROR_METADATA[errorCode];
+    const codeKey = errorCode === 'HTTP_INSECURE' ? 'HTTP_INSECURE' : `n${errorCode.replace('-', '')}`;
+    const meta = rawMeta ? {
+        ...rawMeta,
+        category: t(`chrome.${CATEGORY_KEY_MAP[rawMeta.category]}`, null, rawMeta.category),
+        badge: t(`chrome.${BADGE_KEY_MAP[rawMeta.badge]}`, null, rawMeta.badge),
+        title: t(`chrome.err_${codeKey}_title`, null, rawMeta.title),
+        message: t(`chrome.err_${codeKey}_msg`, null, rawMeta.message),
+        risk: rawMeta.risk ? t(`chrome.err_${codeKey}_risk`, null, rawMeta.risk) : undefined
+    } : {
+        category: error?.isHttpWarning ? t('chrome.errCat_securityWarning', null, 'SECURITY WARNING') : t('chrome.errCat_navigationError', null, 'NAVIGATION ERROR'),
+        badge: error?.isHttpWarning ? t('chrome.errBadge_unencryptedHttp', null, 'UNENCRYPTED HTTP') : t('chrome.errBadge_failed', null, 'FAILED'),
+        title: error?.isHttpWarning ? t('chrome.err_HTTP_INSECURE_title', null, 'Unencrypted Connection (HTTP)') : t('chrome.errFallback_title', null, 'This Site Can’t Be Reached'),
         message: error?.isHttpWarning 
-            ? 'This website does not support HTTPS encryption. Passwords, cookies, and sensitive details can be intercepted.' 
-            : 'The requested webpage could not be loaded. Please verify your connection and try again.',
+            ? t('chrome.errFallback_insecureMsg', null, 'This website does not support HTTPS encryption. Passwords, cookies, and sensitive details can be intercepted.') 
+            : t('chrome.errFallback_msg', null, 'The requested webpage could not be loaded. Please verify your connection and try again.'),
         icon: error?.isHttpWarning ? ShieldAlert : AlertTriangle,
         color: error?.isHttpWarning ? 'text-amber-400' : 'text-amber-400',
         isInsecure: !!error?.isHttpWarning
@@ -408,16 +472,19 @@ export default function WebviewErrorOverlay({
 
     const handleCopyDiagnostics = (e) => {
         e?.stopPropagation();
+        const kindLabel = isInsecure
+            ? t('chrome.errDiagKindSecurity', null, 'Security')
+            : t('chrome.errDiagKindNetwork', null, 'Network');
         const report = [
-            `[QBrowse ${isInsecure ? 'Security' : 'Network'} Diagnostic]`,
-            `Status: ${meta.title}`,
-            `Category: ${meta.category}`,
-            `Code: ${errorCode} (${errorDesc})`,
-            `Target URL: ${targetUrl}`,
-            `Host: ${cleanQuery}`,
-            `Insecure: ${isInsecure ? 'Yes' : 'No'}`,
-            `Timestamp: ${new Date(error?.time || Date.now()).toISOString()}`,
-            `Platform: ${getPlatformLabel()} / QBrowse Electron`
+            t('chrome.errDiagReportHeader', { kind: kindLabel }, `[QBrowse ${kindLabel} Diagnostic]`),
+            `${t('chrome.errDiagStatus', null, 'Status')}: ${meta.title}`,
+            `${t('chrome.errDiagCategory', null, 'Category')}: ${meta.category}`,
+            `${t('chrome.errDiagCode', null, 'Code')}: ${errorCode} (${errorDesc})`,
+            `${t('chrome.errDiagTargetUrl', null, 'Target URL')}: ${targetUrl}`,
+            `${t('chrome.errDiagHost', null, 'Host')}: ${cleanQuery}`,
+            `${t('chrome.errDiagInsecure', null, 'Insecure')}: ${isInsecure ? t('common.yes', null, 'Yes') : t('common.no', null, 'No')}`,
+            `${t('chrome.errDiagTimestamp', null, 'Timestamp')}: ${new Date(error?.time || Date.now()).toISOString()}`,
+            `${t('chrome.errDiagPlatform', null, 'Platform')}: ${getPlatformLabel()} / QBrowse Electron`
         ].join('\n');
 
         navigator.clipboard.writeText(report);
@@ -479,7 +546,7 @@ export default function WebviewErrorOverlay({
                             ? (isBright ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-rose-500/10 border-rose-500/20 text-rose-400')
                             : (isBright ? 'bg-black/[0.03] border-black/[0.08] text-zinc-600' : 'bg-white/[0.04] border-white/10 text-white/50')
                     }`}>
-                        {isInsecure ? 'Not Secure' : `Code ${errorCode}`}
+                        {isInsecure ? t('chrome.errNotSecure', null, 'Not Secure') : t('chrome.errCode', { code: errorCode }, `Code ${errorCode}`)}
                     </span>
                 </div>
 
@@ -516,7 +583,7 @@ export default function WebviewErrorOverlay({
                         <button
                             type="button"
                             onClick={handleCopyUrl}
-                            title="Copy URL to clipboard"
+                            title={t('chrome.errCopyUrlTooltip', null, 'Copy URL to clipboard')}
                             className={`p-1 rounded-lg transition cursor-pointer flex-shrink-0 flex items-center justify-center ${
                                 isBright
                                     ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-800'
@@ -551,7 +618,7 @@ export default function WebviewErrorOverlay({
                             >
                                 <div className="flex items-center gap-2.5 min-w-0">
                                     <ShieldCheck size={14} className="flex-shrink-0 text-emerald-400" />
-                                    <span>Return to Safety (Recommended)</span>
+                                    <span>{t('chrome.errReturnToSafety', null, 'Return to Safety (Recommended)')}</span>
                                 </div>
                                 <span className={`text-[10px] font-mono ml-2 flex-shrink-0 opacity-60`}>
                                     Esc
@@ -571,7 +638,7 @@ export default function WebviewErrorOverlay({
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0">
                                         <Search size={14} className={isBright ? 'text-zinc-400 group-hover:text-zinc-900' : 'text-white/50 group-hover:text-white'} />
-                                        <span className="truncate">Search for secure version</span>
+                                        <span className="truncate">{t('chrome.errSearchSecure', null, 'Search for secure version')}</span>
                                     </div>
                                     <span className={`text-[10px] font-mono ml-2 flex-shrink-0 opacity-40 group-hover:opacity-60`}>
                                         ↵
@@ -583,9 +650,10 @@ export default function WebviewErrorOverlay({
                             {(() => {
                                 const isSslDowngrade = targetUrl.startsWith('https://') && ['-113', '-107', '-502'].includes(errorCode);
                                 const proceedTarget = isSslDowngrade ? targetUrl.replace(/^https:\/\//i, 'http://') : targetUrl;
+                                const targetHostLabel = cleanQuery || t('chrome.errSiteWord', null, 'site');
                                 const buttonLabel = isSslDowngrade
-                                    ? `Proceed to ${cleanQuery || 'site'} via HTTP (Unsafe)`
-                                    : `Proceed to ${cleanQuery || 'site'} (Unsafe)`;
+                                    ? t('chrome.errProceedHttpUnsafe', { host: targetHostLabel }, `Proceed to ${targetHostLabel} via HTTP (Unsafe)`)
+                                    : t('chrome.errProceedUnsafe', { host: targetHostLabel }, `Proceed to ${targetHostLabel} (Unsafe)`);
 
                                 return (
                                     <button
@@ -602,7 +670,7 @@ export default function WebviewErrorOverlay({
                                             <span className="truncate">{buttonLabel}</span>
                                         </div>
                                         <span className={`text-[10px] font-mono ml-2 flex-shrink-0 opacity-40 group-hover:opacity-60`}>
-                                            Unsafe
+                                            {t('chrome.errUnsafeBadge', null, 'Unsafe')}
                                         </span>
                                     </button>
                                 );
@@ -625,7 +693,7 @@ export default function WebviewErrorOverlay({
                                         size={14} 
                                         className={`flex-shrink-0 transition-transform ${isRetrying ? 'animate-spin' : 'group-hover:rotate-45'}`} 
                                     />
-                                    <span>Try Again</span>
+                                    <span>{t('chrome.errTryAgain', null, 'Try Again')}</span>
                                 </div>
                                 <span className={`text-[10px] font-mono ml-2 flex-shrink-0 opacity-60`}>
                                     Ctrl+R
@@ -645,7 +713,7 @@ export default function WebviewErrorOverlay({
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0">
                                         <Search size={14} className={isBright ? 'text-zinc-400 group-hover:text-zinc-900' : 'text-white/50 group-hover:text-white'} />
-                                        <span className="truncate">Search web for "{cleanQuery}"</span>
+                                        <span className="truncate">{t('chrome.errSearchWebFor', { query: cleanQuery }, `Search web for "${cleanQuery}"`)}</span>
                                     </div>
                                     <span className={`text-[10px] font-mono ml-2 flex-shrink-0 opacity-40 group-hover:opacity-60`}>
                                         ↵
@@ -665,7 +733,7 @@ export default function WebviewErrorOverlay({
                             >
                                 <div className="flex items-center gap-2.5 min-w-0">
                                     <Compass size={14} className={isBright ? 'text-zinc-400 group-hover:text-zinc-900' : 'text-white/50 group-hover:text-white'} />
-                                    <span>Return to Dashboard</span>
+                                    <span>{t('chrome.errReturnDashboard', null, 'Return to Dashboard')}</span>
                                 </div>
                                 <span className={`text-[10px] font-mono ml-2 flex-shrink-0 opacity-40 group-hover:opacity-60`}>
                                     Esc
@@ -688,7 +756,7 @@ export default function WebviewErrorOverlay({
                     >
                         <div className="flex items-center gap-2">
                             <Terminal size={12} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
-                            <span>{isInsecure ? 'Security Details & Risk Breakdown' : 'Diagnostics & Recommendations'}</span>
+                            <span>{isInsecure ? t('chrome.errSecurityDetailsTitle', null, 'Security Details & Risk Breakdown') : t('chrome.errDiagnosticsTitle', null, 'Diagnostics & Recommendations')}</span>
                         </div>
                         <ChevronDown 
                             size={12} 
@@ -706,30 +774,30 @@ export default function WebviewErrorOverlay({
                                     <>
                                         <div className="flex items-start gap-1.5">
                                             <span className={isBright ? 'text-amber-600' : 'text-amber-400'}>•</span>
-                                            <span>Passwords, credit cards, and cookies are transmitted in cleartext</span>
+                                            <span>{t('chrome.errRiskBullet1', null, 'Passwords, credit cards, and cookies are transmitted in cleartext')}</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
                                             <span className={isBright ? 'text-amber-600' : 'text-amber-400'}>•</span>
-                                            <span>Intermediate Wi-Fi or ISP nodes can view and modify page content</span>
+                                            <span>{t('chrome.errRiskBullet2', null, 'Intermediate Wi-Fi or ISP nodes can view and modify page content')}</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
                                             <span className={isBright ? 'text-amber-600' : 'text-amber-400'}>•</span>
-                                            <span>{meta.risk || 'Website authenticity cannot be cryptographically proven.'}</span>
+                                            <span>{meta.risk || t('chrome.errFallback_risk', null, 'Website authenticity cannot be cryptographically proven.')}</span>
                                         </div>
                                     </>
                                 ) : (
                                     <>
                                         <div className="flex items-start gap-1.5">
                                             <span className={isBright ? 'text-amber-700' : 'text-accent'}>•</span>
-                                            <span>Check your Wi-Fi, Ethernet, and router cables</span>
+                                            <span>{t('chrome.errNetBullet1', null, 'Check your Wi-Fi, Ethernet, and router cables')}</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
                                             <span className={isBright ? 'text-amber-700' : 'text-accent'}>•</span>
-                                            <span>Verify the host spelling in the address bar</span>
+                                            <span>{t('chrome.errNetBullet2', null, 'Verify the host spelling in the address bar')}</span>
                                         </div>
                                         <div className="flex items-start gap-1.5">
                                             <span className={isBright ? 'text-amber-700' : 'text-accent'}>•</span>
-                                            <span>Check VPN, proxy, and firewall security permissions</span>
+                                            <span>{t('chrome.errNetBullet3', null, 'Check VPN, proxy, and firewall security permissions')}</span>
                                         </div>
                                     </>
                                 )}
@@ -742,13 +810,13 @@ export default function WebviewErrorOverlay({
                                     : 'bg-black/40 border-white/[0.06] text-white/60'
                             }`}>
                                 <div className="flex justify-between">
-                                    <span className="opacity-60">Protocol:</span>
+                                    <span className="opacity-60">{t('chrome.errProtocolLabel', null, 'Protocol:')}</span>
                                     <span className={isInsecure ? (isBright ? 'text-amber-700 font-semibold' : 'text-amber-400 font-semibold') : (isBright ? 'text-zinc-900 font-medium' : 'text-white/80')}>
-                                        {isInsecure ? (errorCode === 'HTTP_INSECURE' ? 'HTTP (Port 80 Plaintext)' : 'HTTPS (Untrusted Handshake)') : 'TCP / IP'}
+                                        {isInsecure ? (errorCode === 'HTTP_INSECURE' ? t('chrome.errProtocolHttp', null, 'HTTP (Port 80 Plaintext)') : t('chrome.errProtocolHttpsUntrusted', null, 'HTTPS (Untrusted Handshake)')) : 'TCP / IP'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="opacity-60">Status:</span>
+                                    <span className="opacity-60">{t('chrome.errStatusLabel', null, 'Status:')}</span>
                                     <span className={`font-semibold ${
                                         isBright
                                             ? (isInsecure ? 'text-rose-700' : 'text-amber-700')
@@ -756,8 +824,8 @@ export default function WebviewErrorOverlay({
                                     }`}>{errorDesc} ({errorCode})</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="opacity-60">Host:</span>
-                                    <span className="truncate max-w-[240px]">{cleanQuery || targetUrl || 'Unknown'}</span>
+                                    <span className="opacity-60">{t('chrome.errHostLabel', null, 'Host:')}</span>
+                                    <span className="truncate max-w-[240px]">{cleanQuery || targetUrl || t('chrome.errUnknownHost', null, 'Unknown')}</span>
                                 </div>
                             </div>
 
@@ -774,12 +842,12 @@ export default function WebviewErrorOverlay({
                                 {copiedDiag ? (
                                     <>
                                         <Check size={11} className="text-emerald-400" />
-                                        <span>Copied Diagnostic Report</span>
+                                        <span>{t('chrome.errCopiedDiagnostics', null, 'Copied Diagnostic Report')}</span>
                                     </>
                                 ) : (
                                     <>
                                         <Copy size={11} />
-                                        <span>Copy Diagnostic Details</span>
+                                        <span>{t('chrome.errCopyDiagnostics', null, 'Copy Diagnostic Details')}</span>
                                     </>
                                 )}
                             </button>

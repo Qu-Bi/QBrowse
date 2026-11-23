@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme, screen, Menu, MenuItem, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, session, crashReporter, shell, clipboard, dialog, webContents, nativeImage, powerMonitor, components, protocol, net, nativeTheme, screen, Menu, MenuItem, safeStorage, desktopCapturer, systemPreferences } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -8,11 +8,44 @@ const http = require('http');
 const { pathToFileURL, fileURLToPath } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
 const githubEngine = require('./githubEngine.cjs');
+const { PermissionManager } = require('./permissionEngine.cjs');
+const {
+    DEFAULT_DARK_EXCLUSIONS,
+    normalizeWhitelist,
+    isUrlExcludedFromDarkMode
+} = require('./darkModeWhitelist.cjs');
+const {
+    normalizeSemver,
+    compareSemver,
+    normalizeLinuxArch,
+    getLinuxMetadataFileName,
+    sanitizeUpdateFileName,
+    detectLinuxInstallType,
+    selectLinuxReleaseAsset,
+    buildLinuxInstallCommand,
+    replaceAppImageAtomically,
+    resolveLinuxDesktopEntryState
+} = require('./linuxUpdateHelper.cjs');
 let autoUpdater = null;
 try {
     autoUpdater = require('electron-updater').autoUpdater;
 } catch (e) {
     console.warn('[AutoUpdater] Module load warning:', e.message);
+}
+
+function resolveAppIconPath() {
+    const candidates = [
+        path.join(__dirname, '../icon.png'),
+        path.join(__dirname, '../dist/icon.png'),
+        path.join(__dirname, '../public/icon.png'),
+        path.join(process.resourcesPath || '', 'icon.png')
+    ];
+    for (const candidate of candidates) {
+        try {
+            if (candidate && fsSync.existsSync(candidate)) return candidate;
+        } catch (_) {}
+    }
+    return path.join(__dirname, '../icon.png');
 }
 
 // Set application identity for Windows Task Manager, Taskbar, and OS shell
@@ -58,8 +91,33 @@ let latestActiveWebviewUrl = '';
 const activeOAuthWindows = new Set();
 let liveSmartDarkState = {
     isForceDark: null,
-    darkExclusions: ['youtube.com', 'github.com', 'figma.com']
+    darkExclusions: [...DEFAULT_DARK_EXCLUSIONS],
+    darkExcludeMedia: true
 };
+let livePasskeyState = {
+    passkeyProviderMode: null,
+    passkeyHardwareFallback: null
+};
+
+function resolvePasskeyConfig(sender) {
+    const providerMode = (livePasskeyState.passkeyProviderMode === 'hardware' || livePasskeyState.passkeyProviderMode === 'qvault')
+        ? livePasskeyState.passkeyProviderMode
+        : (settingsStore?.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault');
+    const hardwareFallback = typeof livePasskeyState.passkeyHardwareFallback === 'boolean'
+        ? livePasskeyState.passkeyHardwareFallback
+        : (settingsStore?.passkeyHardwareFallback !== false);
+    let isEphemeral = false;
+    try {
+        if (sender && sender.session && typeof sender.session.isPersistent === 'function') {
+            isEphemeral = !sender.session.isPersistent();
+        }
+    } catch (_) {}
+    return {
+        passkeyProviderMode: providerMode,
+        passkeyHardwareFallback: hardwareFallback,
+        isEphemeral
+    };
+}
 
 // Clean browser User-Agent: Standard desktop Chrome matching Chromium runtime & host OS
 const chromePlatformToken =
@@ -214,30 +272,58 @@ function injectOAuthSmartDarkCSS(childWindow) {
     } catch (_) {}
 }
 
+function resolveSmartDarkConfig() {
+    const store = getSettingsStore();
+    const isForceDark = (store && typeof store.isForceDark === 'boolean')
+        ? store.isForceDark
+        : (liveSmartDarkState.isForceDark !== null ? liveSmartDarkState.isForceDark : false);
+    const rawExclusions = Array.isArray(store?.darkExclusions)
+        ? store.darkExclusions
+        : liveSmartDarkState.darkExclusions;
+    const exclusions = normalizeWhitelist(rawExclusions);
+    const excludeMedia = (store && typeof store.darkExcludeMedia === 'boolean')
+        ? store.darkExcludeMedia
+        : (typeof liveSmartDarkState.darkExcludeMedia === 'boolean' ? liveSmartDarkState.darkExcludeMedia : true);
+    return { isForceDark, exclusions, excludeMedia };
+}
+
 function syncOAuthWindowSmartDark(childWindow) {
     if (!childWindow || childWindow.isDestroyed()) return;
     try {
-        const store = getSettingsStore();
-        let isForceDark = (store && typeof store.isForceDark === 'boolean') 
-            ? store.isForceDark 
-            : (liveSmartDarkState.isForceDark !== null ? liveSmartDarkState.isForceDark : false);
-        const exclusions = Array.isArray(store?.darkExclusions) 
-            ? store.darkExclusions 
-            : liveSmartDarkState.darkExclusions;
+        const { isForceDark, exclusions, excludeMedia } = resolveSmartDarkConfig();
         let url = '';
         try { url = childWindow.webContents.getURL() || ''; } catch (_) {}
-        const isExcluded = exclusions.some(d => url && typeof d === 'string' && d.trim() && url.includes(d.trim()));
+        const isExcluded = isUrlExcludedFromDarkMode(url, exclusions);
 
         console.log('[Electron Main] syncOAuthWindowSmartDark -> url:', url, 'isForceDark:', isForceDark, 'isExcluded:', isExcluded);
         if (childWindow.webContents && typeof childWindow.webContents.setEmulatedMedia === 'function') {
             try {
-                childWindow.webContents.setEmulatedMedia({ colorScheme: isForceDark && !isExcluded ? 'dark' : 'light' });
+                childWindow.webContents.setEmulatedMedia({ colorScheme: isForceDark && !isExcluded ? 'dark' : getEffectiveColorScheme() });
             } catch (_) {}
         }
-        childWindow.webContents.send('apply-smart-dark', { isForceDark, isExcluded });
+        childWindow.webContents.send('apply-smart-dark', { isForceDark, isExcluded, excludeMedia });
     } catch (e) {
         console.error('[Electron Main] syncOAuthWindowSmartDark error:', e);
     }
+}
+
+function broadcastSmartDarkToAllWebviews() {
+    try {
+        const { isForceDark, exclusions, excludeMedia } = resolveSmartDarkConfig();
+        const fallbackScheme = getEffectiveColorScheme();
+        for (const wc of webContents.getAllWebContents()) {
+            if (!wc || wc.isDestroyed() || wc.getType() !== 'webview') continue;
+            try {
+                const url = wc.getURL() || '';
+                const isExcluded = isUrlExcludedFromDarkMode(url, exclusions);
+                const scheme = (isForceDark && !isExcluded) ? 'dark' : fallbackScheme;
+                if (typeof wc.setEmulatedMedia === 'function') {
+                    wc.setEmulatedMedia({ colorScheme: scheme });
+                }
+                wc.send('apply-smart-dark', { isForceDark, isExcluded, excludeMedia });
+            } catch (_) {}
+        }
+    } catch (_) {}
 }
 
 function broadcastSmartDarkToOAuthWindows() {
@@ -248,6 +334,7 @@ function broadcastSmartDarkToOAuthWindows() {
             activeOAuthWindows.delete(win);
         }
     }
+    broadcastSmartDarkToAllWebviews();
 }
 
 // Internal dialog bridge server for synchronous window.alert, confirm, and prompt calls
@@ -1053,6 +1140,9 @@ app.on('open-url', (event, url) => {
 });
 
 // Hardware Acceleration & Performance Optimizations
+if (process.platform === 'linux' && process.env.WAYLAND_DISPLAY && !process.argv.some(a => a.startsWith('--ozone-platform'))) {
+    app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+}
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('canvas-oop-rasterization');
@@ -1197,11 +1287,31 @@ let settingsStore = {};
 const appDataPath = app.getPath('userData');
 const vaultPath = path.join(appDataPath, 'vault.json');
 const settingsPath = path.join(appDataPath, 'settings.json');
+const permissionManager = new PermissionManager({
+    userDataPath: appDataPath,
+    onChange: ({ origin, partition, isEphemeral }) => {
+        const payload = { origin, partition, isEphemeral };
+        try {
+            if (typeof browserWindows !== 'undefined' && browserWindows) {
+                for (const win of browserWindows) {
+                    if (win && !win.isDestroyed()) {
+                        try { win.webContents.send('qbrowse-site-permissions-changed', payload); } catch (_) {}
+                    }
+                }
+            }
+            if (typeof mainWindow !== 'undefined' && mainWindow && !mainWindow.isDestroyed() && (!browserWindows || !browserWindows.has(mainWindow))) {
+                try { mainWindow.webContents.send('qbrowse-site-permissions-changed', payload); } catch (_) {}
+            }
+        } catch (_) {}
+    }
+});
 try {
     if (fsSync.existsSync(settingsPath)) {
         settingsStore = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8')) || {};
     }
 } catch (_) {}
+livePasskeyState.passkeyProviderMode = settingsStore.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault';
+livePasskeyState.passkeyHardwareFallback = settingsStore.passkeyHardwareFallback !== false;
 if (settingsStore.hardware === false) {
     try { app.disableHardwareAcceleration(); } catch (_) {}
 }
@@ -1583,7 +1693,7 @@ function getAnimationConfig() {
         }
         const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
         const profile = performanceEngine.detectHardwareProfile(null, isOnBattery);
-        if (profile.activeTier === 'eco' || profile.reduceVisuals) {
+        if (profile.reduceVisuals) {
             return { enabled: false, duration: 0, interval: 16 };
         } else if (profile.activeTier === 'ultra') {
             return { enabled: true, duration: 190, interval: 4 }; // ~250Hz ultra high refresh
@@ -1698,6 +1808,31 @@ async function toggleMaximizeSmooth(win) {
     }
 }
 
+function getWindowFocusState(targetWin, overrides = {}) {
+  if (!targetWin || targetWin.isDestroyed()) {
+    return { isFocused: false, isMinimized: false, isVisible: false };
+  }
+  const isMinimized = typeof overrides.isMinimized === 'boolean'
+    ? overrides.isMinimized
+    : Boolean(targetWin.isMinimized());
+  const rawVisible = typeof overrides.isVisible === 'boolean'
+    ? overrides.isVisible
+    : Boolean(targetWin.isVisible());
+  const isVisible = rawVisible && !isMinimized;
+  const rawFocused = typeof overrides.isFocused === 'boolean'
+    ? overrides.isFocused
+    : Boolean(targetWin.isFocused());
+  const isFocused = rawFocused && isVisible;
+  return { isFocused, isMinimized, isVisible };
+}
+
+function emitWindowFocusState(targetWin, overrides = {}) {
+  if (!targetWin || targetWin.isDestroyed()) return;
+  try {
+    targetWin.webContents.send('window-focus-state-changed', getWindowFocusState(targetWin, overrides));
+  } catch (_) {}
+}
+
 function createWindow(options = {}) {
   ensureVault();
 
@@ -1712,7 +1847,7 @@ function createWindow(options = {}) {
     minHeight: 820,
     show: false,
     backgroundColor: '#0a0a0c',
-    icon: path.join(__dirname, '../icon.png'),
+    icon: resolveAppIconPath(),
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
     autoHideMenuBar: true,
@@ -1744,6 +1879,27 @@ function createWindow(options = {}) {
       const isReduced = checkWindowsReducedMotion();
       win.webContents.send('system-reduced-motion-changed', isReduced);
     } catch (_) {}
+    emitWindowFocusState(win, { isFocused: true, isMinimized: false, isVisible: true });
+  });
+
+  win.on('blur', () => {
+    emitWindowFocusState(win, { isFocused: false });
+  });
+
+  win.on('minimize', () => {
+    emitWindowFocusState(win, { isFocused: false, isMinimized: true, isVisible: false });
+  });
+
+  win.on('hide', () => {
+    emitWindowFocusState(win, { isFocused: false, isVisible: false });
+  });
+
+  win.on('show', () => {
+    emitWindowFocusState(win, { isVisible: true });
+  });
+
+  win.webContents.on('did-finish-load', () => {
+    emitWindowFocusState(win);
   });
 
   win.webContents.on('console-message', (event) => {
@@ -1771,6 +1927,7 @@ function createWindow(options = {}) {
   });
   win.on('restore', () => {
     applyWindowCornerPreference(win, currentWindowCornerPreference);
+    emitWindowFocusState(win, { isMinimized: false });
   });
 
   const queryParams = {};
@@ -1892,6 +2049,11 @@ function createWindow(options = {}) {
 
     app.on('web-contents-created', (event, contents) => {
         contents.setMaxListeners(0);
+
+        // Safety net: ensure every webview/partition session always has permission, adblock & download handlers attached
+        if (contents.session) {
+            try { setupWebviewSession(contents.session); } catch (_) {}
+        }
 
         // Guarantee webviews have a backing canvas color matching current color scheme to avoid stark white bleed on dark pages
         if (contents.getType() === 'webview') {
@@ -2094,7 +2256,7 @@ function createWindow(options = {}) {
                 return {
                     action: 'allow',
                     overrideBrowserWindowOptions: {
-                        icon: path.join(__dirname, '../icon.png'),
+                        icon: resolveAppIconPath(),
                         width: popupWidth,
                         height: popupHeight,
                         minWidth: 420,
@@ -2626,7 +2788,7 @@ app.on('browser-window-created', (event, win) => {
     if (!browserWindows.has(win)) {
         try {
             win.setMenuBarVisibility(false);
-            win.setIcon(path.join(__dirname, '../icon.png'));
+            win.setIcon(resolveAppIconPath());
             win.on('blur', () => {
                 if (!win.isDestroyed()) {
                     try {
@@ -2952,11 +3114,15 @@ ipcMain.on('sync-theme-source', (event, theme) => {
         nativeTheme.themeSource = (currentAppTheme === 'light' || currentAppTheme === 'dark') ? currentAppTheme : 'system';
         const effectiveScheme = getEffectiveColorScheme();
         const bgColor = effectiveScheme === 'dark' ? '#121212' : '#ffffff';
+        const { isForceDark, exclusions } = resolveSmartDarkConfig();
         for (const wc of webContents.getAllWebContents()) {
             if (!wc.isDestroyed() && wc.getType() === 'webview') {
                 try {
-                    wc.setEmulatedMedia({ colorScheme: effectiveScheme });
-                    wc.setBackgroundColor(bgColor);
+                    const url = wc.getURL() || '';
+                    const isExcluded = isUrlExcludedFromDarkMode(url, exclusions);
+                    const targetScheme = (isForceDark && !isExcluded) ? 'dark' : effectiveScheme;
+                    wc.setEmulatedMedia({ colorScheme: targetScheme });
+                    wc.setBackgroundColor(targetScheme === 'dark' ? '#121212' : bgColor);
                 } catch (_) {}
             }
         }
@@ -3077,32 +3243,37 @@ function setupDownloadHandler(sess) {
             } catch (_) {}
         }
 
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('download-started', { 
-                id, 
-                fileName, 
-                totalBytes, 
-                url, 
-                urlChain, 
-                webContentsId, 
-                canGoBack, 
-                webContentsUrl 
-            });
-        }
+        const targetDownloadWin = resolvePermissionTargetWindow(webContents) || mainWindow;
+        const sendDownloadEvent = (channel, payload) => {
+            if (targetDownloadWin && !targetDownloadWin.isDestroyed() && targetDownloadWin.webContents && !targetDownloadWin.webContents.isDestroyed()) {
+                targetDownloadWin.webContents.send(channel, payload);
+            } else if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                mainWindow.webContents.send(channel, payload);
+            }
+        };
+
+        sendDownloadEvent('download-started', { 
+            id, 
+            fileName, 
+            totalBytes, 
+            url, 
+            urlChain, 
+            webContentsId, 
+            canGoBack, 
+            webContentsUrl 
+        });
 
         let lastDownloadUpdateTime = Date.now();
         let lastReceivedBytes = 0;
+        let isDownloadFinished = false;
 
         item.on('updated', (event, state) => {
+            if (isDownloadFinished) return;
             if (state === 'interrupted') {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('download-updated', { id, state: 'interrupted' });
-                }
+                sendDownloadEvent('download-updated', { id, state: 'interrupted', speedBytesPerSec: 0 });
             } else if (state === 'progressing') {
                 if (item.isPaused()) {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('download-updated', { id, state: 'paused' });
-                    }
+                    sendDownloadEvent('download-updated', { id, state: 'paused', speedBytesPerSec: 0 });
                 } else {
                     const now = Date.now();
                     const receivedBytes = item.getReceivedBytes();
@@ -3115,24 +3286,25 @@ function setupDownloadHandler(sess) {
                         lastReceivedBytes = receivedBytes;
                     }
 
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('download-updated', { 
-                            id, 
-                            state: 'progressing', 
-                            receivedBytes,
-                            speedBytesPerSec
-                        });
-                    }
+                    sendDownloadEvent('download-updated', { 
+                        id, 
+                        state: 'progressing', 
+                        receivedBytes,
+                        speedBytesPerSec
+                    });
                 }
             }
         });
 
         item.once('done', async (event, state) => {
+            isDownloadFinished = true;
             const savePath = item.getSavePath();
             let verificationResult = { verified: false };
             let finalState = state;
 
-            if (state === 'completed' && savePath) {
+            if (state === 'cancelled' || (state === 'completed' && !savePath)) {
+                finalState = 'cancelled';
+            } else if (state === 'completed' && savePath) {
                 // Short yield to ensure OS file system flush
                 await new Promise(r => setTimeout(r, 60));
                 verificationResult = await verifyAndChecksumFile(savePath, totalBytes);
@@ -3144,26 +3316,89 @@ function setupDownloadHandler(sess) {
                 }
             }
 
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('download-done', { 
-                    id, 
-                    state: finalState, 
-                    savePath,
-                    verified: verificationResult.verified,
-                    checksum: verificationResult.checksum || null,
-                    algorithm: verificationResult.algorithm || 'SHA-256',
-                    actualBytes: verificationResult.size ?? item.getReceivedBytes(),
-                    error: verificationResult.error || null,
-                    verifiedAt: verificationResult.verifiedAt || null
-                });
-            }
+            sendDownloadEvent('download-done', { 
+                id, 
+                state: finalState, 
+                savePath: finalState === 'cancelled' ? '' : savePath,
+                verified: finalState === 'completed' ? verificationResult.verified : false,
+                checksum: finalState === 'completed' ? (verificationResult.checksum || null) : null,
+                algorithm: verificationResult.algorithm || 'SHA-256',
+                actualBytes: finalState === 'cancelled' ? 0 : (verificationResult.size ?? item.getReceivedBytes()),
+                speedBytesPerSec: 0,
+                error: finalState === 'cancelled' ? 'Download cancelled' : (verificationResult.error || null),
+                verifiedAt: verificationResult.verifiedAt || null
+            });
         });
     });
 }
 
-function setupWebviewSession(sess) {
-    if (!sess || configuredSessions.has(sess)) return;
+function isInternalAppShellWebContents(wc) {
+    if (!wc || (typeof wc.isDestroyed === 'function' && wc.isDestroyed())) return false;
+    if (typeof wc.getType === 'function' && wc.getType() === 'webview') return false;
+    if (wc.hostWebContents) return false;
+    try {
+        const win = BrowserWindow.fromWebContents(wc);
+        if (!win || win.isDestroyed() || activeOAuthWindows.has(win)) return false;
+        return browserWindows.has(win) || win === mainWindow;
+    } catch (_) {
+        return false;
+    }
+}
+
+function resolvePermissionTargetWindow(wc) {
+    try {
+        if (wc && (typeof wc.isDestroyed !== 'function' || !wc.isDestroyed())) {
+            if (wc.hostWebContents && !wc.hostWebContents.isDestroyed()) {
+                const hostWin = BrowserWindow.fromWebContents(wc.hostWebContents);
+                if (hostWin && !hostWin.isDestroyed() && !activeOAuthWindows.has(hostWin)) return hostWin;
+            }
+            const selfWin = BrowserWindow.fromWebContents(wc);
+            if (selfWin && !selfWin.isDestroyed() && !activeOAuthWindows.has(selfWin)) return selfWin;
+        }
+        const focused = BrowserWindow.getFocusedWindow();
+        if (focused && !focused.isDestroyed() && !activeOAuthWindows.has(focused)) return focused;
+        if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+        return Array.from(browserWindows).find(w => w && !w.isDestroyed()) || null;
+    } catch (_) {
+        return (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : null;
+    }
+}
+
+async function ensureMacOSMediaAccess(keys) {
+    if (process.platform !== 'darwin' || !systemPreferences || typeof systemPreferences.askForMediaAccess !== 'function') {
+        return true;
+    }
+    const mediaTypes = [];
+    if (Array.isArray(keys)) {
+        if (keys.includes('camera')) mediaTypes.push('camera');
+        if (keys.includes('microphone')) mediaTypes.push('microphone');
+    }
+    for (const mt of mediaTypes) {
+        try {
+            const status = typeof systemPreferences.getMediaAccessStatus === 'function'
+                ? systemPreferences.getMediaAccessStatus(mt)
+                : 'not-determined';
+            if (status === 'denied' || status === 'restricted') {
+                return false;
+            }
+            if (status !== 'granted') {
+                const granted = await systemPreferences.askForMediaAccess(mt);
+                if (!granted) return false;
+            }
+        } catch (_) {}
+    }
+    return true;
+}
+
+function setupWebviewSession(sess, explicitPartitionKey) {
+    if (!sess) return;
+    if (explicitPartitionKey) {
+        permissionManager.registerSession(sess, explicitPartitionKey);
+    }
+    if (configuredSessions.has(sess)) return;
     configuredSessions.add(sess);
+
+    permissionManager.registerSession(sess, explicitPartitionKey);
 
     const preloadScriptPath = path.join(__dirname, 'webview_preload.cjs');
     if (typeof sess.registerPreloadScript === 'function') {
@@ -3180,37 +3415,189 @@ function setupWebviewSession(sess) {
     setupHeadersHandler(sess);
     applyAdblockerToSession(sess);
 
-    sess.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    sess.setPermissionRequestHandler((wc, permission, callback, details = {}) => {
         try {
-            const requestingUrl = details.requestingUrl || webContents.getURL();
-            if (requestingUrl) {
-                const domain = new URL(requestingUrl).hostname.replace(/^www\./, '').toLowerCase();
-                if (permissionsData[domain] && permissionsData[domain][permission]) {
-                    const setting = permissionsData[domain][permission];
-                    if (setting === 'allow') return callback(true);
-                    if (setting === 'block') return callback(false);
+            // Allow QBrowse's own internal UI shell (e.g. local voice/Whisper STT) without site prompts
+            if (isInternalAppShellWebContents(wc)) {
+                if (permission === 'media') {
+                    const mediaKeys = [];
+                    if (Array.isArray(details?.mediaTypes)) {
+                        if (details.mediaTypes.includes('video')) mediaKeys.push('camera');
+                        if (details.mediaTypes.includes('audio')) mediaKeys.push('microphone');
+                    }
+                    ensureMacOSMediaAccess(mediaKeys).then(ok => callback(ok)).catch(() => callback(true));
+                    return;
                 }
+                return callback(true);
             }
-        } catch(e) {}
-        callback(true);
+
+            const { isPersistent, sessionKey } = permissionManager.getSessionInfo(sess);
+            const requestingUrl = details.requestingUrl || details.securityOrigin || (wc && !wc.isDestroyed() ? wc.getURL() : '');
+            const evaluation = permissionManager.evaluateRequest(permission, requestingUrl, details, {
+                isPersistent,
+                sessionKey
+            });
+
+            if (evaluation.status === 'allow') {
+                if (permission === 'media') {
+                    const mediaKeys = [];
+                    if (Array.isArray(details?.mediaTypes)) {
+                        if (details.mediaTypes.includes('video')) mediaKeys.push('camera');
+                        if (details.mediaTypes.includes('audio')) mediaKeys.push('microphone');
+                    }
+                    ensureMacOSMediaAccess(mediaKeys).then(ok => callback(ok)).catch(() => callback(true));
+                    return;
+                }
+                return callback(true);
+            }
+
+            if (evaluation.status === 'deny') {
+                return callback(false);
+            }
+
+            const targetWin = resolvePermissionTargetWindow(wc);
+            if (!targetWin || targetWin.isDestroyed()) {
+                return callback(false);
+            }
+
+            permissionManager.enqueueLivePrompt({
+                webContents: wc,
+                targetWin,
+                origin: evaluation.origin,
+                host: evaluation.host,
+                keys: evaluation.keys,
+                promptType: evaluation.promptType,
+                isPersistent,
+                sessionKey,
+                callback,
+                sendPrompt: (payload) => {
+                    if (targetWin && !targetWin.isDestroyed()) {
+                        targetWin.webContents.send('qbrowse-permission-request', payload);
+                    }
+                },
+                sendDismiss: (payload) => {
+                    if (targetWin && !targetWin.isDestroyed()) {
+                        targetWin.webContents.send('qbrowse-permission-dismiss', payload);
+                    }
+                }
+            });
+        } catch (err) {
+            console.warn('[Permissions] Request handler error:', err?.message || err);
+            try { callback(false); } catch (_) {}
+        }
     });
 
-    sess.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-        if (['hid', 'usb', 'serial'].includes(permission)) {
-            return true;
-        }
+    sess.setPermissionCheckHandler((wc, permission, requestingOrigin, details = {}) => {
         try {
-            if (requestingOrigin) {
-                const domain = new URL(requestingOrigin).hostname.replace(/^www\./, '').toLowerCase();
-                if (permissionsData[domain] && permissionsData[domain][permission]) {
-                    const setting = permissionsData[domain][permission];
-                    if (setting === 'allow') return true;
-                    if (setting === 'block') return false;
-                }
+            if (isInternalAppShellWebContents(wc)) {
+                return true;
             }
-        } catch(e) {}
-        return true;
+            const { isPersistent, sessionKey } = permissionManager.getSessionInfo(sess);
+            const origin = requestingOrigin || details?.securityOrigin || details?.requestingUrl || (wc && !wc.isDestroyed() ? wc.getURL() : '');
+            return permissionManager.checkPermission(permission, origin, details, {
+                isPersistent,
+                sessionKey
+            });
+        } catch (_) {
+            return false;
+        }
     });
+
+    if (typeof sess.setDisplayMediaRequestHandler === 'function') {
+        sess.setDisplayMediaRequestHandler((request, callback) => {
+            try {
+                let wc = null;
+                try {
+                    const topFrame = request?.frame?.top || request?.frame;
+                    if (topFrame) {
+                        wc = webContents.getAllWebContents().find(w => !w.isDestroyed() && w.mainFrame === topFrame) || null;
+                    }
+                } catch (_) {}
+
+                const grantDisplayMedia = async () => {
+                    try {
+                        if (!desktopCapturer || typeof desktopCapturer.getSources !== 'function') {
+                            callback({});
+                            return;
+                        }
+                        const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+                        const primary = sources && sources[0];
+                        if (!primary) {
+                            callback({});
+                            return;
+                        }
+                        if (request?.audioRequested && process.platform === 'win32') {
+                            try {
+                                callback({ video: primary, audio: 'loopback' });
+                                return;
+                            } catch (_) {}
+                        }
+                        callback({ video: primary });
+                    } catch (_) {
+                        try { callback({}); } catch (__) {}
+                    }
+                };
+
+                if (isInternalAppShellWebContents(wc)) {
+                    grantDisplayMedia();
+                    return;
+                }
+
+                const { isPersistent, sessionKey } = permissionManager.getSessionInfo(sess);
+                const originUrl = request?.securityOrigin || request?.frame?.url || (wc && !wc.isDestroyed() ? wc.getURL() : '');
+                const evaluation = permissionManager.evaluateRequest('display-capture', originUrl, {}, {
+                    isPersistent,
+                    sessionKey
+                });
+
+                if (evaluation.status === 'allow') {
+                    grantDisplayMedia();
+                    return;
+                }
+                if (evaluation.status === 'deny') {
+                    callback({});
+                    return;
+                }
+
+                const targetWin = resolvePermissionTargetWindow(wc);
+                if (!targetWin || targetWin.isDestroyed()) {
+                    callback({});
+                    return;
+                }
+
+                permissionManager.enqueueLivePrompt({
+                    webContents: wc,
+                    targetWin,
+                    origin: evaluation.origin,
+                    host: evaluation.host,
+                    keys: evaluation.keys,
+                    promptType: evaluation.promptType,
+                    isPersistent,
+                    sessionKey,
+                    callback: (granted) => {
+                        if (!granted) {
+                            try { callback({}); } catch (_) {}
+                            return;
+                        }
+                        grantDisplayMedia();
+                    },
+                    sendPrompt: (payload) => {
+                        if (targetWin && !targetWin.isDestroyed()) {
+                            targetWin.webContents.send('qbrowse-permission-request', payload);
+                        }
+                    },
+                    sendDismiss: (payload) => {
+                        if (targetWin && !targetWin.isDestroyed()) {
+                            targetWin.webContents.send('qbrowse-permission-dismiss', payload);
+                        }
+                    }
+                });
+            } catch (err) {
+                console.warn('[Permissions] Display media handler error:', err?.message || err);
+                try { callback({}); } catch (_) {}
+            }
+        });
+    }
 
     if (typeof sess.setDevicePermissionHandler === 'function') {
         sess.setDevicePermissionHandler(() => true);
@@ -3249,8 +3636,24 @@ try {
     console.warn('[PerformanceEngine] Error setting Chromium flags:', e.message);
 }
 
+let lastAppliedPerformanceTier = null;
+
+function broadcastPerformanceProfile(profile) {
+    if (!profile) return;
+    for (const win of browserWindows) {
+        if (win && !win.isDestroyed()) {
+            try { win.webContents.send('performance-profile-changed', profile); } catch (_) {}
+        }
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && !browserWindows.has(mainWindow)) {
+        try { mainWindow.webContents.send('performance-profile-changed', profile); } catch (_) {}
+    }
+}
+
 function applyPerformanceTierToContents(activeTier) {
     try {
+        const tierChanged = activeTier !== lastAppliedPerformanceTier;
+        lastAppliedPerformanceTier = activeTier;
         const allWc = webContents.getAllWebContents();
         for (const wc of allWc) {
             if (wc.getType() === 'webview') {
@@ -3261,7 +3664,7 @@ function applyPerformanceTierToContents(activeTier) {
                 }
             }
         }
-        if (activeTier === 'eco') {
+        if (activeTier === 'eco' && tierChanged) {
             session.defaultSession.clearCache().catch(() => {});
         }
     } catch (e) {
@@ -3341,6 +3744,35 @@ function applyDnsConfiguration(options = {}) {
 }
 
 app.whenReady().then(async () => {
+  // 0. Load persisted performance settings before window creation so animations and early IPC use saved values
+  try {
+      performanceEngine.initSettings(app.getPath('userData'));
+  } catch (_) {}
+
+  // 0b. Register session-created listener and core sessions BEFORE createWindow() so no partition can miss permission handlers
+  try {
+      app.on('session-created', (sess) => {
+          setupWebviewSession(sess);
+      });
+      setupWebviewSession(session.defaultSession, 'default');
+      const defaultProfileSession = session.fromPartition('persist:profile_default');
+      setupWebviewSession(defaultProfileSession, 'persist:profile_default');
+      const ghostSession = session.fromPartition('ghost');
+      setupWebviewSession(ghostSession, 'ghost');
+      if (ghostSession && typeof ghostSession.setWebRTCIPHandlingPolicy === 'function') {
+          ghostSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+      }
+      const torSession = session.fromPartition('tor');
+      setupWebviewSession(torSession, 'tor');
+      if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
+          torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+      }
+      torSession.setProxy({
+          proxyRules: `socks5://127.0.0.1:${torEngine.getStatus().socksPort || 9050}`,
+          proxyBypassRules: '<local>'
+      }).catch(() => {});
+  } catch (_) {}
+
   // 1. Immediately create the main browser window so UI rendering starts instantly
   createWindow();
 
@@ -3422,13 +3854,7 @@ app.whenReady().then(async () => {
       }
   } catch (_) {}
 
-  // 3. Initialize performance settings and permissions
-  try {
-      performanceEngine.initSettings(app.getPath('userData'));
-      ensurePermissionsFile();
-  } catch (_) {}
-
-  // 3b. Handle screen resolution / DPI changes to keep compositor and window geometry synchronized
+  // 3. Handle screen resolution / DPI changes to keep compositor and window geometry synchronized
   try {
       screen.on('display-metrics-changed', (event, display, changedMetrics) => {
           console.log('[Display] Screen metrics changed:', changedMetrics);
@@ -3447,31 +3873,6 @@ app.whenReady().then(async () => {
       console.warn('[Display] Screen listener setup warning:', e.message);
   }
 
-  // 4. Configure webview sessions
-  try {
-      setupWebviewSession(session.defaultSession);
-      const defaultProfileSession = session.fromPartition('persist:profile_default');
-      setupWebviewSession(defaultProfileSession);
-      const ghostSession = session.fromPartition('ghost');
-      setupWebviewSession(ghostSession);
-      if (ghostSession && typeof ghostSession.setWebRTCIPHandlingPolicy === 'function') {
-          ghostSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
-      }
-      const torSession = session.fromPartition('tor');
-      setupWebviewSession(torSession);
-      if (torSession && typeof torSession.setWebRTCIPHandlingPolicy === 'function') {
-          torSession.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
-      }
-      torSession.setProxy({
-          proxyRules: `socks5://127.0.0.1:${torEngine.getStatus().socksPort || 9050}`,
-          proxyBypassRules: '<local>'
-      }).catch(() => {});
-
-      app.on('session-created', (sess) => {
-          setupWebviewSession(sess);
-      });
-  } catch (_) {}
-
   // 5. Non-blocking asynchronous background initialization (Power monitor, Widevine DRM, YouTube/Google cleaner, OS registry)
   setTimeout(async () => {
       try {
@@ -3481,18 +3882,14 @@ app.whenReady().then(async () => {
                   try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
                   const profile = performanceEngine.detectHardwareProfile(gpuInfo, true);
                   applyPerformanceTierToContents(profile.activeTier);
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                      mainWindow.webContents.send('performance-profile-changed', profile);
-                  }
+                  broadcastPerformanceProfile(profile);
               });
               powerMonitor.on('on-ac', async () => {
                   let gpuInfo = null;
                   try { gpuInfo = await app.getGPUInfo('basic'); } catch (_) {}
                   const profile = performanceEngine.detectHardwareProfile(gpuInfo, false);
                   applyPerformanceTierToContents(profile.activeTier);
-                  if (mainWindow && !mainWindow.isDestroyed()) {
-                      mainWindow.webContents.send('performance-profile-changed', profile);
-                  }
+                  broadcastPerformanceProfile(profile);
               });
           }
       } catch (e) {
@@ -3528,14 +3925,22 @@ app.whenReady().then(async () => {
       } catch (_) {}
 
       // Silent background sync with GitHub Releases on startup and every 4 hours
+      // On Linux non-AppImage installs (.deb/.rpm/.pacman/tarball/flatpak/snap), notify without silently downloading packages.
+      const shouldAutoDownloadInBackground = () => {
+          if (!app.isPackaged) return false;
+          if (process.platform === 'linux') {
+              return Boolean(getPlatformInstallInfo().canAutoInstall);
+          }
+          return true;
+      };
       setTimeout(() => {
-          performGitHubUpdateCheck({ silent: true, autoDownload: app.isPackaged }).catch((err) => {
+          performGitHubUpdateCheck({ silent: true, autoDownload: shouldAutoDownloadInBackground() }).catch((err) => {
               console.log('[AutoUpdater] Silent startup check skipped/failed:', err?.message || err);
           });
       }, 6000);
 
       setInterval(() => {
-          performGitHubUpdateCheck({ silent: true, autoDownload: app.isPackaged }).catch(() => {});
+          performGitHubUpdateCheck({ silent: true, autoDownload: shouldAutoDownloadInBackground() }).catch(() => {});
       }, 4 * 60 * 60 * 1000);
   }, 100);
 });
@@ -3912,6 +4317,10 @@ ipcMain.on('window-close', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
     if (win) win.close();
 });
+ipcMain.handle('window-get-focus-state', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    return getWindowFocusState(win);
+});
 ipcMain.on('window-drag-by', (event, { deltaX, deltaY }) => {
     const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
     if (win && !win.isDestroyed() && !win.isMaximized()) {
@@ -3992,6 +4401,48 @@ const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITH
 const GITHUB_LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 const GITHUB_RELEASES_WEB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
 
+function getPlatformInstallInfo() {
+    if (process.platform === 'linux') {
+        const info = detectLinuxInstallType({
+            env: process.env,
+            execPath: process.execPath,
+            arch: process.arch
+        });
+        return {
+            ...info,
+            installCommand: info.managedExternally
+                ? buildLinuxInstallCommand(info.installType, '', info)
+                : null
+        };
+    }
+    if (process.platform === 'win32') {
+        return {
+            installType: 'nsis',
+            arch: process.arch,
+            canAutoInstall: true,
+            managedExternally: false,
+            label: 'Windows Installer (.exe)',
+            shortLabel: '.exe',
+            packageExt: '.exe',
+            appImagePath: null,
+            installCommand: null
+        };
+    }
+    return {
+        installType: process.platform,
+        arch: process.arch,
+        canAutoInstall: false,
+        managedExternally: false,
+        label: process.platform === 'darwin' ? 'macOS' : process.platform,
+        shortLabel: process.platform === 'darwin' ? '.dmg' : process.platform,
+        packageExt: process.platform === 'darwin' ? '.dmg' : null,
+        appImagePath: null,
+        installCommand: null
+    };
+}
+
+const initialInstallInfo = getPlatformInstallInfo();
+
 const updaterState = {
     status: 'idle', // 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
     currentVersion: app.getVersion(),
@@ -4018,6 +4469,13 @@ const updaterState = {
     isPackaged: app.isPackaged,
     platform: process.platform,
     arch: process.arch,
+    installType: initialInstallInfo.installType,
+    installLabel: initialInstallInfo.label,
+    installShortLabel: initialInstallInfo.shortLabel,
+    packageExt: initialInstallInfo.packageExt,
+    canAutoInstall: initialInstallInfo.canAutoInstall,
+    managedExternally: initialInstallInfo.managedExternally,
+    installCommand: initialInstallInfo.installCommand,
     runtimeVersions: {
         app: app.getVersion(),
         electron: process.versions.electron || '',
@@ -4031,34 +4489,18 @@ let activeCheckPromise = null;
 let activeDownloadPromise = null;
 let isInstallingUpdate = false;
 
-function normalizeSemver(ver) {
-    if (!ver || typeof ver !== 'string') return '0.0.0';
-    return ver.trim().replace(/^[vV]+/, '');
-}
-
-function compareSemver(verA, verB) {
-    const cleanA = normalizeSemver(verA);
-    const cleanB = normalizeSemver(verB);
-    const [mainA, preA] = cleanA.split('-');
-    const [mainB, preB] = cleanB.split('-');
-    const partsA = mainA.split('.').map(n => parseInt(n, 10) || 0);
-    const partsB = mainB.split('.').map(n => parseInt(n, 10) || 0);
-    const len = Math.max(partsA.length, partsB.length, 3);
-    for (let i = 0; i < len; i++) {
-        const a = partsA[i] || 0;
-        const b = partsB[i] || 0;
-        if (a > b) return 1;
-        if (a < b) return -1;
-    }
-    if (!preA && preB) return 1;
-    if (preA && !preB) return -1;
-    if (preA && preB && preA !== preB) return preA > preB ? 1 : -1;
-    return 0;
-}
-
 function updateAndBroadcastState(eventName, patch = {}) {
+    const installInfo = getPlatformInstallInfo();
     Object.assign(updaterState, patch, {
         currentVersion: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch,
+        installType: installInfo.installType,
+        installLabel: installInfo.label,
+        installShortLabel: installInfo.shortLabel,
+        packageExt: installInfo.packageExt,
+        canAutoInstall: installInfo.canAutoInstall,
+        managedExternally: installInfo.managedExternally,
         runtimeVersions: {
             app: app.getVersion(),
             electron: process.versions.electron || '',
@@ -4067,6 +4509,9 @@ function updateAndBroadcastState(eventName, patch = {}) {
             v8: process.versions.v8 || ''
         }
     });
+    if (patch.installCommand === undefined && installInfo.managedExternally) {
+        updaterState.installCommand = installInfo.installCommand;
+    }
     const payload = { event: eventName, ...updaterState };
     for (const win of browserWindows) {
         if (win && !win.isDestroyed()) {
@@ -4200,19 +4645,6 @@ function parseReleaseYaml(yamlText) {
     return result.version ? result : null;
 }
 
-function detectLinuxPackagePreference() {
-    if (process.env.APPIMAGE) return 'AppImage';
-    try {
-        if (fsSync.existsSync('/etc/arch-release') || fsSync.existsSync('/usr/bin/pacman')) {
-            return 'pacman';
-        }
-        if (fsSync.existsSync('/etc/debian_version') || fsSync.existsSync('/usr/bin/dpkg')) {
-            return 'deb';
-        }
-    } catch (_) {}
-    return 'AppImage';
-}
-
 function selectBestPlatformAsset(assets = [], version = '', ymlData = null) {
     const validAssets = Array.isArray(assets) ? assets.filter(a => a && a.name && a.browser_download_url) : [];
 
@@ -4242,38 +4674,8 @@ function selectBestPlatformAsset(assets = [], version = '', ymlData = null) {
     }
 
     if (process.platform === 'linux') {
-        const pref = detectLinuxPackagePreference();
-        const findByExt = (ext) => validAssets.find(a => a.name.toLowerCase().endsWith(ext.toLowerCase()) && !a.name.toLowerCase().endsWith('.blockmap'));
-        let chosen = null;
-        if (pref === 'AppImage') {
-            chosen = findByExt('.AppImage') || findByExt('.deb') || findByExt('.pacman') || findByExt('.tar.gz');
-        } else if (pref === 'deb') {
-            chosen = findByExt('.deb') || findByExt('.AppImage') || findByExt('.tar.gz');
-        } else if (pref === 'pacman') {
-            chosen = findByExt('.pacman') || findByExt('.AppImage') || findByExt('.tar.gz');
-        } else {
-            chosen = findByExt('.AppImage') || findByExt('.deb') || findByExt('.tar.gz');
-        }
-        if (chosen) {
-            let expectedSha512 = null;
-            if (ymlData?.files?.length) {
-                const matched = ymlData.files.find(f =>
-                    f.url === chosen.name ||
-                    f.url.replace(/[-.\s]+/g, '').toLowerCase() === chosen.name.replace(/[-.\s]+/g, '').toLowerCase()
-                );
-                if (matched?.sha512) expectedSha512 = matched.sha512;
-            }
-            if (!expectedSha512 && chosen.name.toLowerCase().endsWith('.appimage') && ymlData?.sha512) {
-                expectedSha512 = ymlData.sha512;
-            }
-            return {
-                name: chosen.name,
-                url: chosen.browser_download_url,
-                size: chosen.size || 0,
-                sha512: expectedSha512
-            };
-        }
-        return null;
+        const installInfo = getPlatformInstallInfo();
+        return selectLinuxReleaseAsset(validAssets, installInfo.installType, process.arch, ymlData);
     }
 
     // Fallback for macOS / other platforms
@@ -4290,7 +4692,7 @@ function selectBestPlatformAsset(assets = [], version = '', ymlData = null) {
 }
 
 async function fetchGitHubReleaseSyncData() {
-    const ymlFileName = process.platform === 'linux' ? 'latest-linux.yml' : 'latest.yml';
+    const ymlFileName = process.platform === 'linux' ? getLinuxMetadataFileName(process.arch) : 'latest.yml';
     let releaseObj = null;
 
     // 1. Primary: Query GitHub Releases REST API
@@ -4313,19 +4715,20 @@ async function fetchGitHubReleaseSyncData() {
         }
     }
 
-    // 2. If GitHub REST API succeeded, also fetch latest.yml / latest-linux.yml for SHA-512 verification
+    // 2. If GitHub REST API succeeded, also fetch latest.yml / latest-linux*.yml for SHA-512 verification
     if (releaseObj && releaseObj.tag_name) {
         const latestVersion = normalizeSemver(releaseObj.tag_name);
         const assets = Array.isArray(releaseObj.assets) ? releaseObj.assets : [];
         let ymlData = null;
 
-        const ymlAsset = assets.find(a => a && a.name === ymlFileName);
+        const ymlAsset = assets.find(a => a && a.name === ymlFileName)
+            || (process.platform === 'linux' ? assets.find(a => a && a.name === 'latest-linux.yml') : null);
         if (ymlAsset && ymlAsset.browser_download_url) {
             try {
                 const { buffer } = await httpGetBuffer(ymlAsset.browser_download_url, { timeoutMs: 10000 });
                 ymlData = parseReleaseYaml(buffer.toString('utf8'));
             } catch (e) {
-                console.warn(`[AutoUpdater] Could not fetch ${ymlFileName}:`, e.message);
+                console.warn(`[AutoUpdater] Could not fetch ${ymlAsset.name}:`, e.message);
             }
         }
 
@@ -4347,9 +4750,25 @@ async function fetchGitHubReleaseSyncData() {
         };
     }
 
-    // 3. Rate-limit resilient fallback: Fetch latest.yml / latest-linux.yml directly via github.com release redirect
-    const directYmlUrl = `${GITHUB_RELEASES_WEB_URL}/latest/download/${ymlFileName}`;
-    const { buffer, finalUrl } = await httpGetBuffer(directYmlUrl, { timeoutMs: 12000 });
+    // 3. Rate-limit resilient fallback: Fetch latest.yml / latest-linux*.yml directly via github.com release redirect
+    let ymlResp = null;
+    const directCandidates = process.platform === 'linux' && ymlFileName !== 'latest-linux.yml'
+        ? [ymlFileName, 'latest-linux.yml']
+        : [ymlFileName];
+    let lastYmlErr = null;
+    for (const candidateYml of directCandidates) {
+        try {
+            const directYmlUrl = `${GITHUB_RELEASES_WEB_URL}/latest/download/${candidateYml}`;
+            ymlResp = await httpGetBuffer(directYmlUrl, { timeoutMs: 12000 });
+            break;
+        } catch (err) {
+            lastYmlErr = err;
+        }
+    }
+    if (!ymlResp) {
+        throw lastYmlErr || new Error('Unable to contact GitHub Releases metadata');
+    }
+    const { buffer, finalUrl } = ymlResp;
     const ymlData = parseReleaseYaml(buffer.toString('utf8'));
     if (!ymlData || !ymlData.version) {
         throw new Error('Unable to parse release metadata from GitHub Releases');
@@ -4359,9 +4778,41 @@ async function fetchGitHubReleaseSyncData() {
     const tagMatch = finalUrl.match(/\/releases\/download\/([^/]+)\//);
     const tagName = tagMatch ? tagMatch[1] : `v${latestVersion}`;
 
-    // Build candidate asset names (supports both hyphenated QBrowse-Setup-X.Y.Z.exe and dotted QBrowse.Setup.X.Y.Z.exe)
+    const installInfo = getPlatformInstallInfo();
+    if (process.platform === 'linux' && installInfo.managedExternally) {
+        return {
+            latestVersion,
+            tagName,
+            releaseName: `QBrowse v${latestVersion}`,
+            releaseDate: ymlData.releaseDate || null,
+            releaseNotes: '',
+            releaseUrl: `${GITHUB_RELEASES_WEB_URL}/tag/${tagName}`,
+            asset: null,
+            allAssets: []
+        };
+    }
+
+    // Build candidate asset names (supports hyphenated/dotted Windows names & Linux install formats)
     const candidateNames = [];
-    if (ymlData.path) {
+    if (process.platform === 'linux') {
+        const normArch = normalizeLinuxArch(process.arch);
+        const debArch = normArch === 'arm64' ? 'arm64' : 'amd64';
+        const rpmArch = normArch === 'arm64' ? 'aarch64' : 'x86_64';
+        const appImageArch = normArch === 'arm64' ? 'arm64' : 'x86_64';
+
+        if (installInfo.installType === 'deb') {
+            candidateNames.push(`qbrowse_${latestVersion}_${debArch}.deb`);
+        } else if (installInfo.installType === 'rpm') {
+            candidateNames.push(`qbrowse-${latestVersion}.${rpmArch}.rpm`);
+        } else if (installInfo.installType === 'pacman') {
+            candidateNames.push(`qbrowse-${latestVersion}-${normArch}.pacman`, `qbrowse-${latestVersion}.pacman`);
+        } else if (installInfo.installType === 'tarball') {
+            candidateNames.push(`QBrowse-${latestVersion}-${normArch}.tar.gz`, `qbrowse-${latestVersion}.tar.gz`);
+        } else {
+            if (ymlData.path) candidateNames.push(ymlData.path);
+            candidateNames.push(`QBrowse-${latestVersion}-${appImageArch}.AppImage`, `QBrowse-${latestVersion}.AppImage`);
+        }
+    } else if (ymlData.path) {
         candidateNames.push(ymlData.path);
         const dotted = ymlData.path.replace(/-Setup-/g, '.Setup.').replace(/\s+/g, '.');
         if (dotted !== ymlData.path) candidateNames.push(dotted);
@@ -4369,8 +4820,6 @@ async function fetchGitHubReleaseSyncData() {
         if (hyphenated !== ymlData.path && !candidateNames.includes(hyphenated)) candidateNames.push(hyphenated);
     } else if (process.platform === 'win32') {
         candidateNames.push(`QBrowse-Setup-${latestVersion}.exe`, `QBrowse.Setup.${latestVersion}.exe`);
-    } else if (process.platform === 'linux') {
-        candidateNames.push(`QBrowse-${latestVersion}.AppImage`, `qbrowse_${latestVersion}_amd64.deb`);
     }
 
     const chosenName = candidateNames[0] || `QBrowse-${latestVersion}`;
@@ -4386,8 +4835,8 @@ async function fetchGitHubReleaseSyncData() {
         asset: {
             name: chosenName,
             url: chosenUrl,
-            size: ymlData.files?.[0]?.size || 0,
-            sha512: ymlData.sha512 || null,
+            size: (process.platform === 'linux' && installInfo.installType !== 'appimage') ? 0 : (ymlData.files?.[0]?.size || 0),
+            sha512: (process.platform === 'linux' && installInfo.installType !== 'appimage') ? null : (ymlData.sha512 || null),
             alternateUrls: candidateNames.slice(1).map(n => `${GITHUB_RELEASES_WEB_URL}/download/${tagName}/${n}`)
         },
         allAssets: []
@@ -4404,24 +4853,112 @@ async function computeFileSha512Base64(filePath) {
     });
 }
 
+async function tryNativeAppImageDownload({ silent = false } = {}) {
+    if (process.platform !== 'linux' || !process.env.APPIMAGE || !app.isPackaged || !autoUpdater) {
+        return null;
+    }
+    const onProgress = (progressObj) => {
+        updateAndBroadcastState('download-progress', {
+            status: 'downloading',
+            version: updaterState.latestVersion || updaterState.version,
+            percent: Math.min(99, Math.round(progressObj?.percent || 0)),
+            bytesPerSecond: Math.round(progressObj?.bytesPerSecond || 0),
+            transferred: progressObj?.transferred || 0,
+            total: progressObj?.total || updaterState.assetSize || 0,
+            silent
+        });
+    };
+    try {
+        autoUpdater.on('download-progress', onProgress);
+        const checkResult = await autoUpdater.checkForUpdates();
+        if (!checkResult || !checkResult.updateInfo || compareSemver(checkResult.updateInfo.version, app.getVersion()) <= 0) {
+            return null;
+        }
+        const downloadedFiles = await autoUpdater.downloadUpdate();
+        const downloadedPath = Array.isArray(downloadedFiles) ? downloadedFiles[0] : (typeof downloadedFiles === 'string' ? downloadedFiles : null);
+        if (downloadedPath && fsSync.existsSync(downloadedPath)) {
+            const stat = await fs.stat(downloadedPath);
+            updateAndBroadcastState('update-downloaded', {
+                status: 'downloaded',
+                version: normalizeSemver(checkResult.updateInfo.version) || updaterState.latestVersion || updaterState.version,
+                percent: 100,
+                bytesPerSecond: 0,
+                transferred: stat.size,
+                total: stat.size,
+                downloadedFilePath: downloadedPath,
+                downloadMethod: 'electron-updater',
+                installCommand: buildLinuxInstallCommand('appimage', downloadedPath),
+                message: null,
+                silent
+            });
+            return { status: 'downloaded', filePath: downloadedPath, version: updaterState.latestVersion, downloadMethod: 'electron-updater' };
+        }
+        return null;
+    } catch (err) {
+        console.warn('[AutoUpdater] Native AppImage electron-updater failed, falling back to GitHub Releases direct download:', err?.message || err);
+        return null;
+    } finally {
+        try { autoUpdater.removeListener('download-progress', onProgress); } catch (_) {}
+    }
+}
+
 async function downloadGitHubUpdateAsset({ silent = false } = {}) {
     if (activeDownloadPromise) return activeDownloadPromise;
 
     activeDownloadPromise = (async () => {
         try {
+            const installInfo = getPlatformInstallInfo();
+            if (process.platform === 'linux' && installInfo.managedExternally) {
+                return {
+                    status: 'managed-externally',
+                    installType: installInfo.installType,
+                    installCommand: installInfo.installCommand,
+                    releaseUrl: updaterState.releaseUrl
+                };
+            }
+
             if (!updaterState.assetUrl || !updaterState.assetName) {
                 await performGitHubUpdateCheck({ silent: true, autoDownload: false });
             }
             if (!updaterState.assetUrl || !updaterState.assetName) {
-                throw new Error('No compatible installer asset found on GitHub Release');
+                throw new Error(`No compatible ${installInfo.shortLabel || ''} package found for ${process.platform}/${process.arch} on GitHub Releases`.trim());
             }
 
-            const updatesDir = path.join(app.getPath('userData'), 'updates');
-            await fs.mkdir(updatesDir, { recursive: true });
+            // On Linux AppImage, try electron-updater's native differential updater first;
+            // if latest-linux.yml is missing/404 or fails, fall back cleanly to direct GitHub download + atomic replace.
+            if (process.platform === 'linux' && installInfo.installType === 'appimage' && installInfo.canAutoInstall && app.isPackaged && autoUpdater) {
+                updateAndBroadcastState('download-progress', {
+                    status: 'downloading',
+                    version: updaterState.latestVersion || updaterState.version,
+                    percent: 0,
+                    bytesPerSecond: 0,
+                    transferred: 0,
+                    total: updaterState.assetSize || 0,
+                    silent
+                });
+                const nativeResult = await tryNativeAppImageDownload({ silent });
+                if (nativeResult) {
+                    return nativeResult;
+                }
+            }
 
-            const safeFileName = path.basename(updaterState.assetName);
-            const finalFilePath = path.join(updatesDir, safeFileName);
+            // Save non-AppImage Linux packages (.deb/.rpm/.pacman/.tar.gz) to the user's Downloads folder
+            // so users can easily inspect, double-click, or install them via package manager.
+            let targetDir = path.join(app.getPath('userData'), 'updates');
+            if (process.platform === 'linux' && !installInfo.canAutoInstall) {
+                try {
+                    const dlDir = app.getPath('downloads');
+                    if (dlDir) targetDir = dlDir;
+                } catch (_) {}
+            }
+            await fs.mkdir(targetDir, { recursive: true });
+
+            const safeFileName = sanitizeUpdateFileName(updaterState.assetName, `QBrowse-${updaterState.latestVersion || 'update'}.bin`);
+            const finalFilePath = path.join(targetDir, safeFileName);
             const partFilePath = `${finalFilePath}.part`;
+            const resolvedInstallCommand = process.platform === 'linux'
+                ? buildLinuxInstallCommand(installInfo.installType, finalFilePath, installInfo)
+                : null;
 
             // Check if already downloaded and verified on disk
             if (fsSync.existsSync(finalFilePath)) {
@@ -4445,9 +4982,10 @@ async function downloadGitHubUpdateAsset({ silent = false } = {}) {
                             total: stat.size,
                             downloadedFilePath: finalFilePath,
                             downloadMethod: 'github-direct',
+                            installCommand: resolvedInstallCommand,
                             silent
                         });
-                        return { status: 'downloaded', filePath: finalFilePath };
+                        return { status: 'downloaded', filePath: finalFilePath, installCommand: resolvedInstallCommand };
                     }
                 } catch (_) {}
             }
@@ -4463,6 +5001,11 @@ async function downloadGitHubUpdateAsset({ silent = false } = {}) {
             });
 
             const urlsToTry = [updaterState.assetUrl];
+            if (Array.isArray(updaterState.alternateAssetUrls)) {
+                for (const alt of updaterState.alternateAssetUrls) {
+                    if (alt && !urlsToTry.includes(alt)) urlsToTry.push(alt);
+                }
+            }
             // Also add hyphen/dot fallback URL in case asset name differs
             if (updaterState.assetUrl.includes('-Setup-')) {
                 urlsToTry.push(updaterState.assetUrl.replace(/-Setup-/g, '.Setup.'));
@@ -4509,12 +5052,13 @@ async function downloadGitHubUpdateAsset({ silent = false } = {}) {
                 total: finalStat.size,
                 downloadedFilePath: finalFilePath,
                 downloadMethod: 'github-direct',
+                installCommand: resolvedInstallCommand,
                 message: null,
                 silent
             });
 
             console.log('[AutoUpdater] Update downloaded and verified at:', finalFilePath);
-            return { status: 'downloaded', filePath: finalFilePath, version: updaterState.latestVersion };
+            return { status: 'downloaded', filePath: finalFilePath, version: updaterState.latestVersion, installCommand: resolvedInstallCommand };
         } catch (err) {
             console.error('[AutoUpdater] Download error:', err);
             updateAndBroadcastState('error', {
@@ -4649,6 +5193,15 @@ async function performGitHubUpdateCheck({ silent = false, autoDownload = true } 
             const latestVer = syncData.latestVersion;
             const isNewer = compareSemver(latestVer, currentVer) > 0;
 
+            const installInfo = getPlatformInstallInfo();
+            const suggestedInstallCmd = process.platform === 'linux'
+                ? buildLinuxInstallCommand(
+                    installInfo.installType,
+                    installInfo.managedExternally ? '' : (syncData.asset?.name || ''),
+                    installInfo
+                )
+                : null;
+
             const commonMeta = {
                 currentVersion: currentVer,
                 latestVersion: latestVer,
@@ -4659,8 +5212,10 @@ async function performGitHubUpdateCheck({ silent = false, autoDownload = true } 
                 releaseUrl: syncData.releaseUrl,
                 assetName: syncData.asset?.name || null,
                 assetUrl: syncData.asset?.url || null,
+                alternateAssetUrls: syncData.asset?.alternateUrls || [],
                 assetSize: syncData.asset?.size || 0,
                 expectedSha512: syncData.asset?.sha512 || null,
+                installCommand: suggestedInstallCmd,
                 lastCheckedAt: Date.now(),
                 syncedWithGitHub: true,
                 message: null,
@@ -4670,8 +5225,12 @@ async function performGitHubUpdateCheck({ silent = false, autoDownload = true } 
             if (isNewer) {
                 // Check if already downloaded on disk
                 if (updaterState.downloadedFilePath && fsSync.existsSync(updaterState.downloadedFilePath) && updaterState.version === latestVer) {
+                    const existingCmd = process.platform === 'linux'
+                        ? buildLinuxInstallCommand(installInfo.installType, updaterState.downloadedFilePath, installInfo)
+                        : null;
                     return updateAndBroadcastState('update-downloaded', {
                         ...commonMeta,
+                        installCommand: existingCmd || suggestedInstallCmd,
                         status: 'downloaded',
                         percent: 100
                     });
@@ -4683,7 +5242,8 @@ async function performGitHubUpdateCheck({ silent = false, autoDownload = true } 
                     percent: 0
                 });
 
-                if (autoDownload && syncData.asset?.url) {
+                const canAutoDownloadNow = autoDownload && syncData.asset?.url && (process.platform !== 'linux' || installInfo.canAutoInstall);
+                if (canAutoDownloadNow) {
                     downloadGitHubUpdateAsset({ silent }).catch((err) => {
                         console.warn('[AutoUpdater] Auto-download failed:', err?.message || err);
                     });
@@ -4765,12 +5325,24 @@ async function installDownloadedUpdate() {
             }
 
             if (process.platform === 'linux') {
+                const installInfo = getPlatformInstallInfo();
+                const installCmd = buildLinuxInstallCommand(installInfo.installType, filePath, installInfo);
+
+                // If downloaded by electron-updater on an AppImage, let native AppImageUpdater apply & relaunch
+                if (updaterState.downloadMethod === 'electron-updater' && autoUpdater && app.isPackaged && process.env.APPIMAGE) {
+                    try {
+                        autoUpdater.quitAndInstall(false, true);
+                        return { status: 'installing' };
+                    } catch (nativeErr) {
+                        console.warn('[AutoUpdater] Native AppImage quitAndInstall failed, falling back to atomic replace:', nativeErr.message);
+                    }
+                }
+
                 const targetAppImage = process.env.APPIMAGE;
                 if (targetAppImage && filePath.toLowerCase().endsWith('.appimage')) {
                     try {
-                        await fs.chmod(filePath, 0o755);
-                        await fs.copyFile(filePath, targetAppImage);
-                        await fs.chmod(targetAppImage, 0o755);
+                        // POSIX-safe atomic staging & rename prevents ETXTBSY on the running AppImage
+                        await replaceAppImageAtomically(filePath, targetAppImage, fs);
                         const child = spawn(targetAppImage, [], {
                             detached: true,
                             stdio: 'ignore'
@@ -4779,21 +5351,34 @@ async function installDownloadedUpdate() {
                         setTimeout(() => app.quit(), 200);
                         return { status: 'installing' };
                     } catch (linuxErr) {
-                        console.warn('[AutoUpdater] AppImage self-replace failed, opening folder:', linuxErr.message);
+                        isInstallingUpdate = false;
+                        console.warn('[AutoUpdater] AppImage atomic self-replace failed, opening folder:', linuxErr.message);
                         shell.showItemInFolder(filePath);
-                        return { status: 'opened-folder' };
+                        return {
+                            status: 'opened-folder',
+                            filePath,
+                            installCommand: installCmd,
+                            message: linuxErr.message
+                        };
                     }
                 } else {
-                    const openErr = await shell.openPath(filePath);
-                    if (openErr) {
-                        shell.showItemInFolder(filePath);
+                    isInstallingUpdate = false;
+                    // For .deb/.rpm, try system software installer first; for .pacman/.tar.gz (or if no GUI handler), reveal in file manager.
+                    const lowerFile = filePath.toLowerCase();
+                    if (lowerFile.endsWith('.deb') || lowerFile.endsWith('.rpm')) {
+                        const openErr = await shell.openPath(filePath);
+                        if (!openErr) {
+                            return { status: 'opened-installer', filePath, installCommand: installCmd };
+                        }
                     }
-                    return { status: 'opened-installer' };
+                    shell.showItemInFolder(filePath);
+                    return { status: 'opened-folder', filePath, installCommand: installCmd };
                 }
             }
 
+            isInstallingUpdate = false;
             await shell.openPath(filePath);
-            return { status: 'opened-installer' };
+            return { status: 'opened-installer', filePath };
         } catch (err) {
             isInstallingUpdate = false;
             console.error('[AutoUpdater] Failed to launch installer:', err);
@@ -4801,7 +5386,10 @@ async function installDownloadedUpdate() {
         }
     }
 
-    if (autoUpdater && app.isPackaged) {
+    // Only invoke electron-updater.quitAndInstall on Linux when actually running as an AppImage
+    // (otherwise electron-updater throws "APPIMAGE env is not defined").
+    const canFallbackToElectronUpdater = autoUpdater && app.isPackaged && (process.platform !== 'linux' || Boolean(process.env.APPIMAGE));
+    if (canFallbackToElectronUpdater) {
         try {
             autoUpdater.quitAndInstall(false, true);
             return { status: 'installing' };
@@ -4835,9 +5423,19 @@ if (autoUpdater) {
 }
 
 ipcMain.handle('updater-get-state', () => {
+    const installInfo = getPlatformInstallInfo();
     return {
         ...updaterState,
         currentVersion: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch,
+        installType: installInfo.installType,
+        installLabel: installInfo.label,
+        installShortLabel: installInfo.shortLabel,
+        packageExt: installInfo.packageExt,
+        canAutoInstall: installInfo.canAutoInstall,
+        managedExternally: installInfo.managedExternally,
+        installCommand: updaterState.installCommand || installInfo.installCommand,
         runtimeVersions: {
             app: app.getVersion(),
             electron: process.versions.electron || '',
@@ -4849,7 +5447,9 @@ ipcMain.handle('updater-get-state', () => {
 });
 
 ipcMain.handle('updater-check', async () => {
-    return await performGitHubUpdateCheck({ silent: false, autoDownload: true });
+    const installInfo = getPlatformInstallInfo();
+    const shouldAutoDownload = process.platform !== 'linux' || Boolean(installInfo.canAutoInstall);
+    return await performGitHubUpdateCheck({ silent: false, autoDownload: shouldAutoDownload });
 });
 
 ipcMain.handle('updater-download', async () => {
@@ -5184,26 +5784,38 @@ function requestWindowsHelloVerification(message = "Verify your identity for QBr
 
 const pendingPasskeyVerifications = new Map();
 
-ipcMain.handle('vault-verify-passkey-usage', async (event, details) => {
+ipcMain.handle('vault-verify-passkey-usage', async (event, details = {}) => {
     // Prompt custom QVault Passkey Verification Modal in mainWindow
     return new Promise((resolve) => {
-        const requestId = 'pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-        const timer = setTimeout(() => {
-            if (pendingPasskeyVerifications.has(requestId)) {
-                pendingPasskeyVerifications.delete(requestId);
-                resolve({ verified: false, error: 'Timeout' });
-            }
-        }, 60000); // 60s timeout matching WebAuthn standard
-
-        pendingPasskeyVerifications.set(requestId, { 
-            resolve, 
-            timer,
-            callerSender: event.sender
-        });
+        const requestId = (details && typeof details.requestId === 'string' && details.requestId.trim())
+            ? details.requestId.trim()
+            : ('pv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8));
+        const rawTimeout = Number(details?.timeout);
+        const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0
+            ? Math.min(Math.max(rawTimeout, 30000), 300000)
+            : 120000;
 
         const appWin = (mainWindow && !mainWindow.isDestroyed()) 
             ? mainWindow 
             : Array.from(browserWindows).find(w => w && !w.isDestroyed());
+
+        const timer = setTimeout(() => {
+            if (pendingPasskeyVerifications.has(requestId)) {
+                pendingPasskeyVerifications.delete(requestId);
+                if (appWin && !appWin.isDestroyed()) {
+                    try { appWin.webContents.send('dismiss-passkey-verification', { requestId }); } catch (_) {}
+                }
+                resolve({ verified: false, error: 'Timeout' });
+            }
+        }, timeoutMs);
+
+        pendingPasskeyVerifications.set(requestId, { 
+            resolve, 
+            timer,
+            callerSender: event.sender,
+            appWin
+        });
+
         if (appWin && !appWin.isDestroyed()) {
             try {
                 if (appWin.isMinimized()) appWin.restore();
@@ -5212,28 +5824,77 @@ ipcMain.handle('vault-verify-passkey-usage', async (event, details) => {
                 appWin.moveTop();
             } catch (_) {}
 
+            const promptMode = details.mode || 'passkey';
+            const hardwareFallbackAvailable = typeof details.hardwareFallbackAvailable === 'boolean'
+                ? details.hardwareFallbackAvailable
+                : promptMode !== 'autofill';
+
             appWin.webContents.send('prompt-passkey-verification', {
                 requestId,
                 rpId: details.rpId,
                 username: details.username,
                 hostname: details.hostname,
                 credentialId: details.credentialId,
-                mode: details.mode || 'passkey'
+                mode: promptMode,
+                hardwareFallbackAvailable
             });
         } else {
             clearTimeout(timer);
             pendingPasskeyVerifications.delete(requestId);
-            resolve({ verified: false, error: 'NoWindow' });
+            resolve({ verified: false, approved: false, fallbackToNative: false, error: 'NoWindow' });
         }
     });
 });
 
-ipcMain.handle('respond-passkey-verification', async (event, { requestId, verified }) => {
+ipcMain.on('vault-get-passkey-config-sync', (event) => {
+    event.returnValue = resolvePasskeyConfig(event.sender);
+});
+
+ipcMain.handle('vault-get-passkey-config', (event) => {
+    return resolvePasskeyConfig(event.sender);
+});
+
+ipcMain.on('sync-passkey-settings', (event, data = {}) => {
+    if (!data || typeof data !== 'object') return;
+    if (data.passkeyProviderMode === 'hardware' || data.passkeyProviderMode === 'qvault') {
+        livePasskeyState.passkeyProviderMode = data.passkeyProviderMode;
+        settingsStore.passkeyProviderMode = data.passkeyProviderMode;
+    }
+    if (typeof data.passkeyHardwareFallback === 'boolean') {
+        livePasskeyState.passkeyHardwareFallback = data.passkeyHardwareFallback;
+        settingsStore.passkeyHardwareFallback = data.passkeyHardwareFallback;
+    }
+    scheduleSettingsDiskFlush();
+});
+
+ipcMain.handle('vault-cancel-passkey-verification', async (event, { requestId } = {}) => {
+    if (!requestId) return false;
     const pending = pendingPasskeyVerifications.get(requestId);
     if (pending) {
         clearTimeout(pending.timer);
         pendingPasskeyVerifications.delete(requestId);
-        pending.resolve({ verified: !!verified });
+        if (pending.appWin && !pending.appWin.isDestroyed()) {
+            try { pending.appWin.webContents.send('dismiss-passkey-verification', { requestId }); } catch (_) {}
+        }
+        pending.resolve({ verified: false, approved: false, fallbackToNative: false, aborted: true, error: 'Aborted' });
+        return true;
+    }
+    return false;
+});
+
+ipcMain.handle('respond-passkey-verification', async (event, payload = {}) => {
+    const requestId = payload?.requestId;
+    const approved = Boolean(payload?.approved ?? payload?.verified);
+    const fallbackToNative = !approved && Boolean(payload?.fallbackToNative);
+    const pending = pendingPasskeyVerifications.get(requestId);
+    if (pending) {
+        clearTimeout(pending.timer);
+        pendingPasskeyVerifications.delete(requestId);
+        pending.resolve({
+            verified: approved,
+            approved,
+            fallbackToNative
+        });
 
         // If caller was an OAuth popup window, refocus it so login can complete seamlessly
         if (pending.callerSender && !pending.callerSender.isDestroyed()) {
@@ -5580,10 +6241,20 @@ ipcMain.handle('vault-add-password', async (event, title, url, username, passwor
 
     const targetUrlNorm = normUrl(url);
     const targetUserNorm = normUser(username);
+    const incomingMeta = extractVaultItemMeta(title);
+    const incomingIsPasskey = incomingMeta.itemType === 'passkey' || !!incomingMeta.passkeyData;
+    const incomingCredId = incomingMeta.passkeyData?.credentialId ? String(incomingMeta.passkeyData.credentialId).toLowerCase() : '';
 
-    // Deduplicate: if an entry has exact same normalized url and username, update it
+    // Deduplicate without ever allowing a login item to overwrite a passkey item (or vice versa)
     const existingIndex = vault.passwords.findIndex(p => {
         if (!p) return false;
+        const pMeta = extractVaultItemMeta(p.title, p);
+        const pIsPasskey = pMeta.itemType === 'passkey' || !!pMeta.passkeyData;
+        if (pIsPasskey !== incomingIsPasskey) return false;
+        if (incomingIsPasskey) {
+            const pCredId = pMeta.passkeyData?.credentialId ? String(pMeta.passkeyData.credentialId).toLowerCase() : '';
+            return Boolean(incomingCredId && pCredId && incomingCredId === pCredId);
+        }
         return normUrl(p.url) === targetUrlNorm && normUser(p.username) === targetUserNorm;
     });
 
@@ -5608,6 +6279,115 @@ ipcMain.handle('vault-add-password', async (event, title, url, username, passwor
     vault.passwords.push(newEntry);
     writeVaultSync(vault);
     return { ...newEntry, password: String(passwordPlaintext || '') };
+});
+
+ipcMain.handle('vault-save-passkey', async (event, data = {}) => {
+    try {
+        // Respect ephemeral Ghost / Tor sessions: never persist passkeys from non-persistent partitions to disk
+        if (event.sender && event.sender.session && typeof event.sender.session.isPersistent === 'function' && !event.sender.session.isPersistent()) {
+            return { success: false, ephemeral: true, error: 'Passkeys cannot be saved in private Ghost or Tor sessions' };
+        }
+
+        const rpId = String(data.rpId || data.hostname || '').trim().toLowerCase().replace(/\.$/, '');
+        const credentialId = String(data.credentialId || '').trim().toLowerCase();
+        if (!rpId || !credentialId || !data.privateKey) {
+            return { success: false, error: 'Missing required passkey fields' };
+        }
+
+        await ensureVault();
+        const vault = readVaultSync();
+        if (!Array.isArray(vault.passwords)) vault.passwords = [];
+
+        let encryptionKey = masterKey;
+        if (!encryptionKey) {
+            const unwrapped = tryUnwrapMasterKeyFromOS(vault);
+            if (unwrapped && unwrapped.masterKey) {
+                encryptionKey = unwrapped.masterKey;
+            } else {
+                encryptionKey = deriveLegacyKey('QBrowseDefaultVaultKey');
+            }
+        }
+
+        const passkeyData = {
+            rpId,
+            rpName: String(data.rpName || ''),
+            displayName: String(data.displayName || data.username || ''),
+            userHandle: data.userHandle ? String(data.userHandle).toLowerCase() : null,
+            credentialId,
+            publicKey: data.publicKey || null,
+            privateKey: data.privateKey || null,
+            backupEligible: data.backupEligible !== false,
+            transports: Array.isArray(data.transports) ? data.transports : ['hybrid', 'internal'],
+            created: Number(data.created) || Date.now()
+        };
+
+        const payload = {
+            type: 'passkey',
+            notes: '',
+            totpSecret: null,
+            passkeyData,
+            cardData: null,
+            addressData: null
+        };
+        const combinedTitle = `${rpId}|||${JSON.stringify(payload)}`;
+        const url = `https://${rpId}`;
+        const username = String(data.username || data.displayName || '');
+
+        const existingIndex = vault.passwords.findIndex(p => {
+            if (!p) return false;
+            const pMeta = extractVaultItemMeta(p.title, p);
+            const pIsPasskey = pMeta.itemType === 'passkey' || !!pMeta.passkeyData;
+            if (!pIsPasskey) return false;
+            const pCid = pMeta.passkeyData?.credentialId ? String(pMeta.passkeyData.credentialId).toLowerCase() : '';
+            return Boolean(pCid && pCid === credentialId);
+        });
+
+        let savedId;
+        if (existingIndex !== -1) {
+            vault.passwords[existingIndex] = {
+                ...vault.passwords[existingIndex],
+                title: combinedTitle,
+                url,
+                username,
+                password: encrypt('', encryptionKey),
+                updatedAt: Date.now()
+            };
+            savedId = vault.passwords[existingIndex].id;
+        } else {
+            const newEntry = {
+                id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString() + '_' + Math.random().toString(36).substring(2, 7)),
+                title: combinedTitle,
+                url,
+                username,
+                password: encrypt('', encryptionKey),
+                updatedAt: Date.now()
+            };
+            vault.passwords.push(newEntry);
+            savedId = newEntry.id;
+        }
+
+        writeVaultSync(vault);
+
+        const appWin = (mainWindow && !mainWindow.isDestroyed())
+            ? mainWindow
+            : Array.from(browserWindows).find(w => w && !w.isDestroyed());
+        if (appWin && !appWin.isDestroyed()) {
+            try {
+                appWin.webContents.send('qvault-passkey-saved', {
+                    id: savedId,
+                    rpId,
+                    hostname: data.hostname || rpId,
+                    username,
+                    credentialId
+                });
+            } catch (_) {}
+        }
+
+        return { success: true, id: savedId };
+    } catch (e) {
+        console.error('[Vault] vault-save-passkey error:', e);
+        return { success: false, error: e.message || 'Failed to save passkey' };
+    }
 });
 
 ipcMain.handle('vault-delete-password', async (event, id) => {
@@ -5690,6 +6470,58 @@ ipcMain.handle('vault-update-password', async (event, id, title, url, username, 
     }
 });
 
+function normalizeHostOnly(hostOrUrl) {
+    if (!hostOrUrl) return '';
+    try {
+        const str = String(hostOrUrl).trim().toLowerCase();
+        if (!str) return '';
+        if (str.includes('://')) {
+            return new URL(str).hostname.toLowerCase().replace(/\.$/, '');
+        }
+        return str.split('/')[0].split(':')[0].replace(/\.$/, '');
+    } catch {
+        return String(hostOrUrl).trim().toLowerCase().replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].replace(/\.$/, '');
+    }
+}
+
+function normalizeCredIdToHex(id) {
+    if (!id) return '';
+    const str = String(id).trim();
+    if (!str) return '';
+    if (/^[0-9a-fA-F]+$/.test(str) && str.length % 2 === 0) {
+        return str.toLowerCase();
+    }
+    try {
+        const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=');
+        return Buffer.from(padded, 'base64').toString('hex').toLowerCase();
+    } catch {
+        return str.toLowerCase();
+    }
+}
+
+// Strict WebAuthn RP ID / subdomain matching (e.g., google.com <-> accounts.google.com, never matching via public suffixes like co.uk)
+function rpIdMatches(storedDomainOrRpId, targetRpId, targetHost) {
+    const stored = normalizeHostOnly(storedDomainOrRpId);
+    const rp = normalizeHostOnly(targetRpId);
+    const host = normalizeHostOnly(targetHost);
+    if (!stored) return false;
+    if (rp) {
+        if (stored === rp) return true;
+        // Registrable domain suffix match (e.g. stored "google.com" matches rpId "accounts.google.com" or legacy stored "accounts.google.com" matches rpId "google.com")
+        if ((stored.endsWith('.' + rp) && rp.includes('.')) || (rp.endsWith('.' + stored) && stored.includes('.'))) {
+            return true;
+        }
+    }
+    if (host) {
+        if (stored === host) return true;
+        if ((host.endsWith('.' + stored) && stored.includes('.')) || (stored.endsWith('.' + host) && host.includes('.'))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function getDomainRoots(hostOrUrl) {
     if (!hostOrUrl) return [];
     try {
@@ -5747,7 +6579,9 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
     } else if (query && typeof query === 'object') {
         targetHost = query.hostname || '';
         targetRpId = query.rpId || '';
-        allowCreds = Array.isArray(query.allowCredentials) ? query.allowCredentials : [];
+        allowCreds = Array.isArray(query.allowCredentials)
+            ? query.allowCredentials.map(normalizeCredIdToHex).filter(Boolean)
+            : [];
     }
 
     try {
@@ -5779,6 +6613,7 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
                     cardData: meta.cardData,
                     addressData: meta.addressData,
                     notes: meta.notes,
+                    updatedAt: p.updatedAt || 0,
                     locked: true
                 };
             }).filter(Boolean);
@@ -5789,30 +6624,32 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
             if (!isPasskey) {
                 if (!p.locked && (!p.username || !p.password)) return false;
                 if (p.locked && (!p.username && !p.password && !p.url && !p.title)) return false;
+
+                if (!targetHost && !targetRpId) return false;
+                const itemHost = p.url || p.title || '';
+                if (targetHost && domainsMatch(targetHost, itemHost)) return true;
+                if (targetRpId && domainsMatch(targetRpId, itemHost)) return true;
+                return false;
             }
 
-            // 1. Direct Credential ID match from allowCredentials
-            if (isPasskey && allowCreds.length > 0 && p.passkeyData?.credentialId) {
-                const credId = String(p.passkeyData.credentialId).toLowerCase();
-                if (allowCreds.some(id => id && String(id).toLowerCase() === credId)) {
+            // Passkey matching: strictly validate WebAuthn RP ID / registrable domain scope
+            const storedRp = p.passkeyData?.rpId || p.url || p.title || '';
+            const rpMatched = rpIdMatches(storedRp, targetRpId, targetHost) ||
+                (p.url && rpIdMatches(p.url, targetRpId, targetHost));
+
+            if (!rpMatched) {
+                return false;
+            }
+
+            // If allowCredentials were provided, check normalized credentialId match
+            if (allowCreds.length > 0 && p.passkeyData?.credentialId) {
+                const credId = normalizeCredIdToHex(p.passkeyData.credentialId);
+                if (credId && allowCreds.includes(credId)) {
                     return true;
                 }
             }
 
-            if (!targetHost && !targetRpId) return false;
-
-            // 2. Check RP ID match
-            if (isPasskey && targetRpId && p.passkeyData?.rpId) {
-                if (domainsMatch(targetRpId, p.passkeyData.rpId)) return true;
-            }
-
-            // 3. Check Hostname / Domain match across URL, title, rpId
-            const itemHost = p.url || p.title || '';
-            if (targetHost && domainsMatch(targetHost, itemHost)) return true;
-            if (targetHost && isPasskey && p.passkeyData?.rpId && domainsMatch(targetHost, p.passkeyData.rpId)) return true;
-            if (targetRpId && domainsMatch(targetRpId, itemHost)) return true;
-
-            return false;
+            return true;
         });
     } catch (e) {
         console.error('[vault-get-matching] Error:', e);
@@ -5971,26 +6808,8 @@ ipcMain.handle('start-local-ai', async () => {
 });
 
 // --- PERMISSIONS & COOKIE STORAGE MANAGEMENT ---
-const permissionsPath = path.join(appDataPath, 'permissions.json');
-let permissionsData = {};
-
-async function ensurePermissionsFile() {
-    try {
-        const data = await fs.readFile(permissionsPath, 'utf8');
-        permissionsData = JSON.parse(data);
-    } catch {
-        permissionsData = {};
-        try {
-            await fs.writeFile(permissionsPath, JSON.stringify(permissionsData, null, 2));
-        } catch(e) {}
-    }
-}
-
-async function savePermissionsData() {
-    try {
-        await fs.writeFile(permissionsPath, JSON.stringify(permissionsData, null, 2));
-    } catch (e) {}
-}
+// Site permissions are managed centrally by PermissionManager (persisted per-origin in userData/site-permissions.json,
+// while Ghost/Tor ephemeral sessions stay strictly in memory and never touch disk).
 
 function getSessionByPartition(partition) {
     if (partition && typeof partition === 'string' && partition.trim()) {
@@ -6189,6 +7008,7 @@ ipcMain.handle('clear-ghost-session', async () => {
             await ghostSess.clearCache();
             console.log('[Ghost Mode] In-memory ghost session data and cache cleared.');
         }
+        permissionManager.clearSessionPermissions('ghost');
         return true;
     } catch (e) {
         console.warn('[Ghost Mode] Error clearing ghost session:', e);
@@ -6204,6 +7024,7 @@ ipcMain.handle('clear-tor-session', async () => {
             await torSess.clearCache();
             console.log('[Tor Mode] In-memory tor session data and cache cleared.');
         }
+        permissionManager.clearSessionPermissions('tor');
         return true;
     } catch (e) {
         console.warn('[Tor Mode] Error clearing tor session:', e);
@@ -6211,35 +7032,41 @@ ipcMain.handle('clear-tor-session', async () => {
     }
 });
 
-ipcMain.handle('get-site-permissions', async (event, domain) => {
-    await ensurePermissionsFile();
-    if (!domain) return permissionsData;
-    const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
-    return permissionsData[cleanDomain] || {};
+ipcMain.on('qbrowse-permission-response', async (event, payload = {}) => {
+    try {
+        const { requestId, decision } = payload || {};
+        if (!requestId) return;
+        await permissionManager.resolveLivePrompt(requestId, decision || 'dismiss', {
+            notifyDismiss: false,
+            beforeGrant: async (entry) => {
+                if (entry?.keys && (entry.keys.includes('camera') || entry.keys.includes('microphone'))) {
+                    return ensureMacOSMediaAccess(entry.keys);
+                }
+                return true;
+            }
+        });
+    } catch (err) {
+        console.warn('[Permissions] Response handler error:', err?.message || err);
+    }
 });
 
-ipcMain.handle('set-site-permission', async (event, domain, permission, value) => {
-    await ensurePermissionsFile();
-    if (!domain) return false;
-    const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
-    if (!permissionsData[cleanDomain]) permissionsData[cleanDomain] = {};
-    permissionsData[cleanDomain][permission] = value;
-    await savePermissionsData();
-    return true;
+ipcMain.handle('get-site-permissions', async (event, originOrDomain, options = {}) => {
+    if (!originOrDomain) return permissionManager.getAllPersistentPermissions();
+    return permissionManager.getSitePermissions(originOrDomain, options || {});
+});
+
+ipcMain.handle('set-site-permission', async (event, originOrDomain, permission, value, options = {}) => {
+    if (!originOrDomain || !permission) return false;
+    return permissionManager.setSitePermission(originOrDomain, permission, value, options || {});
 });
 
 ipcMain.handle('get-all-site-permissions', async () => {
-    await ensurePermissionsFile();
-    return permissionsData;
+    return permissionManager.getAllPersistentPermissions();
 });
 
-ipcMain.handle('reset-site-permissions', async (event, domain) => {
-    await ensurePermissionsFile();
-    if (!domain) return false;
-    const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
-    delete permissionsData[cleanDomain];
-    await savePermissionsData();
-    return true;
+ipcMain.handle('reset-site-permissions', async (event, originOrDomain, options = {}) => {
+    if (!originOrDomain) return false;
+    return permissionManager.resetSitePermissions(originOrDomain, options || {});
 });
 
 ipcMain.handle('select-folder', async () => {
@@ -6315,29 +7142,27 @@ ipcMain.handle('get-settings', () => {
 
 ipcMain.handle('get-smart-dark-state', (event, url) => {
     try {
-        const store = getSettingsStore();
-        let isForceDark = (store && typeof store.isForceDark === 'boolean') 
-            ? store.isForceDark 
-            : (liveSmartDarkState.isForceDark !== null ? liveSmartDarkState.isForceDark : false);
-        const exclusions = Array.isArray(store?.darkExclusions) 
-            ? store.darkExclusions 
-            : liveSmartDarkState.darkExclusions;
-        const isExcluded = exclusions.some(d => url && typeof d === 'string' && d.trim() && url.includes(d.trim()));
-        console.log('[Electron Main] get-smart-dark-state for', url, '-> isForceDark:', isForceDark, 'isExcluded:', isExcluded);
-        return { isForceDark, isExcluded };
+        const { isForceDark, exclusions, excludeMedia } = resolveSmartDarkConfig();
+        const isExcluded = isUrlExcludedFromDarkMode(url, exclusions);
+        return { isForceDark, isExcluded, excludeMedia };
     } catch (_) {
-        return { isForceDark: false, isExcluded: false };
+        return { isForceDark: false, isExcluded: false, excludeMedia: true };
     }
 });
 
-ipcMain.on('sync-smart-dark-state', (event, { isForceDark, darkExclusions }) => {
+ipcMain.on('sync-smart-dark-state', (event, { isForceDark, darkExclusions, darkExcludeMedia }) => {
     if (typeof isForceDark === 'boolean') {
         liveSmartDarkState.isForceDark = isForceDark;
         settingsStore['isForceDark'] = isForceDark;
     }
     if (Array.isArray(darkExclusions)) {
-        liveSmartDarkState.darkExclusions = darkExclusions;
-        settingsStore['darkExclusions'] = darkExclusions;
+        const normalized = normalizeWhitelist(darkExclusions);
+        liveSmartDarkState.darkExclusions = normalized;
+        settingsStore['darkExclusions'] = normalized;
+    }
+    if (typeof darkExcludeMedia === 'boolean') {
+        liveSmartDarkState.darkExcludeMedia = darkExcludeMedia;
+        settingsStore['darkExcludeMedia'] = darkExcludeMedia;
     }
     if (!settingsPath) {
         settingsPath = path.join(app.getPath('userData'), 'settings.json');
@@ -6345,7 +7170,6 @@ ipcMain.on('sync-smart-dark-state', (event, { isForceDark, darkExclusions }) => 
     try {
         fsSync.writeFileSync(settingsPath, JSON.stringify(settingsStore, null, 2), 'utf8');
     } catch (_) {}
-    console.log('[Electron Main] sync-smart-dark-state received:', { isForceDark, darkExclusions });
     broadcastSmartDarkToOAuthWindows();
 });
 
@@ -6402,11 +7226,23 @@ ipcMain.handle('save-setting', (event, data) => {
                     shouldBroadcastSmartDark = true;
                 }
                 if (k === 'darkExclusions' && Array.isArray(v)) {
-                    liveSmartDarkState.darkExclusions = v;
+                    const normalized = normalizeWhitelist(v);
+                    settingsStore[k] = normalized;
+                    liveSmartDarkState.darkExclusions = normalized;
+                    shouldBroadcastSmartDark = true;
+                }
+                if (k === 'darkExcludeMedia' && typeof v === 'boolean') {
+                    liveSmartDarkState.darkExcludeMedia = v;
                     shouldBroadcastSmartDark = true;
                 }
                 if (k === 'a11yReducedMotion') {
                     settingsStore.a11yReducedMotion = Boolean(v);
+                }
+                if (k === 'passkeyProviderMode' && (v === 'hardware' || v === 'qvault')) {
+                    livePasskeyState.passkeyProviderMode = v;
+                }
+                if (k === 'passkeyHardwareFallback' && typeof v === 'boolean') {
+                    livePasskeyState.passkeyHardwareFallback = v;
                 }
             }
         });
@@ -6430,13 +7266,24 @@ ipcMain.handle('save-setting', (event, data) => {
             liveSmartDarkState.isForceDark = rawValue;
         }
         if (rawKey === 'darkExclusions' && Array.isArray(rawValue)) {
-            liveSmartDarkState.darkExclusions = rawValue;
+            const normalized = normalizeWhitelist(rawValue);
+            settingsStore[rawKey] = normalized;
+            liveSmartDarkState.darkExclusions = normalized;
+        }
+        if (rawKey === 'darkExcludeMedia' && typeof rawValue === 'boolean') {
+            liveSmartDarkState.darkExcludeMedia = rawValue;
         }
         if (rawKey === 'a11yReducedMotion') {
             settingsStore.a11yReducedMotion = Boolean(rawValue);
         }
+        if (rawKey === 'passkeyProviderMode' && (rawValue === 'hardware' || rawValue === 'qvault')) {
+            livePasskeyState.passkeyProviderMode = rawValue;
+        }
+        if (rawKey === 'passkeyHardwareFallback' && typeof rawValue === 'boolean') {
+            livePasskeyState.passkeyHardwareFallback = rawValue;
+        }
         scheduleSettingsDiskFlush();
-        if (rawKey === 'isForceDark' || rawKey === 'darkExclusions') {
+        if (rawKey === 'isForceDark' || rawKey === 'darkExclusions' || rawKey === 'darkExcludeMedia') {
             broadcastSmartDarkToOAuthWindows();
         }
     }
@@ -6848,6 +7695,7 @@ ipcMain.handle('system-get-hardware-profile', async () => {
             isOnBattery: false,
             mode: 'auto',
             tabSleepTimeoutMinutes: 15,
+            reduceVisualsOnEco: true,
             reduceVisuals: false,
             gpuRenderer: 'Basic'
         };
@@ -6865,9 +7713,7 @@ ipcMain.handle('system-set-performance-settings', async (event, settings) => {
     const isOnBattery = powerMonitor?.isOnBatteryPower ? powerMonitor.isOnBatteryPower() : false;
     const profile = performanceEngine.detectHardwareProfile(gpuInfo, isOnBattery);
     applyPerformanceTierToContents(profile.activeTier);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('performance-profile-changed', profile);
-    }
+    broadcastPerformanceProfile(profile);
     return profile;
 });
 
@@ -7041,25 +7887,29 @@ function registerWindowsBrowser() {
 }
 
 function ensureLinuxDesktopEntry() {
-    if (process.platform !== 'linux') return false;
+    if (process.platform !== 'linux') return 'qbrowse.desktop';
     try {
-        const os = require('os');
+        const entryState = resolveLinuxDesktopEntryState({ env: process.env, existsSync: fsSync.existsSync });
+        if (!entryState.shouldWriteUserEntry) {
+            return entryState.desktopId;
+        }
+
         const appsDir = path.join(os.homedir(), '.local', 'share', 'applications');
         fsSync.mkdirSync(appsDir, { recursive: true });
 
-        const desktopFile = path.join(appsDir, 'qbrowse.desktop');
+        const desktopFile = path.join(appsDir, entryState.desktopId);
 
-        const execCmd = process.env.APPIMAGE 
+        const execCmd = process.env.APPIMAGE
             ? `"${process.env.APPIMAGE}"`
             : app.isPackaged
                 ? `"${process.execPath}"`
                 : `"${process.execPath}" "${path.resolve(__dirname, 'main.cjs')}"`;
 
-        let iconPath = 'qbrowse';
-        const projectIcon = path.join(__dirname, '..', 'icon.png');
+        let iconPath = 'QBrowse';
+        const projectIcon = resolveAppIconPath();
         const userIconPath = path.join(appsDir, 'qbrowse.png');
         try {
-            if (fsSync.existsSync(projectIcon) && !fsSync.existsSync(userIconPath)) {
+            if (projectIcon && fsSync.existsSync(projectIcon) && !fsSync.existsSync(userIconPath)) {
                 fsSync.copyFileSync(projectIcon, userIconPath);
                 iconPath = userIconPath;
             } else if (fsSync.existsSync(userIconPath)) {
@@ -7077,7 +7927,7 @@ Exec=${execCmd} %U
 Icon=${iconPath}
 Terminal=false
 StartupNotify=true
-StartupWMClass=qbrowse
+StartupWMClass=QBrowse
 Categories=Network;WebBrowser;
 MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/qbrowse;
 Actions=new-window;new-private-window;
@@ -7099,10 +7949,10 @@ Exec=${execCmd} --incognito %U
             execSync(`update-desktop-database "${appsDir}"`, { stdio: ['ignore', 'pipe', 'ignore'] });
         } catch (_) {}
 
-        return true;
+        return entryState.desktopId;
     } catch (err) {
         console.warn('[DefaultBrowser] Failed to write Linux desktop entry:', err);
-        return false;
+        return 'qbrowse.desktop';
     }
 }
 
@@ -7339,16 +8189,16 @@ ipcMain.handle('system-set-default-browser', async () => {
             }
             return { success: true, isDefault: true, openedSystemSettings: false, platform: process.platform };
         } else if (process.platform === 'linux') {
-            ensureLinuxDesktopEntry();
+            const desktopId = ensureLinuxDesktopEntry() || 'qbrowse.desktop';
             const { execSync } = require('child_process');
             const cmds = [
-                'xdg-settings set default-web-browser qbrowse.desktop',
-                'xdg-mime default qbrowse.desktop x-scheme-handler/http',
-                'xdg-mime default qbrowse.desktop x-scheme-handler/https',
-                'xdg-mime default qbrowse.desktop text/html',
-                'xdg-mime default qbrowse.desktop application/xhtml+xml',
-                'gio mime x-scheme-handler/http qbrowse.desktop',
-                'gio mime x-scheme-handler/https qbrowse.desktop'
+                `xdg-settings set default-web-browser ${desktopId}`,
+                `xdg-mime default ${desktopId} x-scheme-handler/http`,
+                `xdg-mime default ${desktopId} x-scheme-handler/https`,
+                `xdg-mime default ${desktopId} text/html`,
+                `xdg-mime default ${desktopId} application/xhtml+xml`,
+                `gio mime x-scheme-handler/http ${desktopId}`,
+                `gio mime x-scheme-handler/https ${desktopId}`
             ];
             for (const cmd of cmds) {
                 try {
@@ -7930,6 +8780,10 @@ ipcMain.handle('github-get-data', async (event, { profileId, force } = {}) => {
 
 ipcMain.handle('github-update-config', async (event, { config, profileId } = {}) => {
     return githubEngine.updateConfig(config, profileId);
+});
+
+ipcMain.handle('github-test-sync', async (event, { config, profileId } = {}) => {
+    return await githubEngine.testAndSync(config, profileId);
 });
 
 ipcMain.handle('github-stop', () => {

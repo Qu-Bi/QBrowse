@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Cookie, Search, Trash2, ShieldAlert, RefreshCw, X, Check, Lock, Database, Clock, Filter, AlertTriangle } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { useTranslation } from '../../i18n/index';
 
 export default function CookiesModal() {
+    const { t, intlLocale } = useTranslation();
     const { activeModal, isModalClosing, closingModal, closeModal, showToast, theme } = useUIStore();
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
@@ -55,7 +57,7 @@ export default function CookiesModal() {
                 const success = await window.electronAPI.removeCookie(url, cookie.name);
                 if (success) {
                     setCookies(prev => prev.filter(c => !(c.domain === cookie.domain && c.name === cookie.name)));
-                    showToast(`Deleted cookie: ${cookie.name}`);
+                    showToast(t('tools.cookies.toastDeleted', { name: cookie.name }, `Deleted cookie: ${cookie.name}`));
                 }
             }
             setDeletingCookieKeys(prev => {
@@ -70,7 +72,7 @@ export default function CookiesModal() {
         if (!domain || domain === 'all') return;
         if (window.electronAPI && window.electronAPI.clearSiteCookies) {
             const count = await window.electronAPI.clearSiteCookies(domain);
-            showToast(`Cleared ${count} cookies for ${domain}`);
+            showToast(t('tools.cookies.toastClearedSite', { count, domain }, `Cleared ${count} cookies for ${domain}`));
             fetchCookies();
         }
     };
@@ -78,7 +80,7 @@ export default function CookiesModal() {
     const handleClearAllData = async () => {
         if (window.electronAPI && window.electronAPI.clearAllData) {
             await window.electronAPI.clearAllData(clearingOptions);
-            showToast('Cleared browsing data & cookies');
+            showToast(t('tools.cookies.toastClearedAll', null, 'Cleared browsing data & cookies'));
             fetchCookies();
         }
     };
@@ -120,8 +122,8 @@ export default function CookiesModal() {
                             <Cookie size={22} />
                         </div>
                         <div className="flex flex-col">
-                            <h2 className={`text-xl font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>Cookies & Site Storage Explorer</h2>
-                            <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Inspect, search, and delete site cookies and local data</p>
+                            <h2 className={`text-xl font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('tools.cookies.title', null, 'Cookies & Site Storage Explorer')}</h2>
+                            <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('tools.cookies.subtitle', null, 'Inspect, search, and delete site cookies and local data')}</p>
                         </div>
                     </div>
                     <button onClick={closeModal} className={`w-8 h-8 flex items-center justify-center rounded-full transition cursor-pointer ${isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600 hover:text-zinc-900' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
@@ -135,8 +137,8 @@ export default function CookiesModal() {
                     {/* Left Sidebar: Domains List & Actions */}
                     <div className={`w-56 border-r p-4 flex flex-col gap-4 shrink-0 ${isBright ? 'border-black/10 bg-black/[0.02]' : 'border-white/10 bg-black/30'}`}>
                         <div className="flex items-center justify-between">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Filter Domain</span>
-                            <button onClick={fetchCookies} className={`p-1 rounded-md transition ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-700' : 'hover:bg-white/10 text-white/40 hover:text-white'}`} title="Refresh list">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('tools.cookies.filterDomain', null, 'Filter Domain')}</span>
+                            <button onClick={fetchCookies} className={`p-1 rounded-md transition ${isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-700' : 'hover:bg-white/10 text-white/40 hover:text-white'}`} title={t('tools.cookies.refreshTitle', null, 'Refresh list')}>
                                 <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
                             </button>
                         </div>
@@ -150,7 +152,7 @@ export default function CookiesModal() {
                                         : (isBright ? 'hover:bg-black/5 text-zinc-600 hover:text-zinc-900 border border-transparent' : 'hover:bg-white/5 text-white/60 hover:text-white border border-transparent')
                                 }`}
                             >
-                                <span>All Sites</span>
+                                <span>{t('tools.cookies.allSites', null, 'All Sites')}</span>
                                 <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${isBright ? 'bg-black/5 text-zinc-600' : 'opacity-60 bg-white/10'}`}>{cookies.length}</span>
                             </button>
 
@@ -184,14 +186,14 @@ export default function CookiesModal() {
                                             : 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30 text-red-400'
                                     }`}
                                 >
-                                    <Trash2 size={13} /> Clear {selectedDomain}
+                                    <Trash2 size={13} /> {t('tools.cookies.clearDomain', { domain: selectedDomain }, `Clear ${selectedDomain}`)}
                                 </button>
                             )}
                             <button 
                                 onClick={handleClearAllData}
                                 className="w-full py-2 px-3 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-md shadow-red-500/20 cursor-pointer"
                             >
-                                <Trash2 size={13} /> Clear All Browsing Data
+                                <Trash2 size={13} /> {t('tools.cookies.clearAllData', null, 'Clear All Browsing Data')}
                             </button>
                         </div>
                     </div>
@@ -204,7 +206,7 @@ export default function CookiesModal() {
                             <Search size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
                             <input 
                                 type="text"
-                                placeholder="Search cookies by name, domain, or value..."
+                                placeholder={t('tools.cookies.searchPlaceholder', null, 'Search cookies by name, domain, or value...')}
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
                                 className={`w-full h-10 pl-9 pr-4 border rounded-xl text-xs outline-none transition-colors ${
@@ -220,8 +222,8 @@ export default function CookiesModal() {
                             {filteredCookies.length === 0 ? (
                                 <div className={`flex-1 flex flex-col items-center justify-center text-center py-12 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
                                     <Cookie size={40} className="mb-3 opacity-30" />
-                                    <p className="text-sm font-semibold">No cookies found</p>
-                                    <p className={`text-xs mt-1 ${isBright ? 'text-zinc-400' : 'text-white/20'}`}>Try clearing search or picking another domain</p>
+                                    <p className="text-sm font-semibold">{t('tools.cookies.emptyTitle', null, 'No cookies found')}</p>
+                                    <p className={`text-xs mt-1 ${isBright ? 'text-zinc-400' : 'text-white/20'}`}>{t('tools.cookies.emptyDesc', null, 'Try clearing search or picking another domain')}</p>
                                 </div>
                             ) : (
                                 filteredCookies.map((cookie, i) => {
@@ -237,8 +239,8 @@ export default function CookiesModal() {
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className={`text-xs font-bold font-mono ${isBright ? 'text-amber-700' : 'text-amber-300'}`}>{cookie.name}</span>
                                                 <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isBright ? 'text-zinc-600 bg-black/5' : 'text-white/50 bg-white/10'}`}>{cookie.domain}</span>
-                                                {cookie.secure && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${isBright ? 'text-emerald-700 bg-emerald-50 border-emerald-300' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>Secure</span>}
-                                                {cookie.httpOnly && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${isBright ? 'text-blue-700 bg-blue-50 border-blue-300' : 'text-blue-400 bg-blue-500/10 border-blue-500/20'}`}>HttpOnly</span>}
+                                                {cookie.secure && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${isBright ? 'text-emerald-700 bg-emerald-50 border-emerald-300' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>{t('tools.cookies.secure', null, 'Secure')}</span>}
+                                                {cookie.httpOnly && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${isBright ? 'text-blue-700 bg-blue-50 border-blue-300' : 'text-blue-400 bg-blue-500/10 border-blue-500/20'}`}>{t('tools.cookies.httpOnly', null, 'HttpOnly')}</span>}
                                             </div>
                                             <span className={`text-[11px] font-mono truncate p-1.5 rounded-lg border max-w-full ${
                                                 isBright ? 'text-zinc-700 bg-black/[0.04] border-black/5' : 'text-white/70 bg-black/40 border-white/5'
@@ -246,8 +248,8 @@ export default function CookiesModal() {
                                                 {cookie.value}
                                             </span>
                                             <div className={`flex items-center gap-3 text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                <span>Path: {cookie.path}</span>
-                                                {cookie.expirationDate && <span>Expires: {new Date(cookie.expirationDate * 1000).toLocaleDateString()}</span>}
+                                                <span>{t('tools.cookies.path', { path: cookie.path }, `Path: ${cookie.path}`)}</span>
+                                                {cookie.expirationDate && <span>{t('tools.cookies.expires', { date: new Date(cookie.expirationDate * 1000).toLocaleDateString(intlLocale) }, `Expires: ${new Date(cookie.expirationDate * 1000).toLocaleDateString()}`)}</span>}
                                             </div>
                                         </div>
 
@@ -258,7 +260,7 @@ export default function CookiesModal() {
                                                     ? 'bg-black/5 hover:bg-red-500/15 text-zinc-500 hover:text-red-600' 
                                                     : 'bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400'
                                             }`}
-                                            title="Delete cookie"
+                                            title={t('tools.cookies.deleteTitle', null, 'Delete cookie')}
                                         >
                                             <Trash2 size={14} />
                                         </button>

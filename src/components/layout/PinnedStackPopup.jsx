@@ -4,6 +4,8 @@ import { X, Plus, Volume2, Globe, Trash2, PinOff } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
+import { formatTabCount } from '../../i18n/domains/chrome';
 
 export const getPinDomain = (pin) => {
     if (!pin || !pin.domain) return '';
@@ -20,6 +22,7 @@ export const isTabForPin = (tab, pin) => {
 };
 
 export default function PinnedStackPopup() {
+    const { t, resolvedLanguage } = useTranslation();
     const activePinnedStack = useUIStore(state => state.activePinnedStack);
     const closePinnedStack = useUIStore(state => state.closePinnedStack);
     const setCurrentUrl = useUIStore(state => state.setCurrentUrl);
@@ -162,7 +165,10 @@ export default function PinnedStackPopup() {
 
     const handleCloseAllInStack = () => {
         pinTabs.forEach(t => handleCloseTab(t.id));
-        showToast(`Closed ${pinTabs.length} tabs for ${pin.title}`);
+        showToast(t('chrome.toastClosedPinStack', {
+            countLabel: formatTabCount(pinTabs.length, resolvedLanguage, t),
+            title: pin.title
+        }, `Closed ${pinTabs.length} tabs for ${pin.title}`));
         closePinnedStack();
     };
 
@@ -210,7 +216,7 @@ export default function PinnedStackPopup() {
                                 <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full border ${
                                     isBright ? 'bg-black/5 text-zinc-600 border-black/10' : 'bg-white/10 text-white/70 border-white/10'
                                 }`}>
-                                    {pinTabs.length} {pinTabs.length === 1 ? 'tab' : 'tabs'}
+                                    {formatTabCount(pinTabs.length, resolvedLanguage, t)}
                                 </span>
                             </div>
                             <span className={`text-[10px] font-mono truncate ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{pin.domain}</span>
@@ -225,7 +231,7 @@ export default function PinnedStackPopup() {
                                 className={`p-1.5 rounded-lg transition cursor-pointer ${
                                     isBright ? 'text-zinc-500 hover:text-red-600 hover:bg-black/[0.06]' : 'text-white/50 hover:text-red-400 hover:bg-white/10'
                                 }`}
-                                title={`Close all ${pinTabs.length} tabs`}
+                                title={t('chrome.closeAllTabsTooltip', { count: pinTabs.length }, `Close all ${pinTabs.length} tabs`)}
                             >
                                 <Trash2 size={13} />
                             </button>
@@ -235,7 +241,7 @@ export default function PinnedStackPopup() {
                             className={`p-1.5 rounded-lg transition cursor-pointer ${
                                 isBright ? 'text-zinc-500 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/50 hover:text-white hover:bg-white/10'
                             }`}
-                            title="Unpin service"
+                            title={t('chrome.unpinServiceTooltip', null, 'Unpin service')}
                         >
                             <PinOff size={13} />
                         </button>
@@ -244,7 +250,7 @@ export default function PinnedStackPopup() {
                             className={`p-1.5 rounded-lg transition cursor-pointer ${
                                 isBright ? 'text-zinc-500 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/50 hover:text-white hover:bg-white/10'
                             }`}
-                            title="Close picker (Esc)"
+                            title={t('chrome.closePickerTooltip', null, 'Close picker (Esc)')}
                         >
                             <X size={14} />
                         </button>
@@ -256,8 +262,8 @@ export default function PinnedStackPopup() {
                     {pinTabs.length === 0 ? (
                         <div className={`py-6 flex flex-col items-center justify-center text-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/45'}`}>
                             <Globe size={22} className="opacity-40 mb-1" />
-                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>No open tabs</span>
-                            <span className={`text-[10px] max-w-[200px] ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>Click below to launch an instance of {pin.title}</span>
+                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>{t('chrome.noOpenTabs', null, 'No open tabs')}</span>
+                            <span className={`text-[10px] max-w-[200px] ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>{t('chrome.launchPinHint', { title: pin.title }, `Click below to launch an instance of ${pin.title}`)}</span>
                         </div>
                     ) : (
                         pinTabs.map((tab) => {
@@ -295,7 +301,7 @@ export default function PinnedStackPopup() {
                                         </div>
                                         <div className="flex flex-col min-w-0">
                                             <span className="text-xs font-medium truncate max-w-[190px]">
-                                                {tab.title || 'New Tab'}
+                                                {tab.title || t('nav.newTab', null, 'New Tab')}
                                             </span>
                                             {tab.url && (
                                                 <span className={`text-[9px] font-mono truncate max-w-[190px] ${isBright ? 'text-zinc-600' : 'text-white/45'}`}>
@@ -318,7 +324,7 @@ export default function PinnedStackPopup() {
                                             className={`p-1 rounded transition opacity-60 group-hover:opacity-100 cursor-pointer ${
                                                 isBright ? 'text-zinc-500 hover:text-red-600 hover:bg-black/[0.06]' : 'text-white/40 hover:text-red-400 hover:bg-white/10'
                                             }`}
-                                            title="Close tab"
+                                            title={t('nav.closeTab', null, 'Close tab')}
                                         >
                                             <X size={11} />
                                         </button>
@@ -340,7 +346,7 @@ export default function PinnedStackPopup() {
                         }`}
                     >
                         <Plus size={13} />
-                        <span>New {pin.title} Tab</span>
+                        <span>{t('chrome.newPinTabBtn', { title: pin.title }, `New ${pin.title} Tab`)}</span>
                     </button>
                 </div>
             </div>

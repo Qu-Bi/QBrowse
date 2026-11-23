@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { applyAnnotationsToContainer, extractPrefixAndSuffix } from '../../utils/domHighlighter';
 import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
+import { useTranslation } from '../../i18n/index';
 
 const THEMES = {
     dark: {
@@ -77,6 +78,7 @@ const WIDTHS = {
 };
 
 export default function ReaderModeOverlay() {
+    const { t, intlLocale } = useTranslation();
     const isReaderOpen = useUIStore(state => state.isReaderOpen);
     const isReaderClosing = useUIStore(state => state.isReaderClosing);
     const closeReaderMode = useUIStore(state => state.closeReaderMode);
@@ -453,10 +455,10 @@ export default function ReaderModeOverlay() {
                             borderColor: currentTheme.border,
                             color: currentTheme.text 
                         }}
-                        title="Exit Reader Mode (Esc / Ctrl+Alt+R)"
+                        title={t('tools.reader.exitTitle', null, 'Exit Reader Mode (Esc / Ctrl+Alt+R)')}
                     >
                         <ArrowLeft size={14} />
-                        <span className="hidden sm:inline">Back to Webpage</span>
+                        <span className="hidden sm:inline">{t('tools.reader.backToWebpage', null, 'Back to Webpage')}</span>
                     </button>
 
                     {article.siteName && (
@@ -466,7 +468,7 @@ export default function ReaderModeOverlay() {
                             rel="noreferrer"
                             className="hidden md:flex items-center gap-1.5 text-xs font-medium truncate opacity-60 hover:opacity-100 transition"
                             style={{ color: currentTheme.text }}
-                            title={`Open original: ${article.url}`}
+                            title={t('tools.reader.openOriginalTitle', { url: article.url }, `Open original: ${article.url}`)}
                         >
                             <Globe size={13} />
                             <span className="truncate max-w-[200px]">{article.siteName}</span>
@@ -495,38 +497,43 @@ export default function ReaderModeOverlay() {
                             color: isAudioBarOpen ? '#000000' : currentTheme.text,
                             borderColor: isAudioBarOpen ? currentTheme.accent : currentTheme.border
                         }}
-                        title={isAudioBarOpen ? 'Hide Audio Player' : 'Listen to Article (Read Aloud)'}
+                        title={isAudioBarOpen ? t('tools.reader.hideAudioTitle', null, 'Hide Audio Player') : t('tools.reader.listenTitle', null, 'Listen to Article (Read Aloud)')}
                     >
                         <Volume2 size={14} className={isSpeaking && !isPaused ? 'animate-pulse' : ''} />
-                        <span className="hidden sm:inline">{isAudioBarOpen ? 'Listening' : 'Read Aloud'}</span>
+                        <span className="hidden sm:inline">{isAudioBarOpen ? t('tools.reader.listening', null, 'Listening') : t('tools.reader.readAloud', null, 'Read Aloud')}</span>
                     </button>
 
                     <div className="w-[1px] h-5 bg-white/10 mx-0.5 hidden sm:block" />
 
                     {/* Theme Selector Circles */}
                     <div className="flex items-center gap-1.5 p-1 rounded-xl border" style={{ borderColor: currentTheme.border, backgroundColor: `${currentTheme.bg}80` }}>
-                        {Object.values(THEMES).map(t => (
+                        {Object.values(THEMES).map(th => {
+                            const themeName = t(`tools.reader.themes.${th.id}`, null, th.name);
+                            return (
                             <button
-                                key={t.id}
+                                key={th.id}
                                 type="button"
-                                onClick={() => setReaderSetting('readerTheme', t.id)}
-                                className={`w-5 h-5 rounded-full border transition-transform cursor-pointer flex items-center justify-center ${currentThemeKey === t.id ? 'scale-110 shadow-sm' : 'opacity-60 hover:opacity-100'}`}
+                                onClick={() => setReaderSetting('readerTheme', th.id)}
+                                className={`w-5 h-5 rounded-full border transition-transform cursor-pointer flex items-center justify-center ${currentThemeKey === th.id ? 'scale-110 shadow-sm' : 'opacity-60 hover:opacity-100'}`}
                                 style={{ 
-                                    backgroundColor: t.bg,
-                                    borderColor: currentThemeKey === t.id ? t.ring : 'rgba(128,128,128,0.3)'
+                                    backgroundColor: th.bg,
+                                    borderColor: currentThemeKey === th.id ? th.ring : 'rgba(128,128,128,0.3)'
                                 }}
-                                title={`${t.name} Theme`}
+                                title={t('tools.reader.themeTitle', { name: themeName }, `${th.name} Theme`)}
                             >
-                                {currentThemeKey === t.id && (
-                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: t.ring }} />
+                                {currentThemeKey === th.id && (
+                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: th.ring }} />
                                 )}
                             </button>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {/* Font Family Selector */}
                     <div className="flex items-center rounded-xl border p-0.5 text-xs font-semibold" style={{ borderColor: currentTheme.border, backgroundColor: `${currentTheme.bg}80` }}>
-                        {Object.values(FONTS).map(f => (
+                        {Object.values(FONTS).map(f => {
+                            const fontLabel = t(`tools.reader.fonts.${f.id}`, null, f.label);
+                            return (
                             <button
                                 key={f.id}
                                 type="button"
@@ -536,11 +543,12 @@ export default function ReaderModeOverlay() {
                                     backgroundColor: currentFontKey === f.id ? currentTheme.card : 'transparent',
                                     color: currentTheme.text 
                                 }}
-                                title={`Use ${f.label} Font`}
+                                title={t('tools.reader.fontTitle', { name: fontLabel }, `Use ${f.label} Font`)}
                             >
-                                {f.label}
+                                {fontLabel}
                             </button>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {/* Font Size Stepper */}
@@ -550,7 +558,7 @@ export default function ReaderModeOverlay() {
                             onClick={() => setReaderSetting('readerFontSize', Math.max(14, currentFontSize - 2))}
                             className="px-2 py-1 rounded-lg opacity-70 hover:opacity-100 transition cursor-pointer active:scale-95"
                             style={{ color: currentTheme.text }}
-                            title="Decrease text size"
+                            title={t('tools.reader.decreaseSizeTitle', null, 'Decrease text size')}
                         >
                             A-
                         </button>
@@ -562,7 +570,7 @@ export default function ReaderModeOverlay() {
                             onClick={() => setReaderSetting('readerFontSize', Math.min(28, currentFontSize + 2))}
                             className="px-2 py-1 rounded-lg opacity-70 hover:opacity-100 transition cursor-pointer active:scale-95"
                             style={{ color: currentTheme.text }}
-                            title="Increase text size"
+                            title={t('tools.reader.increaseSizeTitle', null, 'Increase text size')}
                         >
                             A+
                         </button>
@@ -570,7 +578,9 @@ export default function ReaderModeOverlay() {
 
                     {/* Column Width */}
                     <div className="hidden lg:flex items-center rounded-xl border p-0.5 text-xs font-semibold" style={{ borderColor: currentTheme.border, backgroundColor: `${currentTheme.bg}80` }}>
-                        {Object.values(WIDTHS).map(w => (
+                        {Object.values(WIDTHS).map(w => {
+                            const widthLabel = t(`tools.reader.widths.${w.id}`, null, w.label);
+                            return (
                             <button
                                 key={w.id}
                                 type="button"
@@ -580,11 +590,12 @@ export default function ReaderModeOverlay() {
                                     backgroundColor: currentWidthKey === w.id ? currentTheme.card : 'transparent',
                                     color: currentTheme.text 
                                 }}
-                                title={`${w.label} Column Width`}
+                                title={t('tools.reader.widthTitle', { name: widthLabel }, `${w.label} Column Width`)}
                             >
-                                {w.label}
+                                {widthLabel}
                             </button>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {/* Close Button */}
@@ -597,7 +608,7 @@ export default function ReaderModeOverlay() {
                             borderColor: currentTheme.border,
                             color: currentTheme.text 
                         }}
-                        title="Close Reader Mode"
+                        title={t('tools.reader.closeTitle', null, 'Close Reader Mode')}
                     >
                         <X size={16} />
                     </button>
@@ -631,7 +642,7 @@ export default function ReaderModeOverlay() {
                         >
                             {article.byline && (
                                 <span className="font-semibold text-sm" style={{ color: currentTheme.text }}>
-                                    By {article.byline}
+                                    {t('tools.reader.byAuthor', { author: article.byline }, `By ${article.byline}`)}
                                 </span>
                             )}
 
@@ -645,11 +656,11 @@ export default function ReaderModeOverlay() {
 
                             <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[11px] font-mono" style={{ borderColor: currentTheme.border, backgroundColor: currentTheme.card }}>
                                 <Clock size={11} />
-                                <span>{article.readingTimeMinutes} min read</span>
+                                <span>{t('tools.reader.minRead', { minutes: article.readingTimeMinutes }, `${article.readingTimeMinutes} min read`)}</span>
                             </div>
 
                             <span className="text-[11px] font-mono opacity-60">
-                                {article.wordCount.toLocaleString()} words
+                                {t('tools.reader.wordsCount', { count: article.wordCount.toLocaleString(intlLocale || undefined) }, `${article.wordCount.toLocaleString()} words`)}
                             </span>
                         </div>
                     </header>
@@ -694,7 +705,7 @@ export default function ReaderModeOverlay() {
                             onClick={handleSkipPrev}
                             disabled={currentBlockIndex <= 0}
                             className="p-2 rounded-xl hover:bg-white/10 disabled:opacity-30 transition cursor-pointer active:scale-95"
-                            title="Previous paragraph"
+                            title={t('tools.reader.prevParaTitle', null, 'Previous paragraph')}
                         >
                             <SkipBack size={16} />
                         </button>
@@ -708,7 +719,7 @@ export default function ReaderModeOverlay() {
                                 backgroundColor: currentTheme.accent,
                                 color: '#000000'
                             }}
-                            title={isSpeaking && !isPaused ? 'Pause' : 'Play'}
+                            title={isSpeaking && !isPaused ? t('tools.reader.pauseTitle', null, 'Pause') : t('tools.reader.playTitle', null, 'Play')}
                         >
                             {isSpeaking && !isPaused ? <Pause size={18} fill="#000" /> : <Play size={18} fill="#000" className="ml-0.5" />}
                         </button>
@@ -719,7 +730,7 @@ export default function ReaderModeOverlay() {
                             onClick={handleSkipNext}
                             disabled={currentBlockIndex >= ttsBlocks.length - 1}
                             className="p-2 rounded-xl hover:bg-white/10 disabled:opacity-30 transition cursor-pointer active:scale-95"
-                            title="Next paragraph"
+                            title={t('tools.reader.nextParaTitle', null, 'Next paragraph')}
                         >
                             <SkipForward size={16} />
                         </button>
@@ -727,10 +738,10 @@ export default function ReaderModeOverlay() {
                         {/* Paragraph Progress Badge */}
                         <div className="flex flex-col min-w-[110px] text-left">
                             <span className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-50">
-                                Audio Narration
+                                {t('tools.reader.audioNarration', null, 'Audio Narration')}
                             </span>
                             <span className="text-xs font-mono font-semibold">
-                                Block {currentBlockIndex + 1} of {Math.max(1, ttsBlocks.length)}
+                                {t('tools.reader.blockProgress', { current: currentBlockIndex + 1, total: Math.max(1, ttsBlocks.length) }, `Block ${currentBlockIndex + 1} of ${Math.max(1, ttsBlocks.length)}`)}
                             </span>
                         </div>
 
@@ -742,7 +753,7 @@ export default function ReaderModeOverlay() {
                             onClick={handleCycleSpeed}
                             className="px-2.5 py-1 rounded-xl border text-xs font-mono font-bold hover:bg-white/10 transition cursor-pointer active:scale-95"
                             style={{ borderColor: currentTheme.border }}
-                            title="Change narration speed"
+                            title={t('tools.reader.speedTitle', null, 'Change narration speed')}
                         >
                             {speechRate}x
                         </button>
@@ -755,10 +766,10 @@ export default function ReaderModeOverlay() {
                                     onClick={() => setShowVoicePicker(!showVoicePicker)}
                                     className="px-2.5 py-1 rounded-xl border text-xs font-semibold flex items-center gap-1.5 hover:bg-white/10 transition cursor-pointer"
                                     style={{ borderColor: currentTheme.border }}
-                                    title="Select voice"
+                                    title={t('tools.reader.selectVoiceTitle', null, 'Select voice')}
                                 >
                                     <span className="truncate max-w-[100px] hidden sm:inline">
-                                        {voices.find(v => v.voiceURI === selectedVoiceUri)?.name || 'Voice'}
+                                        {voices.find(v => v.voiceURI === selectedVoiceUri)?.name || t('tools.reader.voiceFallback', null, 'Voice')}
                                     </span>
                                     <ChevronDown size={12} className={`transition-transform duration-200 ${showVoicePicker ? 'rotate-180' : ''}`} />
                                 </button>
@@ -771,7 +782,7 @@ export default function ReaderModeOverlay() {
                                             borderColor: currentTheme.border 
                                         }}
                                     >
-                                        <p className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 opacity-50">System Voices</p>
+                                        <p className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 opacity-50">{t('tools.reader.systemVoices', null, 'System Voices')}</p>
                                         {voices.map(v => (
                                             <button
                                                 key={v.voiceURI}
@@ -797,7 +808,7 @@ export default function ReaderModeOverlay() {
                             type="button"
                             onClick={handleCloseAudioBar}
                             className="p-1.5 rounded-xl hover:bg-white/10 opacity-60 hover:opacity-100 transition cursor-pointer active:scale-95"
-                            title="Stop & Close Narration"
+                            title={t('tools.reader.stopCloseTitle', null, 'Stop & Close Narration')}
                         >
                             <X size={15} />
                         </button>
@@ -814,7 +825,9 @@ export default function ReaderModeOverlay() {
                     onClick={e => e.stopPropagation()}
                 >
                     <div className="flex items-center gap-1.5">
-                        {Object.keys(HIGHLIGHT_COLORS).map(key => (
+                        {Object.keys(HIGHLIGHT_COLORS).map(key => {
+                            const colorName = t(`tools.common.colors.${key}`, null, HIGHLIGHT_COLORS[key].label);
+                            return (
                             <button
                                 key={key}
                                 onClick={() => {
@@ -832,11 +845,12 @@ export default function ReaderModeOverlay() {
                                     if (window.getSelection) window.getSelection().removeAllRanges();
                                     setFloatingPill(null);
                                 }}
-                                title={`Highlight with ${HIGHLIGHT_COLORS[key].label}`}
+                                title={t('tools.reader.highlightWithTitle', { color: colorName }, `Highlight with ${HIGHLIGHT_COLORS[key].label}`)}
                                 className="w-3.5 h-3.5 rounded-full border border-white/30 hover:scale-125 transition-transform cursor-pointer"
                                 style={{ backgroundColor: HIGHLIGHT_COLORS[key].border }}
                             />
-                        ))}
+                            );
+                        })}
                     </div>
                     <div className="w-px h-3.5 bg-white/20 mx-0.5" />
                     <button
@@ -862,7 +876,7 @@ export default function ReaderModeOverlay() {
                         className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.08] hover:bg-white/[0.16] border border-white/10 text-white/90 hover:text-white text-xs font-medium transition cursor-pointer"
                     >
                         <StickyNote size={12} className="text-accent" />
-                        <span>Note</span>
+                        <span>{t('tools.reader.noteBtn', null, 'Note')}</span>
                     </button>
                     <button
                         onClick={() => {
@@ -870,7 +884,7 @@ export default function ReaderModeOverlay() {
                             setFloatingPill(null);
                         }}
                         className="p-1 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition cursor-pointer"
-                        title="Copy text"
+                        title={t('tools.reader.copyTextTitle', null, 'Copy text')}
                     >
                         <Copy size={12} />
                     </button>
@@ -887,7 +901,7 @@ export default function ReaderModeOverlay() {
                 >
                     <div className="flex items-center justify-between border-b border-white/10 pb-2">
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Sticky Note</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">{t('tools.reader.stickyNote', null, 'Sticky Note')}</span>
                             <div className="flex items-center gap-1">
                                 {Object.keys(HIGHLIGHT_COLORS).map(key => (
                                     <button
@@ -913,7 +927,7 @@ export default function ReaderModeOverlay() {
                     <textarea
                         value={noteDraftText}
                         onChange={e => setNoteDraftText(e.target.value)}
-                        placeholder="Type your note or thought..."
+                        placeholder={t('tools.reader.notePlaceholder', null, 'Type your note or thought...')}
                         className="w-full h-20 bg-black/40 border border-white/10 rounded-xl p-2 text-xs text-white outline-none resize-none"
                         autoFocus
                     />
@@ -934,7 +948,7 @@ export default function ReaderModeOverlay() {
                             }}
                             className="px-2.5 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs font-semibold hover:bg-red-500/30 transition cursor-pointer"
                         >
-                            Delete
+                            {t('tools.reader.deleteBtn', null, 'Delete')}
                         </button>
                         <button
                             onClick={() => {
@@ -943,7 +957,7 @@ export default function ReaderModeOverlay() {
                             }}
                             className="px-3 py-1 rounded-lg bg-accent text-black text-xs font-bold hover:opacity-90 transition cursor-pointer"
                         >
-                            Save
+                            {t('tools.reader.saveBtn', null, 'Save')}
                         </button>
                     </div>
                 </div>

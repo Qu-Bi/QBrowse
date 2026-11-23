@@ -3,8 +3,10 @@ import { Shield, AlertCircle, HelpCircle, Terminal, Lock, User, Eye, EyeOff, X }
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function BrowserDialogOverlay() {
+    const { t } = useTranslation();
     const activeDialog = useUIStore(state => state.activeDialog);
     const closeActiveDialog = useUIStore(state => state.closeActiveDialog);
     const theme = useUIStore(state => state.theme);
@@ -138,10 +140,10 @@ export default function BrowserDialogOverlay() {
     };
 
     const getTitle = () => {
-        if (type === 'auth') return 'Authentication Required';
-        if (type === 'prompt') return 'Input Requested';
-        if (type === 'confirm') return 'Confirm Action';
-        return 'Alert';
+        if (type === 'auth') return t('chrome.dialogAuthTitle', null, 'Authentication Required');
+        if (type === 'prompt') return t('chrome.dialogPromptTitle', null, 'Input Requested');
+        if (type === 'confirm') return t('chrome.dialogConfirmTitle', null, 'Confirm Action');
+        return t('chrome.dialogAlertTitle', null, 'Alert');
     };
 
     return (
@@ -177,7 +179,7 @@ export default function BrowserDialogOverlay() {
                         </div>
                         <div className="flex items-center gap-2 min-w-0">
                             <span className={`text-xs font-semibold tracking-tight truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>
-                                {hostname || origin || 'Website'}
+                                {hostname || origin || t('chrome.dialogWebsite', null, 'Website')}
                             </span>
                             <span className={`text-[10px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded-md ${
                                 isBright ? 'text-zinc-500 bg-black/[0.04]' : 'text-white/50 bg-white/[0.05]'
@@ -192,7 +194,7 @@ export default function BrowserDialogOverlay() {
                         className={`w-6 h-6 rounded-lg flex items-center justify-center transition active:scale-95 cursor-pointer ${
                             isBright ? 'hover:bg-black/5 text-zinc-400 hover:text-zinc-900' : 'hover:bg-white/10 text-white/40 hover:text-white'
                         }`}
-                        title="Close (Esc)"
+                        title={t('chrome.closeEsc', null, 'Close (Esc)')}
                     >
                         <X size={13} />
                     </button>
@@ -225,7 +227,7 @@ export default function BrowserDialogOverlay() {
                                         type="text"
                                         value={authUsername}
                                         onChange={(e) => setAuthUsername(e.target.value)}
-                                        placeholder="Username"
+                                        placeholder={t('chrome.usernamePlaceholder', null, 'Username')}
                                         className="bg-transparent text-xs w-full outline-none font-sans"
                                     />
                                 </div>
@@ -237,7 +239,7 @@ export default function BrowserDialogOverlay() {
                                         type={showPassword ? 'text' : 'password'}
                                         value={authPassword}
                                         onChange={(e) => setAuthPassword(e.target.value)}
-                                        placeholder="Password"
+                                        placeholder={t('chrome.passwordPlaceholder', null, 'Password')}
                                         className="bg-transparent text-xs w-full outline-none font-sans"
                                     />
                                     <button 
@@ -263,7 +265,7 @@ export default function BrowserDialogOverlay() {
                                 type="text"
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
-                                placeholder="Your response..."
+                                placeholder={t('chrome.dialogPromptPlaceholder', null, 'Your response...')}
                                 className="bg-transparent text-sm w-full outline-none font-sans"
                                 autoFocus
                             />
@@ -280,7 +282,7 @@ export default function BrowserDialogOverlay() {
                                 className="w-3.5 h-3.5 rounded border border-white/20 accent-accent cursor-pointer"
                             />
                             <span className="text-[11px] text-[color:var(--sidebar-text-muted)]">
-                                Prevent this page from creating additional dialogs
+                                {t('chrome.dialogSuppressRepeat', null, 'Prevent this page from creating additional dialogs')}
                             </span>
                         </label>
                     )}
@@ -298,7 +300,7 @@ export default function BrowserDialogOverlay() {
                                     : 'bg-white/[0.05] hover:bg-white/[0.1] text-white/80 hover:text-white border-white/10'
                             }`}
                         >
-                            Cancel
+                            {t('common.cancel', null, 'Cancel')}
                         </button>
                     )}
                     <button 
@@ -306,7 +308,7 @@ export default function BrowserDialogOverlay() {
                         onClick={handleConfirm}
                         className="px-5 py-2 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer shadow-lg bg-accent text-zinc-950 hover:brightness-110 shadow-[0_0_20px_var(--accent-30)] hover:shadow-[0_0_25px_var(--accent-40)] hover:scale-[1.02]"
                     >
-                        {type === 'auth' ? 'Sign In' : 'OK'}
+                        {type === 'auth' ? t('chrome.signIn', null, 'Sign In') : t('chrome.ok', null, 'OK')}
                     </button>
                 </div>
             </div>

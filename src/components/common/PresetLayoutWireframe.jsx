@@ -9,6 +9,16 @@ export const PRESET_TAGLINES = {
     privacy: 'Strict tracker protection with DuckDuckGo search.'
 };
 
+export function getLocalizedPresetTagline(preset, t) {
+    if (!preset) return '';
+    const fallback = PRESET_TAGLINES[preset.id] || preset.tagline || '';
+    if (t && PRESET_TAGLINES[preset.id]) {
+        return t(`tools.presets.taglines.${preset.id}`, null, fallback);
+    }
+    if (fallback) return fallback;
+    return t ? t('tools.presets.customTaglineFallback', null, 'Custom workspace and layout configuration.') : 'Custom workspace and layout configuration.';
+}
+
 export default function PresetLayoutWireframe({ preset, isSelected, isBright, compact = false }) {
     const isTopBar = preset.topBarPosition !== 'bottom';
     const isLeftSidebar = preset.sidebarPosition !== 'right';

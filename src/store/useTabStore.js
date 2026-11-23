@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
+import { t } from '../i18n/index';
+import { PLACEHOLDER_TAB_TITLE_SET } from '../i18n/domains/stores.js';
+import { stripEphemeralTabMediaFields } from '../utils/mediaStateHelpers.js';
 
 export const getPinDomain = (pin) => {
   if (!pin || !pin.domain) return '';
@@ -25,7 +28,7 @@ export const isValidSyncTab = (tab) => {
     return false;
   }
   const title = typeof tab.title === 'string' ? tab.title.trim().toLowerCase() : '';
-  if ((title === 'new tab' || title === 'new incognito tab') && (!url || url.startsWith('qbrowse://newtab') || url === 'about:blank')) {
+  if ((title === 'new tab' || title === 'new incognito tab' || title === 'new tor tab' || PLACEHOLDER_TAB_TITLE_SET.has(title)) && (!url || url.startsWith('qbrowse://newtab') || url === 'about:blank')) {
     return false;
   }
   return true;
@@ -34,10 +37,13 @@ export const isValidSyncTab = (tab) => {
 export const getCleanTabTitle = (tab) => {
   if (!tab) return '';
   const rawTitle = typeof tab.title === 'string' ? tab.title.trim() : '';
+  const lowerTitle = rawTitle.toLowerCase();
   const isPlaceholderTitle = !rawTitle || 
-    rawTitle.toLowerCase() === 'new tab' || 
-    rawTitle.toLowerCase() === 'new incognito tab' ||
-    rawTitle.toLowerCase() === 'untitled';
+    lowerTitle === 'new tab' || 
+    lowerTitle === 'new incognito tab' ||
+    lowerTitle === 'new tor tab' ||
+    lowerTitle === 'untitled' ||
+    PLACEHOLDER_TAB_TITLE_SET.has(lowerTitle);
   if (!isPlaceholderTitle) return rawTitle;
   if (tab.url) {
     try {
@@ -62,7 +68,9 @@ export const getFallbackTabForSpace = (space) => {
   const isGhost = space === 'ghost';
   const isTor = space === 'tor';
   const prefix = isGhost ? 'g' : (isTor ? 'tor' : (space === 'work' ? 'w' : (space === 'personal' ? 't' : `s-${space}`)));
-  const title = isGhost ? 'New Incognito Tab' : (isTor ? 'New Tor Tab' : 'New Tab');
+  const title = isGhost
+    ? t('stores.tab.newIncognitoTab', 'New Incognito Tab')
+    : (isTor ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
   return {
     id: `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     title,
@@ -137,13 +145,15 @@ const useTabStore = create((set, get) => ({
       }
 
       if (state.activeSpace === 'ghost' && space !== 'ghost') {
-          updates.ghostTabs = [{ id: 'g-' + now, title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: now, suspended: false }];
+          (state.ghostTabs || []).forEach(t => { if (t?.id) ui.clearMediaStateForTab?.(t.id); });
+          updates.ghostTabs = [{ id: 'g-' + now, title: t('stores.tab.newIncognitoTab', 'New Incognito Tab'), url: '', active: true, folderId: null, lastActiveAt: now, suspended: false }];
           if (window.electronAPI && window.electronAPI.clearGhostSession) {
               window.electronAPI.clearGhostSession().catch(() => {});
           }
       }
       if (state.activeSpace === 'tor' && space !== 'tor') {
-          updates.torTabs = [{ id: 't-' + now, title: 'New Tor Tab', url: '', active: true, folderId: null, lastActiveAt: now, suspended: false }];
+          (state.torTabs || []).forEach(t => { if (t?.id) ui.clearMediaStateForTab?.(t.id); });
+          updates.torTabs = [{ id: 't-' + now, title: t('stores.tab.newTorTab', 'New Tor Tab'), url: '', active: true, folderId: null, lastActiveAt: now, suspended: false }];
           if (window.electronAPI && window.electronAPI.clearTorSession) {
               window.electronAPI.clearTorSession().catch(() => {});
           }
@@ -347,7 +357,7 @@ const useTabStore = create((set, get) => ({
           } catch(e) {}
           return { pinnedTabs: updated, pinnedDomains: domains };
       });
-      useUIStore.getState().showToast(`Pinned "${newPin.title}" to sidebar`);
+      useUIStore.getState().showToast(t('stores.tab.pinnedToSidebar', { title: newPin.title }, `Pinned "${newPin.title}" to sidebar`));
       if (typeof window !== 'undefined' && window.__syncStore) {
           window.__syncStore.getState().triggerDebouncedSync?.(25000);
       }
@@ -365,7 +375,8 @@ const useTabStore = create((set, get) => ({
           } catch(e) {}
           return { pinnedTabs: updated, pinnedDomains: domains };
       });
-      useUIStore.getState().showToast(`Unpinned "${pin?.title || 'app'}"`);
+      const pinTitle = pin?.title || t('stores.tab.appDefault', 'app');
+      useUIStore.getState().showToast(t('stores.tab.unpinned', { title: pinTitle }, `Unpinned "${pinTitle}"`));
       if (typeof window !== 'undefined' && window.__syncStore) {
           window.__syncStore.getState().triggerDebouncedSync?.(25000);
       }
@@ -375,22 +386,22 @@ const useTabStore = create((set, get) => ({
   getFallbackTabForSpace: (space) => getFallbackTabForSpace(space),
 
   privateTabs: [
-    { id: 't1', title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
+    { id: 't1', title: t('stores.tab.newTab', 'New Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
   ],
   setPrivateTabs: (tabs) => set({ privateTabs: typeof tabs === 'function' ? tabs(get().privateTabs) : tabs }),
 
   workTabs: [
-    { id: 'w1', title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
+    { id: 'w1', title: t('stores.tab.newTab', 'New Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
   ],
   setWorkTabs: (tabs) => set({ workTabs: typeof tabs === 'function' ? tabs(get().workTabs) : tabs }),
 
   ghostTabs: [
-    { id: 'g1', title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
+    { id: 'g1', title: t('stores.tab.newIncognitoTab', 'New Incognito Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
   ],
   setGhostTabs: (tabs) => set({ ghostTabs: typeof tabs === 'function' ? tabs(get().ghostTabs) : tabs }),
 
   torTabs: [
-    { id: 'tor1', title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
+    { id: 'tor1', title: t('stores.tab.newTorTab', 'New Tor Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }
   ],
   setTorTabs: (tabs) => set({ torTabs: typeof tabs === 'function' ? tabs(get().torTabs) : tabs }),
 
@@ -425,7 +436,7 @@ const useTabStore = create((set, get) => ({
     if (!spaceId || spaceId === 'personal' || spaceId === 'work' || spaceId === 'ghost' || spaceId === 'tor') return;
     const initialTabs = [{
       id: `t-${spaceId}-${Date.now()}`,
-      title: 'New Tab',
+      title: t('stores.tab.newTab', 'New Tab'),
       url: '',
       active: true,
       folderId: null,
@@ -505,7 +516,7 @@ const useTabStore = create((set, get) => ({
 
   openCloudTab: (cloudTab, space) => {
       if (!isValidSyncTab(cloudTab)) {
-          useUIStore.getState().showToast('Cannot open empty tab');
+          useUIStore.getState().showToast(t('stores.tab.cannotOpenEmpty', 'Cannot open empty tab'));
           return;
       }
       const targetSpace = space || get().activeSpace || 'personal';
@@ -519,7 +530,7 @@ const useTabStore = create((set, get) => ({
           active: true,
           folderId: null
       });
-      useUIStore.getState().showToast(`Opened: ${cleanTitle}`);
+      useUIStore.getState().showToast(t('stores.tab.openedTab', { title: cleanTitle }, `Opened: ${cleanTitle}`));
   },
 
   restoreAllCloudTabs: (targetSpace) => {
@@ -528,7 +539,7 @@ const useTabStore = create((set, get) => ({
       const rawWork = Array.isArray(cloudTabs?.workTabs) ? cloudTabs.workTabs.filter(isValidSyncTab) : [];
       const allTabs = [...rawPrivate, ...rawWork];
       if (allTabs.length === 0) {
-          useUIStore.getState().showToast('No cloud tabs found to restore');
+          useUIStore.getState().showToast(t('stores.tab.noCloudTabs', 'No cloud tabs found to restore'));
           return;
       }
       const spaceToUse = targetSpace || get().activeSpace || 'personal';
@@ -544,7 +555,7 @@ const useTabStore = create((set, get) => ({
               folderId: null
           });
       });
-      useUIStore.getState().showToast(`Restored ${count} tabs from other devices!`);
+      useUIStore.getState().showToast(t('stores.tab.restoredCloudTabs', { count }, `Restored ${count} tabs from other devices!`));
   },
 
   // Actions
@@ -618,7 +629,9 @@ const useTabStore = create((set, get) => ({
 
     const isGhost = space === 'ghost';
     const isTor = space === 'tor';
-    const defaultTitle = isGhost ? 'New Incognito Tab' : (isTor ? 'New Tor Tab' : 'New Tab');
+    const defaultTitle = isGhost
+      ? t('stores.tab.newIncognitoTab', 'New Incognito Tab')
+      : (isTor ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
     const safeTitle = (typeof tabObj.title === 'string' && tabObj.title.trim()) ? tabObj.title : defaultTitle;
     const safeUrl = (typeof tabObj.url === 'string') ? tabObj.url : '';
     const shouldBeActive = tabObj.active !== undefined ? tabObj.active : true;
@@ -632,7 +645,7 @@ const useTabStore = create((set, get) => ({
       resolvedOpenerId = activeTab?.id || null;
     }
 
-    const newTab = {
+    const newTab = stripEphemeralTabMediaFields({
       ...tabObj,
       title: safeTitle,
       url: safeUrl,
@@ -640,7 +653,7 @@ const useTabStore = create((set, get) => ({
       lastActiveAt: Date.now(),
       suspended: false,
       openerTabId: resolvedOpenerId
-    };
+    });
 
     const setList = (tabs) => get().setTabsForSpace(space, tabs);
 
@@ -662,7 +675,7 @@ const useTabStore = create((set, get) => ({
       setList(prev => [...(Array.isArray(prev) ? prev : []), newTab]);
     }
     const ui = useUIStore.getState();
-    ui.showToast(isTor ? 'New Tor tab created' : (isGhost ? 'New incognito tab created' : 'New tab created'));
+    ui.showToast(isTor ? t('stores.tab.newTorCreated', 'New Tor tab created') : (isGhost ? t('stores.tab.newIncognitoCreated', 'New incognito tab created') : t('stores.tab.newCreated', 'New tab created')));
     return newTab;
   },
 
@@ -685,7 +698,9 @@ const useTabStore = create((set, get) => ({
         const recentDuplicate = list.find(t => t.url === cleanUrl && (now - (t.lastActiveAt || 0) < 1200 || now - (t.createdAt || 0) < 1200));
         if (recentDuplicate) return;
     }
-    const defaultTitle = isGhost ? 'New Incognito Tab' : 'New Tab';
+    const defaultTitle = isGhost
+        ? t('stores.tab.newIncognitoTab', 'New Incognito Tab')
+        : (isTor ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
     const defaultUrl = '';
     const targetTitle = (cleanUrl && cleanUrl !== 'about:blank') ? cleanUrl : defaultTitle;
     get().addTab({ 
@@ -833,7 +848,7 @@ const useTabStore = create((set, get) => ({
               // Never suspend active tabs across ANY space or active split pane
               const isActiveTab = tab.active || (splitRightTabId && tab.id === splitRightTabId);
               if (isActiveTab) {
-                  if (!silent) useUIStore.getState().showToast('Cannot suspend active tab');
+                  if (!silent) useUIStore.getState().showToast(t('stores.tab.cannotSuspendActive', 'Cannot suspend active tab'));
                   return true;
               }
               const now = Date.now();
@@ -844,19 +859,20 @@ const useTabStore = create((set, get) => ({
               }
               const isAudioGrace = tab.lastAudibleAt && (now - tab.lastAudibleAt < 5 * 60 * 1000);
               if (tab.isAudible || tab.hasAudio || tab.isAudioPlaying || tab.mediaPlaying || isAudioGrace) {
-                  if (!silent) useUIStore.getState().showToast('Cannot suspend tab playing audio');
+                  if (!silent) useUIStore.getState().showToast(t('stores.tab.cannotSuspendAudio', 'Cannot suspend tab playing audio'));
                   return true;
               }
               if (tab.isPinned || tab.pinned || (pinnedTabs && pinnedTabs.some(p => p.domain && tab.url && tab.url.includes(p.domain)))) {
-                  if (!silent) useUIStore.getState().showToast('Cannot suspend pinned tab');
+                  if (!silent) useUIStore.getState().showToast(t('stores.tab.cannotSuspendPinned', 'Cannot suspend pinned tab'));
                   return true;
               }
               if (tab.isDownloading) {
-                  if (!silent) useUIStore.getState().showToast('Cannot suspend tab with active download');
+                  if (!silent) useUIStore.getState().showToast(t('stores.tab.cannotSuspendDownload', 'Cannot suspend tab with active download'));
                   return true;
               }
-              setList(list.map(t => t.id === tabId ? { ...t, suspended: true, suspendedAt: now } : t));
-              if (!silent) useUIStore.getState().showToast('Tab suspended to save memory');
+              setList(list.map(t => t.id === tabId ? stripEphemeralTabMediaFields({ ...t, suspended: true, suspendedAt: now }) : t));
+              useUIStore.getState().clearMediaStateForTab?.(tabId);
+              if (!silent) useUIStore.getState().showToast(t('stores.tab.suspendedMemory', 'Tab suspended to save memory'));
               return true;
           }
           return false;
@@ -876,7 +892,7 @@ const useTabStore = create((set, get) => ({
       const updateList = (list, setList) => {
           if ((list || []).some(t => t.id === tabId)) {
               setList(list.map(t => t.id === tabId ? { ...t, suspended: false, lastActiveAt: Date.now() } : t));
-              if (!silent) useUIStore.getState().showToast('Tab restored from sleep');
+              if (!silent) useUIStore.getState().showToast(t('stores.tab.restoredFromSleep', 'Tab restored from sleep'));
               return true;
           }
           return false;
@@ -987,6 +1003,7 @@ const useTabStore = create((set, get) => ({
               closedCount += removed.length;
               removed.forEach(t => {
                   delete nextOffsets[t.id];
+                  uiStore.clearMediaStateForTab?.(t.id);
                   if (space !== 'ghost' && space !== 'tor' && t.url && t.url !== 'about:blank' && !t.url.includes('.onion')) {
                       newlyClosedForRestore.push({ url: t.url, title: t.title, space });
                   }
@@ -1067,7 +1084,7 @@ const useTabStore = create((set, get) => ({
   restoreRecentlyClosedTab: () => {
     const { recentlyClosedTabs, activeSpace, handleNewTab, setActiveSpace } = get();
     if (!recentlyClosedTabs || recentlyClosedTabs.length === 0) {
-      useUIStore.getState().showToast('No recently closed tabs to restore');
+      useUIStore.getState().showToast(t('stores.tab.noRecentlyClosed', 'No recently closed tabs to restore'));
       return;
     }
     const recent = recentlyClosedTabs[recentlyClosedTabs.length - 1];
@@ -1076,7 +1093,8 @@ const useTabStore = create((set, get) => ({
       setActiveSpace(recent.space);
     }
     handleNewTab(recent.url);
-    useUIStore.getState().showToast(`Restored tab: ${recent.title || recent.url}`);
+    const label = recent.title || recent.url;
+    useUIStore.getState().showToast(t('stores.tab.restoredRecentTab', { title: label }, `Restored tab: ${label}`));
   },
 
   navigateTabBack: (tabId) => {
@@ -1116,7 +1134,9 @@ const useTabStore = create((set, get) => ({
     const list = get().getActiveList();
     const setList = get().getActiveSetList();
     const currentSpace = get().activeSpace;
-    const defaultTitle = currentSpace === 'ghost' ? 'New Incognito Tab' : (currentSpace === 'tor' ? 'New Tor Tab' : 'New Tab');
+    const defaultTitle = currentSpace === 'ghost'
+      ? t('stores.tab.newIncognitoTab', 'New Incognito Tab')
+      : (currentSpace === 'tor' ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
     
     const tabToClose = list.find(t => t.id === id);
     if (!tabToClose || tabToClose.isClosing) return;
@@ -1215,7 +1235,7 @@ const useTabStore = create((set, get) => ({
         // Seamlessly reset this tab to a fresh New Tab (Zen Dashboard)
         setList(list.map(t => {
             if (t.id === id) {
-                return {
+                return stripEphemeralTabMediaFields({
                     ...t,
                     url: '',
                     title: defaultTitle,
@@ -1224,12 +1244,13 @@ const useTabStore = create((set, get) => ({
                     isClosing: false,
                     lastActiveAt: Date.now(),
                     suspended: false
-                };
+                });
             }
             return t;
         }));
 
         const ui = useUIStore.getState();
+        ui.clearMediaStateForTab?.(id);
         ui.setCurrentUrl('');
         ui.setIsReaderAvailable(false);
         if (ui.isFindOpen) ui.setIsFindOpen(false);
@@ -1263,9 +1284,10 @@ const useTabStore = create((set, get) => ({
     }
 
     // Set closing flag; if it was active, seamlessly transfer active to next tab right away
+    useUIStore.getState().clearMediaStateForTab?.(id);
     setList(list.map(t => {
         if (t.id === id) {
-            return { ...t, isClosing: true, thumbnail: null, active: false };
+            return stripEphemeralTabMediaFields({ ...t, isClosing: true, thumbnail: null, active: false });
         }
         if (nextActiveId && t.id === nextActiveId) {
             return { ...t, active: true, suspended: false, lastActiveAt: Date.now() };
@@ -1329,16 +1351,16 @@ const useTabStore = create((set, get) => ({
     const sourceTab = list[sourceIdx];
 
     const newTabId = `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const clonedTab = {
+    const clonedTab = stripEphemeralTabMediaFields({
       ...sourceTab,
       id: newTabId,
-      title: sourceTab.title || 'New Tab',
+      title: sourceTab.title || t('stores.tab.newTab', 'New Tab'),
       url: sourceTab.url || '',
       active: true,
       lastActiveAt: Date.now(),
       suspended: false,
       isClosing: false
-    };
+    });
 
     const nextList = list.map(t => ({ ...t, active: false }));
     nextList.splice(sourceIdx + 1, 0, clonedTab);
@@ -1346,7 +1368,7 @@ const useTabStore = create((set, get) => ({
 
     const ui = useUIStore.getState();
     ui.setCurrentUrl(clonedTab.url);
-    ui.showToast(`Duplicated "${clonedTab.title}"`);
+    ui.showToast(t('stores.tab.duplicatedTab', { title: clonedTab.title }, `Duplicated "${clonedTab.title}"`));
     return newTabId;
   },
 
@@ -1371,12 +1393,16 @@ const useTabStore = create((set, get) => ({
       }
     }
 
+    const ui = useUIStore.getState();
+    list.forEach(t => {
+      if (t && t.id !== tabId) ui.clearMediaStateForTab?.(t.id);
+    });
+
     const nextList = [{ ...targetTab, active: true, suspended: false, lastActiveAt: Date.now() }];
     setList(nextList);
 
-    const ui = useUIStore.getState();
     ui.setCurrentUrl(targetTab.url || '');
-    ui.showToast('Closed other tabs');
+    ui.showToast(t('stores.tab.closedOtherTabs', 'Closed other tabs'));
   },
 
   closeTabsBelow: (tabId, spaceType) => {
@@ -1388,8 +1414,12 @@ const useTabStore = create((set, get) => ({
     if (targetIdx === -1 || targetIdx === list.length - 1) return;
 
     const remaining = list.slice(0, targetIdx + 1);
+    const closedBelow = list.slice(targetIdx + 1);
+    closedBelow.forEach(t => {
+      if (t?.id) useUIStore.getState().clearMediaStateForTab?.(t.id);
+    });
     if (space !== 'ghost' && space !== 'tor') {
-      const closed = list.slice(targetIdx + 1).filter(t => t.url && t.url !== 'about:blank' && !t.url.includes('.onion'));
+      const closed = closedBelow.filter(t => t.url && t.url !== 'about:blank' && !t.url.includes('.onion'));
       if (closed.length > 0) {
         set(state => ({
           recentlyClosedTabs: [
@@ -1407,7 +1437,7 @@ const useTabStore = create((set, get) => ({
     }
 
     setList(remaining);
-    useUIStore.getState().showToast('Closed tabs below');
+    useUIStore.getState().showToast(t('stores.tab.closedTabsBelow', 'Closed tabs below'));
   },
 
   moveTabToSpace: (tabId, sourceSpace, targetSpace) => {
@@ -1476,8 +1506,18 @@ const useTabStore = create((set, get) => ({
     ui.setCurrentUrl(movedTab.url || '');
     get().saveSession();
 
-    const spaceLabel = targetSpace.charAt(0).toUpperCase() + targetSpace.slice(1);
-    ui.showToast(`Moved "${tabToMove.title || 'Tab'}" to ${spaceLabel} space`);
+    const customSp = (ui.settings?.customSpaces || []).find(s => s.id === targetSpace);
+    const spaceLabel = targetSpace === 'personal'
+      ? t('stores.sync.spacePersonal', 'Personal')
+      : targetSpace === 'work'
+        ? t('stores.sync.spaceWork', 'Work')
+        : targetSpace === 'tor'
+          ? t('stores.tab.spaceTor', 'Tor')
+          : targetSpace === 'ghost'
+            ? t('stores.tab.spaceGhost', 'Ghost')
+            : (customSp?.name || (targetSpace.charAt(0).toUpperCase() + targetSpace.slice(1)));
+    const titleLabel = tabToMove.title || t('stores.tab.tabDefault', 'Tab');
+    ui.showToast(t('stores.tab.movedToSpace', { title: titleLabel, space: spaceLabel }, `Moved "${titleLabel}" to ${spaceLabel} space`));
   },
 
   saveSession: () => {
@@ -1990,7 +2030,7 @@ const useTabStore = create((set, get) => ({
     if (wv && typeof wv.reload === 'function') {
       try {
         wv.reload();
-        useUIStore.getState().showToast('Reloading tab...');
+        useUIStore.getState().showToast(t('stores.tab.reloadingTab', 'Reloading tab...'));
       } catch (_) {}
     }
   },
@@ -2002,7 +2042,7 @@ const useTabStore = create((set, get) => ({
     }
     const newTab = {
       id: `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      title: 'New Tab',
+      title: space === 'ghost' ? t('stores.tab.newIncognitoTab', 'New Incognito Tab') : (space === 'tor' ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab')),
       url: '',
       active: true,
       folderId: folderId,
@@ -2010,7 +2050,7 @@ const useTabStore = create((set, get) => ({
       suspended: false
     };
     get().addTab(newTab);
-    useUIStore.getState().showToast('New tab created in folder');
+    useUIStore.getState().showToast(t('stores.tab.newInFolder', 'New tab created in folder'));
   },
 
   closeAllTabsInFolder: (folderId, spaceType) => {
@@ -2018,15 +2058,20 @@ const useTabStore = create((set, get) => ({
     const list = space === 'personal' ? get().privateTabs : (space === 'work' ? get().workTabs : (space === 'ghost' ? get().ghostTabs : get().torTabs));
     const setList = space === 'personal' ? get().setPrivateTabs : (space === 'work' ? get().setWorkTabs : (space === 'ghost' ? get().setGhostTabs : get().setTorTabs));
 
+    list.forEach(t => {
+      if (t && t.folderId === folderId) {
+        useUIStore.getState().clearMediaStateForTab?.(t.id);
+      }
+    });
     let nextList = list.filter(t => t.folderId !== folderId);
     if (nextList.length === 0) {
-      nextList = [{ id: `t-${Date.now()}`, title: space === 'ghost' ? 'New Incognito Tab' : 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+      nextList = [{ id: `t-${Date.now()}`, title: space === 'ghost' ? t('stores.tab.newIncognitoTab', 'New Incognito Tab') : (space === 'tor' ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab')), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
     } else if (!nextList.some(t => t.active)) {
       nextList[0].active = true;
       useUIStore.getState().setCurrentUrl(nextList[0].url || '');
     }
     setList(nextList);
-    useUIStore.getState().showToast('Closed all tabs in folder');
+    useUIStore.getState().showToast(t('stores.tab.closedAllInFolder', 'Closed all tabs in folder'));
   },
 
   setActiveTab: (tabId, spaceType) => {
@@ -2068,7 +2113,7 @@ const useTabStore = create((set, get) => ({
     if (activeSpace === 'personal') setPrivateTabs(privateTabs.filter(t => t.id !== tab.id));
     else if (activeSpace === 'work') setWorkTabs(workTabs.filter(t => t.id !== tab.id));
     else get().setTabsForSpace(activeSpace, (tabs) => (tabs || []).filter(t => t.id !== tab.id));
-    useUIStore.getState().showToast(`Pinned: ${newPin.title}`);
+    useUIStore.getState().showToast(t('stores.tab.pinnedTab', { title: newPin.title }, `Pinned: ${newPin.title}`));
   },
 
   handleDragStart: (e, tab, spaceType) => {
@@ -2109,12 +2154,12 @@ const useTabStore = create((set, get) => ({
 
     if (crossPayload && (!draggedItem || (crossPayload.sourceWindowId && crossPayload.sourceWindowId !== window.__qbrowseWindowId))) {
       get().setDraggedItem(null);
-      const incomingTab = { 
+      const incomingTab = stripEphemeralTabMediaFields({ 
         ...crossPayload.tab,
         id: `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         active: true,
         lastActiveAt: Date.now()
-      };
+      });
       const targetSpace = spaceType || get().activeSpace || 'personal';
       const list = get().getTabsForSpace(targetSpace) || [];
       const setList = (tabs) => get().setTabsForSpace(targetSpace, tabs);
@@ -2139,7 +2184,8 @@ const useTabStore = create((set, get) => ({
           tabId: crossPayload.tab.id
         });
       }
-      useUIStore.getState().showToast(`Moved "${incomingTab.title || 'Tab'}" to this window`);
+      const movedTitle = incomingTab.title || t('stores.tab.tabDefault', 'Tab');
+      useUIStore.getState().showToast(t('stores.tab.movedToWindow', { title: movedTitle }, `Moved "${movedTitle}" to this window`));
       return;
     }
 
@@ -2148,7 +2194,7 @@ const useTabStore = create((set, get) => ({
       return;
     }
     if (draggedItem.spaceType !== spaceType) {
-      useUIStore.getState().showToast('You can only move tabs within the same space');
+      useUIStore.getState().showToast(t('stores.tab.onlySameSpaceMove', 'You can only move tabs within the same space'));
       get().setDraggedItem(null);
       return;
     }
@@ -2198,13 +2244,13 @@ const useTabStore = create((set, get) => ({
 
     if (crossPayload && (!draggedItem || (crossPayload.sourceWindowId && crossPayload.sourceWindowId !== window.__qbrowseWindowId))) {
       get().setDraggedItem(null);
-      const incomingTab = { 
+      const incomingTab = stripEphemeralTabMediaFields({ 
         ...crossPayload.tab,
         id: `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         active: true,
         folderId: targetFolderId,
         lastActiveAt: Date.now()
-      };
+      });
       const targetSpace = spaceType || get().activeSpace || 'personal';
       const list = get().getTabsForSpace(targetSpace) || [];
       const setList = (tabs) => get().setTabsForSpace(targetSpace, tabs);
@@ -2223,7 +2269,8 @@ const useTabStore = create((set, get) => ({
           tabId: crossPayload.tab.id
         });
       }
-      useUIStore.getState().showToast(`Moved "${incomingTab.title || 'Tab'}" to folder`);
+      const movedFolderTitle = incomingTab.title || t('stores.tab.tabDefault', 'Tab');
+      useUIStore.getState().showToast(t('stores.tab.movedToFolder', { title: movedFolderTitle }, `Moved "${movedFolderTitle}" to folder`));
       return;
     }
 
@@ -2263,13 +2310,13 @@ const useTabStore = create((set, get) => ({
 
     if (crossPayload && (!draggedItem || (crossPayload.sourceWindowId && crossPayload.sourceWindowId !== window.__qbrowseWindowId))) {
       get().setDraggedItem(null);
-      const incomingTab = { 
+      const incomingTab = stripEphemeralTabMediaFields({ 
         ...crossPayload.tab,
         id: `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         active: true,
         folderId: null,
         lastActiveAt: Date.now()
-      };
+      });
       const targetSpace = spaceType || get().activeSpace || 'personal';
       const list = get().getTabsForSpace(targetSpace) || [];
       const setList = (tabs) => get().setTabsForSpace(targetSpace, tabs);
@@ -2288,7 +2335,8 @@ const useTabStore = create((set, get) => ({
           tabId: crossPayload.tab.id
         });
       }
-      useUIStore.getState().showToast(`Moved "${incomingTab.title || 'Tab'}" to this window`);
+      const movedTitle = incomingTab.title || t('stores.tab.tabDefault', 'Tab');
+      useUIStore.getState().showToast(t('stores.tab.movedToWindow', { title: movedTitle }, `Moved "${movedTitle}" to this window`));
       return;
     }
 
@@ -2316,6 +2364,7 @@ const useTabStore = create((set, get) => ({
       if (!tabs) continue;
       const targetIdx = tabs.findIndex(t => t.id === tabId);
       if (targetIdx !== -1) {
+        useUIStore.getState().clearMediaStateForTab?.(tabId);
         const wasActive = tabs[targetIdx]?.active;
         const newTabs = tabs.filter(t => t.id !== tabId);
         if (wasActive && newTabs.length > 0) {
@@ -2325,10 +2374,13 @@ const useTabStore = create((set, get) => ({
             useUIStore.getState().setCurrentUrl(newTabs[nextActiveIdx].url || '');
           }
         } else if (newTabs.length === 0) {
+          const freshTitle = space === 'ghost'
+            ? t('stores.tab.newIncognitoTab', 'New Incognito Tab')
+            : (space === 'tor' ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
           const freshTab = {
             id: `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
             url: '',
-            title: 'New Tab',
+            title: freshTitle,
             active: true,
             lastActiveAt: Date.now()
           };
@@ -2344,8 +2396,15 @@ const useTabStore = create((set, get) => ({
   },
 
   handleGoHome: () => {
-    const updateTab = (list, setList) => setList(list.map(t => t.active ? { ...t, url: '', title: 'New Tab', lastActiveAt: Date.now(), suspended: false } : t));
     const activeSpace = get().activeSpace;
+    const homeTitle = activeSpace === 'ghost'
+      ? t('stores.tab.newIncognitoTab', 'New Incognito Tab')
+      : (activeSpace === 'tor' ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
+    const updateTab = (list, setList) => setList(list.map(t => {
+      if (!t.active) return t;
+      useUIStore.getState().clearMediaStateForTab?.(t.id);
+      return stripEphemeralTabMediaFields({ ...t, url: '', title: homeTitle, lastActiveAt: Date.now(), suspended: false });
+    }));
     if (activeSpace === 'personal') updateTab(get().privateTabs, get().setPrivateTabs);
     else if (activeSpace === 'work') updateTab(get().workTabs, get().setWorkTabs);
     else if (activeSpace === 'ghost') updateTab(get().ghostTabs, get().setGhostTabs);
@@ -2373,25 +2432,52 @@ const useTabStore = create((set, get) => ({
   },
 
   updateTabAudible: (tabId, isAudible) => {
+    if (!tabId) return;
+    const nextAudible = Boolean(isAudible);
     const now = Date.now();
-    const update = (list) => (list || []).map(t => {
-      if (t.id !== tabId) return t;
-      const tabUpdates = { ...t, isAudioPlaying: !!isAudible, isAudible: !!isAudible };
-      if (isAudible || t.isAudible || t.isAudioPlaying) {
+    const updateListIfMatch = (list) => {
+      if (!Array.isArray(list)) return null;
+      const idx = list.findIndex(t => t && t.id === tabId);
+      if (idx === -1) return null;
+      const prev = list[idx];
+      if (Boolean(prev.isAudible) === nextAudible && Boolean(prev.isAudioPlaying) === nextAudible) {
+        return null;
+      }
+      const next = [...list];
+      const tabUpdates = {
+        ...prev,
+        isAudioPlaying: nextAudible,
+        isAudible: nextAudible
+      };
+      if (nextAudible || prev.isAudible || prev.isAudioPlaying) {
         tabUpdates.lastAudibleAt = now;
       }
-      return tabUpdates;
-    });
-    get().setPrivateTabs(update(get().privateTabs));
-    get().setWorkTabs(update(get().workTabs));
-    get().setGhostTabs(update(get().ghostTabs));
-    get().setTorTabs(update(get().torTabs));
+      next[idx] = tabUpdates;
+      return next;
+    };
+
     set(state => {
-      const updatedCustom = {};
-      Object.entries(state.customSpaceTabs || {}).forEach(([sId, tList]) => {
-        updatedCustom[sId] = update(tList);
-      });
-      return { customSpaceTabs: updatedCustom };
+      const nextPrivate = updateListIfMatch(state.privateTabs);
+      if (nextPrivate) return { privateTabs: nextPrivate };
+      const nextWork = updateListIfMatch(state.workTabs);
+      if (nextWork) return { workTabs: nextWork };
+      const nextGhost = updateListIfMatch(state.ghostTabs);
+      if (nextGhost) return { ghostTabs: nextGhost };
+      const nextTor = updateListIfMatch(state.torTabs);
+      if (nextTor) return { torTabs: nextTor };
+
+      for (const [sId, tList] of Object.entries(state.customSpaceTabs || {})) {
+        const nextCustomList = updateListIfMatch(tList);
+        if (nextCustomList) {
+          return {
+            customSpaceTabs: {
+              ...state.customSpaceTabs,
+              [sId]: nextCustomList
+            }
+          };
+        }
+      }
+      return state;
     });
   },
 
@@ -2449,13 +2535,22 @@ const useTabStore = create((set, get) => ({
       ? (get().activeSpace === 'ghost' ? 'New Incognito Tab' : 'New Tab')
       : (title || (targetUrl === 'qbrowse://flags' ? 'QBrowse Flags' : targetUrl));
 
-    const update = (list) => (list || []).map(t => t.id === tabId ? { 
-      ...t, 
-      url: cleanUrl, 
-      title: cleanTitle, 
-      suspended: false, 
-      lastActiveAt: Date.now() 
-    } : t);
+    const update = (list) => (list || []).map(t => {
+      if (t.id !== tabId) return t;
+      const isChangingPage = isBlank || (t.url || '') !== cleanUrl;
+      const updated = {
+        ...t,
+        url: cleanUrl,
+        title: cleanTitle,
+        suspended: false,
+        lastActiveAt: Date.now()
+      };
+      if (isChangingPage) {
+        useUIStore.getState().clearMediaStateForTab?.(tabId);
+        return stripEphemeralTabMediaFields(updated);
+      }
+      return updated;
+    });
 
     get().setPrivateTabs(update(get().privateTabs));
     get().setWorkTabs(update(get().workTabs));
@@ -2582,7 +2677,7 @@ const useTabStore = create((set, get) => ({
 
       const cleanList = (list) => (Array.isArray(list) ? list : [])
         .filter(t => t && !t.isClosing)
-        .map(t => ({ ...t, isLoading: false, isClosing: false }));
+        .map(t => stripEphemeralTabMediaFields({ ...t, isLoading: false, isClosing: false }, { omitKeys: true }));
 
       localStorage.setItem(`qbrowse_tabs_${profileId}_personal`, JSON.stringify(cleanList(privateTabs)));
       localStorage.setItem(`qbrowse_tabs_${profileId}_work`, JSON.stringify(cleanList(workTabs)));
@@ -2621,10 +2716,10 @@ const useTabStore = create((set, get) => ({
       const storedFolders = shouldRestore ? localStorage.getItem(`qbrowse_folders_${profileId}`) : null;
       const storedActiveSpace = shouldRestore ? localStorage.getItem(`qbrowse_active_space_${profileId}`) : null;
 
-      const defaultPersonal = [{ id: `t1-${profileId}`, title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
-      const defaultWork = [{ id: `w1-${profileId}`, title: 'New Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
-      const defaultGhost = [{ id: `g1-${profileId}`, title: 'New Incognito Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
-      const defaultTor = [{ id: `t1-${profileId}`, title: 'New Tor Tab', url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+      const defaultPersonal = [{ id: `t1-${profileId}`, title: t('stores.tab.newTab', 'New Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+      const defaultWork = [{ id: `w1-${profileId}`, title: t('stores.tab.newTab', 'New Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+      const defaultGhost = [{ id: `g1-${profileId}`, title: t('stores.tab.newIncognitoTab', 'New Incognito Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
+      const defaultTor = [{ id: `t1-${profileId}`, title: t('stores.tab.newTorTab', 'New Tor Tab'), url: '', active: true, folderId: null, lastActiveAt: Date.now(), suspended: false }];
 
       const sanitizeTabList = (rawJson, fallbackList) => {
         if (!rawJson) return fallbackList;
@@ -2633,7 +2728,7 @@ const useTabStore = create((set, get) => ({
           if (!Array.isArray(parsed)) return fallbackList;
           const valid = parsed
             .filter(t => t && typeof t === 'object' && !t.isClosing)
-            .map(t => ({ ...t, isLoading: false, isClosing: false }));
+            .map(t => stripEphemeralTabMediaFields({ ...t, isLoading: false, isClosing: false }));
           if (valid.length === 0) return fallbackList;
           const hasActive = valid.some(t => t.active);
           if (!hasActive) valid[0].active = true;
@@ -2652,7 +2747,7 @@ const useTabStore = create((set, get) => ({
         if (!s || !s.id || s.id === 'personal' || s.id === 'work' || s.id === 'ghost' || s.id === 'tor') return;
         const fallbackCustom = [{
           id: `t-${s.id}-${Date.now()}`,
-          title: 'New Tab',
+          title: t('stores.tab.newTab', 'New Tab'),
           url: '',
           active: true,
           folderId: null,
@@ -2702,7 +2797,9 @@ const useTabStore = create((set, get) => ({
 
       const spaceList = restoredSpace === 'personal' ? pTabs : (restoredSpace === 'work' ? wTabs : (loadedCustomSpaceTabs[restoredSpace] || pTabs));
       const activeTab = spaceList.find(t => t.active) || spaceList[0];
-      useUIStore.getState().setCurrentUrl(activeTab ? (activeTab.url || '') : '');
+      const uiStore = useUIStore.getState();
+      uiStore.resetAllMediaState?.();
+      uiStore.setCurrentUrl(activeTab ? (activeTab.url || '') : '');
     } catch(e) {
       console.warn('[TabStore] Failed to load profile tabs:', e);
     }

@@ -7,10 +7,16 @@ import {
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import qbrowseLogo from '../../assets/icon.png';
+import { useTranslation } from '../../i18n/index';
+
+const getOsKey = () => {
+    const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
+    return osPlatform === 'darwin' ? 'darwin' : osPlatform === 'linux' ? 'linux' : 'win32';
+};
 
 const getBiometricLabel = () => {
-    const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
-    return osPlatform === 'darwin' ? 'Touch ID' : osPlatform === 'linux' ? 'System Biometrics' : 'Windows Hello';
+    const osKey = getOsKey();
+    return osKey === 'darwin' ? 'Touch ID' : osKey === 'linux' ? 'System Biometrics' : 'Windows Hello';
 };
 
 const TOUR_STEPS = [
@@ -123,6 +129,7 @@ const areRectsDifferent = (r1, r2) => {
 };
 
 export default function LivingTour({ onExit }) {
+    const { t } = useTranslation();
     // stage: 'selection' | 'tour'
     const [stage, setStage] = useState('selection');
     const [tourMode, setTourMode] = useState('advanced'); // 'quick' | 'advanced'
@@ -151,7 +158,23 @@ export default function LivingTour({ onExit }) {
     const isOmniboxOpen = useUIStore(state => state.isOmniboxOpen);
     const showToast = useUIStore(state => state.showToast);
 
-    const step = TOUR_STEPS[currentStep] || TOUR_STEPS[0];
+    const localizedSteps = useMemo(() => {
+        const osKey = getOsKey();
+        const biometric = t(`tools.passkey.biometrics.${osKey}`, null, getBiometricLabel());
+        return TOUR_STEPS.map(s => ({
+            ...s,
+            title: t(`tools.tour.steps.${s.id}.title`, null, s.title),
+            badge: t(`tools.tour.steps.${s.id}.badge`, null, s.badge),
+            description: s.id === 'vault'
+                ? t('tools.tour.steps.vault.description', { biometric }, s.description)
+                : t(`tools.tour.steps.${s.id}.description`, null, s.description),
+            missionInstruction: t(`tools.tour.steps.${s.id}.missionInstruction`, null, s.missionInstruction),
+            missionSuccess: t(`tools.tour.steps.${s.id}.missionSuccess`, null, s.missionSuccess),
+            shortcut: s.shortcut === 'Top Bar' ? t('tools.tour.topBarShortcut', null, 'Top Bar') : s.shortcut
+        }));
+    }, [t]);
+
+    const step = localizedSteps[currentStep] || localizedSteps[0];
 
     // Helper to dismiss all active popovers, drawers, and reset split view
     const dismissOpenOverlays = () => {
@@ -308,7 +331,7 @@ export default function LivingTour({ onExit }) {
         dismissOpenOverlays();
         localStorage.setItem('qbrowse_tutorial_done', 'true');
         useUIStore.getState().closeModal();
-        showToast("Tour closed. Press Ctrl+K anytime to explore QBrowse!");
+        showToast(t('tools.tour.exitToast', null, "Tour closed. Press Ctrl+K anytime to explore QBrowse!"));
         if (onExit) onExit();
     };
 
@@ -374,10 +397,10 @@ export default function LivingTour({ onExit }) {
                             <img src={qbrowseLogo} alt="QBrowse" className="w-full h-full object-contain drop-shadow" />
                         </div>
                         <h2 className="text-2xl font-black text-white tracking-tight mt-2">
-                            Welcome to QBrowse
+                            {t('tools.tour.welcomeTitle', null, 'Welcome to QBrowse')}
                         </h2>
                         <p className="text-white/60 text-xs max-w-md leading-relaxed">
-                            Choose how you would like to experience the browser walkthrough:
+                            {t('tools.tour.welcomeSubtitle', null, 'Choose how you would like to experience the browser walkthrough:')}
                         </p>
                     </div>
 
@@ -394,20 +417,20 @@ export default function LivingTour({ onExit }) {
                                         <Compass size={18} />
                                     </div>
                                     <span className="text-[10px] font-bold uppercase tracking-wider text-white/40 bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
-                                        Overview
+                                        {t('tools.tour.overviewBadge', null, 'Overview')}
                                     </span>
                                 </div>
                                 <div>
                                     <h4 className="font-bold text-sm text-white group-hover:text-accent transition-colors">
-                                        Quick Overview
+                                        {t('tools.tour.quickTitle', null, 'Quick Overview')}
                                     </h4>
                                     <p className="text-xs text-white/50 mt-1 leading-snug">
-                                        Swift visual tour of the layout, workspaces, and navigation with clear explanations.
+                                        {t('tools.tour.quickDesc', null, 'Swift visual tour of the layout, workspaces, and navigation with clear explanations.')}
                                     </p>
                                 </div>
                             </div>
                             <button className="w-full py-2 bg-white/10 group-hover:bg-accent group-hover:text-black text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 pointer-events-none">
-                                <span>Start Quick Tour</span>
+                                <span>{t('tools.tour.startQuick', null, 'Start Quick Tour')}</span>
                                 <ArrowRight size={13} />
                             </button>
                         </div>
@@ -423,20 +446,20 @@ export default function LivingTour({ onExit }) {
                                         <Sparkles size={18} />
                                     </div>
                                     <span className="text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-2 py-0.5 rounded-full shadow-xs">
-                                        Interactive
+                                        {t('tools.tour.interactiveBadge', null, 'Interactive')}
                                     </span>
                                 </div>
                                 <div>
                                     <h4 className="font-bold text-sm text-white group-hover:text-accent transition-colors">
-                                        Interactive Masterclass
+                                        {t('tools.tour.interactiveTitle', null, 'Interactive Masterclass')}
                                     </h4>
                                     <p className="text-xs text-white/70 mt-1 leading-snug">
-                                        Real guided missions that prompt you to use the actual browser UI: click buttons, test Tor, and master shortcuts.
+                                        {t('tools.tour.interactiveDesc', null, 'Real guided missions that prompt you to use the actual browser UI: click buttons, test Tor, and master shortcuts.')}
                                     </p>
                                 </div>
                             </div>
                             <button className="w-full py-2 bg-accent text-black text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-accent/20 pointer-events-none">
-                                <span>Start Interactive Tour</span>
+                                <span>{t('tools.tour.startInteractive', null, 'Start Interactive Tour')}</span>
                                 <ArrowRight size={13} />
                             </button>
                         </div>
@@ -447,7 +470,7 @@ export default function LivingTour({ onExit }) {
                         onClick={handleExitTour}
                         className="text-xs text-white/40 hover:text-white/80 transition cursor-pointer pt-1 relative z-10"
                     >
-                        Skip Tour and Start Browsing (Esc)
+                        {t('tools.tour.skipWelcome', null, 'Skip Tour and Start Browsing (Esc)')}
                     </button>
                 </div>
             </div>
@@ -620,12 +643,12 @@ export default function LivingTour({ onExit }) {
 
                         <div className="flex items-center gap-3 shrink-0">
                             <span className="text-[11px] text-white/40 font-mono">
-                                Step {currentStep + 1} of {TOUR_STEPS.length}
+                                {t('tools.tour.stepCounter', { current: currentStep + 1, total: localizedSteps.length }, `Step ${currentStep + 1} of ${localizedSteps.length}`)}
                             </span>
                             <button 
                                 onClick={handleExitTour}
                                 className="p-1 hover:bg-white/10 text-white/40 hover:text-white rounded-lg transition cursor-pointer"
-                                title="Close Tour (Esc)"
+                                title={t('tools.tour.closeTitle', null, 'Close Tour (Esc)')}
                             >
                                 <X size={15} />
                             </button>
@@ -668,7 +691,7 @@ export default function LivingTour({ onExit }) {
                             onClick={handleExitTour}
                             className="text-xs text-white/40 hover:text-white transition px-2 py-1 rounded cursor-pointer"
                         >
-                            Skip Tour
+                            {t('tools.tour.skipTour', null, 'Skip Tour')}
                         </button>
 
                         {currentStep > 0 && (
@@ -677,14 +700,14 @@ export default function LivingTour({ onExit }) {
                                 className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white/80 font-semibold text-xs rounded-xl transition flex items-center gap-1 cursor-pointer border border-white/5 shadow-xs"
                             >
                                 <ArrowLeft size={12} />
-                                <span>Back</span>
+                                <span>{t('tools.tour.back', null, 'Back')}</span>
                             </button>
                         )}
                     </div>
 
                     {/* Center: Step Dots */}
                     <div className="flex items-center gap-1.5">
-                        {TOUR_STEPS.map((_, idx) => (
+                        {localizedSteps.map((_, idx) => (
                             <div 
                                 key={idx}
                                 onClick={() => handleStepJump(idx)}
@@ -706,8 +729,8 @@ export default function LivingTour({ onExit }) {
                                 : 'bg-accent text-black shadow-accent/25 hover:scale-105 active:scale-95'
                         }`}
                     >
-                        <span>{currentStep === TOUR_STEPS.length - 1 ? 'Finish Tour' : 'Next Step'}</span>
-                        {currentStep === TOUR_STEPS.length - 1 ? <Check size={13} strokeWidth={3} /> : <ArrowRight size={13} />}
+                        <span>{currentStep === localizedSteps.length - 1 ? t('tools.tour.finishTour', null, 'Finish Tour') : t('tools.tour.nextStep', null, 'Next Step')}</span>
+                        {currentStep === localizedSteps.length - 1 ? <Check size={13} strokeWidth={3} /> : <ArrowRight size={13} />}
                     </button>
                 </div>
             </div>

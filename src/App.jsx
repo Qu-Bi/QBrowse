@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { t } from './i18n/index';
 import useUIStore, { syncInitialSettingsToElectron } from './store/useUIStore';
 import useTabStore from './store/useTabStore';
 import useAIStore from './store/useAIStore';
 import useProfileStore from './store/useProfileStore';
 import useTorStore from './store/useTorStore';
 import useSyncStore from './store/useSyncStore';
+import useVaultStore from './store/useVaultStore';
 import useGlobalShortcuts from './hooks/useGlobalShortcuts';
 import useDragAndDrop from './hooks/useDragAndDrop';
 import { listenToEvent } from './services/electronIPC';
@@ -102,6 +104,80 @@ export default function App() {
 
     // Initialize global shortcuts
     useGlobalShortcuts();
+
+    // Sync authoritative OS BrowserWindow focus/minimize/visibility state via Electron IPC.
+    // Renderer window blur/focus cannot reliably track OS focus when an Electron <webview> was last focused.
+    useEffect(() => {
+        const setWindowFocusState = useUIStore.getState().setWindowFocusState;
+        const hasElectronFocusApi = Boolean(window.electronAPI?.onWindowFocusChanged);
+        let cancelled = false;
+
+        if (hasElectronFocusApi) {
+            const unsubscribe = window.electronAPI.onWindowFocusChanged((focusState) => {
+                if (!cancelled && focusState) {
+                    setWindowFocusState(focusState);
+                }
+            });
+
+            if (window.electronAPI.getWindowFocusState) {
+                window.electronAPI.getWindowFocusState()
+                    .then((focusState) => {
+                        if (!cancelled && focusState) {
+                            setWindowFocusState(focusState);
+                        }
+                    })
+                    .catch(() => {});
+            }
+
+            const handleVisibilityChange = () => {
+                if (document.hidden) {
+                    setWindowFocusState({ isFocused: false, isVisible: false });
+                } else if (window.electronAPI?.getWindowFocusState) {
+                    window.electronAPI.getWindowFocusState()
+                        .then((focusState) => {
+                            if (!cancelled && focusState) {
+                                setWindowFocusState(focusState);
+                            }
+                        })
+                        .catch(() => {
+                            if (!cancelled) {
+                                setWindowFocusState({ isVisible: true });
+                            }
+                        });
+                } else {
+                    setWindowFocusState({ isVisible: true });
+                }
+            };
+
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            return () => {
+                cancelled = true;
+                if (typeof unsubscribe === 'function') unsubscribe();
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            };
+        }
+
+        // Non-Electron browser preview fallback
+        const syncFallbackState = () => {
+            const visible = !document.hidden;
+            setWindowFocusState({
+                isVisible: visible,
+                isMinimized: !visible,
+                isFocused: visible && document.hasFocus()
+            });
+        };
+
+        syncFallbackState();
+        window.addEventListener('focus', syncFallbackState);
+        window.addEventListener('blur', syncFallbackState);
+        document.addEventListener('visibilitychange', syncFallbackState);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('focus', syncFallbackState);
+            window.removeEventListener('blur', syncFallbackState);
+            document.removeEventListener('visibilitychange', syncFallbackState);
+        };
+    }, []);
 
     // Check for window launch query parameters (e.g., ?space=ghost or ?profileId=...)
     useEffect(() => {
@@ -229,7 +305,7 @@ export default function App() {
 
             if (window.electronAPI.onAppProtocolLaunched) {
                 window.electronAPI.onAppProtocolLaunched((data) => {
-                    useUIStore.getState().showToast(`Opening ${data.name || 'External App'}...`);
+                    useUIStore.getState().showToast(t('stores.app.openingExternalApp', { name: data.name || t('stores.app.externalAppDefault', 'External App') }, `Opening ${data.name || 'External App'}...`));
                 });
             }
 
@@ -240,8 +316,12 @@ export default function App() {
                     useTabStore.getState().closeDownloadTabIfOrphaned(data);
                 });
                 window.electronAPI.onDownloadUpdated((data) => {
-                    useUIStore.getState().updateDownload(data.id, data);
                     const store = useUIStore.getState();
+                    const existing = (store.downloads || []).find(d => d.id === data.id);
+                    if (existing && ['completed', 'cancelled', 'interrupted', 'failed'].includes(existing.state)) {
+                        return;
+                    }
+                    store.updateDownload(data.id, data);
                     if (store.activeDownloadPopup !== data.id) {
                         store.setActiveDownloadPopup(data.id);
                     }
@@ -254,6 +334,7 @@ export default function App() {
                         checksum: data.checksum,
                         algorithm: data.algorithm,
                         actualBytes: data.actualBytes,
+                        speedBytesPerSec: 0,
                         error: data.error,
                         verifiedAt: data.verifiedAt
                     });
@@ -269,6 +350,12 @@ export default function App() {
                                 useUIStore.getState().setActiveDownloadPopup(null);
                             }
                         }, 5000);
+                    } else if (['cancelled', 'interrupted', 'failed'].includes(data.state)) {
+                        setTimeout(() => {
+                            if (useUIStore.getState().activeDownloadPopup === data.id) {
+                                useUIStore.getState().setActiveDownloadPopup(null);
+                            }
+                        }, 3800);
                     }
                 });
             }
@@ -305,14 +392,40 @@ export default function App() {
                 });
             }
 
+            if (window.electronAPI.onPasskeyPromptDismiss) {
+                window.electronAPI.onPasskeyPromptDismiss((data) => {
+                    const current = useUIStore.getState().passkeyPrompt;
+                    if (current && (!data?.requestId || current.requestId === data.requestId)) {
+                        useUIStore.getState().setPasskeyPrompt(null);
+                    }
+                });
+            }
+
+            if (window.electronAPI.onPasskeySaved) {
+                window.electronAPI.onPasskeySaved((data) => {
+                    const vault = useVaultStore.getState();
+                    if (vault.isUnlocked) {
+                        vault.fetchPasswords().catch(() => {});
+                    }
+                    vault.syncVaultStatus?.().catch(() => {});
+                    const label = data?.rpId || data?.hostname || 'Website';
+                    useUIStore.getState().showToast(
+                        t('chrome.toastPasskeySaved', { host: label }, `Saved QVault passkey for ${label}!`)
+                    );
+                });
+            }
+
             if (window.electronAPI.onHttpAuthRequest) {
                 window.electronAPI.onHttpAuthRequest((data) => {
                     console.log("[App] Received HTTP auth request:", data);
+                    const hostWithPort = data.host + (data.port ? `:${data.port}` : '');
                     useUIStore.getState().setActiveDialog({
                         type: 'auth',
-                        hostname: data.host + (data.port ? `:${data.port}` : ''),
+                        hostname: hostWithPort,
                         realm: data.realm,
-                        message: `${data.isProxy ? 'Proxy server' : 'The server'} ${data.host}${data.port ? `:${data.port}` : ''} requires authentication.`,
+                        message: data.isProxy
+                            ? t('stores.app.proxyAuthRequired', { host: hostWithPort }, `Proxy server ${hostWithPort} requires authentication.`)
+                            : t('stores.app.serverAuthRequired', { host: hostWithPort }, `The server ${hostWithPort} requires authentication.`),
                         onConfirm: (username, password) => {
                             window.electronAPI?.respondHttpAuth?.({
                                 requestId: data.requestId,
@@ -356,6 +469,21 @@ export default function App() {
                 });
             }
 
+            let unsubPermissionReq = null;
+            let unsubPermissionDismiss = null;
+            if (window.electronAPI.onPermissionRequest) {
+                unsubPermissionReq = window.electronAPI.onPermissionRequest((data) => {
+                    useUIStore.getState().enqueuePermissionPrompt(data);
+                });
+            }
+            if (window.electronAPI.onPermissionDismiss) {
+                unsubPermissionDismiss = window.electronAPI.onPermissionDismiss((data) => {
+                    if (data?.requestId) {
+                        useUIStore.getState().dismissPermissionPrompt(data.requestId);
+                    }
+                });
+            }
+
             if (window.electronAPI.onJsDialogDismiss) {
                 window.electronAPI.onJsDialogDismiss(({ dialogId }) => {
                     const currentDialog = useUIStore.getState().activeDialog;
@@ -364,10 +492,15 @@ export default function App() {
                     }
                 });
             }
+            window.__qbrowsePermUnsubs = [unsubPermissionReq, unsubPermissionDismiss];
         }
 
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (Array.isArray(window.__qbrowsePermUnsubs)) {
+                window.__qbrowsePermUnsubs.forEach(fn => { if (typeof fn === 'function') fn(); });
+                window.__qbrowsePermUnsubs = null;
+            }
         };
     }, []);
 
@@ -459,7 +592,7 @@ export default function App() {
     useEffect(() => {
         const unlisten = listenToEvent('webview_error', (err) => {
             console.error("WEBVIEW ERROR FROM RUST:", err.payload);
-            showToast("Webview Error: " + err.payload, 'error');
+            showToast(t('stores.app.webviewError', { error: err.payload }, "Webview Error: " + err.payload), 'error');
         });
 
         return () => {

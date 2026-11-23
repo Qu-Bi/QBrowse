@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
+import { t } from '../i18n/index';
 
 const DEFAULT_PROFILE_ID = 'default';
 
@@ -104,7 +105,7 @@ const useProfileStore = create((set, get) => ({
             return { profiles: next };
         });
 
-        useUIStore.getState().showToast(`Profile "${newProfile.name}" created!`);
+        useUIStore.getState().showToast(t('stores.profile.created', { name: newProfile.name }, `Profile "${newProfile.name}" created!`));
         return newProfile;
     },
 
@@ -128,14 +129,14 @@ const useProfileStore = create((set, get) => ({
             return { profiles: next };
         });
         if (!updates?.silent) {
-            useUIStore.getState().showToast('Profile updated');
+            useUIStore.getState().showToast(t('stores.profile.updated', 'Profile updated'));
         }
     },
 
     deleteProfile: async (id) => {
         const { profiles, activeProfileId, switchProfile } = get();
         if (profiles.length <= 1) {
-            useUIStore.getState().showToast('Cannot delete the only remaining profile');
+            useUIStore.getState().showToast(t('stores.profile.cannotDeleteLast', 'Cannot delete the only remaining profile'));
             return false;
         }
 
@@ -168,7 +169,7 @@ const useProfileStore = create((set, get) => ({
             localStorage.removeItem(`qbrowse_sync_categories_${id}`);
         } catch (e) {}
 
-        useUIStore.getState().showToast(`Deleted profile "${target.name}"`);
+        useUIStore.getState().showToast(t('stores.profile.deleted', { name: target.name }, `Deleted profile "${target.name}"`));
         return true;
     },
 
@@ -234,7 +235,7 @@ const useProfileStore = create((set, get) => ({
             console.warn('[ProfileStore] Error loading new profile state:', e);
         }
 
-        uiStore.showToast(`Switched to profile: ${target.name}`);
+        uiStore.showToast(t('stores.profile.switched', { name: target.name }, `Switched to profile: ${target.name}`));
     }
 }));
 

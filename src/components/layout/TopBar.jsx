@@ -7,6 +7,7 @@ import useTorStore from '../../store/useTorStore';
 import { onGlobalNavigateBack, onGlobalNavigateForward } from '../../services/electronIPC';
 import { formatCompactNumber } from '../../utils/formatters';
 import TopBarMiniOmnibox from '../features/TopBarMiniOmnibox';
+import { useTranslation, t as tStatic } from '../../i18n/index';
 
 function formatDisplayUrl(rawUrl) {
     if (!rawUrl || rawUrl === 'about:blank') return '';
@@ -55,6 +56,7 @@ function formatDisplayUrl(rawUrl) {
 }
 
 export default function TopBar() {
+    const { t, intlLocale } = useTranslation();
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isTopBarPeeking = useUIStore(state => state.isTopBarPeeking);
     const setIsTopBarPeeking = useUIStore(state => state.setIsTopBarPeeking);
@@ -223,7 +225,7 @@ export default function TopBar() {
                 const targetUrl = await window.electronAPI.getHistoryUrl(wcId, offset);
                 if (targetUrl && targetUrl !== 'about:blank') {
                     useTabStore.getState().handleNewTab(targetUrl, false);
-                    showToast(offset < 0 ? 'Opened previous page in background tab' : 'Opened next page in background tab');
+                    showToast(offset < 0 ? tStatic('chrome.toastPrevPageBg', null, 'Opened previous page in background tab') : tStatic('chrome.toastNextPageBg', null, 'Opened next page in background tab'));
                     return;
                 }
             }
@@ -241,7 +243,7 @@ export default function TopBar() {
             const oldRightId = rightTab.id;
             useTabStore.getState().handleSwitchToTab(oldRightId, activeSpace);
             setSplitRightTabId(oldLeftId);
-            showToast('Swapped split panes');
+            showToast(t('chrome.toastSwappedPanes', null, 'Swapped split panes'));
         }
     };
 
@@ -334,7 +336,7 @@ export default function TopBar() {
                                             e.stopPropagation(); 
                                             const nextState = !isSidebarHidden;
                                             setIsSidebarHidden(nextState);
-                                            showToast(nextState ? 'Zen Mode active' : 'Sidebar visible'); 
+                                            showToast(nextState ? t('chrome.toastZenActive', null, 'Zen Mode active') : t('chrome.toastSidebarVisible', null, 'Sidebar visible')); 
                                         }}
                                         className={`h-9 w-9 flex-shrink-0 flex items-center justify-center ${
                                             frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
@@ -343,7 +345,7 @@ export default function TopBar() {
                                                 ? (isSidebarHidden ? 'bg-accent/25 border border-accent text-zinc-950 font-bold shadow-xs' : 'liquid-pill-bright') 
                                                 : (isSidebarHidden ? 'bg-accent/20 border border-accent/40 text-accent shadow-xs' : 'liquid-pill-dark')
                                         }`}
-                                        title="Zen Mode (CMD+B)"
+                                        title={t('chrome.zenModeTooltip', null, 'Zen Mode (CMD+B)')}
                                     >
                                         <PanelLeft size={15} strokeWidth={1.85} className={`transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.4,1)] ${isSidebarHidden ? 'rotate-180 opacity-70 scale-95' : 'rotate-0 opacity-100 scale-100'}`} />
                                     </button>
@@ -383,7 +385,7 @@ export default function TopBar() {
                                                 ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
                                                 : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
                                         }`}
-                                        title={`Back (Alt+Left) • Middle-click background${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
+                                        title={t('chrome.backTooltip', { bfcache: activePerformanceTier === 'ultra' ? t('chrome.bfcacheSuffix', null, ' • Instant RAM Cache (bfcache)') : '' }, `Back (Alt+Left) • Middle-click background${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`)}
                                     >
                                         <ChevronLeft size={15} strokeWidth={1.9} />
                                     </button>
@@ -418,7 +420,7 @@ export default function TopBar() {
                                                 ? (isBright ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:scale-90 cursor-pointer' : 'text-white/80 hover:text-white hover:bg-white/15 active:scale-90 cursor-pointer')
                                                 : (isBright ? 'text-zinc-400/50 cursor-default pointer-events-none' : 'text-white/20 cursor-default pointer-events-none')
                                         }`}
-                                        title={`Forward (Alt+Right) • Middle-click background${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`}
+                                        title={t('chrome.forwardTooltip', { bfcache: activePerformanceTier === 'ultra' ? t('chrome.bfcacheSuffix', null, ' • Instant RAM Cache (bfcache)') : '' }, `Forward (Alt+Right) • Middle-click background${activePerformanceTier === 'ultra' ? ' • Instant RAM Cache (bfcache)' : ''}`)}
                                     >
                                         <ChevronRight size={15} strokeWidth={1.9} />
                                     </button>
@@ -430,7 +432,7 @@ export default function TopBar() {
                                             e.stopPropagation(); 
                                             const nextState = !isSidebarHidden;
                                             setIsSidebarHidden(nextState);
-                                            showToast(nextState ? 'Zen Mode active' : 'Sidebar visible'); 
+                                            showToast(nextState ? t('chrome.toastZenActive', null, 'Zen Mode active') : t('chrome.toastSidebarVisible', null, 'Sidebar visible')); 
                                         }}
                                         className={`h-9 w-9 flex-shrink-0 flex items-center justify-center ${
                                             frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
@@ -439,7 +441,7 @@ export default function TopBar() {
                                                 ? (isSidebarHidden ? 'bg-accent/25 border border-accent text-zinc-950 font-bold shadow-xs' : 'liquid-pill-bright') 
                                                 : (isSidebarHidden ? 'bg-accent/20 border border-accent/40 text-accent shadow-xs' : 'liquid-pill-dark')
                                         }`}
-                                        title="Zen Mode (CMD+B)"
+                                        title={t('chrome.zenModeTooltip', null, 'Zen Mode (CMD+B)')}
                                     >
                                         <PanelRight size={15} strokeWidth={1.85} className={`transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.4,1)] ${isSidebarHidden ? 'rotate-180 opacity-70 scale-95' : 'rotate-0 opacity-100 scale-100'}`} />
                                     </button>
@@ -488,20 +490,20 @@ export default function TopBar() {
                                         } px-2 transition-all ${
                                             isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                                         }`}
-                                        title="Toolbar & Extensions (Right-click to customize)"
+                                        title={t('chrome.toolbarExtensionsTooltip', null, 'Toolbar & Extensions (Right-click to customize)')}
                                     >
                                         {/* 1. Split View */}
                                         {hasSplitView && (
                                             <button 
                                                 id="tour-splitview-trigger"
                                                 onClick={() => toggleSplitView()} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'splitview', 'Split View')}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'splitview', t('nav.splitView', null, 'Split View'))}
                                                 className={`p-1.5 rounded-full transition group ${
                                                     isBright 
                                                         ? (isSplitView ? 'text-accent bg-accent/10' : 'text-zinc-600 hover:bg-black/5 hover:text-zinc-900') 
                                                         : (isSplitView ? 'text-accent bg-accent/10' : 'text-white/60 hover:text-white')
                                                 }`} 
-                                                title="Split View (Ctrl+\ or Ctrl+Shift+D) • Right-click to hide"
+                                                title={t('chrome.splitViewTooltip', null, 'Split View (Ctrl+\\ or Ctrl+Shift+D) • Right-click to hide')}
                                             >
                                                 <SplitSquareHorizontal size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
                                             </button>
@@ -517,13 +519,13 @@ export default function TopBar() {
                                             <button 
                                                 id="tour-darkmode-trigger"
                                                 onClick={() => togglePopover('darkmode')} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'theme', 'Theme & Smart Dark')}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'theme', t('chrome.themeSmartDarkLabel', null, 'Theme & Smart Dark'))}
                                                 className={`p-1.5 rounded-full transition group ${
                                                     activePopover === 'darkmode' || !isBright 
                                                         ? 'bg-indigo-500/20 text-indigo-400' 
                                                         : 'text-zinc-700 hover:bg-black/10'
                                                 }`}
-                                                title="Theme & Smart Dark (Right-click to hide)"
+                                                title={t('chrome.themeSmartDarkTooltip', null, 'Theme & Smart Dark (Right-click to hide)')}
                                             >
                                                 {!isBright ? (
                                                     <Moon size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform fill-current" />
@@ -538,7 +540,7 @@ export default function TopBar() {
                                             <button 
                                                 id="tour-shield-trigger"
                                                 onClick={() => togglePopover('adblock')} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'shield', 'QShield Tracker Blocker')}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'shield', t('chrome.qshieldLabel', null, 'QShield Tracker Blocker'))}
                                                 className={`flex items-center gap-1.5 p-1.5 rounded-full transition group px-2.5 ${
                                                     activePopover === 'adblock' 
                                                         ? 'bg-emerald-500/20 text-emerald-400' 
@@ -546,7 +548,7 @@ export default function TopBar() {
                                                             ? (isBright ? 'text-emerald-600 hover:bg-emerald-500/10' : 'text-emerald-400 hover:bg-emerald-500/10') 
                                                             : (isBright ? 'text-gray-400 hover:bg-black/5' : 'text-white/30 hover:bg-white/10'))
                                                 }`}
-                                                title={`QShield: ${adblockStats?.count ? Number(adblockStats.count).toLocaleString() : 1} trackers blocked • Right-click to hide`}
+                                                title={t('chrome.qshieldTooltip', { count: adblockStats?.count ? Number(adblockStats.count).toLocaleString(intlLocale) : 1 }, `QShield: ${adblockStats?.count ? Number(adblockStats.count).toLocaleString(intlLocale) : 1} trackers blocked • Right-click to hide`)}
                                             >
                                                 <ShieldCheck size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
                                                 {isAdblockActive && (
@@ -562,13 +564,13 @@ export default function TopBar() {
                                             <button 
                                                 id="tour-media-trigger"
                                                 onClick={() => togglePopover('media')} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'media', 'Media Player')}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'media', t('chrome.mediaPlayerLabel', null, 'Media Player'))}
                                                 className={`p-1.5 rounded-full transition group ${
                                                     activePopover === 'media' 
                                                         ? 'bg-purple-500/20 text-purple-400' 
                                                         : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
                                                 }`}
-                                                title="Media Player (Right-click to hide)"
+                                                title={t('chrome.mediaPlayerTooltip', null, 'Media Player (Right-click to hide)')}
                                             >
                                                 <Music size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
                                             </button>
@@ -579,11 +581,11 @@ export default function TopBar() {
                                             <button 
                                                 id="tour-downloads-trigger"
                                                 onClick={() => { setIsRightPanelOpen(true); setRightPanelTab('downloads'); }} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'downloads', 'Downloads')}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'downloads', t('nav.downloads', null, 'Downloads'))}
                                                 className={`p-1.5 rounded-full transition group ${
                                                     isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10'
                                                 }`} 
-                                                title="Downloads (Right-click to hide)"
+                                                title={t('chrome.downloadsTooltip', null, 'Downloads (Right-click to hide)')}
                                             >
                                                 <Download size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
                                             </button>
@@ -599,13 +601,13 @@ export default function TopBar() {
                                             <button 
                                                 id="tour-tor-trigger"
                                                 onClick={() => togglePopover('tor')} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'tor', 'Tor Onion Network')}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'tor', t('chrome.torNetworkLabel', null, 'Tor Onion Network'))}
                                                 className={`p-1.5 rounded-full transition group relative ${
                                                     activePopover === 'tor' || isTor 
                                                         ? 'bg-purple-500/25 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.3)]' 
                                                         : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
                                                 }`} 
-                                                title="Tor Circuit & Onion Network (Right-click to hide)"
+                                                title={t('chrome.torNetworkTooltip', null, 'Tor Circuit & Onion Network (Right-click to hide)')}
                                             >
                                                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
                                                     <path d="M12 2C8 2 4 6 4 11c0 5 4 11 8 11s8-6 8-11c0-5-4-9-8-9z"/>
@@ -623,13 +625,13 @@ export default function TopBar() {
                                             <button 
                                                 id="tour-vault-trigger"
                                                 onClick={() => togglePopover('vault')} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'vault', 'QVault Passwords')}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'vault', t('chrome.qvaultLabel', null, 'QVault Passwords'))}
                                                 className={`p-1.5 rounded-full transition group ${
                                                     activePopover === 'vault' 
                                                         ? 'bg-blue-500/20 text-blue-400' 
                                                         : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
                                                 }`} 
-                                                title="QVault Passwords (Right-click to hide)"
+                                                title={t('chrome.qvaultTooltip', null, 'QVault Passwords (Right-click to hide)')}
                                             >
                                                 <svg className="w-[15px] h-[15px] group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.85} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -654,7 +656,7 @@ export default function TopBar() {
                                                 className={`p-1.5 rounded-full transition group cursor-pointer ${
                                                     isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/10' : 'text-white/40 hover:text-white hover:bg-white/10'
                                                 }`}
-                                                title="Customize Toolbar (All icons hidden • Click to manage)"
+                                                title={t('chrome.customizeToolbarTooltip', null, 'Customize Toolbar (All icons hidden • Click to manage)')}
                                             >
                                                 <SlidersHorizontal size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
                                             </button>

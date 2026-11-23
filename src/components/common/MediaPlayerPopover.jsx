@@ -4,6 +4,7 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 function formatTime(seconds) {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -13,6 +14,7 @@ function formatTime(seconds) {
 }
 
 export default function MediaPlayerPopover() {
+    const { t } = useTranslation();
     const activePopover = useUIStore(state => state.activePopover);
     const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
     const closePopover = useUIStore(state => state.closePopover);
@@ -22,20 +24,34 @@ export default function MediaPlayerPopover() {
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
-    const activeTab = useTabStore(state => {
-        const space = state.activeSpace;
-        const tabs = space === 'personal' ? state.privateTabs : space === 'work' ? state.workTabs : state.ghostTabs;
-        return tabs.find(t => t.id === mediaState.tabId) || tabs.find(t => t.active);
+    const { activeTab, activeTabSpace } = useTabStore(state => {
+        const spaceEntries = [
+            ['personal', state.privateTabs || []],
+            ['work', state.workTabs || []],
+            ['ghost', state.ghostTabs || []],
+            ['tor', state.torTabs || []],
+            ...Object.entries(state.customSpaceTabs || {})
+        ];
+        if (mediaState.tabId) {
+            for (const [sp, list] of spaceEntries) {
+                const match = (list || []).find(t => t && t.id === mediaState.tabId);
+                if (match) return { activeTab: match, activeTabSpace: sp };
+            }
+        }
+        const currentList = state.getTabsForSpace ? state.getTabsForSpace(state.activeSpace) : (state.privateTabs || []);
+        const currentActive = (currentList || []).find(t => t && t.active) || null;
+        return { activeTab: currentActive, activeTabSpace: state.activeSpace };
     });
 
+    const targetTabId = mediaState.tabId || activeTab?.id || null;
     const isMuted = activeTab ? !!activeTab.isMuted : false;
     const anchor = usePopoverAnchor('#tour-media-trigger', 320, { defaultRight: 64 });
 
     const handleMuteToggle = () => {
         if (activeTab) {
-            useTabStore.getState().handleToggleMute(activeTab.id);
+            useTabStore.getState().handleToggleMute(activeTab.id, activeTabSpace);
         }
-        sendMediaCommand('mute-toggle');
+        sendMediaCommand('mute-toggle', { targetTabId });
     };
 
     if (activePopover !== 'media' && !isPopoverClosing) return null;
@@ -50,7 +66,7 @@ export default function MediaPlayerPopover() {
         const clickX = e.clientX - rect.left;
         const ratio = Math.min(1, Math.max(0, clickX / rect.width));
         const seekTime = ratio * mediaState.duration;
-        sendMediaCommand({ action: 'seek', time: seekTime });
+        sendMediaCommand({ action: 'seek', time: seekTime }, { targetTabId });
     };
 
     return (
@@ -68,7 +84,7 @@ export default function MediaPlayerPopover() {
             }`}>
                 <div className="flex items-center gap-2">
                     <Music size={14} className="text-accent" />
-                    <span className={`text-xs font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>Media Control</span>
+                    <span className={`text-xs font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>{t('pop.media.title', null, 'Media Control')}</span>
                 </div>
                 <button onClick={closePopover} className={`p-1 rounded-md transition cursor-pointer ${
                     isBright ? 'hover:bg-black/5 text-zinc-500 hover:text-zinc-800' : 'hover:bg-white/10 text-white/40 hover:text-white'
@@ -102,10 +118,10 @@ export default function MediaPlayerPopover() {
                 {/* Track Metadata */}
                 <div className="flex-1 overflow-hidden flex flex-col justify-center min-w-0">
                     <h3 className={`text-xs font-bold truncate leading-snug ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                        {mediaState.title || 'No Media Playing'}
+                        {mediaState.title || t('pop.media.noMedia', null, 'No Media Playing')}
                     </h3>
                     <p className={`text-[11px] truncate font-medium mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                        {mediaState.artist || 'Play audio or video in any tab'}
+                        {mediaState.artist || t('pop.media.noMediaHint', null, 'Play audio or video in any tab')}
                     </p>
                 </div>
             </div>
@@ -134,25 +150,25 @@ export default function MediaPlayerPopover() {
             {/* Playback Controls */}
             <div className="flex items-center justify-center gap-6 px-4 pb-4 pt-1">
                 <button 
-                    onClick={() => sendMediaCommand('prev-track')}
+                    onClick={() => sendMediaCommand('prev-track', { targetTabId })}
                     className={`p-2 transition-transform active:scale-95 cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white'}`}
-                    title="Previous / Skip 10s"
+                    title={t('pop.media.prevTitle', null, 'Previous / Skip 10s')}
                 >
                     <SkipBack size={16} fill="currentColor" />
                 </button>
 
                 <button 
-                    onClick={() => sendMediaCommand('toggle-play')}
+                    onClick={() => sendMediaCommand('toggle-play', { targetTabId })}
                     className="w-10 h-10 rounded-full bg-accent hover:brightness-105 text-zinc-950 font-bold flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-lg shadow-accent/20 cursor-pointer"
-                    title={mediaState.isPlaying ? 'Pause' : 'Play'}
+                    title={mediaState.isPlaying ? t('pop.media.pause', null, 'Pause') : t('pop.media.play', null, 'Play')}
                 >
                     {mediaState.isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
                 </button>
 
                 <button 
-                    onClick={() => sendMediaCommand('next-track')}
+                    onClick={() => sendMediaCommand('next-track', { targetTabId })}
                     className={`p-2 transition-transform active:scale-95 cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white'}`}
-                    title="Next / Skip 10s"
+                    title={t('pop.media.nextTitle', null, 'Next / Skip 10s')}
                 >
                     <SkipForward size={16} fill="currentColor" />
                 </button>
@@ -162,15 +178,15 @@ export default function MediaPlayerPopover() {
                     className={`p-2 transition-transform active:scale-95 cursor-pointer ml-1 ${
                         isMuted ? 'text-red-500 hover:text-red-400' : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white')
                     }`}
-                    title={isMuted ? "Unmute Tab Audio" : "Mute Tab Audio"}
+                    title={isMuted ? t('pop.media.unmuteAudio', null, 'Unmute Tab Audio') : t('pop.media.muteAudio', null, 'Mute Tab Audio')}
                 >
                     {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
                 </button>
 
                 <button 
-                    onClick={() => sendMediaCommand('toggle-pip')}
+                    onClick={() => sendMediaCommand('toggle-pip', { targetTabId })}
                     className={`p-2 transition-transform active:scale-95 cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}
-                    title="Toggle Picture-in-Picture (PiP)"
+                    title={t('pop.media.togglePip', null, 'Toggle Picture-in-Picture (PiP)')}
                 >
                     <PictureInPicture2 size={15} />
                 </button>

@@ -4,19 +4,22 @@ import { ChevronDown, Check } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassMenuClasses } from './ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function CustomSelect({
     value,
     onChange,
     options = [],
     isBright: propIsBright,
-    placeholder = 'Select option...',
+    placeholder,
     className = '',
     dropdownClassName = '',
     size = 'md',
     disabled = false,
     ariaLabel
 }) {
+    const { t } = useTranslation();
+    const resolvedPlaceholder = placeholder ?? t('tools.common.selectOption', null, 'Select option...');
     const storeTheme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = propIsBright !== undefined
@@ -175,7 +178,7 @@ export default function CustomSelect({
                         <selectedOption.icon size={size === 'sm' ? 12 : 14} className="shrink-0 text-accent" />
                     )}
                     <span className="truncate">
-                        {selectedOption ? selectedOption.label : placeholder}
+                        {selectedOption ? selectedOption.label : resolvedPlaceholder}
                     </span>
                     {selectedOption?.badge && (
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider shrink-0 ${

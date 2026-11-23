@@ -6,8 +6,10 @@ import {
 } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { useTranslation } from '../../i18n/index';
 
 export default function ResourceManagerModal() {
+    const { t, intlLocale } = useTranslation();
     const { activeModal, isModalClosing, closeModal, showToast, theme } = useUIStore();
     const { 
         privateTabs, workTabs, ghostTabs, torTabs, activeSpace,
@@ -107,24 +109,34 @@ export default function ResourceManagerModal() {
     }, [metrics]);
 
     // Process type descriptive labels
-    const getProcessLabel = (type, isMain) => {
-        if (isMain) return 'QBrowse Main Process';
+    const getProcessLabel = useCallback((type, isMain) => {
+        if (isMain) return t('tools.resources.procMain', null, 'QBrowse Main Process');
         switch (type?.toLowerCase()) {
             case 'gpu':
-                return 'GPU Process';
+                return t('tools.resources.procGpu', null, 'GPU Process');
             case 'tab':
             case 'renderer':
-                return 'Webview Renderer';
+                return t('tools.resources.procRenderer', null, 'Webview Renderer');
             case 'utility':
-                return 'Utility Service (Audio/Storage)';
+                return t('tools.resources.procUtility', null, 'Utility Service (Audio/Storage)');
             case 'zygote':
-                return 'Sandbox Preloader';
+                return t('tools.resources.procZygote', null, 'Sandbox Preloader');
             case 'pepperplugin':
-                return 'Plugin Host';
+                return t('tools.resources.procPepper', null, 'Plugin Host');
             default:
-                return `${type || 'Child'} Process`;
+                return t('tools.resources.procChild', { type: type || t('tools.resources.procChildDefault', null, 'Child') }, `${type || 'Child'} Process`);
         }
-    };
+    }, [t]);
+
+    const getSpaceLabel = useCallback((space) => {
+        switch (space) {
+            case 'personal': return t('nav.personal', null, 'Personal');
+            case 'work': return t('nav.work', null, 'Work');
+            case 'ghost': return t('tools.common.incognito', null, 'Incognito');
+            case 'tor': return 'Tor';
+            default: return space || '';
+        }
+    }, [t]);
 
     // Combine Tab entities and Process entities for unified listing
     const combinedItems = useMemo(() => {
@@ -139,9 +151,10 @@ export default function ResourceManagerModal() {
                 id: `tab-${tab.id}`,
                 tabId: tab.id,
                 isTab: true,
-                title: tab.title || tab.url || 'Blank Tab',
-                subtitle: isBlank ? 'Zen New Tab Dashboard' : (tab.url || 'about:blank'),
+                title: tab.title || tab.url || t('tools.resources.blankTab', null, 'Blank Tab'),
+                subtitle: isBlank ? t('tools.resources.newTabDash', null, 'Zen New Tab Dashboard') : (tab.url || 'about:blank'),
                 space: tab.space,
+                spaceLabel: getSpaceLabel(tab.space),
                 active: isTabActive,
                 suspended: !!tab.suspended || isBlank,
                 cpu: isBlank ? 0 : (isTabActive ? 0.3 : (tab.suspended ? 0 : 0.05)),
@@ -157,7 +170,7 @@ export default function ResourceManagerModal() {
                 pid: proc.pid,
                 isProcess: true,
                 title: getProcessLabel(proc.type, proc.isMain),
-                subtitle: `PID ${proc.pid} · ${proc.type}`,
+                subtitle: t('tools.resources.pidSubtitle', { pid: proc.pid, type: proc.type }, `PID ${proc.pid} · ${proc.type}`),
                 type: proc.type,
                 isMain: !!proc.isMain,
                 cpu: proc.cpu || 0,
@@ -168,7 +181,7 @@ export default function ResourceManagerModal() {
         });
 
         return items;
-    }, [allTabs, metrics, activeSpace]);
+    }, [allTabs, metrics, activeSpace, getProcessLabel, getSpaceLabel, t]);
 
     // Filter items
     const filteredItems = useMemo(() => {
@@ -182,7 +195,7 @@ export default function ResourceManagerModal() {
             const matchTitle = (item.title || '').toLowerCase().includes(q);
             const matchSub = (item.subtitle || '').toLowerCase().includes(q);
             const matchPid = item.pid ? String(item.pid).includes(q) : false;
-            const matchSpace = item.space ? item.space.toLowerCase().includes(q) : false;
+            const matchSpace = item.space ? (item.space.toLowerCase().includes(q) || (item.spaceLabel || '').toLowerCase().includes(q)) : false;
             return matchTitle || matchSub || matchPid || matchSpace;
         });
     }, [combinedItems, activeFilter, searchQuery]);
@@ -217,11 +230,11 @@ export default function ResourceManagerModal() {
 
     // Filter definitions
     const filterOptions = useMemo(() => [
-        { id: 'all', label: 'All', count: combinedItems.length },
-        { id: 'tabs', label: 'Tabs', count: allTabs.length },
-        { id: 'processes', label: 'Processes', count: metrics.length },
-        { id: 'sleeping', label: 'Sleeping', count: suspendedTabCount }
-    ], [combinedItems.length, allTabs.length, metrics.length, suspendedTabCount]);
+        { id: 'all', label: t('tools.resources.filters.all', null, 'All'), count: combinedItems.length },
+        { id: 'tabs', label: t('tools.resources.filters.tabs', null, 'Tabs'), count: allTabs.length },
+        { id: 'processes', label: t('tools.resources.filters.processes', null, 'Processes'), count: metrics.length },
+        { id: 'sleeping', label: t('tools.resources.filters.sleeping', null, 'Sleeping'), count: suspendedTabCount }
+    ], [combinedItems.length, allTabs.length, metrics.length, suspendedTabCount, t]);
 
     // Measure Sliding Pill Geometry for Spaces-Style Filter Switcher
     const updateFilterPillGeometry = useCallback(() => {
@@ -291,7 +304,11 @@ export default function ResourceManagerModal() {
         if (torTabs && setTorTabs) sleepTabs(torTabs, setTorTabs);
 
         const freedEst = count * 120;
-        showToast(`Hibernated ${count} inactive tab${count === 1 ? '' : 's'} (~${freedEst} MB RAM freed)`);
+        showToast(
+            count === 1
+                ? t('tools.resources.toastHibernatedSingular', { count, mb: freedEst }, `Hibernated ${count} inactive tab (~${freedEst} MB RAM freed)`)
+                : t('tools.resources.toastHibernatedPlural', { count, mb: freedEst }, `Hibernated ${count} inactive tabs (~${freedEst} MB RAM freed)`)
+        );
         fetchMetrics();
     };
 
@@ -314,7 +331,11 @@ export default function ResourceManagerModal() {
         wakeAll(ghostTabs, setGhostTabs);
         if (torTabs && setTorTabs) wakeAll(torTabs, setTorTabs);
 
-        showToast(`Restored ${count} sleeping tab${count === 1 ? '' : 's'}`);
+        showToast(
+            count === 1
+                ? t('tools.resources.toastWokeSingular', { count }, `Restored ${count} sleeping tab`)
+                : t('tools.resources.toastWokePlural', { count }, `Restored ${count} sleeping tabs`)
+        );
         fetchMetrics();
     };
 
@@ -322,7 +343,7 @@ export default function ResourceManagerModal() {
     const handlePurgeCache = async () => {
         if (window.electronAPI?.clearAllData) {
             await window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false });
-            showToast('Browser cache purged & memory trimmed');
+            showToast(t('tools.resources.toastCachePurged', null, 'Browser cache purged & memory trimmed'));
             fetchMetrics();
         }
     };
@@ -331,7 +352,7 @@ export default function ResourceManagerModal() {
     const handleKillProcess = async (pid) => {
         if (!pid) return;
         if (!window.electronAPI?.killProcess) {
-            showToast('Cannot terminate process: API unavailable');
+            showToast(t('tools.resources.toastKillUnavailable', null, 'Cannot terminate process: API unavailable'));
             return;
         }
 
@@ -341,13 +362,13 @@ export default function ResourceManagerModal() {
             try {
                 const ok = await window.electronAPI.killProcess(pid);
                 if (ok) {
-                    showToast(`Terminated process ${pid}`);
+                    showToast(t('tools.resources.toastKilled', { pid }, `Terminated process ${pid}`));
                     setMetrics(prev => prev.filter(p => p.pid !== pid));
                 } else {
-                    showToast(`Unable to terminate process ${pid}`);
+                    showToast(t('tools.resources.toastKillFailed', { pid }, `Unable to terminate process ${pid}`));
                 }
             } catch (e) {
-                showToast(`Error killing process ${pid}`);
+                showToast(t('tools.resources.toastKillError', { pid }, `Error killing process ${pid}`));
             } finally {
                 setTerminatingPids(prev => {
                     const next = new Set(prev);
@@ -398,7 +419,7 @@ export default function ResourceManagerModal() {
                             }`}>
                                 <Activity size={15} />
                             </div>
-                            <h2 className="text-sm font-bold tracking-tight">Task Manager</h2>
+                            <h2 className="text-sm font-bold tracking-tight">{t('tools.resources.title', null, 'Task Manager')}</h2>
                         </div>
 
                         {/* Telemetry Pills (Clean, rounded-full, high-density stats) */}
@@ -406,13 +427,13 @@ export default function ResourceManagerModal() {
                             <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono border ${
                                 isBright ? 'bg-white border-zinc-200 text-zinc-600 shadow-xs' : 'bg-white/[0.03] border-white/[0.06] text-zinc-300'
                             }`}>
-                                <span className="opacity-50">CPU</span>
+                                <span className="opacity-50">{t('tools.resources.cpu', null, 'CPU')}</span>
                                 <span className="font-semibold">{totalCpuPercent}%</span>
                             </div>
                             <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono border ${
                                 isBright ? 'bg-white border-zinc-200 text-zinc-600 shadow-xs' : 'bg-white/[0.03] border-white/[0.06] text-zinc-300'
                             }`}>
-                                <span className="opacity-50">RAM</span>
+                                <span className="opacity-50">{t('tools.resources.ram', null, 'RAM')}</span>
                                 <span className="font-semibold">{totalAppMemMB} MB</span>
                             </div>
                             {suspendedTabCount > 0 && (
@@ -420,7 +441,7 @@ export default function ResourceManagerModal() {
                                     isBright ? 'bg-zinc-100 border-zinc-200 text-zinc-600' : 'bg-white/[0.03] border-white/[0.06] text-zinc-400'
                                 }`}>
                                     <Moon size={11} className="opacity-60" />
-                                    <span>{suspendedTabCount} asleep</span>
+                                    <span>{t('tools.resources.asleepCount', { count: suspendedTabCount }, `${suspendedTabCount} asleep`)}</span>
                                 </div>
                             )}
                         </div>
@@ -435,10 +456,10 @@ export default function ResourceManagerModal() {
                                     ? 'bg-white hover:bg-zinc-100 border-zinc-200 text-zinc-700 shadow-xs' 
                                     : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-300'
                             }`}
-                            title="Sleep inactive background tabs to free memory"
+                            title={t('tools.resources.sleepInactiveTitle', null, 'Sleep inactive background tabs to free memory')}
                         >
                             <Moon size={12} />
-                            <span className="hidden md:inline">Sleep Inactive</span>
+                            <span className="hidden md:inline">{t('tools.resources.sleepInactive', null, 'Sleep Inactive')}</span>
                         </button>
 
                         {suspendedTabCount > 0 && (
@@ -449,10 +470,10 @@ export default function ResourceManagerModal() {
                                         ? 'bg-white hover:bg-zinc-100 border-zinc-200 text-zinc-700 shadow-xs' 
                                         : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-300'
                                 }`}
-                                title="Wake all hibernated tabs"
+                                title={t('tools.resources.wakeAllTitle', null, 'Wake all hibernated tabs')}
                             >
                                 <Zap size={12} />
-                                <span className="hidden md:inline">Wake All</span>
+                                <span className="hidden md:inline">{t('tools.resources.wakeAll', null, 'Wake All')}</span>
                             </button>
                         )}
 
@@ -463,7 +484,7 @@ export default function ResourceManagerModal() {
                                     ? 'bg-white hover:bg-zinc-100 border-zinc-200 text-zinc-600 shadow-xs' 
                                     : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-400 hover:text-white'
                             }`}
-                            title="Trim browser memory cache"
+                            title={t('tools.resources.purgeCacheTitle', null, 'Trim browser memory cache')}
                         >
                             <Trash2 size={13} />
                         </button>
@@ -478,10 +499,10 @@ export default function ResourceManagerModal() {
                                     ? (autoRefresh ? 'bg-zinc-100 border-zinc-300 text-zinc-800' : 'bg-transparent border-transparent text-zinc-400 hover:text-zinc-600')
                                     : (autoRefresh ? 'bg-white/[0.06] border-white/15 text-zinc-200' : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300')
                             }`}
-                            title={autoRefresh ? "Auto-refresh active (every 2s)" : "Auto-refresh paused"}
+                            title={autoRefresh ? t('tools.resources.autoRefreshActiveTitle', null, 'Auto-refresh active (every 2s)') : t('tools.resources.autoRefreshPausedTitle', null, 'Auto-refresh paused')}
                         >
                             <span className={`w-1.5 h-1.5 rounded-full ${autoRefresh ? 'bg-emerald-500' : (isBright ? 'bg-zinc-300' : 'bg-zinc-600')}`} />
-                            <span className="hidden sm:inline">{autoRefresh ? '2s' : 'Paused'}</span>
+                            <span className="hidden sm:inline">{autoRefresh ? t('tools.resources.autoRefresh2s', null, '2s') : t('tools.resources.paused', null, 'Paused')}</span>
                         </button>
 
                         <button 
@@ -490,7 +511,7 @@ export default function ResourceManagerModal() {
                             className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all duration-200 disabled:opacity-40 cursor-pointer active:scale-95 ${
                                 isBright ? 'bg-white hover:bg-zinc-100 border-zinc-200 text-zinc-600 shadow-xs' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-400 hover:text-white'
                             }`}
-                            title="Refresh process metrics"
+                            title={t('tools.resources.refreshTitle', null, 'Refresh process metrics')}
                         >
                             <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
                         </button>
@@ -500,7 +521,7 @@ export default function ResourceManagerModal() {
                             className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-95 ${
                                 isBright ? 'bg-white hover:bg-zinc-100 border-zinc-200 text-zinc-600 shadow-xs' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-400 hover:text-white'
                             }`}
-                            title="Close (ESC)"
+                            title={t('tools.resources.closeTitle', null, 'Close (ESC)')}
                         >
                             <X size={14} />
                         </button>
@@ -582,7 +603,7 @@ export default function ResourceManagerModal() {
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Filter by name, PID..."
+                            placeholder={t('tools.resources.searchPlaceholder', null, 'Filter by name, PID...')}
                             className={`border rounded-full h-8 pl-9 pr-7 text-xs transition-all w-60 font-mono outline-none ${
                                 isBright 
                                     ? 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400 focus:bg-white focus:border-zinc-400 shadow-xs' 
@@ -608,32 +629,32 @@ export default function ResourceManagerModal() {
                         onClick={() => handleSort('name')}
                         className="col-span-5 flex items-center gap-1 cursor-pointer hover:text-accent transition"
                     >
-                        <span>Task / Process</span>
+                        <span>{t('tools.resources.colTask', null, 'Task / Process')}</span>
                         {sortBy === 'name' && (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                     </div>
                     <div 
                         onClick={() => handleSort('type')}
                         className="col-span-2 flex items-center gap-1 cursor-pointer hover:text-accent transition"
                     >
-                        <span>Space / Type</span>
+                        <span>{t('tools.resources.colSpace', null, 'Space / Type')}</span>
                         {sortBy === 'type' && (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                     </div>
-                    <div className="col-span-1 text-center">Status</div>
+                    <div className="col-span-1 text-center">{t('tools.resources.colStatus', null, 'Status')}</div>
                     <div 
                         onClick={() => handleSort('cpu')}
                         className="col-span-1 flex items-center justify-end gap-1 cursor-pointer hover:text-accent transition"
                     >
-                        <span>CPU</span>
+                        <span>{t('tools.resources.colCpu', null, 'CPU')}</span>
                         {sortBy === 'cpu' && (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                     </div>
                     <div 
                         onClick={() => handleSort('memory')}
                         className="col-span-2 flex items-center justify-end gap-1 cursor-pointer hover:text-accent transition"
                     >
-                        <span>Memory</span>
+                        <span>{t('tools.resources.colMemory', null, 'Memory')}</span>
                         {sortBy === 'memory' && (sortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                     </div>
-                    <div className="col-span-1 text-right">Action</div>
+                    <div className="col-span-1 text-right">{t('tools.resources.colAction', null, 'Action')}</div>
                 </div>
 
                 {/* Task List Table Body */}
@@ -641,7 +662,7 @@ export default function ResourceManagerModal() {
                     {sortedItems.length === 0 ? (
                         <div className={`h-64 flex flex-col items-center justify-center gap-2 ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
                             <Activity size={24} className="opacity-30" />
-                            <p className="text-xs">No tasks matching "{searchQuery}"</p>
+                            <p className="text-xs">{t('tools.resources.emptyMatch', { query: searchQuery }, `No tasks matching "${searchQuery}"`)}</p>
                         </div>
                     ) : (
                         sortedItems.map((item) => {
@@ -688,7 +709,7 @@ export default function ResourceManagerModal() {
                                                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-medium border ${
                                                         isBright ? 'bg-zinc-100 text-zinc-700 border-zinc-300' : 'bg-white/10 text-zinc-300 border-white/15'
                                                     }`}>
-                                                        Active
+                                                        {t('tools.resources.active', null, 'Active')}
                                                     </span>
                                                 )}
                                             </div>
@@ -703,7 +724,7 @@ export default function ResourceManagerModal() {
                                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono capitalize border ${
                                             isBright ? 'bg-zinc-100 border-zinc-200 text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-zinc-400'
                                         }`}>
-                                            {item.isTab ? `${item.space} tab` : (item.isMain ? 'Main Core' : item.type)}
+                                            {item.isTab ? t('tools.resources.spaceTab', { space: item.spaceLabel }, `${item.space} tab`) : (item.isMain ? t('tools.resources.mainCore', null, 'Main Core') : item.type)}
                                         </span>
                                     </div>
 
@@ -714,13 +735,13 @@ export default function ResourceManagerModal() {
                                                 <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-mono flex items-center gap-1 ${
                                                     isBright ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-purple-500/10 border-purple-500/20 text-purple-300'
                                                 }`}>
-                                                    <Moon size={9} /> Sleep
+                                                    <Moon size={9} /> {t('tools.resources.sleep', null, 'Sleep')}
                                                 </span>
                                             ) : (
                                                 <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-mono flex items-center gap-1.5 ${
                                                     isBright ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                                                 }`}>
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Live
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {t('tools.resources.live', null, 'Live')}
                                                 </span>
                                             )
                                         ) : (
@@ -743,7 +764,7 @@ export default function ResourceManagerModal() {
                                     <div className="col-span-2 flex items-center justify-end gap-1.5 font-mono text-xs tabular-nums">
                                         {item.memoryMB === 0 ? (
                                             <span className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                                0 MB <span className="opacity-70">(Saved)</span>
+                                                0 MB <span className="opacity-70">{t('tools.resources.memSaved', null, '(Saved)')}</span>
                                             </span>
                                         ) : (
                                             <div className="flex items-center gap-2">
@@ -764,7 +785,7 @@ export default function ResourceManagerModal() {
                                                         className={`w-6 h-6 rounded-full flex items-center justify-center transition border cursor-pointer active:scale-95 ${
                                                             isBright ? 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200 text-zinc-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-300'
                                                         }`}
-                                                        title="Wake tab"
+                                                        title={t('tools.resources.wakeTabTitle', null, 'Wake tab')}
                                                     >
                                                         <Zap size={10} />
                                                     </button>
@@ -775,7 +796,7 @@ export default function ResourceManagerModal() {
                                                         className={`w-6 h-6 rounded-full flex items-center justify-center transition border cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed active:scale-95 ${
                                                             isBright ? 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200 text-zinc-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-300'
                                                         }`}
-                                                        title={item.active ? 'Active tab cannot be slept' : 'Put tab to sleep'}
+                                                        title={item.active ? t('tools.resources.activeTabCannotSleep', null, 'Active tab cannot be slept') : t('tools.resources.sleepTabTitle', null, 'Put tab to sleep')}
                                                     >
                                                         <Moon size={10} />
                                                     </button>
@@ -786,7 +807,7 @@ export default function ResourceManagerModal() {
                                                     className={`w-6 h-6 rounded-full flex items-center justify-center transition border cursor-pointer active:scale-95 ${
                                                         isBright ? 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200 text-zinc-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-300'
                                                     }`}
-                                                    title="Switch to tab"
+                                                    title={t('tools.resources.switchTabTitle', null, 'Switch to tab')}
                                                 >
                                                     <ArrowRight size={10} />
                                                 </button>
@@ -794,7 +815,7 @@ export default function ResourceManagerModal() {
                                                 <button
                                                     onClick={() => closeTabById(item.tabId)}
                                                     className="w-6 h-6 rounded-full flex items-center justify-center transition border cursor-pointer text-red-500 hover:bg-red-500/15 border-transparent hover:border-red-500/30 active:scale-95"
-                                                    title="Close tab"
+                                                    title={t('tools.resources.closeTabTitle', null, 'Close tab')}
                                                 >
                                                     <X size={10} />
                                                 </button>
@@ -802,13 +823,13 @@ export default function ResourceManagerModal() {
                                         ) : (
                                             <div className="flex items-center gap-1">
                                                 {item.isMain ? (
-                                                    <span className="text-[10px] text-zinc-500 font-mono">Core</span>
+                                                    <span className="text-[10px] text-zinc-500 font-mono">{t('tools.resources.core', null, 'Core')}</span>
                                                 ) : (
                                                     <button
                                                         onClick={() => handleKillProcess(item.pid)}
                                                         disabled={isTerminating}
                                                         className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-full flex items-center justify-center transition border cursor-pointer text-red-500 hover:bg-red-500/15 border-transparent hover:border-red-500/30 active:scale-95"
-                                                        title={`End process PID ${item.pid}`}
+                                                        title={t('tools.resources.endProcessTitle', { pid: item.pid }, `End process PID ${item.pid}`)}
                                                     >
                                                         <Power size={10} className={isTerminating ? 'animate-spin' : ''} />
                                                     </button>
@@ -829,18 +850,18 @@ export default function ResourceManagerModal() {
                     <div className="flex items-center gap-2">
                         <span className="flex items-center gap-1">
                             <Clock size={11} className="opacity-40" />
-                            {new Date(lastUpdated).toLocaleTimeString()}
+                            {new Date(lastUpdated).toLocaleTimeString(intlLocale || undefined)}
                         </span>
                         <span>•</span>
-                        <span>{sortedItems.length} of {combinedItems.length} items</span>
+                        <span>{t('tools.resources.itemsOf', { shown: sortedItems.length, total: combinedItems.length }, `${sortedItems.length} of ${combinedItems.length} items`)}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5 opacity-60">
-                        <span>Press</span>
+                        <span>{t('tools.resources.pressEscPrefix', null, 'Press')}</span>
                         <kbd className={`px-2 py-0.5 rounded-full text-[10px] font-mono border ${
                             isBright ? 'bg-white border-zinc-200 text-zinc-600' : 'bg-white/[0.06] border-white/10 text-zinc-400'
                         }`}>ESC</kbd>
-                        <span>to close</span>
+                        <span>{t('tools.resources.pressEscSuffix', null, 'to close')}</span>
                     </div>
                 </div>
             </div>

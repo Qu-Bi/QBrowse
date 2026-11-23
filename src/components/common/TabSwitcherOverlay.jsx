@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Globe, Volume2, Ghost, Layers, ArrowRight } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { useTranslation } from '../../i18n/index';
 
 export default function TabSwitcherOverlay() {
+    const { t } = useTranslation();
     const showSwitcher = useUIStore(state => state.showSwitcher);
     const showSwitcherUI = useUIStore(state => state.showSwitcherUI);
     const switcherIndex = useUIStore(state => state.switcherIndex);
@@ -86,7 +88,13 @@ export default function TabSwitcherOverlay() {
     const CARD_GAP = 32;
     const TOTAL_STEP = CARD_WIDTH + CARD_GAP;
 
-    const spaceLabel = activeSpace === 'ghost' ? 'Incognito / Ghost Space' : (activeSpace === 'work' ? 'Work Space' : 'Personal Space');
+    const spaceLabel = activeSpace === 'ghost'
+        ? t('chrome.switcherGhostSpace', null, 'Incognito / Ghost Space')
+        : activeSpace === 'tor'
+            ? t('chrome.torNetwork', null, 'Tor Network')
+            : activeSpace === 'work'
+                ? t('chrome.workSpace', null, 'Work Space')
+                : t('chrome.personalSpace', null, 'Personal Space');
 
     return (
         <div 
@@ -120,7 +128,9 @@ export default function TabSwitcherOverlay() {
                             ? 'bg-black/[0.06] text-zinc-700' 
                             : 'bg-white/[0.08] text-white/70'
                     }`}>
-                        {(settings?.tabSwitcherOrder || 'mru') === 'sidebar' ? 'Sidebar Order' : 'Recently Used'}
+                        {(settings?.tabSwitcherOrder || 'mru') === 'sidebar'
+                            ? t('chrome.switcherOrderSidebar', null, 'Sidebar Order')
+                            : t('chrome.switcherOrderMru', null, 'Recently Used')}
                     </span>
                 </div>
             </div>
@@ -182,7 +192,7 @@ export default function TabSwitcherOverlay() {
                                             <Globe size={14} className={isBright ? "text-zinc-400 flex-shrink-0" : "text-white/40 flex-shrink-0"} />
                                         )}
                                         <span className={`${isBright ? 'text-zinc-900 font-semibold' : 'text-white font-medium'} text-xs truncate`}>
-                                            {tab.title || (tab.url ? tab.url.replace(/^https?:\/\//i, '') : 'New Tab')}
+                                            {tab.title || (tab.url ? tab.url.replace(/^https?:\/\//i, '') : t('nav.newTab', null, 'New Tab'))}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -191,7 +201,7 @@ export default function TabSwitcherOverlay() {
                                         )}
                                         {isSelected && (
                                             <span className="text-[10px] uppercase font-bold tracking-wider text-accent bg-accent/15 border border-accent/30 px-2 py-0.5 rounded-full">
-                                                Active
+                                                {t('common.active', null, 'Active')}
                                             </span>
                                         )}
                                     </div>
@@ -220,7 +230,7 @@ export default function TabSwitcherOverlay() {
                                                 )}
                                             </div>
                                             <span className={`${isBright ? 'text-zinc-900 font-semibold' : 'text-white/80 font-medium'} text-xs max-w-[280px] truncate`}>
-                                                {tab.title || 'Blank Page'}
+                                                {tab.title || t('chrome.blankPage', null, 'Blank Page')}
                                             </span>
                                             <span className={`${isBright ? 'text-zinc-500' : 'text-white/30'} font-mono text-[11px] mt-1 max-w-[280px] truncate`}>
                                                 {tab.url || 'about:blank'}
@@ -244,13 +254,13 @@ export default function TabSwitcherOverlay() {
 
             {/* Bottom Keyboard Shortcuts Hint */}
             <div className={`absolute bottom-10 flex items-center gap-3 px-5 py-2 rounded-full ${isBright ? 'bg-white/85 border border-white/70 backdrop-blur-xl text-zinc-600 shadow-xl' : 'bg-white/[0.06] border border-white/10 backdrop-blur-xl text-white/50 shadow-lg'} text-xs font-medium tracking-wide pointer-events-none animate-fade-in`}>
-                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>⇥</kbd> Cycle</span>
+                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>⇥</kbd> {t('chrome.switcherCycle', null, 'Cycle')}</span>
                 <span className={isBright ? "text-zinc-400" : "text-white/20"}>•</span>
-                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>⇧⇥</kbd> Back</span>
+                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>⇧⇥</kbd> {t('common.back', null, 'Back')}</span>
                 <span className={isBright ? "text-zinc-400" : "text-white/20"}>•</span>
-                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>Release</kbd> Switch</span>
+                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>{t('chrome.switcherReleaseKey', null, 'Release')}</kbd> {t('chrome.switcherSwitch', null, 'Switch')}</span>
                 <span className={isBright ? "text-zinc-400" : "text-white/20"}>•</span>
-                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>Esc</kbd> Cancel</span>
+                <span className="flex items-center gap-1"><kbd className={`${isBright ? 'bg-black/10 text-zinc-800' : 'bg-white/10 text-white/80'} px-1.5 py-0.5 rounded text-[10px] font-mono`}>Esc</kbd> {t('common.cancel', null, 'Cancel')}</span>
             </div>
         </div>
     );

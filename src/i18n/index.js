@@ -16,9 +16,49 @@ import it from './locales/it.js';
 import uk from './locales/uk.js';
 import ko from './locales/ko.js';
 
-export const DICTIONARIES = {
+import chromeDomain from './domains/chrome.js';
+import popoversDomain from './domains/popovers.js';
+import toolsDomain from './domains/tools.js';
+import settingsDomain from './domains/settings.js';
+import storesDomain from './domains/stores.js';
+
+const BASE_LOCALES = {
     en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko
 };
+
+const LANG_CODES = Object.keys(BASE_LOCALES);
+
+export const DICTIONARIES = LANG_CODES.reduce((acc, code) => {
+    acc[code] = {
+        ...(BASE_LOCALES[code] || {}),
+        chrome: chromeDomain?.[code] || {},
+        pop: popoversDomain?.[code] || {},
+        tools: toolsDomain?.[code] || {},
+        cfg: settingsDomain?.[code] || {},
+        stores: storesDomain?.[code] || {}
+    };
+    return acc;
+}, {});
+
+export const INTL_LOCALE_MAP = {
+    en: 'en-US',
+    pl: 'pl-PL',
+    fr: 'fr-FR',
+    de: 'de-DE',
+    es: 'es-ES',
+    pt: 'pt-BR',
+    zh: 'zh-CN',
+    ja: 'ja-JP',
+    ru: 'ru-RU',
+    it: 'it-IT',
+    uk: 'uk-UA',
+    ko: 'ko-KR'
+};
+
+export function getIntlLocale(lang) {
+    const resolved = lang && INTL_LOCALE_MAP[lang] ? lang : resolveActiveLanguage(lang);
+    return INTL_LOCALE_MAP[resolved] || 'en-US';
+}
 
 export const SUPPORTED_LANGUAGES = [
     { id: 'en', name: 'English', englishName: 'English', flag: '🇬🇧', region: 'Universal / US & UK', greeting: 'Welcome to QBrowse!' },
@@ -67,38 +107,55 @@ function getNestedValue(obj, path) {
     return path.split('.').reduce((acc, part) => (acc && acc[part] !== undefined) ? acc[part] : undefined, obj);
 }
 
+function formatTranslatedValue(path, params, fallback, activeLang) {
+    let resolvedParams = params;
+    let resolvedFallback = fallback;
+    if (typeof resolvedParams === 'string' && resolvedFallback === undefined) {
+        resolvedFallback = resolvedParams;
+        resolvedParams = null;
+    }
+
+    let value = getNestedValue(DICTIONARIES[activeLang], path);
+    if ((value === undefined || value === '') && activeLang !== 'en') {
+        value = getNestedValue(DICTIONARIES.en, path);
+    }
+
+    if (value === undefined || value === '') {
+        return resolvedFallback || path;
+    }
+
+    if (typeof value !== 'string') {
+        return value;
+    }
+
+    if (resolvedParams && typeof resolvedParams === 'object') {
+        return Object.entries(resolvedParams).reduce((str, [k, v]) => {
+            return str.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+        }, value);
+    }
+
+    return value;
+}
+
 /**
  * Translates a given key with parameter interpolation and recursive English fallback.
  */
-export function t(path, params = {}, fallback = '') {
+export function t(path, params, fallback) {
     try {
         const state = useUIStore?.getState?.();
         const rawSetting = state?.settings?.appLanguage || 'auto';
         const activeLang = resolveActiveLanguage(rawSetting);
-
-        let value = getNestedValue(DICTIONARIES[activeLang], path);
-        if (value === undefined && activeLang !== 'en') {
-            value = getNestedValue(DICTIONARIES.en, path);
-        }
-
-        if (value === undefined) {
-            return fallback || path;
-        }
-
-        if (typeof value !== 'string') {
-            return value;
-        }
-
-        if (params && typeof params === 'object') {
-            return Object.entries(params).reduce((str, [k, v]) => {
-                return str.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
-            }, value);
-        }
-
-        return value;
+        return formatTranslatedValue(path, params, fallback, activeLang);
     } catch (_) {
+        if (typeof params === 'string' && fallback === undefined) {
+            return params || path;
+        }
         return fallback || path;
     }
+}
+
+if (typeof window !== 'undefined') {
+    window.__qbrowseT = t;
 }
 
 /**
@@ -136,22 +193,10 @@ export function useTranslation() {
     const rawSetting = useUIStore(state => state.settings?.appLanguage) || 'auto';
     const isAuto = rawSetting === 'auto';
     const activeLanguage = useMemo(() => resolveActiveLanguage(rawSetting), [rawSetting]);
+    const intlLocale = useMemo(() => getIntlLocale(activeLanguage), [activeLanguage]);
 
     const translate = useMemo(() => {
-        return (path, params, fallback) => {
-            let val = getNestedValue(DICTIONARIES[activeLanguage], path);
-            if (val === undefined && activeLanguage !== 'en') {
-                val = getNestedValue(DICTIONARIES.en, path);
-            }
-            if (val === undefined) return fallback || path;
-            if (typeof val !== 'string') return val;
-            if (params && typeof params === 'object') {
-                return Object.entries(params).reduce((str, [k, v]) => {
-                    return str.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
-                }, val);
-            }
-            return val;
-        };
+        return (path, params, fallback) => formatTranslatedValue(path, params, fallback, activeLanguage);
     }, [activeLanguage]);
 
     const setLanguage = (newCode) => {
@@ -165,6 +210,7 @@ export function useTranslation() {
         t: translate,
         currentLanguage: rawSetting,
         resolvedLanguage: activeLanguage,
+        intlLocale,
         isAuto,
         setLanguage,
         languages: SUPPORTED_LANGUAGES
@@ -177,6 +223,7 @@ export default {
     SUPPORTED_LANGUAGES,
     getSystemLanguage,
     resolveActiveLanguage,
+    getIntlLocale,
     triggerLanguageWarp
 };
 

@@ -9,6 +9,7 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 const COUNTRY_CODES = {
     'Germany': 'DE',
@@ -61,15 +62,22 @@ const getCountryCode = (country) => {
     return COUNTRY_CODES[country] || (country.length === 2 ? country.toUpperCase() : country.slice(0, 3).toUpperCase());
 };
 
-const securityLevels = [
-    { id: 'standard', label: 'Standard', desc: 'All browser features and media enabled.' },
-    { id: 'safer', label: 'Safer', desc: 'WebGL disabled; HTML5 media requires click-to-play on HTTP.' },
-    { id: 'safest', label: 'Safest', desc: 'JavaScript completely disabled for maximum privacy.' }
-];
+const getLocalizedCountry = (country, t) => {
+    if (!country) return '';
+    const code = COUNTRY_CODES[country];
+    return code ? t(`pop.tor.country_${code}`, null, country) : country;
+};
 
 export default function TorCircuitPopover({ isClosing }) {
+    const { t } = useTranslation();
     const closePopover = useUIStore(state => state.closePopover);
     const showToast = useUIStore(state => state.showToast);
+
+    const securityLevels = [
+        { id: 'standard', label: t('pop.tor.secStandard', null, 'Standard'), desc: t('pop.tor.secStandardDesc', null, 'All browser features, media, and scripts enabled normally.') },
+        { id: 'safer', label: t('pop.tor.secSafer', null, 'Safer'), desc: t('pop.tor.secSaferDesc', null, 'WebGL disabled; HTML5 audio and video require click-to-play on HTTP.') },
+        { id: 'safest', label: t('pop.tor.secSafest', null, 'Safest'), desc: t('pop.tor.secSafestDesc', null, 'JavaScript completely disabled for maximum cyber anonymity.') }
+    ];
 
     const {
         isTorEnabled, toggleTorEnabled,
@@ -103,14 +111,14 @@ export default function TorCircuitPopover({ isClosing }) {
         if (!ipToCopy) return;
         navigator.clipboard.writeText(ipToCopy);
         setCopiedIp(true);
-        showToast('Exit IP copied to clipboard');
+        showToast(t('pop.tor.exitIpCopied', null, 'Exit IP copied to clipboard'));
         setTimeout(() => setCopiedIp(false), 2000);
     };
 
     const securityDescriptions = {
-        standard: 'All browser features, media, and scripts enabled normally.',
-        safer: 'WebGL disabled; HTML5 audio and video require click-to-play on HTTP.',
-        safest: 'JavaScript completely disabled for maximum cyber anonymity.'
+        standard: t('pop.tor.secStandardDesc', null, 'All browser features, media, and scripts enabled normally.'),
+        safer: t('pop.tor.secSaferDesc', null, 'WebGL disabled; HTML5 audio and video require click-to-play on HTTP.'),
+        safest: t('pop.tor.secSafestDesc', null, 'JavaScript completely disabled for maximum cyber anonymity.')
     };
 
     const guardNode = circuitNodes[0] || { role: 'Guard (Entry)', name: 'GuardRelay-DE', country: 'Germany', ip: '185.220.101.42', latency: '48ms' };
@@ -158,43 +166,43 @@ export default function TorCircuitPopover({ isClosing }) {
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                            <h3 className={`text-xs font-bold tracking-wide ${isBright ? 'text-zinc-900' : 'text-white'}`}>Tor Network</h3>
+                            <h3 className={`text-xs font-bold tracking-wide ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.tor.title', null, 'Tor Network')}</h3>
                             {isConnected ? (
                                 <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border shadow-xs ${
                                     isBright ? 'text-emerald-700 bg-emerald-500/10 border-emerald-500/25' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25'
                                 }`}>
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    Active
+                                    {t('common.active', null, 'Active')}
                                 </span>
                             ) : isStarting ? (
                                 <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border shadow-xs ${
                                     isBright ? 'text-purple-700 bg-purple-500/10 border-purple-500/25' : 'text-purple-300 bg-purple-500/10 border-purple-500/25'
                                 }`}>
                                     <RotateCw size={10} className="animate-spin" />
-                                    Connecting
+                                    {t('pop.tor.connecting', null, 'Connecting')}
                                 </span>
                             ) : isDownloading ? (
                                 <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border shadow-xs ${
                                     isBright ? 'text-purple-700 bg-purple-500/10 border-purple-500/25' : 'text-purple-300 bg-purple-500/10 border-purple-500/25'
                                 }`}>
                                     <Download size={10} className="animate-bounce" />
-                                    Downloading
+                                    {t('pop.tor.downloading', null, 'Downloading')}
                                 </span>
                             ) : (
                                 <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
                                     isBright ? 'text-zinc-600 bg-black/[0.04] border-black/[0.08]' : 'text-white/50 bg-white/[0.05] border-white/[0.08]'
                                 }`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${isBright ? 'bg-zinc-400' : 'bg-white/40'}`} />
-                                    Offline
+                                    {t('pop.tor.offline', null, 'Offline')}
                                 </span>
                             )}
                         </div>
                         <p className={`text-[11px] truncate mt-0.5 font-sans ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                            {isConnected && '3-hop encrypted circuit established'}
-                            {isStarting && `Connecting to relays (${bootstrapProgress}%)`}
-                            {isDownloading && `Downloading Tor components (${downloadProgress}%)`}
-                            {isError && (lastError || 'Connection error')}
-                            {!isConnected && !isStarting && !isDownloading && !isError && 'Multi-hop onion routing'}
+                            {isConnected && t('pop.tor.circuitEstablished', null, '3-hop encrypted circuit established')}
+                            {isStarting && t('pop.tor.connectingRelays', { progress: bootstrapProgress }, 'Connecting to relays ({progress}%)')}
+                            {isDownloading && t('pop.tor.downloadingComponents', { progress: downloadProgress }, 'Downloading Tor components ({progress}%)')}
+                            {isError && (lastError || t('pop.tor.connectionError', null, 'Connection error'))}
+                            {!isConnected && !isStarting && !isDownloading && !isError && t('pop.tor.multiHopRouting', null, 'Multi-hop onion routing')}
                         </p>
                     </div>
                 </div>
@@ -206,7 +214,7 @@ export default function TorCircuitPopover({ isClosing }) {
                         className={`w-9 h-5 rounded-full p-0.5 transition-all duration-200 cursor-pointer active:scale-95 ${
                             isTorEnabled ? 'bg-purple-600 shadow-[0_0_12px_rgba(168,85,247,0.5)]' : (isBright ? 'bg-black/15 hover:bg-black/25' : 'bg-white/15 hover:bg-white/25')
                         }`}
-                        title={isTorEnabled ? 'Disable Tor' : 'Enable Tor'}
+                        title={isTorEnabled ? t('pop.tor.disableTor', null, 'Disable Tor') : t('pop.tor.enableTor', null, 'Enable Tor')}
                     >
                         <div className={`w-4 h-4 rounded-full bg-white transition-transform duration-200 shadow-sm ${
                             isTorEnabled ? 'translate-x-4' : 'translate-x-0'
@@ -220,7 +228,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                 ? 'border-black/10 hover:border-black/20 bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-900'
                                 : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white'
                         }`}
-                        title="Close (Esc)"
+                        title={t('pop.tor.closeEsc', null, 'Close (Esc)')}
                     >
                         <X size={14} />
                     </button>
@@ -235,7 +243,7 @@ export default function TorCircuitPopover({ isClosing }) {
                     <div className="flex justify-between items-center text-xs font-semibold mb-2">
                         <span className={`flex items-center gap-1.5 ${isBright ? 'text-purple-900' : 'text-purple-200'}`}>
                             <RotateCw size={12} className={`animate-spin ${isBright ? 'text-purple-600' : 'text-purple-400'}`} />
-                            {isDownloading ? 'Downloading Tor components...' : 'Bootstrapping Tor circuit...'}
+                            {isDownloading ? t('pop.tor.downloadingProgress', null, 'Downloading Tor components...') : t('pop.tor.bootstrappingProgress', null, 'Bootstrapping Tor circuit...')}
                         </span>
                         <span className={`font-mono font-bold text-[11px] px-2 py-0.5 rounded-full border ${
                             isBright ? 'text-purple-700 bg-purple-500/15 border-purple-500/30' : 'text-purple-300 bg-purple-500/20 border-purple-500/30'
@@ -263,10 +271,10 @@ export default function TorCircuitPopover({ isClosing }) {
                         <Shield size={20} />
                     </div>
                     <h4 className={`text-xs font-bold mb-1 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                        Private Onion Routing
+                        {t('pop.tor.privateOnionRouting', null, 'Private Onion Routing')}
                     </h4>
                     <p className={`text-[11px] leading-relaxed mb-4 max-w-[290px] mx-auto ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                        Routes web requests across decentralized encrypted nodes to disguise your origin and browse .onion addresses.
+                        {t('pop.tor.privateOnionDesc', null, 'Routes web requests across decentralized encrypted nodes to disguise your origin and browse .onion addresses.')}
                     </p>
 
                     {isError && lastError && (
@@ -284,7 +292,7 @@ export default function TorCircuitPopover({ isClosing }) {
                             className="w-full h-10 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-purple-600/25 active:scale-95 cursor-pointer"
                         >
                             <Download size={14} />
-                            Download Tor Component
+                            {t('pop.tor.downloadTorComponent', null, 'Download Tor Component')}
                         </button>
                     ) : (
                         <button
@@ -292,7 +300,7 @@ export default function TorCircuitPopover({ isClosing }) {
                             className="w-full h-10 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-purple-600/25 active:scale-95 cursor-pointer"
                         >
                             <Zap size={14} />
-                            Connect to Tor
+                            {t('pop.tor.connectToTor', null, 'Connect to Tor')}
                         </button>
                     )}
 
@@ -302,13 +310,13 @@ export default function TorCircuitPopover({ isClosing }) {
                         <span className={`px-2.5 py-1 rounded-full border font-mono ${
                             isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-white/[0.03] border-white/[0.06]'
                         }`}>
-                            Proxy: 127.0.0.1:{socksPort || 9050}
+                            {t('pop.tor.proxyLabel', { port: socksPort || 9050 }, 'Proxy: 127.0.0.1:{port}')}
                         </span>
                         <span className={`px-2.5 py-1 rounded-full border font-medium flex items-center gap-1.5 ${
                             isBright ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700' : 'bg-emerald-500/[0.08] border-emerald-500/20 text-emerald-400'
                         }`}>
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            DNS Isolated
+                            {t('pop.tor.dnsIsolated', null, 'DNS Isolated')}
                         </span>
                     </div>
                 </div>
@@ -321,7 +329,7 @@ export default function TorCircuitPopover({ isClosing }) {
                     <div className={`p-3.5 rounded-2xl border shadow-xs mb-3 ${getLiquidGlassCardClasses(isBright)}`}>
                         <div className={`flex items-center justify-between mb-3 pb-2.5 border-b ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
                             <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                                Circuit Path (3 Hops)
+                                {t('pop.tor.circuitPath', null, 'Circuit Path (3 Hops)')}
                             </span>
                             <button 
                                 onClick={newCircuit}
@@ -331,10 +339,10 @@ export default function TorCircuitPopover({ isClosing }) {
                                         ? (isBright ? 'bg-purple-500/15 text-purple-800 border-purple-500/35' : 'bg-purple-500/20 text-purple-200 border-purple-500/40')
                                         : (isBright ? 'text-purple-700 bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/25' : 'text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30')
                                 }`}
-                                title="Request new circuit with a different IP address (SIGNAL NEWNYM)"
+                                title={t('pop.tor.newIdentityTitle', null, 'Request new circuit with a different IP address (SIGNAL NEWNYM)')}
                             >
                                 <RotateCw size={10} className={isRequestingCircuit ? 'animate-spin' : ''} />
-                                <span>{isRequestingCircuit ? 'Switching...' : 'New Identity'}</span>
+                                <span>{isRequestingCircuit ? t('pop.tor.switching', null, 'Switching...') : t('pop.tor.newIdentity', null, 'New Identity')}</span>
                             </button>
                         </div>
 
@@ -352,12 +360,12 @@ export default function TorCircuitPopover({ isClosing }) {
                                 </div>
                                 <div className="min-w-0 flex-1 pt-0.5">
                                     <div className="flex items-center justify-between">
-                                        <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>This Browser</span>
+                                        <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.tor.thisBrowser', null, 'This Browser')}</span>
                                         <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${
                                             isBright ? 'text-zinc-600 bg-black/[0.04] border-black/[0.08]' : 'text-white/50 bg-white/[0.04] border-white/[0.06]'
-                                        }`}>Local</span>
+                                        }`}>{t('pop.tor.local', null, 'Local')}</span>
                                     </div>
-                                    <p className={`text-[10px] truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>QBrowse Client · Encrypted</p>
+                                    <p className={`text-[10px] truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('pop.tor.qbrowseClientEncrypted', null, 'QBrowse Client · Encrypted')}</p>
                                 </div>
                             </div>
 
@@ -374,11 +382,11 @@ export default function TorCircuitPopover({ isClosing }) {
                                 <div className="min-w-0 flex-1 pt-0.5">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
-                                            <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>Guard (Entry)</span>
+                                            <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.tor.guardEntry', null, 'Guard (Entry)')}</span>
                                             <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
                                                 isBright ? 'bg-purple-500/10 text-purple-800 border-purple-500/25' : 'bg-white/10 text-purple-200 border-purple-500/20'
                                             }`}>{getCountryCode(guardNode.country)}</span>
-                                            <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{guardNode.country || 'Guard'}</span>
+                                            <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{getLocalizedCountry(guardNode.country, t) || t('pop.tor.guardFallback', null, 'Guard')}</span>
                                         </div>
                                         {guardNode.latency && (
                                             <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${
@@ -405,11 +413,11 @@ export default function TorCircuitPopover({ isClosing }) {
                                 <div className="min-w-0 flex-1 pt-0.5">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
-                                            <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>Middle Relay</span>
+                                            <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.tor.middleRelay', null, 'Middle Relay')}</span>
                                             <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
                                                 isBright ? 'bg-indigo-500/10 text-indigo-800 border-indigo-500/25' : 'bg-white/10 text-indigo-200 border-indigo-500/20'
                                             }`}>{getCountryCode(middleNode.country)}</span>
-                                            <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{middleNode.country || 'Relay'}</span>
+                                            <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{getLocalizedCountry(middleNode.country, t) || t('pop.tor.relayFallback', null, 'Relay')}</span>
                                         </div>
                                         {middleNode.latency && (
                                             <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${
@@ -436,11 +444,11 @@ export default function TorCircuitPopover({ isClosing }) {
                                 <div className="min-w-0 flex-1 pt-0.5">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
-                                            <span className={`font-semibold text-[11px] ${isBright ? 'text-emerald-700' : 'text-emerald-300'}`}>Exit Node</span>
+                                            <span className={`font-semibold text-[11px] ${isBright ? 'text-emerald-700' : 'text-emerald-300'}`}>{t('pop.tor.exitNode', null, 'Exit Node')}</span>
                                             <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
                                                 isBright ? 'bg-emerald-500/10 text-emerald-800 border-emerald-500/25' : 'bg-white/10 text-emerald-200 border-emerald-500/20'
                                             }`}>{getCountryCode(exitNode.country)}</span>
-                                            <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{exitNode.country || 'Exit'}</span>
+                                            <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{getLocalizedCountry(exitNode.country, t) || t('pop.tor.exitFallback', null, 'Exit')}</span>
                                         </div>
                                         {exitNode.latency && (
                                             <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${
@@ -450,7 +458,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                     </div>
                                     <p className={`text-[10px] truncate font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                         {isRequestingCircuit ? (
-                                            <span className={`animate-pulse ${isBright ? 'text-purple-700' : 'text-purple-300'}`}>Switching exit relay...</span>
+                                            <span className={`animate-pulse ${isBright ? 'text-purple-700' : 'text-purple-300'}`}>{t('pop.tor.switchingExitRelay', null, 'Switching exit relay...')}</span>
                                         ) : (
                                             `${exitNode.name || 'ExitRelay'} · ${verifiedExitIp || exitNode.ip || 'Exit IP'}`
                                         )}
@@ -469,12 +477,12 @@ export default function TorCircuitPopover({ isClosing }) {
                                 </div>
                                 <div className="min-w-0 flex-1 pt-0.5">
                                     <div className="flex items-center justify-between">
-                                        <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>Internet</span>
+                                        <span className={`font-semibold text-[11px] ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.tor.internet', null, 'Internet')}</span>
                                         <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
                                             isBright ? 'text-emerald-700 bg-emerald-500/10 border-emerald-500/25' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                                        }`}>End-to-End Encrypted</span>
+                                        }`}>{t('pop.tor.endToEndEncrypted', null, 'End-to-End Encrypted')}</span>
                                     </div>
-                                    <p className={`text-[10px] truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Clearweb &amp; .onion Hidden Services</p>
+                                    <p className={`text-[10px] truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('pop.tor.clearwebOnion', null, 'Clearweb & .onion Hidden Services')}</p>
                                 </div>
                             </div>
                         </div>
@@ -484,7 +492,7 @@ export default function TorCircuitPopover({ isClosing }) {
                     <div className={`p-3.5 rounded-2xl border shadow-xs mb-3 flex flex-col gap-2.5 ${getLiquidGlassCardClasses(isBright)}`}>
                         <div className="flex items-center justify-between">
                             <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                                Public Exit IP
+                                {t('pop.tor.publicExitIp', null, 'Public Exit IP')}
                             </span>
                             <div className="flex items-center gap-2">
                                 <button 
@@ -495,17 +503,17 @@ export default function TorCircuitPopover({ isClosing }) {
                                             ? 'border-black/10 hover:border-black/20 bg-black/[0.04] hover:bg-black/[0.08] text-zinc-700 hover:text-zinc-900'
                                             : 'border-white/[0.08] hover:border-white/20 bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white'
                                     }`}
-                                    title="Verify exit node with Tor Project directory"
+                                    title={t('pop.tor.verifyTitle', null, 'Verify exit node with Tor Project directory')}
                                 >
                                     <RefreshCw size={10} className={isCheckingIp ? 'animate-spin' : ''} />
-                                    <span>Verify</span>
+                                    <span>{t('pop.tor.verify', null, 'Verify')}</span>
                                 </button>
                                 {isTorVerified && !isRequestingCircuit && (
                                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 shadow-xs ${
                                         isBright ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/25' : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25'
                                     }`}>
                                         <Check size={10} />
-                                        Tor Verified
+                                        {t('pop.tor.torVerified', null, 'Tor Verified')}
                                     </span>
                                 )}
                             </div>
@@ -517,7 +525,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                     ? (isBright ? 'text-purple-700 animate-pulse' : 'text-purple-300 animate-pulse')
                                     : (isBright ? 'text-zinc-900' : 'text-white')
                             }`}>
-                                {isRequestingCircuit ? 'Negotiating new exit node...' : (verifiedExitIp || (isCheckingIp ? 'Verifying IP...' : (exitNode.ip || '185.220.101.5')))}
+                                {isRequestingCircuit ? t('pop.tor.negotiatingExit', null, 'Negotiating new exit node...') : (verifiedExitIp || (isCheckingIp ? t('pop.tor.verifyingIp', null, 'Verifying IP...') : (exitNode.ip || '185.220.101.5')))}
                             </span>
                             <button
                                 onClick={handleCopyIp}
@@ -526,17 +534,17 @@ export default function TorCircuitPopover({ isClosing }) {
                                         ? 'border-black/10 hover:border-black/20 bg-black/[0.04] hover:bg-black/[0.08] text-zinc-700 hover:text-zinc-950'
                                         : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white'
                                 }`}
-                                title="Copy Exit IP"
+                                title={t('pop.tor.copyExitIpTitle', null, 'Copy Exit IP')}
                             >
                                 {copiedIp ? (
                                     <>
                                         <Check size={12} className="text-emerald-500" />
-                                        <span className={isBright ? 'text-emerald-700' : 'text-emerald-400'}>Copied</span>
+                                        <span className={isBright ? 'text-emerald-700' : 'text-emerald-400'}>{t('pop.tor.copied', null, 'Copied')}</span>
                                     </>
                                 ) : (
                                     <>
                                         <Copy size={12} />
-                                        <span>Copy</span>
+                                        <span>{t('common.copy', null, 'Copy')}</span>
                                     </>
                                 )}
                             </button>
@@ -554,7 +562,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                 isBright ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700' : 'bg-emerald-500/[0.08] border-emerald-500/20 text-emerald-400'
                             }`}>
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                DNS &amp; WebRTC Isolated
+                                {t('pop.tor.dnsWebrtcIsolated', null, 'DNS & WebRTC Isolated')}
                             </span>
                         </div>
                     </div>
@@ -563,7 +571,7 @@ export default function TorCircuitPopover({ isClosing }) {
                     <div className="mb-3.5">
                         <div className="flex items-center justify-between mb-2">
                             <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
-                                Security Level
+                                {t('pop.tor.securityLevel', null, 'Security Level')}
                             </span>
                         </div>
                         
@@ -651,7 +659,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                 className="flex-1 h-10 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-purple-600/25 active:scale-95 cursor-pointer"
                             >
                                 <Globe size={13} />
-                                Switch to Tor Space
+                                {t('pop.tor.switchToTorSpace', null, 'Switch to Tor Space')}
                             </button>
                         )}
 
@@ -665,7 +673,7 @@ export default function TorCircuitPopover({ isClosing }) {
                                 activeSpace === 'tor' ? 'w-full' : ''
                             }`}
                         >
-                            Disconnect
+                            {t('pop.tor.disconnect', null, 'Disconnect')}
                         </button>
                     </div>
                 </>

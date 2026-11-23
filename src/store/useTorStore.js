@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
+import { t } from '../i18n/index';
 
 const defaultCircuit = [
     { role: 'Guard (Entry)', name: 'GuardRelay-DE', country: 'Germany', ip: '185.220.101.42', latency: '48ms' },
@@ -45,15 +46,15 @@ const useTorStore = create((set, get) => ({
                 if (get().status !== 'connected' && get().status !== 'starting' && get().status !== 'downloading') {
                     get().startTor();
                 } else if (!targetSpace || currentSpace === targetSpace) {
-                    useUIStore.getState().showToast('Tor Mode: Enabled');
+                    useUIStore.getState().showToast(t('stores.tor.modeEnabled', 'Tor Mode: Enabled'));
                 }
             } else {
                 const fallbackSpace = options.fallbackSpace || 'ghost';
                 if (currentSpace === 'tor') {
                     useTabStore.getState().setActiveSpace(fallbackSpace);
-                    useUIStore.getState().showToast(fallbackSpace === 'ghost' ? 'Switched to Ghost Mode' : 'Tor Space: Deactivated');
+                    useUIStore.getState().showToast(fallbackSpace === 'ghost' ? t('stores.tor.switchedToGhost', 'Switched to Ghost Mode') : t('stores.tor.spaceDeactivated', 'Tor Space: Deactivated'));
                 } else {
-                    useUIStore.getState().showToast('Switched private mode to Ghost');
+                    useUIStore.getState().showToast(t('stores.tor.switchedPrivateToGhost', 'Switched private mode to Ghost'));
                 }
                 if (get().status === 'connected' || get().status === 'starting') {
                     await get().stopTor({ keepSpace: true, silentToast: currentSpace === 'tor' });
@@ -95,7 +96,7 @@ const useTorStore = create((set, get) => ({
 
     startTor: async () => {
         if (!window.electronAPI?.torStart) {
-            useUIStore.getState().showToast('Tor not supported in browser preview');
+            useUIStore.getState().showToast(t('stores.tor.notSupportedPreview', 'Tor not supported in browser preview'));
             return;
         }
         if (get().status === 'starting' || get().status === 'downloading') return;
@@ -104,22 +105,23 @@ const useTorStore = create((set, get) => ({
         try {
             localStorage.setItem('qbrowse_tor_enabled', 'true');
         } catch (_) {}
-        useUIStore.getState().showToast('Connecting to Tor Onion Network...');
+        useUIStore.getState().showToast(t('stores.tor.connecting', 'Connecting to Tor Onion Network...'));
 
         try {
             const res = await window.electronAPI.torStart();
             if (res.success) {
                 set({ isTorEnabled: true, status: 'connected', bootstrapProgress: 100, socksPort: res.socksPort || 9050 });
-                useUIStore.getState().showToast('Connected to Tor Network!');
+                useUIStore.getState().showToast(t('stores.tor.connected', 'Connected to Tor Network!'));
                 get().checkExitIp();
                 get().fetchCircuit();
             } else {
                 set({ status: 'error', lastError: res.error || 'Failed to start Tor' });
-                useUIStore.getState().showToast(`Tor error: ${res.error || 'Connection failed'}`);
+                const reason = res.error || t('stores.tor.connectionFailed', 'Connection failed');
+                useUIStore.getState().showToast(t('stores.tor.errorWithReason', { error: reason }, `Tor error: ${reason}`));
             }
         } catch (err) {
             set({ status: 'error', lastError: err.message });
-            useUIStore.getState().showToast(`Tor failed: ${err.message}`);
+            useUIStore.getState().showToast(t('stores.tor.failedWithReason', { error: err.message }, `Tor failed: ${err.message}`));
         }
     },
 
@@ -139,7 +141,7 @@ const useTorStore = create((set, get) => ({
             }
             set(nextState);
             if (!options.silentToast) {
-                useUIStore.getState().showToast('Tor Network disconnected');
+                useUIStore.getState().showToast(t('stores.tor.disconnected', 'Tor Network disconnected'));
             }
             if (!options.keepSpace) {
                 const { default: useTabStore } = await import('./useTabStore');
@@ -158,7 +160,7 @@ const useTorStore = create((set, get) => ({
         if (get().isRequestingCircuit) return;
 
         set({ isRequestingCircuit: true });
-        useUIStore.getState().showToast('Requesting new Tor identity...');
+        useUIStore.getState().showToast(t('stores.tor.requestingNewIdentity', 'Requesting new Tor identity...'));
 
         try {
             const res = await window.electronAPI.torNewCircuit();
@@ -172,14 +174,16 @@ const useTorStore = create((set, get) => ({
                 if (Array.isArray(res.circuitNodes) && res.circuitNodes.length > 0) {
                     set({ circuitNodes: res.circuitNodes });
                 }
-                useUIStore.getState().showToast(`New Tor identity active: ${res.exitIp || 'Circuit refreshed'}`);
+                const target = res.exitIp || t('stores.tor.circuitRefreshed', 'Circuit refreshed');
+                useUIStore.getState().showToast(t('stores.tor.newIdentityActive', { target }, `New Tor identity active: ${target}`));
             } else if (res?.rateLimited) {
-                useUIStore.getState().showToast('Tor rate limit: wait 10s between new identities');
+                useUIStore.getState().showToast(t('stores.tor.rateLimitWait', 'Tor rate limit: wait 10s between new identities'));
             } else {
-                useUIStore.getState().showToast(`New identity: ${res?.message || 'Error requesting circuit'}`);
+                const msg = res?.message || t('stores.tor.errorRequestingCircuit', 'Error requesting circuit');
+                useUIStore.getState().showToast(t('stores.tor.newIdentityStatus', { message: msg }, `New identity: ${msg}`));
             }
         } catch (err) {
-            useUIStore.getState().showToast(`Circuit error: ${err.message}`);
+            useUIStore.getState().showToast(t('stores.tor.circuitError', { error: err.message }, `Circuit error: ${err.message}`));
         } finally {
             set({ isRequestingCircuit: false });
         }
@@ -222,21 +226,21 @@ const useTorStore = create((set, get) => ({
     downloadBinary: async () => {
         if (!window.electronAPI?.torDownloadBinary) return;
         set({ status: 'downloading', downloadProgress: 0, lastError: null });
-        useUIStore.getState().showToast('Downloading official Tor Expert Bundle...');
+        useUIStore.getState().showToast(t('stores.tor.downloadingBundle', 'Downloading official Tor Expert Bundle...'));
 
         try {
             const res = await window.electronAPI.torDownloadBinary();
             if (res.success) {
                 set({ status: 'stopped', hasLocalBinary: true, downloadProgress: 100 });
-                useUIStore.getState().showToast('Tor Bundle installed successfully! Launching...');
+                useUIStore.getState().showToast(t('stores.tor.bundleInstalledLaunching', 'Tor Bundle installed successfully! Launching...'));
                 get().startTor();
             } else {
                 set({ status: 'error', lastError: res.error });
-                useUIStore.getState().showToast(`Download failed: ${res.error}`);
+                useUIStore.getState().showToast(t('stores.tor.downloadFailed', { error: res.error }, `Download failed: ${res.error}`));
             }
         } catch (err) {
             set({ status: 'error', lastError: err.message });
-            useUIStore.getState().showToast(`Install failed: ${err.message}`);
+            useUIStore.getState().showToast(t('stores.tor.installFailed', { error: err.message }, `Install failed: ${err.message}`));
         }
     },
 
@@ -246,11 +250,11 @@ const useTorStore = create((set, get) => ({
         }
         set({ securityLevel: level });
         const labels = {
-            standard: 'Standard: All browser features enabled',
-            safer: 'Safer: Audio/Video disabled on HTTP, WebGL disabled',
-            safest: 'Safest: JavaScript completely disabled, icons & MathML disabled'
+            standard: t('stores.tor.secStandard', 'Standard: All browser features enabled'),
+            safer: t('stores.tor.secSafer', 'Safer: Audio/Video disabled on HTTP, WebGL disabled'),
+            safest: t('stores.tor.secSafest', 'Safest: JavaScript completely disabled, icons & MathML disabled')
         };
-        useUIStore.getState().showToast(`Tor Security Level: ${labels[level] || level}`);
+        useUIStore.getState().showToast(t('stores.tor.securityLevelToast', { label: labels[level] || level }, `Tor Security Level: ${labels[level] || level}`));
     },
 
     init: () => {

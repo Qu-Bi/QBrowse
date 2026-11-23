@@ -14,6 +14,7 @@ import {
     POPULAR_BLOCKLIST_PRESETS 
 } from '../../utils/adblockUrlParser';
 import { fetchRemoteBlocklist } from '../../services/electronIPC';
+import { useTranslation } from '../../i18n/index';
 
 export default function AdblockImportModal({ 
     isOpen, 
@@ -24,6 +25,7 @@ export default function AdblockImportModal({
     onImport, 
     isBright 
 }) {
+    const { t, intlLocale } = useTranslation();
     const [mode, setMode] = useState('url'); // 'url' | 'paste'
     const [hoveredMode, setHoveredMode] = useState(null);
     const [urlInput, setUrlInput] = useState(initialUrl);
@@ -102,7 +104,7 @@ export default function AdblockImportModal({
     const handleFetchUrl = async (targetUrlOverride) => {
         const raw = targetUrlOverride || urlInput;
         if (!raw || !raw.trim()) {
-            setErrorMsg('Please enter a valid blocklist URL.');
+            setErrorMsg(t('tools.adblockImport.errors.invalidUrl', null, 'Please enter a valid blocklist URL.'));
             return;
         }
 
@@ -115,12 +117,12 @@ export default function AdblockImportModal({
         try {
             const res = await fetchRemoteBlocklist(normalized);
             if (!res || !res.success || !res.text) {
-                throw new Error(res?.error || 'Failed to fetch remote blocklist');
+                throw new Error(res?.error || t('tools.adblockImport.errors.fetchFailed', null, 'Failed to fetch remote blocklist'));
             }
 
             const parsed = parseBlocklistText(res.text);
             if (parsed.domains.length === 0) {
-                throw new Error('No valid domain names could be parsed from this source.');
+                throw new Error(t('tools.adblockImport.errors.noValidFromUrl', null, 'No valid domain names could be parsed from this source.'));
             }
 
             // Calculate new domains not already in existing blocked domains
@@ -130,11 +132,12 @@ export default function AdblockImportModal({
             setParsedResult({
                 ...parsed,
                 sourceUrl: normalized,
+                isPasted: false,
                 bytes: res.bytes || res.text.length,
                 newCount
             });
         } catch (err) {
-            setErrorMsg(err.message || 'Error downloading remote list');
+            setErrorMsg(err.message || t('tools.adblockImport.errors.downloadError', null, 'Error downloading remote list'));
         } finally {
             setIsLoading(false);
         }
@@ -143,7 +146,7 @@ export default function AdblockImportModal({
     const handleParseText = (textOverride) => {
         const text = textOverride !== undefined ? textOverride : rawTextInput;
         if (!text || !text.trim()) {
-            setErrorMsg('Please paste some domain or hosts rules first.');
+            setErrorMsg(t('tools.adblockImport.errors.emptyPaste', null, 'Please paste some domain or hosts rules first.'));
             return;
         }
 
@@ -154,7 +157,7 @@ export default function AdblockImportModal({
         try {
             const parsed = parseBlocklistText(text);
             if (parsed.domains.length === 0) {
-                throw new Error('No valid domain names could be extracted from the text.');
+                throw new Error(t('tools.adblockImport.errors.noValidFromText', null, 'No valid domain names could be extracted from the text.'));
             }
 
             const existingSet = new Set(existingDomains.map(d => d.toLowerCase()));
@@ -162,12 +165,13 @@ export default function AdblockImportModal({
 
             setParsedResult({
                 ...parsed,
-                sourceUrl: 'Pasted Text',
+                sourceUrl: t('tools.adblockImport.pastedSourceLabel', null, 'Pasted Text'),
+                isPasted: true,
                 bytes: text.length,
                 newCount
             });
         } catch (err) {
-            setErrorMsg(err.message || 'Error parsing text');
+            setErrorMsg(err.message || t('tools.adblockImport.errors.parseError', null, 'Error parsing text'));
         } finally {
             setIsLoading(false);
         }
@@ -220,9 +224,9 @@ export default function AdblockImportModal({
                             <Download size={16} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold tracking-tight">Import Blocklist from GitHub / Web</h3>
+                            <h3 className="text-sm font-bold tracking-tight">{t('tools.adblockImport.title', null, 'Import Blocklist from GitHub / Web')}</h3>
                             <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                Auto-parse hosts files, GitHub raw lists, or Adblock rules into your custom blocklist.
+                                {t('tools.adblockImport.subtitle', null, 'Auto-parse hosts files, GitHub raw lists, or Adblock rules into your custom blocklist.')}
                             </p>
                         </div>
                     </div>
@@ -234,7 +238,7 @@ export default function AdblockImportModal({
                                 ? 'bg-black/5 hover:bg-black/10 text-zinc-600 border-black/10' 
                                 : 'bg-white/5 hover:bg-white/10 text-zinc-400 border-white/10'
                         }`}
-                        title="Close"
+                        title={t('tools.adblockImport.closeTitle', null, 'Close')}
                     >
                         <X size={14} />
                     </button>
@@ -293,7 +297,7 @@ export default function AdblockImportModal({
                             onClick={() => { 
                                 setMode('url'); 
                                 setErrorMsg(null); 
-                                if (parsedResult && parsedResult.sourceUrl === 'Pasted Text') {
+                                if (parsedResult && parsedResult.isPasted) {
                                     setParsedResult(null);
                                     setPreviewSearch('');
                                 }
@@ -305,7 +309,7 @@ export default function AdblockImportModal({
                             }`}
                         >
                             <Globe size={13} className={`transition-transform duration-200 shrink-0 ${mode === 'url' ? 'scale-110' : ''}`} />
-                            <span>Remote URL / GitHub</span>
+                            <span>{t('tools.adblockImport.modeUrl', null, 'Remote URL / GitHub')}</span>
                         </button>
 
                         <button
@@ -314,7 +318,7 @@ export default function AdblockImportModal({
                             onClick={() => { 
                                 setMode('paste'); 
                                 setErrorMsg(null); 
-                                if (parsedResult && parsedResult.sourceUrl !== 'Pasted Text') {
+                                if (parsedResult && !parsedResult.isPasted) {
                                     setParsedResult(null);
                                     setPreviewSearch('');
                                 }
@@ -326,7 +330,7 @@ export default function AdblockImportModal({
                             }`}
                         >
                             <FileText size={13} className={`transition-transform duration-200 shrink-0 ${mode === 'paste' ? 'scale-110' : ''}`} />
-                            <span>Paste Raw Text</span>
+                            <span>{t('tools.adblockImport.modePaste', null, 'Paste Raw Text')}</span>
                         </button>
                     </div>
 
@@ -335,7 +339,7 @@ export default function AdblockImportModal({
                         <div className="space-y-3">
                             <div>
                                 <label className={`block text-[11px] font-semibold mb-1.5 ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
-                                    Blocklist URL (GitHub raw, Gist, or hosts URL)
+                                    {t('tools.adblockImport.urlLabel', null, 'Blocklist URL (GitHub raw, Gist, or hosts URL)')}
                                 </label>
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
@@ -369,9 +373,9 @@ export default function AdblockImportModal({
                                         {isGitHubUrl && (
                                             <span 
                                                 className="absolute right-2.5 top-2.5 text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-purple-500/15 text-purple-400 border border-purple-500/20"
-                                                title="GitHub repository link detected and auto-converted to raw format"
+                                                title={t('tools.adblockImport.githubRawTitle', null, 'GitHub repository link detected and auto-converted to raw format')}
                                             >
-                                                GitHub Raw
+                                                {t('tools.adblockImport.githubRawBadge', null, 'GitHub Raw')}
                                             </span>
                                         )}
                                     </div>
@@ -382,7 +386,7 @@ export default function AdblockImportModal({
                                         className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0 shadow-xs active:scale-95"
                                     >
                                         <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
-                                        <span>{isLoading ? 'Fetching...' : 'Fetch & Parse'}</span>
+                                        <span>{isLoading ? t('tools.adblockImport.fetching', null, 'Fetching...') : t('tools.adblockImport.fetchParse', null, 'Fetch & Parse')}</span>
                                     </button>
                                 </div>
                             </div>
@@ -390,7 +394,7 @@ export default function AdblockImportModal({
                             {/* Popular Presets */}
                             <div>
                                 <span className={`text-[11px] font-semibold block mb-1.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Popular Community Blocklists
+                                    {t('tools.adblockImport.popularLists', null, 'Popular Community Blocklists')}
                                 </span>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     {POPULAR_BLOCKLIST_PRESETS.map((p) => {
@@ -412,11 +416,11 @@ export default function AdblockImportModal({
                                                         <span className={`text-[9px] px-1.5 py-0.2 rounded-md font-mono ${
                                                             isBright ? 'bg-black/5 text-zinc-600' : 'bg-white/10 text-white/60'
                                                         }`}>
-                                                            {p.badge}
+                                                            {t(`tools.adblockImport.presets.${p.id}.badge`, null, p.badge)}
                                                         </span>
                                                     </div>
                                                     <p className={`text-[10px] truncate mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                        {p.desc}
+                                                        {t(`tools.adblockImport.presets.${p.id}.desc`, null, p.desc)}
                                                     </p>
                                                 </div>
                                                 <ArrowRight size={12} className="shrink-0 opacity-40" />
@@ -432,11 +436,11 @@ export default function AdblockImportModal({
                     {!parsedResult && mode === 'paste' && (
                         <div className="space-y-3">
                             <label className={`block text-[11px] font-semibold mb-1 ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
-                                Paste hosts file, ABP filter rules, or domain list
+                                {t('tools.adblockImport.pasteLabel', null, 'Paste hosts file, ABP filter rules, or domain list')}
                             </label>
                             <textarea
                                 rows={6}
-                                placeholder={"# Paste any format below:\n0.0.0.0 tracking.evil.com\n127.0.0.1 ads.adserver.org\n||telemetry.network.io^\nanalytics.badsite.com"}
+                                placeholder={t('tools.adblockImport.pastePlaceholder', null, "# Paste any format below:\n0.0.0.0 tracking.evil.com\n127.0.0.1 ads.adserver.org\n||telemetry.network.io^\nanalytics.badsite.com")}
                                 value={rawTextInput}
                                 onChange={(e) => setRawTextInput(e.target.value)}
                                 className={`w-full p-3 rounded-xl text-xs font-mono outline-none border transition resize-none ${
@@ -453,7 +457,7 @@ export default function AdblockImportModal({
                                     className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-zinc-950 font-bold text-xs transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-xs active:scale-95"
                                 >
                                     <Sparkles size={13} className={isLoading ? 'animate-spin' : ''} />
-                                    <span>{isLoading ? 'Parsing...' : 'Parse Domains'}</span>
+                                    <span>{isLoading ? t('tools.adblockImport.parsing', null, 'Parsing...') : t('tools.adblockImport.parseDomains', null, 'Parse Domains')}</span>
                                 </button>
                             </div>
                         </div>
@@ -486,10 +490,10 @@ export default function AdblockImportModal({
                                                 ? 'bg-white hover:bg-black/5 text-zinc-700 border-black/10 shadow-xs' 
                                                 : 'bg-white/5 hover:bg-white/10 text-zinc-300 border-white/10'
                                         }`}
-                                        title="Step back to source input (Esc)"
+                                        title={t('tools.adblockImport.backTitle', null, 'Step back to source input (Esc)')}
                                     >
                                         <ArrowLeft size={12} />
-                                        <span>Back</span>
+                                        <span>{t('tools.adblockImport.back', null, 'Back')}</span>
                                         <kbd className={`text-[10px] font-mono px-1 py-0.2 rounded border ml-0.5 ${
                                             isBright ? 'bg-black/5 border-black/10 text-zinc-500' : 'bg-white/10 border-white/10 text-white/50'
                                         }`}>
@@ -499,7 +503,7 @@ export default function AdblockImportModal({
                                     <div className="flex items-center gap-1.5 ml-1">
                                         <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                                         <span className={`text-xs font-bold ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                            Ready to Import
+                                            {t('tools.adblockImport.readyToImport', null, 'Ready to Import')}
                                         </span>
                                     </div>
                                 </div>
@@ -512,7 +516,7 @@ export default function AdblockImportModal({
                                     <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md border ${
                                         isBright ? 'bg-white border-black/10 text-zinc-600' : 'bg-white/5 border-white/10 text-white/60'
                                     }`}>
-                                        {(parsedResult.bytes / 1024).toFixed(1)} KB source
+                                        {t('tools.adblockImport.kbSource', { kb: (parsedResult.bytes / 1024).toFixed(1) }, `${(parsedResult.bytes / 1024).toFixed(1)} KB source`)}
                                     </span>
                                 </div>
                             </div>
@@ -523,40 +527,40 @@ export default function AdblockImportModal({
                                     isBright ? 'bg-white border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
                                 }`}>
                                     <span className="text-base font-black font-mono text-emerald-400 block">
-                                        {parsedResult.validCount.toLocaleString()}
+                                        {parsedResult.validCount.toLocaleString(intlLocale || undefined)}
                                     </span>
                                     <span className={`text-[10px] font-semibold ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                        Valid Domains
+                                        {t('tools.adblockImport.validDomains', null, 'Valid Domains')}
                                     </span>
                                 </div>
                                 <div className={`p-2.5 rounded-lg border text-center ${
                                     isBright ? 'bg-white border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
                                 }`}>
                                     <span className="text-base font-black font-mono text-accent block">
-                                        {parsedResult.newCount.toLocaleString()}
+                                        {parsedResult.newCount.toLocaleString(intlLocale || undefined)}
                                     </span>
                                     <span className={`text-[10px] font-semibold ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                        New Unique
+                                        {t('tools.adblockImport.newUnique', null, 'New Unique')}
                                     </span>
                                 </div>
                                 <div className={`p-2.5 rounded-lg border text-center ${
                                     isBright ? 'bg-white border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
                                 }`}>
                                     <span className="text-base font-black font-mono opacity-80 block">
-                                        {parsedResult.duplicatesCount.toLocaleString()}
+                                        {parsedResult.duplicatesCount.toLocaleString(intlLocale || undefined)}
                                     </span>
                                     <span className={`text-[10px] font-semibold ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                        Duplicates Filtered
+                                        {t('tools.adblockImport.duplicatesFiltered', null, 'Duplicates Filtered')}
                                     </span>
                                 </div>
                                 <div className={`p-2.5 rounded-lg border text-center ${
                                     isBright ? 'bg-white border-black/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
                                 }`}>
                                     <span className="text-base font-black font-mono opacity-80 block">
-                                        {parsedResult.totalLines.toLocaleString()}
+                                        {parsedResult.totalLines.toLocaleString(intlLocale || undefined)}
                                     </span>
                                     <span className={`text-[10px] font-semibold ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                        Lines Analyzed
+                                        {t('tools.adblockImport.linesAnalyzed', null, 'Lines Analyzed')}
                                     </span>
                                 </div>
                             </div>
@@ -565,12 +569,12 @@ export default function AdblockImportModal({
                             <div>
                                 <div className="flex items-center justify-between mb-1.5 gap-2">
                                     <span className={`text-[11px] font-semibold ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
-                                        Extracted Domains Sample ({filteredPreviewDomains.length.toLocaleString()})
+                                        {t('tools.adblockImport.extractedSample', { count: filteredPreviewDomains.length.toLocaleString(intlLocale || undefined) }, `Extracted Domains Sample (${filteredPreviewDomains.length.toLocaleString()})`)}
                                     </span>
                                     <div className="w-44">
                                         <input
                                             type="text"
-                                            placeholder="Search sample..."
+                                            placeholder={t('tools.adblockImport.searchSamplePlaceholder', null, 'Search sample...')}
                                             value={previewSearch}
                                             onChange={(e) => setPreviewSearch(e.target.value)}
                                             className={`w-full px-2 py-0.5 rounded-lg text-[11px] font-mono outline-none border ${
@@ -601,7 +605,7 @@ export default function AdblockImportModal({
                                         <span className={`text-[11px] font-mono px-2 py-0.5 italic ${
                                             isBright ? 'text-zinc-400' : 'text-white/40'
                                         }`}>
-                                            + {(filteredPreviewDomains.length - 100).toLocaleString()} more domains
+                                            {t('tools.adblockImport.moreDomains', { count: (filteredPreviewDomains.length - 100).toLocaleString(intlLocale || undefined) }, `+ ${(filteredPreviewDomains.length - 100).toLocaleString()} more domains`)}
                                         </span>
                                     )}
                                 </div>
@@ -632,7 +636,7 @@ export default function AdblockImportModal({
                         }`}
                     >
                         {parsedResult && <ArrowLeft size={12} />}
-                        <span>{parsedResult ? 'Back to Source' : 'Cancel'}</span>
+                        <span>{parsedResult ? t('tools.adblockImport.backToSource', null, 'Back to Source') : t('tools.adblockImport.cancel', null, 'Cancel')}</span>
                     </button>
 
                     <div className="flex items-center gap-2">
@@ -641,9 +645,9 @@ export default function AdblockImportModal({
                                 type="button"
                                 onClick={() => handleCommitImport(true)}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer text-rose-400 hover:bg-rose-500/10 border-rose-500/20 active:scale-95`}
-                                title="Replaces your existing custom blocklist with the parsed domains"
+                                title={t('tools.adblockImport.replaceListTitle', null, 'Replaces your existing custom blocklist with the parsed domains')}
                             >
-                                Replace Entire List
+                                {t('tools.adblockImport.replaceList', null, 'Replace Entire List')}
                             </button>
                         )}
                         <button
@@ -655,8 +659,8 @@ export default function AdblockImportModal({
                             <Check size={14} />
                             <span>
                                 {parsedResult 
-                                    ? `Import ${parsedResult.newCount.toLocaleString()} Domains` 
-                                    : 'Import Domains'}
+                                    ? t('tools.adblockImport.importN', { count: parsedResult.newCount.toLocaleString(intlLocale || undefined) }, `Import ${parsedResult.newCount.toLocaleString()} Domains`)
+                                    : t('tools.adblockImport.importDomains', null, 'Import Domains')}
                             </span>
                         </button>
                     </div>

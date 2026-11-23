@@ -7,11 +7,20 @@ import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import CustomSelect from '../common/CustomSelect';
+import { useTranslation } from '../../i18n/index';
 
 export default function AIEngineSettings() {
+    const { t } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    const formatModelSize = (rawSize) => {
+        if (!rawSize) return '';
+        return rawSize
+            .replace(/\(Model\)/g, `(${t('tools.aiSettings.modelWord', null, 'Model')})`)
+            .replace(/\(Vision\)/g, `(${t('tools.aiSettings.visionWord', null, 'Vision')})`);
+    };
 
     const { 
         status, isRunning, activeModelId, customModelPath, customMmprojPath, logs, metrics, lastError,
@@ -53,12 +62,13 @@ export default function AIEngineSettings() {
             const filePath = await window.electronAPI.pickAiModelFile();
             if (filePath) {
                 setCustomModelPath(filePath);
-                showToast(`Loaded custom model: ${filePath.split(/[/\\]/).pop()}`);
+                const name = filePath.split(/[/\\]/).pop();
+                showToast(t('tools.aiSettings.toasts.customModelLoaded', { name }, `Loaded custom model: ${name}`));
             }
         } else {
             const demoPath = 'C:\\Models\\gemma-2-4b-it-Q4_K_M.gguf';
             setCustomModelPath(demoPath);
-            showToast(`Loaded demo custom model path!`);
+            showToast(t('tools.aiSettings.toasts.demoModelLoaded', null, 'Loaded demo custom model path!'));
         }
     };
 
@@ -67,30 +77,31 @@ export default function AIEngineSettings() {
             const filePath = await window.electronAPI.pickAiModelFile();
             if (filePath) {
                 setCustomMmprojPath(filePath);
-                showToast(`Loaded custom vision projector: ${filePath.split(/[/\\]/).pop()}`);
+                const name = filePath.split(/[/\\]/).pop();
+                showToast(t('tools.aiSettings.toasts.customProjectorLoaded', { name }, `Loaded custom vision projector: ${name}`));
             }
         } else {
             const demoPath = 'C:\\Models\\mmproj-model-f16.gguf';
             setCustomMmprojPath(demoPath);
-            showToast(`Loaded demo custom projector path!`);
+            showToast(t('tools.aiSettings.toasts.demoProjectorLoaded', null, 'Loaded demo custom projector path!'));
         }
     };
 
     const handleUpdateEngine = async () => {
         setIsUpdatingEngine(true);
-        showToast('Updating native llama.cpp engine...');
+        showToast(t('tools.aiSettings.toasts.updatingEngine', null, 'Updating native llama.cpp engine...'));
         const res = await updateEngine();
         setIsUpdatingEngine(false);
         if (res && res.success) {
-            showToast('llama.cpp engine successfully updated to latest build (b11796)!');
+            showToast(t('tools.aiSettings.toasts.engineUpdated', null, 'llama.cpp engine successfully updated to latest build (b11796)!'));
         } else {
-            showToast(`Engine update failed: ${res?.error || 'Unknown error'}`);
+            showToast(t('tools.aiSettings.toasts.engineUpdateFailed', { error: res?.error || t('tools.aiSettings.toasts.unknownError', null, 'Unknown error') }, `Engine update failed: ${res?.error || 'Unknown error'}`));
         }
     };
 
     const handleCopyLogs = () => {
         navigator.clipboard.writeText(logs.join('\n'));
-        showToast('llama-server logs copied to clipboard!');
+        showToast(t('tools.aiSettings.toasts.logsCopied', null, 'llama-server logs copied to clipboard!'));
     };
 
     const handleAutoDetect = async () => {
@@ -106,12 +117,12 @@ export default function AIEngineSettings() {
                 setGpuLayers(24);
                 setContextSize(4096);
             }
-            showToast(`Hardware Auto-Detected: ${hw.threads} threads, ${hw.totalMemoryGB}GB RAM`);
+            showToast(t('tools.aiSettings.toasts.hardwareDetected', { threads: hw.threads, ram: hw.totalMemoryGB }, `Hardware Auto-Detected: ${hw.threads} threads, ${hw.totalMemoryGB}GB RAM`));
         } else {
             setThreads(6);
             setGpuLayers(99);
             setContextSize(4096);
-            showToast(`Hardware Auto-Detected: Default optimizations applied`);
+            showToast(t('tools.aiSettings.toasts.hardwareDefault', null, 'Hardware Auto-Detected: Default optimizations applied'));
         }
     };
 
@@ -132,7 +143,7 @@ export default function AIEngineSettings() {
                         </div>
                         <div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <h3 className={`text-xl font-black tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>llama.cpp AI Engine</h3>
+                                <h3 className={`text-xl font-black tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('tools.aiSettings.title', null, 'llama.cpp AI Engine')}</h3>
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                                     isRunning 
                                         ? (isBright ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30')
@@ -144,21 +155,29 @@ export default function AIEngineSettings() {
                                                     ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                                                     : (isBright ? 'bg-black/5 text-zinc-500 border border-black/10' : 'bg-white/10 text-white/40')
                                 }`}>
-                                    {isRunning ? 'Online (llama-server)' : (status === 'loading' || status === 'starting') ? 'Starting...' : status === 'downloading_engine' ? 'Updating Engine...' : status === 'error' ? 'Engine Error' : 'Stopped'}
+                                    {isRunning
+                                        ? t('tools.aiSettings.status.online', null, 'Online (llama-server)')
+                                        : (status === 'loading' || status === 'starting')
+                                            ? t('tools.aiSettings.status.starting', null, 'Starting...')
+                                            : status === 'downloading_engine'
+                                                ? t('tools.aiSettings.status.updating', null, 'Updating Engine...')
+                                                : status === 'error'
+                                                    ? t('tools.aiSettings.status.error', null, 'Engine Error')
+                                                    : t('tools.aiSettings.status.stopped', null, 'Stopped')}
                                 </span>
                                 <button
                                     onClick={handleUpdateEngine}
                                     disabled={isUpdatingEngine || status === 'downloading_engine'}
-                                    title="Check and synchronize native llama.cpp engine (b11796 with Gemma 4 support)"
+                                    title={t('tools.aiSettings.syncTitle', null, 'Check and synchronize native llama.cpp engine (b11796 with Gemma 4 support)')}
                                     className={`px-2 py-0.5 rounded-full text-[10px] font-mono transition flex items-center gap-1 cursor-pointer ${
                                         isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600 border border-black/10' : 'bg-white/5 hover:bg-white/10 text-white/60 border border-white/10'
                                     }`}
                                 >
                                     <RefreshCw size={10} className={isUpdatingEngine || status === 'downloading_engine' ? 'animate-spin text-accent' : ''} />
-                                    {isUpdatingEngine || status === 'downloading_engine' ? 'Updating...' : 'Sync Engine (b11796)'}
+                                    {isUpdatingEngine || status === 'downloading_engine' ? t('tools.aiSettings.updatingBtn', null, 'Updating...') : t('tools.aiSettings.syncBtn', null, 'Sync Engine (b11796)')}
                                 </button>
                             </div>
-                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>High-speed, zero-knowledge local LLM runner with native Gemma 4, Qwen 3.5 &amp; Bielik 11B GGUF support.</p>
+                            <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>{t('tools.aiSettings.subtitle', null, 'High-speed, zero-knowledge local LLM runner with native Gemma 4, Qwen 3.5 & Bielik 11B GGUF support.')}</p>
                         </div>
                     </div>
 
@@ -167,19 +186,19 @@ export default function AIEngineSettings() {
                         <div className="flex items-center gap-3">
                             <div className="text-right">
                                 <span className="text-xs font-bold text-accent block leading-tight">
-                                    Downloading Model ({downloadProgress || 0}%)
+                                    {t('tools.aiSettings.downloadingModel', { progress: downloadProgress || 0 }, `Downloading Model (${downloadProgress || 0}%)`)}
                                 </span>
                                 <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                     {downloadDetail?.downloadedBytes 
                                         ? `${(downloadDetail.downloadedBytes / 1024 / 1024).toFixed(0)}MB / ${(downloadDetail.totalBytes / 1024 / 1024).toFixed(0)}MB` 
-                                        : 'Connecting to CDN...'}
+                                        : t('tools.aiSettings.connectingCdn', null, 'Connecting to CDN...')}
                                 </span>
                             </div>
                             <button
                                 onClick={() => useAIStore.getState().cancelDownload()}
                                 className="px-4 py-2.5 rounded-2xl font-bold text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
                             >
-                                <Square size={13} fill="currentColor" /> Cancel
+                                <Square size={13} fill="currentColor" /> {t('tools.aiSettings.cancel', null, 'Cancel')}
                             </button>
                         </div>
                     ) : !hasDownloadedModel ? (
@@ -187,7 +206,7 @@ export default function AIEngineSettings() {
                             onClick={() => downloadModel(activePreset)}
                             className="px-6 py-3 rounded-2xl font-bold text-xs tracking-wide transition-all shadow-lg flex items-center gap-2 cursor-pointer bg-accent text-black hover:scale-105 shadow-[0_10px_25px_var(--accent-30)]"
                         >
-                            <Download size={14} /> Download {activePreset.name.split('(')[0].trim()} ({activePreset.size.split('+')[0].trim()})
+                            <Download size={14} /> {t('tools.aiSettings.downloadBtn', { name: activePreset.name.split('(')[0].trim(), size: activePreset.size.split('+')[0].trim() }, `Download ${activePreset.name.split('(')[0].trim()} (${activePreset.size.split('+')[0].trim()})`)}
                         </button>
                     ) : (
                         <button
@@ -202,11 +221,11 @@ export default function AIEngineSettings() {
                             }`}
                         >
                             {status === 'loading' || status === 'starting' || status === 'downloading_engine' ? (
-                                <> <Loader2 size={14} className="animate-spin text-amber-400" /> Starting llama-server... </>
+                                <> <Loader2 size={14} className="animate-spin text-amber-400" /> {t('tools.aiSettings.startingBtn', null, 'Starting llama-server...')} </>
                             ) : isRunning ? (
-                                <> <Square size={14} fill="currentColor" /> Stop llama-server </>
+                                <> <Square size={14} fill="currentColor" /> {t('tools.aiSettings.stopBtn', null, 'Stop llama-server')} </>
                             ) : (
-                                <> <Play size={14} fill="currentColor" /> Start llama-server Engine </>
+                                <> <Play size={14} fill="currentColor" /> {t('tools.aiSettings.startBtn', null, 'Start llama-server Engine')} </>
                             )}
                         </button>
                     )}
@@ -216,21 +235,21 @@ export default function AIEngineSettings() {
                     <div className="mt-4 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-red-400">
                         <div className="flex items-center gap-2.5">
                             <AlertCircle size={16} className="shrink-0 text-red-400" />
-                            <span>{metrics?.errorMessage || lastError || 'llama-server encountered an error starting the model.'}</span>
+                            <span>{metrics?.errorMessage || lastError || t('tools.aiSettings.defaultStartError', null, 'llama-server encountered an error starting the model.')}</span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
                             <button
                                 onClick={() => useAIStore.getState().clearError()}
                                 className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-[11px] transition cursor-pointer"
                             >
-                                Dismiss
+                                {t('tools.aiSettings.dismiss', null, 'Dismiss')}
                             </button>
                             <button
                                 onClick={handleUpdateEngine}
                                 disabled={isUpdatingEngine || status === 'downloading_engine'}
                                 className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold text-[11px] border border-red-500/30 transition cursor-pointer flex items-center gap-1.5"
                             >
-                                <RefreshCw size={12} className={isUpdatingEngine ? 'animate-spin' : ''} /> Update AI Engine
+                                <RefreshCw size={12} className={isUpdatingEngine ? 'animate-spin' : ''} /> {t('tools.aiSettings.updateEngineBtn', null, 'Update AI Engine')}
                             </button>
                         </div>
                     </div>
@@ -240,23 +259,23 @@ export default function AIEngineSettings() {
             {/* Performance Benchmark Bar */}
             <div className="grid grid-cols-3 gap-3">
                 <div className={`p-4 border rounded-2xl text-center ${isBright ? 'bg-white/75 border-black/10 shadow-sm' : 'bg-black/40 border-white/10'}`}>
-                    <span className={`text-[10px] font-bold uppercase tracking-widest block mb-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Generation Speed</span>
-                    <span className="text-2xl font-mono font-bold text-emerald-500">{metrics.tokensPerSecond || 42.8} <span className={`text-xs font-normal ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>tok/s</span></span>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest block mb-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('tools.aiSettings.genSpeed', null, 'Generation Speed')}</span>
+                    <span className="text-2xl font-mono font-bold text-emerald-500">{metrics.tokensPerSecond || 42.8} <span className={`text-xs font-normal ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>{t('tools.aiSettings.tokPerSec', null, 'tok/s')}</span></span>
                 </div>
                 <div className={`p-4 border rounded-2xl text-center ${isBright ? 'bg-white/75 border-black/10 shadow-sm' : 'bg-black/40 border-white/10'}`}>
-                    <span className={`text-[10px] font-bold uppercase tracking-widest block mb-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Context Window</span>
-                    <span className="text-2xl font-mono font-bold text-accent">{contextSize} <span className={`text-xs font-normal ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>tokens</span></span>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest block mb-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('tools.aiSettings.contextWindow', null, 'Context Window')}</span>
+                    <span className="text-2xl font-mono font-bold text-accent">{contextSize} <span className={`text-xs font-normal ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>{t('tools.aiSettings.tokens', null, 'tokens')}</span></span>
                 </div>
                 <div className={`p-4 border rounded-2xl text-center ${isBright ? 'bg-white/75 border-black/10 shadow-sm' : 'bg-black/40 border-white/10'}`}>
-                    <span className={`text-[10px] font-bold uppercase tracking-widest block mb-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>GPU Offload</span>
-                    <span className="text-2xl font-mono font-bold text-purple-500">{gpuLayers} <span className={`text-xs font-normal ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>layers</span></span>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest block mb-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('tools.aiSettings.gpuOffload', null, 'GPU Offload')}</span>
+                    <span className="text-2xl font-mono font-bold text-purple-500">{gpuLayers} <span className={`text-xs font-normal ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>{t('tools.aiSettings.layers', null, 'layers')}</span></span>
                 </div>
             </div>
 
             {/* Model Selection & Custom Loader */}
             <div className={`p-5 border rounded-2xl space-y-4 ${isBright ? 'bg-white/75 border-black/10 shadow-sm' : 'bg-[#0e0f13]/80 border-white/10'}`}>
                 <div className="flex items-center justify-between">
-                    <h4 className={`text-sm font-bold flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}><Sparkles size={16} className="text-accent" /> Active GGUF Model</h4>
+                    <h4 className={`text-sm font-bold flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}><Sparkles size={16} className="text-accent" /> {t('tools.aiSettings.activeModelTitle', null, 'Active GGUF Model')}</h4>
                     <div className="flex gap-2">
                         <button
                             onClick={handlePickCustomFile}
@@ -264,7 +283,7 @@ export default function AIEngineSettings() {
                                 isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80'
                             }`}
                         >
-                            <FolderOpen size={13} /> Load Custom .GGUF File...
+                            <FolderOpen size={13} /> {t('tools.aiSettings.loadCustomGguf', null, 'Load Custom .GGUF File...')}
                         </button>
                         <button
                             onClick={handlePickCustomMmproj}
@@ -272,7 +291,7 @@ export default function AIEngineSettings() {
                                 isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80'
                             }`}
                         >
-                            <FolderOpen size={13} /> Load Custom Projector...
+                            <FolderOpen size={13} /> {t('tools.aiSettings.loadCustomProjector', null, 'Load Custom Projector...')}
                         </button>
                     </div>
                 </div>
@@ -280,18 +299,18 @@ export default function AIEngineSettings() {
                 {customModelPath && (
                     <div className="p-3 bg-accent/10 border border-accent/30 rounded-xl flex items-center justify-between text-xs text-accent font-mono">
                         <div className="flex items-center gap-2 truncate">
-                            <HardDrive size={14} /> Custom Model: {customModelPath}
+                            <HardDrive size={14} /> {t('tools.aiSettings.customModelPrefix', { path: customModelPath }, `Custom Model: ${customModelPath}`)}
                         </div>
-                        <button onClick={() => setCustomModelPath('')} className={`ml-2 font-sans text-[10px] cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}>Reset</button>
+                        <button onClick={() => setCustomModelPath('')} className={`ml-2 font-sans text-[10px] cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}>{t('tools.aiSettings.reset', null, 'Reset')}</button>
                     </div>
                 )}
                 
                 {customMmprojPath && (
                     <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl flex items-center justify-between text-xs text-purple-500 font-mono mt-2">
                         <div className="flex items-center gap-2 truncate">
-                            <HardDrive size={14} /> Custom Projector: {customMmprojPath}
+                            <HardDrive size={14} /> {t('tools.aiSettings.customProjectorPrefix', { path: customMmprojPath }, `Custom Projector: ${customMmprojPath}`)}
                         </div>
-                        <button onClick={() => setCustomMmprojPath('')} className={`ml-2 font-sans text-[10px] cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}>Reset</button>
+                        <button onClick={() => setCustomMmprojPath('')} className={`ml-2 font-sans text-[10px] cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}>{t('tools.aiSettings.reset', null, 'Reset')}</button>
                     </div>
                 )}
 
@@ -300,6 +319,12 @@ export default function AIEngineSettings() {
                         const isSelected = activeModelId === preset.id && !customModelPath;
                         const isDownloaded = downloadedModels.some(m => m.filename === preset.filename || m.path?.includes(preset.filename));
                         const isThisDownloading = status === 'downloading' && activeModelId === preset.id;
+                        const localizedSize = formatModelSize(preset.size);
+                        const downloadTarget = preset.mmprojUrl && downloadDetail?.percent > 0 && downloadDetail?.percent < 100
+                            ? (downloadDetail?.totalBytes < 1000000000
+                                ? t('tools.aiSettings.visionProjector', null, 'Vision Projector...')
+                                : t('tools.aiSettings.languageModel', null, 'Language Model...'))
+                            : t('tools.aiSettings.weights', null, 'weights...');
 
                         return (
                             <div
@@ -321,15 +346,15 @@ export default function AIEngineSettings() {
                                             ? (isBright ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30') 
                                             : (isBright ? 'bg-black/5 text-zinc-600 border border-black/10' : 'bg-white/10 text-white/60')
                                     }`}>
-                                        {isDownloaded ? 'Downloaded' : preset.size}
+                                        {isDownloaded ? t('tools.aiSettings.downloadedBadge', null, 'Downloaded') : localizedSize}
                                     </span>
                                 </div>
-                                <p className={`text-[11px] leading-relaxed mb-3 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>{preset.description}</p>
+                                <p className={`text-[11px] leading-relaxed mb-3 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>{t(`tools.aiSettings.models.${preset.id}`, null, preset.description)}</p>
 
                                 {isThisDownloading ? (
                                     <div className="space-y-1.5 pt-1">
                                         <div className="flex justify-between text-[10px] font-mono text-accent">
-                                            <span>Downloading {preset.mmprojUrl && downloadDetail?.percent > 0 && downloadDetail?.percent < 100 ? (downloadDetail?.totalBytes < 1000000000 ? 'Vision Projector...' : 'Language Model...') : 'weights...'}</span>
+                                            <span>{t('tools.aiSettings.downloadingTarget', { target: downloadTarget }, `Downloading ${downloadTarget}`)}</span>
                                             <span>
                                                 {downloadDetail?.downloadedBytes ? `${(downloadDetail.downloadedBytes / 1024 / 1024).toFixed(1)}MB / ${(downloadDetail.totalBytes / 1024 / 1024).toFixed(1)}MB` : `${downloadProgress || 0}%`}
                                             </span>
@@ -342,7 +367,7 @@ export default function AIEngineSettings() {
                                     <div className={`py-1.5 px-3 border rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 ${
                                         isBright ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
                                     }`}>
-                                        <CheckCircle size={12} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} /> Model Ready for Use
+                                        <CheckCircle size={12} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} /> {t('tools.aiSettings.modelReady', null, 'Model Ready for Use')}
                                     </div>
                                 ) : (
                                     <button
@@ -353,7 +378,7 @@ export default function AIEngineSettings() {
                                         }}
                                         className="w-full py-1.5 bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                                     >
-                                        <Download size={12} /> Download Model File ({preset.size})
+                                        <Download size={12} /> {t('tools.aiSettings.downloadModelFile', { size: localizedSize }, `Download Model File (${localizedSize})`)}
                                     </button>
                                 )}
                             </div>
@@ -365,18 +390,18 @@ export default function AIEngineSettings() {
             {/* Power User Parameter Controls */}
             <div className={`p-5 border rounded-2xl space-y-4 ${isBright ? 'bg-white/75 border-black/10 shadow-sm' : 'bg-[#0e0f13]/80 border-white/10'}`}>
                 <div className="flex items-center justify-between">
-                    <h4 className={`text-sm font-bold flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}><Sliders size={16} className="text-accent" /> llama-server Parameter Overrides</h4>
+                    <h4 className={`text-sm font-bold flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}><Sliders size={16} className="text-accent" /> {t('tools.aiSettings.overridesTitle', null, 'llama-server Parameter Overrides')}</h4>
                     <button 
                         onClick={handleAutoDetect}
                         className="px-3 py-1 bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5"
                     >
-                        <Zap size={11} /> Auto-Detect Hardware
+                        <Zap size={11} /> {t('tools.aiSettings.autoDetectBtn', null, 'Auto-Detect Hardware')}
                     </button>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <label className={`text-xs font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>CPU Threads (-t): {threads}</label>
+                        <label className={`text-xs font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{t('tools.aiSettings.cpuThreadsLabel', { threads }, `CPU Threads (-t): ${threads}`)}</label>
                         <input
                             type="range"
                             min="1"
@@ -387,28 +412,28 @@ export default function AIEngineSettings() {
                         />
                     </div>
                     <div>
-                        <label className={`text-xs font-semibold block mb-1.5 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Context Size (-c)</label>
+                        <label className={`text-xs font-semibold block mb-1.5 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{t('tools.aiSettings.contextSizeLabel', null, 'Context Size (-c)')}</label>
                         <CustomSelect
                             value={Number(contextSize) || 4096}
                             onChange={(val) => {
                                 const nextCtx = Number(val);
                                 setContextSize(nextCtx);
                                 if (isRunning) {
-                                    showToast(`Resizing llama-server context window to ${nextCtx} tokens...`);
+                                    showToast(t('tools.aiSettings.toasts.resizingContext', { tokens: nextCtx }, `Resizing llama-server context window to ${nextCtx} tokens...`));
                                 }
                             }}
                             isBright={isBright}
                             className="w-full !justify-between"
                             options={[
-                                { value: 2048, label: '2048 tokens', badge: 'Compact' },
-                                { value: 4096, label: '4096 tokens', badge: 'Default' },
-                                { value: 8192, label: '8192 tokens', badge: 'Extended' },
-                                { value: 16384, label: '16384 tokens', badge: 'Max' }
+                                { value: 2048, label: t('tools.aiSettings.tokensOption', { n: 2048 }, '2048 tokens'), badge: t('tools.aiSettings.contextBadges.compact', null, 'Compact') },
+                                { value: 4096, label: t('tools.aiSettings.tokensOption', { n: 4096 }, '4096 tokens'), badge: t('tools.aiSettings.contextBadges.default', null, 'Default') },
+                                { value: 8192, label: t('tools.aiSettings.tokensOption', { n: 8192 }, '8192 tokens'), badge: t('tools.aiSettings.contextBadges.extended', null, 'Extended') },
+                                { value: 16384, label: t('tools.aiSettings.tokensOption', { n: 16384 }, '16384 tokens'), badge: t('tools.aiSettings.contextBadges.max', null, 'Max') }
                             ]}
                         />
                     </div>
                     <div>
-                        <label className={`text-xs font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>GPU Offload Layers (-ngl): {gpuLayers}</label>
+                        <label className={`text-xs font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{t('tools.aiSettings.gpuLayersLabel', { layers: gpuLayers }, `GPU Offload Layers (-ngl): ${gpuLayers}`)}</label>
                         <input
                             type="range"
                             min="0"
@@ -424,13 +449,13 @@ export default function AIEngineSettings() {
             {/* Data Processing Settings */}
             <div className={`p-5 border rounded-2xl space-y-4 ${isBright ? 'bg-white/75 border-black/10 shadow-sm' : 'bg-[#0e0f13]/80 border-white/10'}`}>
                 <div className="flex items-center justify-between">
-                    <h4 className={`text-sm font-bold flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}><FileText size={16} className="text-accent" /> Data Processing</h4>
+                    <h4 className={`text-sm font-bold flex items-center gap-2 ${isBright ? 'text-zinc-900' : 'text-white'}`}><FileText size={16} className="text-accent" /> {t('tools.aiSettings.dataProcessingTitle', null, 'Data Processing')}</h4>
                 </div>
                 
                 <div className="flex items-center justify-between">
                     <div>
-                        <div className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>Parse PDF as Image</div>
-                        <div className={`text-[10px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>When dropping PDFs into chat, parse pages as images instead of extracting raw text. Best for Gemma 4 &amp; Qwen 3.5 Vision models to "see" charts and layouts.</div>
+                        <div className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('tools.aiSettings.parsePdfTitle', null, 'Parse PDF as Image')}</div>
+                        <div className={`text-[10px] mt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>{t('tools.aiSettings.parsePdfDesc', null, 'When dropping PDFs into chat, parse pages as images instead of extracting raw text. Best for Gemma 4 & Qwen 3.5 Vision models to "see" charts and layouts.')}</div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                         <input 
@@ -450,13 +475,13 @@ export default function AIEngineSettings() {
             <div className="p-5 bg-[#060709] border border-white/15 rounded-2xl space-y-3 font-mono">
                 <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <div className="flex items-center gap-2 text-xs font-bold text-white">
-                        <Terminal size={14} className="text-emerald-400" /> llama-server Terminal Console (Live Stdout)
+                        <Terminal size={14} className="text-emerald-400" /> {t('tools.aiSettings.consoleTitle', null, 'llama-server Terminal Console (Live Stdout)')}
                     </div>
                     <div className="flex items-center gap-2">
-                        <button onClick={handleCopyLogs} className="p-1 text-white/50 hover:text-white transition cursor-pointer" title="Copy Terminal Output">
+                        <button onClick={handleCopyLogs} className="p-1 text-white/50 hover:text-white transition cursor-pointer" title={t('tools.aiSettings.copyOutputTitle', null, 'Copy Terminal Output')}>
                             <Copy size={13} />
                         </button>
-                        <button onClick={clearLogs} className="p-1 text-white/50 hover:text-white transition cursor-pointer" title="Clear Console">
+                        <button onClick={clearLogs} className="p-1 text-white/50 hover:text-white transition cursor-pointer" title={t('tools.aiSettings.clearConsoleTitle', null, 'Clear Console')}>
                             <Trash2 size={13} />
                         </button>
                     </div>
@@ -464,7 +489,7 @@ export default function AIEngineSettings() {
 
                 <div ref={terminalRef} className="h-44 overflow-y-auto font-mono text-[11px] text-emerald-400/90 leading-relaxed space-y-1 hide-scroll p-1">
                     {logs.length === 0 ? (
-                        <p className="text-white/30 italic">[llama-server console initialized. Ready for server startup output...]</p>
+                        <p className="text-white/30 italic">{t('tools.aiSettings.consoleEmpty', null, '[llama-server console initialized. Ready for server startup output...]')}</p>
                     ) : (
                         logs.map((log, index) => (
                             <p key={index} className="break-all">{log}</p>

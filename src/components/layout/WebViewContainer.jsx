@@ -17,6 +17,9 @@ import DrmHandOffBanner from '../features/DrmHandOffBanner';
 import WebviewErrorOverlay from '../common/WebviewErrorOverlay';
 import { buildSearchEngineUrl } from '../../utils/searchEngines';
 import { isLikelyDownloadUrl } from '../../utils/downloadHelpers';
+import { playDisintegrationAnimation } from '../../utils/elementDisintegrator';
+import { isUrlExcludedFromDarkMode } from '../../utils/darkModeWhitelist';
+import { useTranslation, t as tStatic } from '../../i18n/index';
 
 const normalizeUrlForCompare = (u) => {
     if (!u) return '';
@@ -44,6 +47,7 @@ const isSameOrEquivalentUrl = (a, b) => {
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
 const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions, theme: themeProp }) => {
+    const { t } = useTranslation();
     const storeTheme = useUIStore(state => state.theme);
     const theme = themeProp || storeTheme;
     const wrapperRef = useRef(null);
@@ -79,9 +83,15 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
     useEffect(() => {
         return () => {
-            if (useUIStore.getState().htmlFullscreenTabId === tab.id) {
-                useUIStore.getState().setHtmlFullscreen(tab.id, false);
+            const ui = useUIStore.getState();
+            if (ui.htmlFullscreenTabId === tab.id) {
+                ui.setHtmlFullscreen(tab.id, false);
             }
+            if (ui.pipTabId === tab.id && wvRef.current && typeof wvRef.current.send === 'function') {
+                try { wvRef.current.send('media-control-command', 'exit-pip'); } catch (_) {}
+            }
+            ui.clearMediaStateForTab?.(tab.id);
+            useTabStore.getState().updateTabAudible?.(tab.id, false);
         };
     }, [tab.id]);
 
@@ -160,10 +170,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             const hostDisplay = hostStr || cleanHost;
             const isCertOrSsl = ['-113', '-107', '-200', '-201', '-202', '-203', '-204', '-205', '-206', '-207', '-208', '-210', '-211', '-212', '-213', '-214', '-217', '-501', '-502'].includes(String(activeError.errorCode));
             const titleText = activeError.errorCode === 'HTTP_INSECURE'
-                ? `Insecure HTTP • ${hostDisplay || 'Site'}`
+                ? tStatic('chrome.tabTitleInsecureHttp', { host: hostDisplay || tStatic('chrome.siteFallback', null, 'Site') }, `Insecure HTTP • ${hostDisplay || 'Site'}`)
                 : (isCertOrSsl
-                    ? `Insecure Site • ${hostDisplay || 'Security Warning'}`
-                    : `Error • ${hostDisplay || 'Connection Failed'}`);
+                    ? tStatic('chrome.tabTitleInsecureSite', { host: hostDisplay || tStatic('chrome.securityWarningFallback', null, 'Security Warning') }, `Insecure Site • ${hostDisplay || 'Security Warning'}`)
+                    : tStatic('chrome.tabTitleError', { host: hostDisplay || tStatic('chrome.connectionFailedFallback', null, 'Connection Failed') }, `Error • ${hostDisplay || 'Connection Failed'}`));
             if (tab.title !== titleText) {
                 useTabStore.getState().updateTabTitle(tab.id, titleText);
             }
@@ -203,7 +213,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         loadErrorRef.current = null;
         failedUrlsRef.current.clear();
         setLoadError(null);
-        const defaultTitle = space === 'ghost' ? 'New Incognito Tab' : 'New Tab';
+        const defaultTitle = space === 'ghost'
+            ? tStatic('chrome.newIncognitoTab', null, 'New Incognito Tab')
+            : tStatic('nav.newTab', null, 'New Tab');
         useTabStore.getState().handleNavigateTab(tab.id, '', defaultTitle);
         useUIStore.getState().setCurrentUrl('');
         const wv = wvRef.current;
@@ -240,8 +252,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         }
 
         if (finalUrl) {
-            setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: finalUrl, title: cleanHost || 'Loading...' } : t));
-            useTabStore.getState().updateTabState(tab.id, { url: finalUrl, title: cleanHost || 'Loading...' });
+            const loadingTitle = cleanHost || tStatic('common.loading', null, 'Loading...');
+            setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: finalUrl, title: loadingTitle } : t));
+            useTabStore.getState().updateTabState(tab.id, { url: finalUrl, title: loadingTitle });
             if (isActive && isSpaceActive) {
                 useUIStore.getState().setCurrentUrl(finalUrl);
             }
@@ -303,6 +316,36 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
     // Track the URL currently being loaded or displayed so we never initiate duplicate loadURL calls
     const currentRequestedUrlRef = useRef(initialUrl);
+
+    const isElementEraserActive = useUIStore(state => state.isElementEraserActive);
+    const hiddenElementsByDomain = useUIStore(state => state.hiddenElementsByDomain);
+    const eraserSessionRules = useUIStore(state => state.eraserSessionRules);
+
+    const pushEraserRulesToWebview = (targetWv = wvRef.current) => {
+        const wv = targetWv;
+        if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
+        const isEphemeral = space === 'ghost' || space === 'tor';
+        const cleanDomain = extractDomain(tab.url);
+        const uiState = useUIStore.getState();
+        const rules = isEphemeral
+            ? (uiState.eraserSessionRules?.[tab.id] || [])
+            : (cleanDomain ? (uiState.hiddenElementsByDomain?.[cleanDomain] || []) : []);
+        try {
+            wv.send('qbrowse-eraser-apply-rules', { rules });
+        } catch (_) {}
+    };
+
+    useEffect(() => {
+        pushEraserRulesToWebview();
+    }, [hiddenElementsByDomain, eraserSessionRules, tab.url, tab.id, space]);
+
+    useEffect(() => {
+        const wv = wvRef.current;
+        if (!wv || !isDomReadyRef.current) return;
+        try {
+            wv.send('qbrowse-eraser-toggle', { active: Boolean(isElementEraserActive && isVisible) });
+        } catch (_) {}
+    }, [isElementEraserActive, isVisible]);
 
     const showSwitcher = useUIStore(state => state.showSwitcher);
     useEffect(() => {
@@ -494,7 +537,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const wv = wvRef.current;
         if (!wv) return;
 
-        const defaultFallbackTitle = space === 'ghost' ? 'New Incognito Tab' : 'New Tab';
+        const defaultFallbackTitle = space === 'ghost'
+            ? tStatic('chrome.newIncognitoTab', null, 'New Incognito Tab')
+            : tStatic('nav.newTab', null, 'New Tab');
 
         const handleNavigate = (e) => {
             if (e && e.isMainFrame === false) return;
@@ -634,6 +679,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
             sendAnnotationsToWebview();
             sendVaultMatchesToWebview();
+            pushEraserRulesToWebview(wv);
+            if (useUIStore.getState().isElementEraserActive && isVisible) {
+                try { wv.send('qbrowse-eraser-toggle', { active: true }); } catch (_) {}
+            }
             try {
                 wv.send('apply-a11y-settings', {
                     ...useUIStore.getState().settings,
@@ -690,6 +739,8 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
         const handleFailLoad = (e) => {
             if (!e || e.errorCode === -3 || e.isMainFrame === false) return; // Ignore aborted requests and subframes
+            useTabStore.getState().updateTabAudible(tab.id, false);
+            useUIStore.getState().clearMediaStateForTab?.(tab.id);
             if (space === 'tor') {
                 const tor = useTorStore.getState();
                 if (tor.status !== 'connected') {
@@ -722,8 +773,8 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             }
             const isCertOrSsl = ['-113', '-107', '-200', '-201', '-202', '-203', '-204', '-205', '-206', '-207', '-208', '-210', '-211', '-212', '-213', '-214', '-217', '-501', '-502'].includes(String(errObj.errorCode));
             const errorTitle = isCertOrSsl 
-                ? `Insecure Site • ${hostStr || 'Security Warning'}`
-                : `Error • ${hostStr || 'Connection Failed'}`;
+                ? tStatic('chrome.tabTitleInsecureSite', { host: hostStr || tStatic('chrome.securityWarningFallback', null, 'Security Warning') }, `Insecure Site • ${hostStr || 'Security Warning'}`)
+                : tStatic('chrome.tabTitleError', { host: hostStr || tStatic('chrome.connectionFailedFallback', null, 'Connection Failed') }, `Error • ${hostStr || 'Connection Failed'}`);
 
             // Synchronize tab.url, title, and currentUrl so the omnibar and active tab do not stay stuck on the previous page
             if (failedUrl && failedUrl !== 'about:blank') {
@@ -742,7 +793,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             } catch(e) {}
         };
 
-        const handleNavigateSafe = (e) => {
+        const handleNavigateSafe = (e, isInPage = false) => {
             if (e && e.isMainFrame === false) return;
             // [WebView did-navigate silenced]
             wv.hasCrashed = false;
@@ -753,6 +804,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             }
             setLoadError(null);
             setActiveNoteCard(null);
+            if (!isInPage) {
+                useTabStore.getState().updateTabAudible(tab.id, false);
+                useUIStore.getState().clearMediaStateForTab?.(tab.id);
+            }
             let displayUrl = e.url;
             if (displayUrl && displayUrl.startsWith('http://127.0.0.1:8080')) {
                 displayUrl = displayUrl.replace('http://127.0.0.1:8080', 'qbrowse://ai');
@@ -765,7 +820,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const handleNavigateInPage = (e) => {
             if (e && e.isMainFrame === false) return;
             // [WebView did-navigate-in-page silenced]
-            handleNavigateSafe(e);
+            handleNavigateSafe(e, true);
             if (isActive && isSpaceActive) {
                 scheduleReaderChecks();
             }
@@ -802,49 +857,127 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             } else if (e.channel === 'media-state-changed') {
                 const data = e.args && e.args[0];
                 if (data) {
-                    useUIStore.getState().setMediaState({
-                        tabId: tab.id,
-                        ...data
-                    });
-                    useTabStore.getState().updateTabAudible(tab.id, !!data.isPlaying);
+                    const liveTab = useTabStore.getState().getTabsForSpace?.(space)?.find(t => t.id === tab.id);
+                    if (!liveTab || liveTab.isClosing || liveTab.suspended || !liveTab.url || liveTab.url === 'about:blank') {
+                        useUIStore.getState().clearMediaStateForTab?.(tab.id);
+                        useTabStore.getState().updateTabAudible(tab.id, false);
+                        return;
+                    }
+                    useUIStore.getState().updateTabMediaState?.(tab.id, data);
+                    const isPlaying = Boolean(data.isPlaying && !data.cleared && data.hasMedia !== false);
+                    let wvAudible = false;
+                    try {
+                        wvAudible = typeof wv.isCurrentlyAudible === 'function' ? Boolean(wv.isCurrentlyAudible()) : false;
+                    } catch (_) {}
+                    // Trust genuine unmuted playback or Chromium's native audio output; never mark muted tabs as playing audio
+                    const nextAudible = !liveTab.isMuted && (isPlaying || (!data.cleared && wvAudible));
+                    useTabStore.getState().updateTabAudible(tab.id, nextAudible);
                 }
+            } else if (e.channel === 'media-pip-changed') {
+                const data = e.args && e.args[0];
+                const isPipActive = Boolean(data && data.isPipActive);
+                useUIStore.getState().setPipTabId?.(isPipActive ? tab.id : null, tab.id);
             } else if (e.channel === 'webauthn-credential-created') {
                 if (space === 'ghost' || space === 'tor') return;
                 const data = e.args && e.args[0];
                 if (data) {
-                    console.log("[QVault WebAuthn] Received webauthn-credential-created in UI:", data.hostname);
+                    console.log("[QVault WebAuthn] Received webauthn-credential-created in UI:", data.rpId || data.hostname);
+                    const effectiveRpId = data.rpId || data.hostname;
                     useVaultStore.getState().addNewItem({
                         type: 'passkey',
-                        title: data.hostname,
-                        url: `https://${data.hostname}`,
+                        title: effectiveRpId,
+                        url: `https://${effectiveRpId}`,
                         username: data.username || '',
                         passkeyData: {
-                            rpId: data.rpId || data.hostname,
+                            rpId: effectiveRpId,
+                            rpName: data.rpName || '',
+                            displayName: data.displayName || data.username || '',
+                            userHandle: data.userHandle || null,
                             credentialId: data.credentialId,
                             publicKey: data.publicKey || null,
                             privateKey: data.privateKey || null,
+                            backupEligible: data.backupEligible !== false,
+                            transports: Array.isArray(data.transports) ? data.transports : ['hybrid', 'internal'],
                             created: Date.now()
                         }
                     }).then(() => {
-                        console.log("[QVault WebAuthn] Passkey saved successfully to vault for", data.hostname);
-                        useUIStore.getState().showToast(`Saved QVault passkey for ${data.hostname}!`);
+                        console.log("[QVault WebAuthn] Passkey saved successfully to vault for", effectiveRpId);
+                        useUIStore.getState().showToast(tStatic('chrome.toastPasskeySaved', { host: effectiveRpId }, `Saved QVault passkey for ${effectiveRpId}!`));
                     }).catch(err => {
                         console.error("[QVault WebAuthn] Failed to save passkey:", err);
-                        useUIStore.getState().showToast(`Failed to save passkey: ${err.message}`, 'error');
+                        useUIStore.getState().showToast(tStatic('chrome.toastPasskeySaveFailed', { error: err.message }, `Failed to save passkey: ${err.message}`), 'error');
                     });
-                    if (data.autoOpen) {
-                        useUIStore.getState().openPopover('vault');
-                    }
                 }
             } else if (e.channel === 'webauthn-used') {
                 const data = e.args && e.args[0];
                 if (data) {
-                    useUIStore.getState().showToast(`Signed in to ${data.hostname} using QVault passkey!`);
+                    useUIStore.getState().showToast(tStatic('chrome.toastPasskeySignedIn', { host: data.hostname }, `Signed in to ${data.hostname} using QVault passkey!`));
                 }
             } else if (e.channel === 'webauthn-no-passkey') {
                 const data = e.args && e.args[0];
                 if (data) {
-                    useUIStore.getState().showToast(`No QVault passkey found for ${data.hostname}`, 'info');
+                    useUIStore.getState().showToast(tStatic('chrome.toastPasskeyNotFound', { host: data.hostname }, `No QVault passkey found for ${data.hostname}`), 'info');
+                }
+            } else if (e.channel === 'qbrowse-eraser-exit-request') {
+                useUIStore.getState().toggleElementEraser(false);
+            } else if (e.channel === 'qbrowse-eraser-undo-request') {
+                const isEphemeral = space === 'ghost' || space === 'tor';
+                const cleanDomain = extractDomain(tab.url);
+                const ok = useUIStore.getState().removeLastHiddenElementRule(cleanDomain, { ephemeral: isEphemeral, tabId: tab.id });
+                if (ok) {
+                    useUIStore.getState().showToast(tStatic('chrome.eraserUndoToast', null, 'Restored last hidden item'));
+                }
+            } else if (e.channel === 'qbrowse-eraser-element-picked') {
+                const payload = e.args && e.args[0];
+                if (payload && payload.selector) {
+                    (async () => {
+                        let dataUrl = null;
+                        try {
+                            const r = payload.rect;
+                            if (r && r.width > 1 && r.height > 1) {
+                                if (typeof wv.capturePage === 'function') {
+                                    const img = await wv.capturePage(r);
+                                    if (img && typeof img.isEmpty === 'function' && !img.isEmpty()) {
+                                        dataUrl = img.toDataURL();
+                                    }
+                                }
+                                if (!dataUrl && window.electronAPI?.captureSliceDataUrl) {
+                                    const wcId = typeof wv.getWebContentsId === 'function' ? wv.getWebContentsId() : null;
+                                    dataUrl = await window.electronAPI.captureSliceDataUrl({ webContentsId: wcId, rect: r });
+                                }
+                            }
+                        } catch (_) {}
+
+                        let applied = false;
+                        const applyRemoval = () => {
+                            if (applied) return;
+                            applied = true;
+                            try { wv.send('qbrowse-eraser-commit'); } catch (_) {}
+                            const isEphemeral = space === 'ghost' || space === 'tor';
+                            const cleanDomain = extractDomain(tab.url);
+                            useUIStore.getState().addHiddenElementRule(cleanDomain, payload, { ephemeral: isEphemeral, tabId: tab.id });
+                            if (payload.unlockScroll) {
+                                useUIStore.getState().showToast(tStatic('chrome.eraserUnlockedScrollToast', null, 'Element hidden & page scrolling unlocked'));
+                            }
+                        };
+                        // Safety net: never leave the element on screen if the animation fails to start
+                        setTimeout(applyRemoval, 900);
+
+                        const uiState = useUIStore.getState();
+                        const effectiveVisualTier = (uiState.activePerformanceTier === 'eco' && uiState.reduceVisualsOnEco === false)
+                            ? 'balanced'
+                            : (uiState.activePerformanceTier || 'balanced');
+                        playDisintegrationAnimation({
+                            container: wrapperRef.current,
+                            imageDataUrl: dataUrl,
+                            rect: payload.rect,
+                            clickPoint: payload.clickPoint,
+                            fallbackColors: payload.fallbackColors,
+                            reducedMotion: Boolean(uiState.settings?.a11yReducedMotion || uiState.isSystemReducedMotion),
+                            performanceTier: effectiveVisualTier,
+                            onReady: applyRemoval
+                        });
+                    })();
                 }
             } else if (e.channel === 'qbrowse-annotation-create') {
                 if (space === 'ghost' || space === 'tor') return;
@@ -1033,11 +1166,51 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             }
         };
 
-        const handleMediaPlay = () => useTabStore.getState().updateTabAudible(tab.id, true);
-        const handleMediaPause = () => useTabStore.getState().updateTabAudible(tab.id, false);
+        const getLiveTab = () => {
+            try {
+                return useTabStore.getState().getTabsForSpace?.(space)?.find(t => t.id === tab.id) || null;
+            } catch (_) {
+                return null;
+            }
+        };
+
+        const handleMediaPlay = () => {
+            // Electron fires 'media-started-playing' even for muted autoplay / background GIF videos.
+            // Only mark the tab audible if Chromium confirms actual audio output and the tab is alive & unmuted.
+            const liveTab = getLiveTab();
+            if (!liveTab || liveTab.isClosing || liveTab.suspended || !liveTab.url || liveTab.url === 'about:blank' || liveTab.isMuted) {
+                return;
+            }
+            let currentlyAudible = false;
+            try {
+                currentlyAudible = typeof wv.isCurrentlyAudible === 'function' ? Boolean(wv.isCurrentlyAudible()) : false;
+            } catch (_) {}
+            if (currentlyAudible) {
+                useTabStore.getState().updateTabAudible(tab.id, true);
+            }
+        };
+        const handleMediaPause = () => {
+            useTabStore.getState().updateTabAudible(tab.id, false);
+            useUIStore.getState().updateTabMediaState?.(tab.id, { isPlaying: false });
+        };
         const handleAudioStateChanged = (e) => {
-            const isAudible = Boolean(e && (e.audible ?? (typeof wv.isCurrentlyAudible === 'function' ? wv.isCurrentlyAudible() : true)));
-            useTabStore.getState().updateTabAudible(tab.id, isAudible);
+            const liveTab = getLiveTab();
+            if (!liveTab || liveTab.isClosing || liveTab.suspended || !liveTab.url || liveTab.url === 'about:blank') {
+                useTabStore.getState().updateTabAudible(tab.id, false);
+                useUIStore.getState().clearMediaStateForTab?.(tab.id);
+                return;
+            }
+            let isAudible = false;
+            if (e && typeof e.audible === 'boolean') {
+                isAudible = e.audible;
+            } else {
+                try {
+                    isAudible = typeof wv.isCurrentlyAudible === 'function' ? Boolean(wv.isCurrentlyAudible()) : false;
+                } catch (_) {
+                    isAudible = false;
+                }
+            }
+            useTabStore.getState().updateTabAudible(tab.id, Boolean(isAudible && !liveTab.isMuted));
         };
         
         const handleDidStartLoading = () => {
@@ -1084,6 +1257,8 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const handleRenderProcessGone = (e) => {
             const details = e?.details || e || {};
             console.warn(`[WebView ${tab.id}] render-process-gone:`, details);
+            useTabStore.getState().updateTabAudible(tab.id, false);
+            useUIStore.getState().clearMediaStateForTab?.(tab.id);
             if (details.reason === 'clean-exit') return;
 
             wv.hasCrashed = true;
@@ -1219,6 +1394,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             });
         };
 
+        const onDomReady = () => {
+            registerWcId();
+            handleDomReady();
+            updateNavState();
+        };
+
         wv.addEventListener('did-attach', registerWcId);
         wv.addEventListener('context-menu', handleContextMenu);
         wv.addEventListener('found-in-page', handleFoundInPage);
@@ -1230,7 +1411,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('crashed', handleRenderProcessGone);
         wv.addEventListener('plugin-crashed', handleRenderProcessGone);
         wv.addEventListener('page-title-updated', handleTitleUpdate);
-        wv.addEventListener('dom-ready', () => { registerWcId(); handleDomReady(); updateNavState(); });
+        wv.addEventListener('dom-ready', onDomReady);
         wv.addEventListener('did-stop-loading', handleDidStopLoading);
         wv.addEventListener('enter-html-full-screen', handleEnterHtmlFullScreen);
         wv.addEventListener('leave-html-full-screen', handleLeaveHtmlFullScreen);
@@ -1252,7 +1433,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('render-process-gone', handleRenderProcessGone);
             wv.removeEventListener('crashed', handleRenderProcessGone);
             wv.removeEventListener('page-title-updated', handleTitleUpdate);
-            wv.removeEventListener('dom-ready', handleDomReady);
+            wv.removeEventListener('dom-ready', onDomReady);
             wv.removeEventListener('did-stop-loading', handleDidStopLoading);
             wv.removeEventListener('enter-html-full-screen', handleEnterHtmlFullScreen);
             wv.removeEventListener('leave-html-full-screen', handleLeaveHtmlFullScreen);
@@ -1517,22 +1698,29 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         }
     }, [tab.isMuted]);
 
-    // Smart Force Dark Mode Engine (Detects white sites and inverts, leaves native dark sites untouched)
+    // Smart Force Dark Mode Engine (Detects white sites and inverts, leaves native dark & whitelisted sites untouched)
     const isBrightTab = theme === 'light' && space !== 'ghost' && space !== 'tor';
     const exclusions = darkExclusions || [];
-    const isExcluded = exclusions.some(domain => tab.url && typeof tab.url === 'string' && tab.url.includes(domain));
-    const targetColorScheme = (isForceDark && !isExcluded)
-        ? 'dark'
-        : (isBrightTab ? 'light' : 'dark');
+    const darkExcludeMedia = useUIStore(state => state.darkExcludeMedia);
 
     useEffect(() => {
         const wv = wvRef.current;
         if (!wv) return;
 
-        const applySmartDark = () => {
+        const applySmartDark = (overrideUrl) => {
+            let liveUrl = overrideUrl || '';
+            if (!liveUrl && typeof wv.getURL === 'function') {
+                try { liveUrl = wv.getURL() || ''; } catch (_) {}
+            }
+            const effectiveUrl = liveUrl || tab.url || '';
+            const isExcluded = isUrlExcludedFromDarkMode(effectiveUrl, exclusions);
+            const targetColorScheme = (isForceDark && !isExcluded)
+                ? 'dark'
+                : (isBrightTab ? 'light' : 'dark');
+
             if (wv && typeof wv.send === 'function') {
                 try {
-                    wv.send('apply-smart-dark', { isForceDark, isExcluded });
+                    wv.send('apply-smart-dark', { isForceDark, isExcluded, excludeMedia: darkExcludeMedia });
                 } catch(e) {}
             }
             if (wv && typeof wv.getWebContentsId === 'function') {
@@ -1551,7 +1739,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         
         const onNav = (e) => {
             if (e && e.isMainFrame === false) return;
-            applySmartDark();
+            applySmartDark(e && typeof e.url === 'string' ? e.url : '');
         };
         wv.addEventListener('dom-ready', onNav);
         wv.addEventListener('did-finish-load', onNav);
@@ -1564,7 +1752,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             wv.removeEventListener('did-navigate', onNav);
             wv.removeEventListener('did-navigate-in-page', onNav);
         };
-    }, [isForceDark, tab.url, darkExclusions, theme, isBrightTab, targetColorScheme]);
+    }, [isForceDark, tab.url, darkExclusions, darkExcludeMedia, theme, isBrightTab]);
 
     // Sync Accessibility Settings to webview
     const a11ySettings = useUIStore(state => state.settings);
@@ -1819,10 +2007,14 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     {torStatus === 'starting' || torStatus === 'downloading' ? (
                         <>
                             <h3 className="text-sm font-bold text-white tracking-wide">
-                                {torStatus === 'downloading' ? 'Downloading Tor Expert Bundle...' : 'Establishing Tor Circuit...'}
+                                {torStatus === 'downloading'
+                                    ? t('chrome.torDownloadingBundle', null, 'Downloading Tor Expert Bundle...')
+                                    : t('chrome.torEstablishingCircuit', null, 'Establishing Tor Circuit...')}
                             </h3>
                             <p className="text-[11px] text-white/50 mt-1 font-mono">
-                                {torStatus === 'downloading' ? 'Fetching official bundle...' : `Bootstrapping onion relays (${torBootstrapProgress || 0}%)`}
+                                {torStatus === 'downloading'
+                                    ? t('chrome.torFetchingBundle', null, 'Fetching official bundle...')
+                                    : t('chrome.torBootstrapping', { progress: torBootstrapProgress || 0 }, `Bootstrapping onion relays (${torBootstrapProgress || 0}%)`)}
                             </p>
                             <div className="w-48 h-1.5 bg-white/10 rounded-full mt-4 overflow-hidden">
                                 <div className="h-full bg-purple-500 transition-all duration-300 rounded-full shadow-[0_0_8px_#a855f7]" style={{ width: `${Math.max(10, torBootstrapProgress || 0)}%` }} />
@@ -1831,17 +2023,17 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     ) : (
                         <>
                             <h3 className="text-sm font-bold text-white tracking-wide">
-                                Tor Onion Routing Offline
+                                {t('chrome.torOfflineTitle', null, 'Tor Onion Routing Offline')}
                             </h3>
                             <p className="text-[12px] text-white/50 mt-1 max-w-sm text-center">
-                                Connect to Tor to safely resolve .onion services and route ephemeral traffic.
+                                {t('chrome.torOfflineDesc', null, 'Connect to Tor to safely resolve .onion services and route ephemeral traffic.')}
                             </p>
                             <button
                                 onClick={() => useTorStore.getState().startTor()}
                                 className="mt-4 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.4)] active:scale-95"
                             >
                                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                                Connect to Tor Network
+                                {t('chrome.torConnectBtn', null, 'Connect to Tor Network')}
                             </button>
                         </>
                     )}
@@ -1908,7 +2100,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                             <div className="flex items-center gap-2">
                                 <div className="flex items-center gap-1.5">
                                     <StickyNote size={13} className="text-accent" />
-                                    <span className={`text-[11px] font-bold uppercase tracking-wider font-mono ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>Sticky Note</span>
+                                    <span className={`text-[11px] font-bold uppercase tracking-wider font-mono ${isBright ? 'text-zinc-700' : 'text-white/75'}`}>{t('chrome.stickyNote', null, 'Sticky Note')}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5 ml-1">
                                     {Object.keys(HIGHLIGHT_COLORS).map(key => {
@@ -1924,7 +2116,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                                         : (isBright ? 'border-black/25 hover:scale-110 hover:border-black/50' : 'border-white/25 hover:scale-110 hover:border-white/60')
                                                 }`}
                                                 style={{ backgroundColor: col.border }}
-                                                title={col.label}
+                                                title={t(`chrome.highlightColor_${key}`, null, col.label)}
                                             />
                                         );
                                     })}
@@ -1935,7 +2127,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                 className={`p-1 rounded-lg transition cursor-pointer text-xs flex items-center justify-center ${
                                     isBright ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/85 hover:text-white hover:bg-white/10'
                                 }`}
-                                title="Close (Esc)"
+                                title={t('chrome.closeEsc', null, 'Close (Esc)')}
                             >
                                 <X size={13} />
                             </button>
@@ -1955,7 +2147,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                     handleSaveNote();
                                 }
                             }}
-                            placeholder="Type your note, thought, or takeaway..."
+                            placeholder={t('chrome.stickyNotePlaceholder', null, 'Type your note, thought, or takeaway...')}
                             className={`w-full h-24 rounded-xl p-2.5 text-xs resize-none outline-none transition font-sans leading-relaxed custom-scrollbar border ${
                                 isBright
                                     ? 'bg-black/[0.03] focus:bg-white/85 border-black/[0.10] focus:border-accent text-zinc-900 placeholder-zinc-500 focus:shadow-[0_0_15px_rgba(0,0,0,0.06)]'
@@ -1974,13 +2166,13 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                 }`}
                             >
                                 <Trash2 size={12} />
-                                <span>Delete</span>
+                                <span>{t('common.delete', null, 'Delete')}</span>
                             </button>
                             <button
                                 onClick={handleSaveNote}
                                 className="bg-accent hover:opacity-90 text-zinc-950 px-4 py-1.5 rounded-xl text-[11px] font-bold transition cursor-pointer shadow-sm active:scale-95"
                             >
-                                Save
+                                {t('common.save', null, 'Save')}
                             </button>
                         </div>
                     </div>
@@ -2007,11 +2199,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     <div className="flex items-center gap-1.5">
                         {Object.keys(HIGHLIGHT_COLORS).map(key => {
                             const col = HIGHLIGHT_COLORS[key];
+                            const colorLabel = t(`chrome.highlightColor_${key}`, null, col.label);
                             return (
                                 <button
                                     key={key}
                                     onClick={() => handlePillHighlight(key)}
-                                    title={`Highlight with ${col.label}`}
+                                    title={t('chrome.highlightWithColor', { color: colorLabel }, `Highlight with ${colorLabel}`)}
                                     className={`w-3.5 h-3.5 rounded-full border hover:scale-125 transition-all cursor-pointer shadow-sm ${
                                         isBright ? 'border-black/25 hover:border-zinc-950' : 'border-white/30 hover:border-white'
                                     }`}
@@ -2032,10 +2225,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                 ? 'bg-black/[0.03] border-black/[0.08] text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]'
                                 : 'bg-white/[0.06] border-white/10 text-white/85 hover:text-white hover:bg-white/10'
                         }`}
-                        title="Add Note"
+                        title={t('chrome.addNoteTooltip', null, 'Add Note')}
                     >
                         <StickyNote size={12} className="text-accent" />
-                        <span>Note</span>
+                        <span>{t('chrome.noteLabel', null, 'Note')}</span>
                     </button>
 
                     {/* Copy Selection Button */}
@@ -2046,7 +2239,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                                 ? 'bg-black/[0.03] border-black/[0.08] text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06]'
                                 : 'bg-white/[0.06] border-white/10 text-white/85 hover:text-white hover:bg-white/10'
                         }`}
-                        title="Copy selection"
+                        title={t('chrome.copySelectionTooltip', null, 'Copy selection')}
                     >
                         {pillCopied ? <Check size={12} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} /> : <Copy size={12} />}
                     </button>

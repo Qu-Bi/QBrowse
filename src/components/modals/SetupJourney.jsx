@@ -12,7 +12,7 @@ import useSyncStore from '../../store/useSyncStore';
 import useVaultStore from '../../store/useVaultStore';
 import { parseVaultContent } from '../../utils/vaultImporter';
 import { EXPERIENCE_PRESETS, applyExperiencePreset, getSavedPresetId, getPresetIcon } from '../../utils/experiencePresets';
-import PresetLayoutWireframe, { PRESET_TAGLINES } from '../common/PresetLayoutWireframe';
+import PresetLayoutWireframe, { PRESET_TAGLINES, getLocalizedPresetTagline } from '../common/PresetLayoutWireframe';
 import qbrowseLogo from '../../assets/icon.png';
 import { useTranslation, SUPPORTED_LANGUAGES, getSystemLanguage } from '../../i18n/index';
 import LanguageFlag from '../common/LanguageFlag';
@@ -57,11 +57,11 @@ const playUnlockChime = () => {
 };
 
 const ACCENT_PRESETS = [
-    { name: 'Amber Gold', hex: '#d4bc94', rgb: '212, 188, 148' },
-    { name: 'Cyber Emerald', hex: '#10b981', rgb: '16, 185, 129' },
-    { name: 'Electric Blue', hex: '#3b82f6', rgb: '59, 130, 246' },
-    { name: 'Royal Violet', hex: '#8b5cf6', rgb: '139, 92, 246' },
-    { name: 'Rose Gold', hex: '#f43f5e', rgb: '244, 63, 94' }
+    { key: 'amberGold', name: 'Amber Gold', hex: '#d4bc94', rgb: '212, 188, 148' },
+    { key: 'cyberEmerald', name: 'Cyber Emerald', hex: '#10b981', rgb: '16, 185, 129' },
+    { key: 'electricBlue', name: 'Electric Blue', hex: '#3b82f6', rgb: '59, 130, 246' },
+    { key: 'royalViolet', name: 'Royal Violet', hex: '#8b5cf6', rgb: '139, 92, 246' },
+    { key: 'roseGold', name: 'Rose Gold', hex: '#f43f5e', rgb: '244, 63, 94' }
 ];
 
 const getLiquidGlassStyle = (isBright, opacityDark = 0.40, opacityLight = 0.70) => ({
@@ -104,7 +104,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     const [importedStats, setImportedStats] = useState({});
     const [isDefault, setIsDefault] = useState(false);
     const [isSettingDefault, setIsSettingDefault] = useState(false);
-    const [defaultBrowserHint, setDefaultBrowserHint] = useState('');
+    const [defaultBrowserHint, setDefaultBrowserHint] = useState(false);
     const defaultPollRef = useRef(null);
     const isDefaultBrowser = isDefault;
     const setIsDefaultBrowser = setIsDefault;
@@ -155,24 +155,24 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
         const emailTrimmed = syncEmail.trim();
         if (!emailTrimmed) {
-            setSyncLocalError('Please enter an email address.');
+            setSyncLocalError(t('tools.setup.toasts.enterEmail', null, 'Please enter an email address.'));
             return;
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
-            setSyncLocalError('Please enter a valid email address (e.g. name@domain.com).');
+            setSyncLocalError(t('tools.setup.toasts.validEmail', null, 'Please enter a valid email address (e.g. name@domain.com).'));
             return;
         }
         if (!syncPassword || syncPassword.length < 6) {
-            setSyncLocalError('Password must be at least 6 characters.');
+            setSyncLocalError(t('tools.setup.toasts.passMin6', null, 'Password must be at least 6 characters.'));
             return;
         }
         if (syncAuthTab === 'register') {
             if (!syncConfirmPassword) {
-                setSyncLocalError('Please confirm your password.');
+                setSyncLocalError(t('tools.setup.toasts.confirmPassReq', null, 'Please confirm your password.'));
                 return;
             }
             if (syncPassword !== syncConfirmPassword) {
-                setSyncLocalError('Passwords do not match. Please re-enter.');
+                setSyncLocalError(t('tools.setup.toasts.passMismatch', null, 'Passwords do not match. Please re-enter.'));
                 return;
             }
         }
@@ -191,7 +191,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
         if (success) {
             playUnlockChime();
             setSyncSuccessJustHappened(true);
-            showToast(syncAuthTab === 'login' ? 'Signed in to QBrowse Cloud Sync!' : 'Account registered & Cloud Sync active!');
+            showToast(syncAuthTab === 'login'
+                ? t('tools.setup.toasts.signedIn', null, 'Signed in to QBrowse Cloud Sync!')
+                : t('tools.setup.toasts.registered', null, 'Account registered & Cloud Sync active!'));
         }
     };
 
@@ -246,17 +248,17 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 const currentPins = useTabStore.getState().pinnedTabs || [];
                 const newPins = res.bookmarks.slice(0, 8).map((b, idx) => ({
                     id: `imported-${Date.now()}-${idx}`,
-                    title: b.title || 'Bookmark',
+                    title: b.title || t('tools.setup.bookmarkFallback', null, 'Bookmark'),
                     domain: (b.url || '').replace(/^https?:\/\//i, '').split('/')[0]
                 }));
                 useTabStore.getState().setPinnedTabs([...currentPins, ...newPins]);
                 setImportedStats(prev => ({ ...prev, [browserId]: res.count }));
-                showToast(`Successfully imported ${res.count} bookmarks!`);
+                showToast(t('tools.setup.toasts.bookmarksImported', { count: res.count }, `Successfully imported ${res.count} bookmarks!`));
             } else {
-                showToast(res.error || 'Import failed.');
+                showToast(res.error || t('tools.setup.toasts.importFailed', null, 'Import failed.'));
             }
         } catch (e) {
-            showToast('Could not import bookmarks.');
+            showToast(t('tools.setup.toasts.couldNotImportBookmarks', null, 'Could not import bookmarks.'));
         } finally {
             setImportingId(null);
         }
@@ -270,15 +272,16 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 const currentPins = useTabStore.getState().pinnedTabs || [];
                 const newPins = res.bookmarks.slice(0, 8).map((b, idx) => ({
                     id: `html-imported-${Date.now()}-${idx}`,
-                    title: b.title || 'Bookmark',
+                    title: b.title || t('tools.setup.bookmarkFallback', null, 'Bookmark'),
                     domain: (b.url || '').replace(/^https?:\/\//i, '').split('/')[0]
                 }));
                 useTabStore.getState().setPinnedTabs([...currentPins, ...newPins]);
-                showToast(`Imported ${res.count} bookmarks from ${res.filename || 'HTML file'}!`);
+                const filename = res.filename || t('tools.setup.htmlFileFallback', null, 'HTML file');
+                showToast(t('tools.setup.toasts.htmlImported', { count: res.count, filename }, `Imported ${res.count} bookmarks from ${filename}!`));
                 setImportedStats(prev => ({ ...prev, html: res.count }));
             }
         } catch (e) {
-            showToast('HTML Bookmarks import failed.');
+            showToast(t('tools.setup.toasts.htmlImportFailed', null, 'HTML Bookmarks import failed.'));
         }
     };
 
@@ -291,7 +294,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             const { parsed, sourceName } = parseVaultContent(text, file.name);
 
             if (!parsed || parsed.length === 0) {
-                showToast('No credentials found in file', 'error');
+                showToast(t('tools.setup.toasts.noCredentials', null, 'No credentials found in file'), 'error');
                 setIsImportingVault(false);
                 return;
             }
@@ -300,7 +303,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             if (vaultStore.isUnlocked) {
                 const res = await vaultStore.importBatchItems(parsed);
                 setVaultImportStats({ count: res.total, source: sourceName });
-                showToast(`Imported ${res.total} passwords from ${sourceName}!`);
+                showToast(t('tools.setup.toasts.passwordsImported', { count: res.total, source: sourceName }, `Imported ${res.total} passwords from ${sourceName}!`));
                 setIsImportingVault(false);
             } else {
                 setPendingVaultData({ parsed, sourceName });
@@ -309,7 +312,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             }
         } catch (err) {
             console.error('Vault import error:', err);
-            showToast(`Import failed: ${err.message}`, 'error');
+            showToast(t('tools.setup.toasts.vaultImportFailed', { error: err.message }, `Import failed: ${err.message}`), 'error');
             setIsImportingVault(false);
         } finally {
             if (e.target) e.target.value = '';
@@ -319,11 +322,11 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     const handleConfirmVaultPass = async (e) => {
         e?.preventDefault();
         if (!vaultMasterPass || vaultMasterPass.length < 4) {
-            showToast('Password must be at least 4 characters', 'error');
+            showToast(t('tools.setup.toasts.passMin4', null, 'Password must be at least 4 characters'), 'error');
             return;
         }
         if (vaultMasterPassConfirm && vaultMasterPass !== vaultMasterPassConfirm) {
-            showToast('Passwords do not match', 'error');
+            showToast(t('tools.setup.toasts.vaultPassMismatch', null, 'Passwords do not match'), 'error');
             return;
         }
 
@@ -332,7 +335,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             const vaultStore = useVaultStore.getState();
             const unlocked = await vaultStore.unlock(vaultMasterPass);
             if (!unlocked) {
-                showToast('Incorrect master password for existing vault', 'error');
+                showToast(t('tools.setup.toasts.incorrectMasterPass', null, 'Incorrect master password for existing vault'), 'error');
                 setIsImportingVault(false);
                 return;
             }
@@ -340,15 +343,17 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             if (pendingVaultData && pendingVaultData.parsed) {
                 const res = await vaultStore.importBatchItems(pendingVaultData.parsed);
                 setVaultImportStats({ count: res.total, source: pendingVaultData.sourceName });
-                showToast(`Imported ${res.total} passwords from ${pendingVaultData.sourceName}!`);
+                showToast(t('tools.setup.toasts.passwordsImported', { count: res.total, source: pendingVaultData.sourceName }, `Imported ${res.total} passwords from ${pendingVaultData.sourceName}!`));
             }
+            // Keep QVault locked after importing credentials during setup
+            await vaultStore.lock?.();
             setShowVaultPassModal(false);
             setPendingVaultData(null);
             setVaultMasterPass('');
             setVaultMasterPassConfirm('');
         } catch (err) {
             console.error('Failed to unlock and import:', err);
-            showToast(`Import error: ${err.message}`, 'error');
+            showToast(t('tools.setup.toasts.vaultImportError', { error: err.message }, `Import error: ${err.message}`), 'error');
         } finally {
             setIsImportingVault(false);
         }
@@ -384,7 +389,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             const handleFocus = () => {
                 checkDefaultStatus(true).then(isDef => {
                     if (isDef) {
-                        showToast('QBrowse is now your default browser!');
+                        showToast(t('tools.setup.toasts.nowDefault', null, 'QBrowse is now your default browser!'));
                     }
                 });
             };
@@ -398,10 +403,15 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 }
             };
         }
-    }, [currentStep, checkDefaultStatus, showToast]);
+    }, [currentStep, checkDefaultStatus, showToast, t]);
 
     const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
-    const defaultAppsLabel = osPlatform === 'darwin' ? 'System Settings' : osPlatform === 'linux' ? 'Default Applications' : 'Windows Default Apps';
+    const osKey = osPlatform === 'darwin' ? 'darwin' : osPlatform === 'linux' ? 'linux' : 'win32';
+    const defaultAppsLabel = t(
+        `tools.setup.osLabels.${osKey}`,
+        null,
+        osKey === 'darwin' ? 'System Settings' : osKey === 'linux' ? 'Default Applications' : 'Windows Default Apps'
+    );
 
     const handleSetDefault = async () => {
         setIsSettingDefault(true);
@@ -415,11 +425,13 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
             if (res?.isDefault) {
                 setIsDefault(true);
-                setDefaultBrowserHint('');
-                showToast('QBrowse is now your default browser!');
+                setDefaultBrowserHint(false);
+                showToast(t('tools.setup.toasts.nowDefault', null, 'QBrowse is now your default browser!'));
             } else {
-                setDefaultBrowserHint(`${defaultAppsLabel} opened — select QBrowse in the system window to confirm.`);
-                showToast(osPlatform === 'win32' ? 'Opening Windows Default Apps. Click "Set default" for QBrowse.' : `Opening ${defaultAppsLabel}. Select QBrowse as your default browser.`);
+                setDefaultBrowserHint(true);
+                showToast(osPlatform === 'win32'
+                    ? t('tools.setup.toasts.openingWinDefault', null, 'Opening Windows Default Apps. Click "Set default" for QBrowse.')
+                    : t('tools.setup.toasts.openingOsDefault', { label: defaultAppsLabel }, `Opening ${defaultAppsLabel}. Select QBrowse as your default browser.`));
 
                 if (defaultPollRef.current) clearInterval(defaultPollRef.current);
                 let attempts = 0;
@@ -431,8 +443,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                             clearInterval(defaultPollRef.current);
                             defaultPollRef.current = null;
                         }
-                        setDefaultBrowserHint('');
-                        showToast('QBrowse is now your default browser!');
+                        setDefaultBrowserHint(false);
+                        showToast(t('tools.setup.toasts.nowDefault', null, 'QBrowse is now your default browser!'));
                     }
                     if (attempts >= 20) {
                         if (defaultPollRef.current) {
@@ -443,7 +455,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                 }, 1500);
             }
         } catch (_) {
-            showToast('Could not open default browser settings.');
+            showToast(t('tools.setup.toasts.couldNotOpenDefault', null, 'Could not open default browser settings.'));
         } finally {
             setIsSettingDefault(false);
         }
@@ -454,6 +466,12 @@ export default function SetupJourney({ onFinish, onStartTour }) {
             clearInterval(defaultPollRef.current);
             defaultPollRef.current = null;
         }
+        // Never leave QVault unlocked automatically after setup completes
+        try {
+            if (useVaultStore.getState().isUnlocked) {
+                useVaultStore.getState().lock?.();
+            }
+        } catch (_) {}
         try {
             sessionStorage.setItem('qbrowse_dismiss_default_browser_session', 'true');
             sessionStorage.setItem('qbrowse_default_browser_prompted', 'true');
@@ -470,12 +488,12 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     };
 
     const steps = [
-        { label: 'Language', desc: 'Interface Locale' },
-        { label: 'Presets & Style', desc: 'Experience & Style' },
-        { label: 'Import', desc: 'Bookmarks & Passwords' },
-        { label: 'Privacy', desc: 'Shields & Tor' },
-        { label: 'Default', desc: 'System Integration' },
-        { label: 'Sync & Account', desc: 'Cloud or Local' }
+        { label: t('tools.setup.steps.language.label', null, 'Language'), desc: t('tools.setup.steps.language.desc', null, 'Interface Locale') },
+        { label: t('tools.setup.steps.presets.label', null, 'Presets & Style'), desc: t('tools.setup.steps.presets.desc', null, 'Experience & Style') },
+        { label: t('tools.setup.steps.import.label', null, 'Import'), desc: t('tools.setup.steps.import.desc', null, 'Bookmarks & Passwords') },
+        { label: t('tools.setup.steps.privacy.label', null, 'Privacy'), desc: t('tools.setup.steps.privacy.desc', null, 'Shields & Tor') },
+        { label: t('tools.setup.steps.default.label', null, 'Default'), desc: t('tools.setup.steps.default.desc', null, 'System Integration') },
+        { label: t('tools.setup.steps.sync.label', null, 'Sync & Account'), desc: t('tools.setup.steps.sync.desc', null, 'Cloud or Local') }
     ];
 
     return (
@@ -509,10 +527,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     </div>
                     <div>
                         <span className={`font-bold tracking-tight ${isCompact ? 'text-xs' : 'text-sm'} block leading-none ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                            QBrowse Setup
+                            {t('tools.setup.headerTitle', null, 'QBrowse Setup')}
                         </span>
                         <span className={`text-[10px] mt-0.5 block ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                            Personalization Assistant
+                            {t('tools.setup.headerSubtitle', null, 'Personalization Assistant')}
                         </span>
                     </div>
                 </div>
@@ -576,12 +594,12 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     <h2 className={`text-3xl md:text-4xl font-extrabold tracking-tight mt-1 ${
                                         isBright ? 'text-zinc-900' : 'text-white'
                                     }`}>
-                                        {t('setup.welcomeSubtitle', null, 'Choose your setup')}
+                                        {t('tools.setup.chooseSetupTitle', null, 'Choose your setup')}
                                     </h2>
                                     <p className={`text-xs md:text-sm mt-1.5 leading-relaxed ${
                                         isBright ? 'text-zinc-500' : 'text-white/60'
                                     }`}>
-                                        {t('language.subtitle', null, 'Select a tailored layout to get started. You can customize every panel at any time.')}
+                                        {t('tools.setup.chooseSetupDesc', null, 'Select a tailored layout to get started. You can customize every panel at any time.')}
                                     </p>
                                 </div>
                                 <button
@@ -594,7 +612,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     }`}
                                 >
                                     <Sliders size={13} />
-                                    <span>Custom layout? Preset Studio &rarr;</span>
+                                    <span>{t('tools.setup.customLayoutCta', null, 'Custom layout? Preset Studio →')}</span>
                                 </button>
                             </div>
 
@@ -603,7 +621,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 {[...EXPERIENCE_PRESETS, ...(useUIStore.getState().customPresets || [])].map((p) => {
                                     const PresetIcon = getPresetIcon(p.icon);
                                     const isSelected = selectedPresetId === p.id;
-                                    const tagline = PRESET_TAGLINES[p.id] || p.tagline || 'Custom workspace and layout configuration.';
+                                    const isBuiltIn = Boolean(PRESET_TAGLINES[p.id]);
+                                    const displayName = isBuiltIn ? t(`tools.presets.names.${p.id}`, null, p.name) : p.name;
+                                    const tagline = getLocalizedPresetTagline(p, t);
 
                                     return (
                                         <button
@@ -636,7 +656,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                     <h3 className={`font-bold text-sm tracking-tight truncate transition-colors ${
                                                         isBright ? 'text-zinc-900 group-hover:text-zinc-950' : 'text-white group-hover:text-accent'
                                                     }`}>
-                                                        {p.name}
+                                                        {displayName}
                                                     </h3>
                                                 </div>
 
@@ -677,7 +697,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 {/* Theme Segmented Sliding Pill */}
                                 <div className="flex items-center gap-3 w-full sm:w-auto">
                                     <span className={`text-xs font-semibold ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                        Theme
+                                        {t('tools.setup.themeLabel', null, 'Theme')}
                                     </span>
                                     <div 
                                         onMouseLeave={() => setHoveredTheme(null)}
@@ -729,7 +749,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             }`}
                                         >
                                             <Moon size={13} />
-                                            <span>Dark</span>
+                                            <span>{t('tools.setup.dark', null, 'Dark')}</span>
                                         </button>
                                         <button
                                             type="button"
@@ -745,7 +765,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             }`}
                                         >
                                             <Sun size={13} />
-                                            <span>Light</span>
+                                            <span>{t('tools.setup.light', null, 'Light')}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -753,17 +773,17 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 {/* Accent Color Dots */}
                                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                                     <span className={`text-xs font-semibold ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                        Accent
+                                        {t('tools.setup.accentLabel', null, 'Accent')}
                                     </span>
                                     <div className="flex items-center gap-2">
                                         {ACCENT_PRESETS.map((preset) => {
                                             const isCur = accentColor?.toLowerCase() === preset.hex.toLowerCase();
                                             return (
                                                 <button
-                                                    key={preset.name}
+                                                    key={preset.key}
                                                     type="button"
                                                     onClick={() => handleApplyAccent(preset)}
-                                                    title={preset.name}
+                                                    title={t(`tools.presets.accents.${preset.key}`, null, preset.name)}
                                                     className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer hover:scale-115 active:scale-95 ${
                                                         isCur ? 'ring-2 ring-offset-2 ring-white scale-110' : 'opacity-80 hover:opacity-100'
                                                     }`}
@@ -786,10 +806,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     {currentStep === 2 && (
                         <div className={`${stepAnimClass} space-y-6`}>
                             <div>
-                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 2 of 5</span>
-                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Bring Your Data & Vault</h2>
+                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">{t('tools.setup.step2Badge', null, 'Step 2 of 5')}</span>
+                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">{t('tools.setup.step2Title', null, 'Bring Your Data & Vault')}</h2>
                                 <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                    Import your bookmarks and transition your passwords from Bitwarden, Proton Pass, Chrome, or Firefox.
+                                    {t('tools.setup.step2Desc', null, 'Import your bookmarks and transition your passwords from Bitwarden, Proton Pass, Chrome, or Firefox.')}
                                 </p>
                             </div>
 
@@ -822,7 +842,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     }`}
                                 >
                                     <Globe size={13} />
-                                    <span>Bookmarks</span>
+                                    <span>{t('tools.setup.tabBookmarks', null, 'Bookmarks')}</span>
                                     {Object.keys(importedStats).length > 0 && (
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                     )}
@@ -836,7 +856,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     }`}
                                 >
                                     <KeyRound size={13} />
-                                    <span>Password Vault</span>
+                                    <span>{t('tools.setup.tabVault', null, 'Password Vault')}</span>
                                     {vaultImportStats && (
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                     )}
@@ -859,7 +879,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                     <div>
                                                         <h4 className="text-sm font-bold text-white">{b.name}</h4>
                                                         <p className="text-xs text-white/40">
-                                                            {b.found ? `${b.count} bookmarks found` : 'Not detected on this machine'}
+                                                            {b.found ? t('tools.setup.bookmarksFound', { count: b.count }, `${b.count} bookmarks found`) : t('tools.setup.notDetected', null, 'Not detected on this machine')}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -877,12 +897,12 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         {importedStats[b.id] ? (
                                                             <>
                                                                 <Check size={13} strokeWidth={3} />
-                                                                <span>Imported</span>
+                                                                <span>{t('tools.setup.imported', null, 'Imported')}</span>
                                                             </>
                                                         ) : importingId === b.id ? (
-                                                            <span>Importing...</span>
+                                                            <span>{t('tools.setup.importing', null, 'Importing...')}</span>
                                                         ) : (
-                                                            <span>Import Bookmarks</span>
+                                                            <span>{t('tools.setup.importBookmarks', null, 'Import Bookmarks')}</span>
                                                         )}
                                                     </button>
                                                 )}
@@ -890,7 +910,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                         ))
                                     ) : (
                                         <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-center text-white/50 text-xs">
-                                            Scanning for existing browsers...
+                                            {t('tools.setup.scanningBrowsers', null, 'Scanning for existing browsers...')}
                                         </div>
                                     )}
 
@@ -901,7 +921,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     >
                                         <FolderInput size={18} className="text-accent" />
                                         <span className="text-xs font-semibold">
-                                            {importedStats.html ? `HTML file imported (${importedStats.html} items)` : 'Upload Bookmarks HTML File (.html)'}
+                                            {importedStats.html ? t('tools.setup.htmlImported', { count: importedStats.html }, `HTML file imported (${importedStats.html} items)`) : t('tools.setup.uploadHtml', null, 'Upload Bookmarks HTML File (.html)')}
                                         </span>
                                     </div>
                                 </div>
@@ -925,9 +945,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                     <Check size={20} strokeWidth={3} />
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-sm font-bold text-emerald-300">Vault Migration Complete</h4>
+                                                    <h4 className="text-sm font-bold text-emerald-300">{t('tools.setup.vaultComplete', null, 'Vault Migration Complete')}</h4>
                                                     <p className="text-xs text-emerald-400/80">
-                                                        Successfully imported {vaultImportStats.count} items from {vaultImportStats.source} into QVault!
+                                                        {t('tools.setup.vaultImportedSummary', { count: vaultImportStats.count, source: vaultImportStats.source }, `Successfully imported ${vaultImportStats.count} items from ${vaultImportStats.source} into QVault!`)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -936,7 +956,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 onClick={() => vaultFileInputRef.current?.click()}
                                                 className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/15 border border-white/10 text-white transition cursor-pointer"
                                             >
-                                                Import Another
+                                                {t('tools.setup.importAnother', null, 'Import Another')}
                                             </button>
                                         </div>
                                     ) : (
@@ -953,7 +973,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         </div>
                                                         <div>
                                                             <h4 className="text-xs font-bold text-white group-hover:text-accent transition-colors">Bitwarden</h4>
-                                                            <p className="text-[11px] text-white/40">Export as .CSV or .JSON</p>
+                                                            <p className="text-[11px] text-white/40">{t('tools.setup.exportCsvJson', null, 'Export as .CSV or .JSON')}</p>
                                                         </div>
                                                     </div>
                                                     <UploadCloud size={15} className="text-white/40 group-hover:text-accent transition-colors" />
@@ -969,7 +989,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         </div>
                                                         <div>
                                                             <h4 className="text-xs font-bold text-white group-hover:text-accent transition-colors">Proton Pass</h4>
-                                                            <p className="text-[11px] text-white/40">Export as .CSV or .JSON</p>
+                                                            <p className="text-[11px] text-white/40">{t('tools.setup.exportCsvJson', null, 'Export as .CSV or .JSON')}</p>
                                                         </div>
                                                     </div>
                                                     <UploadCloud size={15} className="text-white/40 group-hover:text-accent transition-colors" />
@@ -986,10 +1006,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 </div>
                                                 <div>
                                                     <span className="text-xs font-bold text-white group-hover:text-accent transition-colors block">
-                                                        {isImportingVault ? 'Parsing Vault File...' : 'Upload Vault Export (.csv or .json)'}
+                                                        {isImportingVault ? t('tools.setup.parsingVault', null, 'Parsing Vault File...') : t('tools.setup.uploadVault', null, 'Upload Vault Export (.csv or .json)')}
                                                     </span>
                                                     <span className="text-[11px] text-white/40 mt-0.5 block">
-                                                        Compatible with Bitwarden, Proton Pass, Google Chrome, Edge, Brave, and 1Password
+                                                        {t('tools.setup.compatibleManagers', null, 'Compatible with Bitwarden, Proton Pass, Google Chrome, Edge, Brave, and 1Password')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1005,15 +1025,15 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                         <div className={`${stepAnimClass} space-y-8`}>
                             <div className="flex items-start justify-between gap-4 flex-wrap">
                                 <div>
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 3 of 5</span>
-                                    <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Armor Your Privacy</h2>
+                                    <span className="text-[11px] font-bold uppercase tracking-widest text-accent">{t('tools.setup.step3Badge', null, 'Step 3 of 5')}</span>
+                                    <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">{t('tools.setup.step3Title', null, 'Armor Your Privacy')}</h2>
                                     <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                        QBrowse blocks tracking scripts, eliminates intrusive ads, and routes traffic through the Tor network.
+                                        {t('tools.setup.step3Desc', null, 'QBrowse blocks tracking scripts, eliminates intrusive ads, and routes traffic through the Tor network.')}
                                     </p>
                                 </div>
                                 {selectedPresetId === 'privacy' && (
                                     <span className="shrink-0 text-[10.5px] font-bold text-emerald-400 bg-emerald-500/15 px-3 py-1.5 rounded-xl border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
-                                        <ShieldCheck size={13} /> Preset: Privacy Purist Optimized
+                                        <ShieldCheck size={13} /> {t('tools.setup.privacyOptimizedBadge', null, 'Preset: Privacy Purist Optimized')}
                                     </span>
                                 )}
                             </div>
@@ -1026,9 +1046,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             <ShieldCheck size={20} />
                                         </div>
                                         <div>
-                                            <h4 className="text-sm font-bold text-white">Ghostery Native Tracker Shield</h4>
+                                            <h4 className="text-sm font-bold text-white">{t('tools.setup.adblockTitle', null, 'Ghostery Native Tracker Shield')}</h4>
                                             <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
-                                                Blocks trackers, telemetry, analytics, and intrusive ads without slowing down page loads.
+                                                {t('tools.setup.adblockDesc', null, 'Blocks trackers, telemetry, analytics, and intrusive ads without slowing down page loads.')}
                                             </p>
                                         </div>
                                     </div>
@@ -1053,14 +1073,14 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             </svg>
                                         </div>
                                         <div>
-                                            <h4 className="text-sm font-bold text-white">Tor Onion Routing Space</h4>
+                                            <h4 className="text-sm font-bold text-white">{t('tools.setup.torTitle', null, 'Tor Onion Routing Space')}</h4>
                                             <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
-                                                Enables .onion darkweb browsing and multi-node encrypted relay circuits at any time.
+                                                {t('tools.setup.torDesc', null, 'Enables .onion darkweb browsing and multi-node encrypted relay circuits at any time.')}
                                             </p>
                                         </div>
                                     </div>
                                     <span className="text-[11px] font-semibold text-purple-300 bg-purple-500/20 px-2.5 py-1 rounded-lg border border-purple-500/30">
-                                        Ready
+                                        {t('tools.setup.ready', null, 'Ready')}
                                     </span>
                                 </div>
                             </div>
@@ -1071,10 +1091,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     {currentStep === 4 && (
                         <div className={`${stepAnimClass} space-y-8`}>
                             <div>
-                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 4 of 5</span>
-                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Set as Default Browser</h2>
+                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">{t('tools.setup.step4Badge', null, 'Step 4 of 5')}</span>
+                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">{t('tools.setup.step4Title', null, 'Set as Default Browser')}</h2>
                                 <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                    Open desktop links in isolated spaces, keeping work and personal research separated automatically.
+                                    {t('tools.setup.step4Desc', null, 'Open desktop links in isolated spaces, keeping work and personal research separated automatically.')}
                                 </p>
                             </div>
 
@@ -1085,10 +1105,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
                                 <div>
                                     <h4 className="text-base font-bold text-white">
-                                        {isDefault ? 'QBrowse is Your Default Browser!' : 'Make QBrowse your primary web gateway'}
+                                        {isDefault ? t('tools.setup.isDefaultTitle', null, 'QBrowse is Your Default Browser!') : t('tools.setup.makeDefaultTitle', null, 'Make QBrowse your primary web gateway')}
                                     </h4>
                                     <p className="text-xs text-white/50 max-w-md mx-auto mt-1">
-                                        {isDefault ? 'All desktop links and web files will automatically open in QBrowse.' : 'Handles all http://, https://, and HTML files with deep OS system integration.'}
+                                        {isDefault ? t('tools.setup.isDefaultDesc', null, 'All desktop links and web files will automatically open in QBrowse.') : t('tools.setup.makeDefaultDesc', null, 'Handles all http://, https://, and HTML files with deep OS system integration.')}
                                     </p>
                                 </div>
 
@@ -1096,7 +1116,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     <div className="mx-auto max-w-md p-3.5 rounded-2xl bg-accent/10 border border-accent/25 text-accent text-xs leading-relaxed flex flex-col items-center gap-2.5 animate-fade-in shadow-inner">
                                         <div className="flex items-center gap-2 font-medium text-center">
                                             <AlertCircle size={16} className="flex-shrink-0 text-accent" />
-                                            <span>{defaultBrowserHint}</span>
+                                            <span>{t('tools.setup.defaultHint', { label: defaultAppsLabel }, `${defaultAppsLabel} opened — select QBrowse in the system window to confirm.`)}</span>
                                         </div>
                                         <button
                                             type="button"
@@ -1110,7 +1130,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             className="px-3.5 py-1.5 text-[11px] font-semibold rounded-xl bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 transition cursor-pointer flex items-center gap-1.5"
                                         >
                                             <Compass size={13} />
-                                            <span>Open {defaultAppsLabel}</span>
+                                            <span>{t('tools.setup.openOsSettings', { label: defaultAppsLabel }, `Open ${defaultAppsLabel}`)}</span>
                                         </button>
                                     </div>
                                 )}
@@ -1128,13 +1148,13 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                         {isDefault ? (
                                             <>
                                                 <CheckCircle2 size={15} />
-                                                <span>Default Browser Set</span>
+                                                <span>{t('tools.setup.defaultSet', null, 'Default Browser Set')}</span>
                                             </>
                                         ) : isSettingDefault ? (
-                                            <span>Opening Settings...</span>
+                                            <span>{t('tools.setup.openingSettings', null, 'Opening Settings...')}</span>
                                         ) : (
                                             <>
-                                                <span>Set as Default Browser</span>
+                                                <span>{t('tools.setup.setAsDefault', null, 'Set as Default Browser')}</span>
                                                 <ArrowRight size={14} />
                                             </>
                                         )}
@@ -1148,10 +1168,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     {currentStep === 5 && (
                         <div className={`${stepAnimClass} space-y-6`}>
                             <div>
-                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">Step 5 of 5 • Profile & Cloud Sync</span>
-                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">Choose How You Browse</h2>
+                                <span className="text-[11px] font-bold uppercase tracking-widest text-accent">{t('tools.setup.step5Badge', null, 'Step 5 of 5 • Profile & Cloud Sync')}</span>
+                                <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-1">{t('tools.setup.step5Title', null, 'Choose How You Browse')}</h2>
                                 <p className="text-white/60 text-sm mt-2 leading-relaxed">
-                                    QBrowse gives you total sovereignty. Browse completely offline with local hardware encryption, or create a free Cloud Sync account to sync your vault, spaces, and bookmarks across multiple devices.
+                                    {t('tools.setup.step5Desc', null, 'QBrowse gives you total sovereignty. Browse completely offline with local hardware encryption, or create a free Cloud Sync account to sync your vault, spaces, and bookmarks across multiple devices.')}
                                 </p>
                             </div>
 
@@ -1178,16 +1198,16 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                                             profileMode === 'local' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-white/40 border-white/5'
                                         }`}>
-                                            Zero Telemetry
+                                            {t('tools.setup.zeroTelemetry', null, 'Zero Telemetry')}
                                         </span>
                                     </div>
                                     <div className="mt-3">
                                         <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
-                                            <span>Local Profile</span>
+                                            <span>{t('tools.setup.localProfile', null, 'Local Profile')}</span>
                                             {profileMode === 'local' && <Check size={14} className="text-emerald-400 stroke-[3]" />}
                                         </h4>
                                         <p className="text-xs text-white/50 mt-1 leading-snug">
-                                            100% offline. All passwords, history, and workspace tabs remain encrypted on this machine with local hardware keys. No account needed.
+                                            {t('tools.setup.localProfileDesc', null, '100% offline. All passwords, history, and workspace tabs remain encrypted on this machine with local hardware keys. No account needed.')}
                                         </p>
                                     </div>
                                 </div>
@@ -1213,16 +1233,16 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                                             profileMode === 'sync' ? 'bg-accent/20 text-accent border-accent/30' : 'bg-white/5 text-white/40 border-white/5'
                                         }`}>
-                                            E2E Encrypted
+                                            {t('tools.setup.e2eEncrypted', null, 'E2E Encrypted')}
                                         </span>
                                     </div>
                                     <div className="mt-3">
                                         <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
-                                            <span>QBrowse Cloud Sync</span>
+                                            <span>{t('tools.setup.cloudSync', null, 'QBrowse Cloud Sync')}</span>
                                             {profileMode === 'sync' && <Check size={14} className="text-accent stroke-[3]" />}
                                         </h4>
                                         <p className="text-xs text-white/50 mt-1 leading-snug">
-                                            Sync your password vault, workspaces, pinned tabs, and bookmarks seamlessly across all your computers via Firebase.
+                                            {t('tools.setup.cloudSyncDesc', null, 'Sync your password vault, workspaces, pinned tabs, and bookmarks seamlessly across all your computers via Firebase.')}
                                         </p>
                                     </div>
                                 </div>
@@ -1236,9 +1256,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             <CheckCircle2 size={26} />
                                         </div>
                                         <div className="flex-1 space-y-1">
-                                            <h4 className="text-base font-bold text-white">Local Profile is Ready to Launch</h4>
+                                            <h4 className="text-base font-bold text-white">{t('tools.setup.localReadyTitle', null, 'Local Profile is Ready to Launch')}</h4>
                                             <p className="text-xs text-white/60 leading-relaxed">
-                                                All bookmarks, vault credentials, and workspaces will remain strictly on this computer with zero telemetry. You can easily enable Cloud Sync at any time in the future from Settings or the Profile menu.
+                                                {t('tools.setup.localReadyDesc', null, 'All bookmarks, vault credentials, and workspaces will remain strictly on this computer with zero telemetry. You can easily enable Cloud Sync at any time in the future from Settings or the Profile menu.')}
                                             </p>
                                         </div>
                                     </div>
@@ -1250,7 +1270,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             className="flex-1 py-3 px-5 bg-accent hover:bg-accent/90 text-black font-extrabold text-xs rounded-xl hover:scale-[1.02] active:scale-[0.98] transition shadow-lg shadow-accent/25 flex items-center justify-center gap-2 cursor-pointer"
                                         >
                                             <Sparkles size={15} />
-                                            <span>Take the Living Tour</span>
+                                            <span>{t('tools.setup.takeTour', null, 'Take the Living Tour')}</span>
                                             <ArrowRight size={13} />
                                         </button>
                                         <button
@@ -1258,7 +1278,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             onClick={() => handleFinishSetup(false)}
                                             className="py-3 px-5 bg-white/10 hover:bg-white/15 text-white font-semibold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
                                         >
-                                            <span>Start Browsing Directly</span>
+                                            <span>{t('tools.setup.startDirectly', null, 'Start Browsing Directly')}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -1278,11 +1298,11 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                     <div className="flex items-center gap-2">
                                                         <h4 className="font-bold text-sm text-white">{syncUser.email}</h4>
                                                         <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                                                            <Check size={10} strokeWidth={3} /> Active Sync
+                                                            <Check size={10} strokeWidth={3} /> {t('tools.setup.activeSync', null, 'Active Sync')}
                                                         </span>
                                                     </div>
                                                     <p className="text-xs text-emerald-300/70 mt-0.5">
-                                                        End-to-End Encrypted Cloud Storage Linked
+                                                        {t('tools.setup.cloudLinked', null, 'End-to-End Encrypted Cloud Storage Linked')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1291,12 +1311,12 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 onClick={syncLogout}
                                                 className="text-xs text-red-400/80 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-1.5 rounded-xl transition cursor-pointer"
                                             >
-                                                Sign Out
+                                                {t('tools.setup.signOut', null, 'Sign Out')}
                                             </button>
                                         </div>
 
                                         <p className="text-xs text-white/60 leading-relaxed">
-                                            Your bookmarks, workspace tabs, and encrypted password vault are continuously synchronized across all authorized devices in real-time.
+                                            {t('tools.setup.activeSyncDesc', null, 'Your bookmarks, workspace tabs, and encrypted password vault are continuously synchronized across all authorized devices in real-time.')}
                                         </p>
 
                                         <div className="flex flex-col sm:flex-row gap-3 pt-1">
@@ -1306,7 +1326,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 className="flex-1 py-3 px-5 bg-accent hover:bg-accent/90 text-black font-extrabold text-xs rounded-xl hover:scale-[1.02] active:scale-[0.98] transition shadow-lg shadow-accent/25 flex items-center justify-center gap-2 cursor-pointer"
                                             >
                                                 <Sparkles size={15} />
-                                                <span>Take the Living Tour</span>
+                                                <span>{t('tools.setup.takeTour', null, 'Take the Living Tour')}</span>
                                                 <ArrowRight size={13} />
                                             </button>
                                             <button
@@ -1314,7 +1334,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 onClick={() => handleFinishSetup(false)}
                                                 className="py-3 px-5 bg-white/10 hover:bg-white/15 text-white font-semibold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
                                             >
-                                                <span>Start Browsing Directly</span>
+                                                <span>{t('tools.setup.startDirectly', null, 'Start Browsing Directly')}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -1323,23 +1343,33 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                     <form onSubmit={handleSyncSubmit} className="p-6 rounded-3xl bg-white/[0.04] border border-white/10 space-y-5 animate-fade-in text-left">
                                         {/* Mode Switcher: Sign In vs Register */}
                                         <div className="space-y-1.5">
-                                            <div onMouseLeave={() => setHoveredSyncAuthTab(null)} className={`relative flex p-1 rounded-full border ${isBright ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'} shadow-[0_2px_8px_rgba(0,0,0,0.15)] select-none`}>
+                                            <div onMouseLeave={() => setHoveredSyncAuthTab(null)} className={`relative grid grid-cols-2 p-1 rounded-full border backdrop-blur-2xl ${isBright ? 'border-black/[0.05] bg-black/[0.03]' : 'border-white/[0.06] bg-[#0c0d14]/78 shadow-[0_4px_16px_rgba(0,0,0,0.4)]'} select-none`}>
                                                 {/* Hover preview pill */}
                                                 {hoveredSyncAuthTab && hoveredSyncAuthTab !== syncAuthTab && (
                                                     <div
-                                                        className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none bg-white/[0.05]"
+                                                        className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'}`}
                                                         style={{
-                                                            transform: hoveredSyncAuthTab === 'register' ? 'translateX(100%)' : 'translateX(0)'
+                                                            left: '4px',
+                                                            width: 'calc((100% - 8px) / 2)',
+                                                            transform: `translateX(${hoveredSyncAuthTab === 'register' ? 100 : 0}%)`,
+                                                            transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
                                                         }}
                                                     />
                                                 )}
                                                 <div 
-                                                    className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] border"
+                                                    className={`absolute top-1 bottom-1 rounded-full border pointer-events-none ${
+                                                        isBright ? 'bg-white border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]' : 'shadow-xs'
+                                                    }`}
                                                     style={{ 
-                                                        transform: syncAuthTab === 'register' ? 'translateX(100%)' : 'translateX(0)',
-                                                        borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
-                                                        backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
-                                                        boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                                        left: '4px',
+                                                        width: 'calc((100% - 8px) / 2)',
+                                                        transform: `translateX(${syncAuthTab === 'register' ? 100 : 0}%)`,
+                                                        transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                                                        ...(!isBright ? {
+                                                            borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                                            backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                                            boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                                        } : {})
                                                     }}
                                                 />
                                                 <button
@@ -1356,8 +1386,8 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                     }`}
                                                 >
                                                     <KeyRound size={13} />
-                                                    <span>Sign In</span>
-                                                    <span className="hidden sm:inline text-[10px] opacity-75 font-normal">(Existing Account)</span>
+                                                    <span>{t('tools.setup.signIn', null, 'Sign In')}</span>
+                                                    <span className="hidden sm:inline text-[10px] opacity-75 font-normal">{t('tools.setup.existingAccount', null, '(Existing Account)')}</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -1373,16 +1403,16 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                     }`}
                                                 >
                                                     <Sparkles size={13} />
-                                                    <span>Register</span>
-                                                    <span className="hidden sm:inline text-[10px] opacity-75 font-normal">(New Account)</span>
+                                                    <span>{t('tools.setup.register', null, 'Register')}</span>
+                                                    <span className="hidden sm:inline text-[10px] opacity-75 font-normal">{t('tools.setup.newAccount', null, '(New Account)')}</span>
                                                 </button>
                                             </div>
 
                                             {/* Explanatory subtitle */}
                                             <p className="text-[11px] text-white/50 text-center pt-1">
                                                 {syncAuthTab === 'register' 
-                                                    ? 'Create a new QBrowse account to sync data across your devices.'
-                                                    : 'Sign in to synchronize your existing bookmarks, spaces, and vault.'}
+                                                    ? t('tools.setup.registerSubtitle', null, 'Create a new QBrowse account to sync data across your devices.')
+                                                    : t('tools.setup.signInSubtitle', null, 'Sign in to synchronize your existing bookmarks, spaces, and vault.')}
                                             </p>
                                         </div>
 
@@ -1402,7 +1432,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         }}
                                                         className="shrink-0 text-[11px] font-bold text-accent underline hover:opacity-80"
                                                     >
-                                                        Switch to Sign In
+                                                        {t('tools.setup.switchToSignIn', null, 'Switch to Sign In')}
                                                     </button>
                                                 )}
                                             </div>
@@ -1413,7 +1443,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             {/* Email Address */}
                                             <div>
                                                 <label className="text-xs font-semibold text-white/80 block mb-1">
-                                                    Email Address
+                                                    {t('tools.setup.emailLabel', null, 'Email Address')}
                                                 </label>
                                                 <div className="relative flex items-center">
                                                     <Mail size={15} className="absolute left-3.5 text-white/40 pointer-events-none" />
@@ -1425,7 +1455,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                             setSyncEmail(e.target.value);
                                                             setSyncLocalError(null);
                                                         }}
-                                                        placeholder="name@example.com"
+                                                        placeholder={t('tools.setup.emailPlaceholder', null, 'name@example.com')}
                                                         className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 pl-10 pr-3 text-xs text-white placeholder-white/30 outline-none focus:border-accent transition"
                                                     />
                                                 </div>
@@ -1435,10 +1465,10 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             <div>
                                                 <div className="flex items-center justify-between mb-1">
                                                     <label className="text-xs font-semibold text-white/80 block">
-                                                        {syncAuthTab === 'register' ? 'Create Password (min. 6 characters)' : 'Account Password'}
+                                                        {syncAuthTab === 'register' ? t('tools.setup.createPassLabel', null, 'Create Password (min. 6 characters)') : t('tools.setup.accountPassLabel', null, 'Account Password')}
                                                     </label>
                                                     {syncAuthTab === 'register' && syncPassword.length > 0 && syncPassword.length < 6 && (
-                                                        <span className="text-[10px] text-amber-400">At least 6 characters</span>
+                                                        <span className="text-[10px] text-amber-400">{t('tools.setup.min6Chars', null, 'At least 6 characters')}</span>
                                                     )}
                                                 </div>
                                                 <div className="relative flex items-center">
@@ -1469,15 +1499,15 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 <div className="animate-pop-in">
                                                     <div className="flex items-center justify-between mb-1">
                                                         <label className="text-xs font-semibold text-white/80 block">
-                                                            Confirm Password
+                                                            {t('tools.setup.confirmPassLabel', null, 'Confirm Password')}
                                                         </label>
                                                         {syncConfirmPassword.length > 0 && (
                                                             syncPassword === syncConfirmPassword ? (
                                                                 <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                                                                    <Check size={11} strokeWidth={3} /> Passwords match
+                                                                    <Check size={11} strokeWidth={3} /> {t('tools.setup.passwordsMatch', null, 'Passwords match')}
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-[10px] text-red-400">Passwords do not match</span>
+                                                                <span className="text-[10px] text-red-400">{t('tools.setup.passwordsMismatch', null, 'Passwords do not match')}</span>
                                                             )
                                                         )}
                                                     </div>
@@ -1529,12 +1559,12 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         </div>
                                                         <div>
                                                             <p className="text-xs font-semibold text-white leading-tight">
-                                                                Use account password as Master Encryption Key
+                                                                {t('tools.setup.useAccountAsMaster', null, 'Use account password as Master Encryption Key')}
                                                             </p>
                                                             <p className="text-[10px] text-white/40 leading-snug">
                                                                 {syncUseAccountPassAsMaster 
-                                                                    ? 'Derives AES-GCM 256-bit client keys directly from your login password.'
-                                                                    : 'Using a separate custom encryption passphrase.'}
+                                                                    ? t('tools.setup.masterDerivedDesc', null, 'Derives AES-GCM 256-bit client keys directly from your login password.')
+                                                                    : t('tools.setup.masterSeparateDesc', null, 'Using a separate custom encryption passphrase.')}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -1550,14 +1580,14 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 {!syncUseAccountPassAsMaster && (
                                                     <div className="mt-2.5 p-3 rounded-xl border border-accent/30 bg-black/50 space-y-1.5 animate-pop-in">
                                                         <label className="text-[11px] font-semibold text-accent block">
-                                                            Custom Master Encryption Passphrase
+                                                            {t('tools.setup.customMasterLabel', null, 'Custom Master Encryption Passphrase')}
                                                         </label>
                                                         <div className="relative flex items-center">
                                                             <input 
                                                                 type={syncShowCustomMasterPass ? 'text' : 'password'}
                                                                 value={syncCustomMasterPass}
                                                                 onChange={e => setSyncCustomMasterPass(e.target.value)}
-                                                                placeholder="Enter unique vault encryption passphrase..."
+                                                                placeholder={t('tools.setup.customMasterPlaceholder', null, 'Enter unique vault encryption passphrase...')}
                                                                 className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-3 pr-8 text-xs text-white font-mono placeholder-white/30 outline-none focus:border-accent"
                                                             />
                                                             <button
@@ -1582,18 +1612,18 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                             {isCloudSyncing ? (
                                                 <>
                                                     <RefreshCw size={15} className="animate-spin" />
-                                                    <span>{syncAuthTab === 'register' ? 'Creating Encrypted Account...' : 'Signing In & Syncing...'}</span>
+                                                    <span>{syncAuthTab === 'register' ? t('tools.setup.creatingAccount', null, 'Creating Encrypted Account...') : t('tools.setup.signingInSyncing', null, 'Signing In & Syncing...')}</span>
                                                 </>
                                             ) : syncAuthTab === 'register' ? (
                                                 <>
                                                     <Sparkles size={15} />
-                                                    <span>Create Account & Enable Cloud Sync</span>
+                                                    <span>{t('tools.setup.createAccountBtn', null, 'Create Account & Enable Cloud Sync')}</span>
                                                     <ArrowRight size={14} />
                                                 </>
                                             ) : (
                                                 <>
                                                     <KeyRound size={15} />
-                                                    <span>Sign In & Enable Cloud Sync</span>
+                                                    <span>{t('tools.setup.signInBtn', null, 'Sign In & Enable Cloud Sync')}</span>
                                                     <ArrowRight size={14} />
                                                 </>
                                             )}
@@ -1603,7 +1633,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                         <div className="text-center pt-1 space-y-1.5">
                                             {syncAuthTab === 'register' ? (
                                                 <p className="text-xs text-white/50">
-                                                    Already registered with QBrowse?{' '}
+                                                    {t('tools.setup.alreadyRegistered', null, 'Already registered with QBrowse?')}{' '}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -1612,12 +1642,12 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         }}
                                                         className="text-accent hover:underline font-bold cursor-pointer"
                                                     >
-                                                        Sign In here
+                                                        {t('tools.setup.signInHere', null, 'Sign In here')}
                                                     </button>
                                                 </p>
                                             ) : (
                                                 <p className="text-xs text-white/50">
-                                                    New to QBrowse Cloud Sync?{' '}
+                                                    {t('tools.setup.newToSync', null, 'New to QBrowse Cloud Sync?')}{' '}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -1626,7 +1656,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                         }}
                                                         className="text-accent hover:underline font-bold cursor-pointer"
                                                     >
-                                                        Create a free account (Register)
+                                                        {t('tools.setup.createFreeAccount', null, 'Create a free account (Register)')}
                                                     </button>
                                                 </p>
                                             )}
@@ -1638,7 +1668,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                                 }}
                                                 className="text-[11px] text-white/40 hover:text-white/80 transition cursor-pointer underline block mx-auto pt-0.5"
                                             >
-                                                Skip cloud sync and continue with Local Profile (No account needed)
+                                                {t('tools.setup.skipSyncLocal', null, 'Skip cloud sync and continue with Local Profile (No account needed)')}
                                             </button>
                                         </div>
                                     </form>
@@ -1690,7 +1720,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 isCompact ? 'px-5 py-2' : 'px-6 py-2.5'
                             } bg-accent hover:brightness-105 active:scale-95 text-zinc-950 font-bold text-xs rounded-xl transition shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer`}
                         >
-                            <span>{profileMode === 'sync' && !syncUser ? 'Skip Sync & Complete' : t('setup.finish', null, 'Complete Setup & Launch')}</span>
+                            <span>{profileMode === 'sync' && !syncUser ? t('tools.setup.skipSyncComplete', null, 'Skip Sync & Complete') : t('setup.finish', null, 'Complete Setup & Launch')}</span>
                             <ArrowRight size={14} />
                         </button>
                     )}
@@ -1709,30 +1739,30 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 <Shield size={20} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-sm text-white">Protect Your Imported Vault</h3>
-                                <p className="text-xs text-white/50">Enter or create a Master Password to encrypt your credentials.</p>
+                                <h3 className="font-bold text-sm text-white">{t('tools.setup.vaultModalTitle', null, 'Protect Your Imported Vault')}</h3>
+                                <p className="text-xs text-white/50">{t('tools.setup.vaultModalDesc', null, 'Enter or create a Master Password to encrypt your credentials.')}</p>
                             </div>
                         </div>
 
                         <div className="space-y-3">
                             <div>
-                                <label className="text-[11px] font-mono uppercase tracking-wider text-white/60 block mb-1">Master Password</label>
+                                <label className="text-[11px] font-mono uppercase tracking-wider text-white/60 block mb-1">{t('tools.setup.masterPassLabel', null, 'Master Password')}</label>
                                 <input 
                                     type="password"
                                     required
                                     autoFocus
-                                    placeholder="Enter master password..."
+                                    placeholder={t('tools.setup.masterPassPlaceholder', null, 'Enter master password...')}
                                     value={vaultMasterPass}
                                     onChange={e => setVaultMasterPass(e.target.value)}
                                     className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/10 focus:border-accent outline-none text-xs text-white font-mono"
                                 />
                             </div>
                             <div>
-                                <label className="text-[11px] font-mono uppercase tracking-wider text-white/60 block mb-1">Confirm Master Password</label>
+                                <label className="text-[11px] font-mono uppercase tracking-wider text-white/60 block mb-1">{t('tools.setup.confirmMasterLabel', null, 'Confirm Master Password')}</label>
                                 <input 
                                     type="password"
                                     required
-                                    placeholder="Confirm password..."
+                                    placeholder={t('tools.setup.confirmMasterPlaceholder', null, 'Confirm password...')}
                                     value={vaultMasterPassConfirm}
                                     onChange={e => setVaultMasterPassConfirm(e.target.value)}
                                     className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/10 focus:border-accent outline-none text-xs text-white font-mono"
@@ -1751,7 +1781,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 }}
                                 className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-xs font-semibold transition cursor-pointer"
                             >
-                                Cancel
+                                {t('tools.setup.cancel', null, 'Cancel')}
                             </button>
                             <button
                                 type="submit"
@@ -1759,7 +1789,7 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                 className="flex-1 h-10 rounded-xl bg-accent hover:opacity-95 text-black text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
                             >
                                 {isImportingVault ? <RefreshCw size={14} className="animate-spin" /> : <Lock size={14} />}
-                                <span>Encrypt & Import</span>
+                                <span>{t('tools.setup.encryptImport', null, 'Encrypt & Import')}</span>
                             </button>
                         </div>
                     </form>

@@ -7,8 +7,10 @@ import { useGitHubStore } from '../../store/useGitHubStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function GitHubGlancePopover() {
+    const { t } = useTranslation();
     const isHoverGlanceOpen = useGitHubStore(state => state.isHoverGlanceOpen);
     const isHoverGlanceClosing = useGitHubStore(state => state.isHoverGlanceClosing);
     const hoverGlanceRect = useGitHubStore(state => state.hoverGlanceRect);
@@ -26,13 +28,23 @@ export default function GitHubGlancePopover() {
         reviewRequests,
         myPrs,
         assignedIssues,
+        error,
+        warning,
+        lastUpdated,
         isLoading,
         fetchData
     } = useGitHubStore();
+    const openSettings = useUIStore(state => state.openSettings);
 
     const popoverRef = useRef(null);
     const activeSpace = useTabStore(state => state.activeSpace);
     const isLight = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    useEffect(() => {
+        if (isHoverGlanceOpen && !lastUpdated && !isLoading) {
+            fetchData(false);
+        }
+    }, [isHoverGlanceOpen, lastUpdated, isLoading, fetchData]);
 
     useEffect(() => {
         if (!isHoverGlanceOpen) return;
@@ -100,7 +112,7 @@ export default function GitHubGlancePopover() {
                     </div>
                     <div>
                         <h4 className={`text-xs font-bold flex items-center gap-1.5 ${isLight ? 'text-zinc-900' : 'text-white'}`}>
-                            GitHub Glance
+                            {t('chrome.githubGlance', null, 'GitHub Glance')}
                             <span className={`text-[10px] font-mono font-normal ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
                                 {username ? `@${username}` : ''}
                             </span>
@@ -114,7 +126,7 @@ export default function GitHubGlancePopover() {
                         className={`p-1 rounded transition-colors cursor-pointer ${
                             isLight ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-zinc-400 hover:text-white hover:bg-white/10'
                         } ${isLoading ? 'animate-spin text-accent' : ''}`}
-                        title="Refresh"
+                        title={t('chrome.refresh', null, 'Refresh')}
                     >
                         <RefreshCw size={11} />
                     </button>
@@ -123,16 +135,38 @@ export default function GitHubGlancePopover() {
 
             {!authenticated ? (
                 <div className="text-center py-2 space-y-2">
-                    <p className={`text-xs ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>Connect GitHub to see live PR and issue previews.</p>
-                    <button 
-                        onClick={() => handleOpenUrl('https://github.com/login')}
-                        className="px-3 py-1 bg-accent/20 text-accent rounded-lg text-xs font-semibold hover:bg-accent/30 transition-all cursor-pointer"
-                    >
-                        Log In to GitHub
-                    </button>
+                    <p className={`text-xs ${error ? (isLight ? 'text-rose-600' : 'text-rose-400') : (isLight ? 'text-zinc-600' : 'text-zinc-400')}`}>
+                        {error || t('chrome.githubGlanceConnectDesc', null, 'Connect GitHub to see live PR and issue previews.')}
+                    </p>
+                    <div className="flex items-center justify-center gap-2">
+                        <button 
+                            onClick={() => handleOpenUrl('https://github.com/login')}
+                            className="px-3 py-1 bg-accent/20 text-accent rounded-lg text-xs font-semibold hover:bg-accent/30 transition-all cursor-pointer"
+                        >
+                            {t('chrome.githubLoginBtn', null, 'Log In to GitHub')}
+                        </button>
+                        <button 
+                            onClick={() => {
+                                closeHoverGlance();
+                                openSettings('workmode');
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                isLight ? 'bg-black/[0.06] text-zinc-700 hover:bg-black/10' : 'bg-white/10 text-zinc-300 hover:bg-white/15'
+                            }`}
+                        >
+                            {t('chrome.configure', null, 'Configure')}
+                        </button>
+                    </div>
                 </div>
             ) : (
                 <>
+                    {warning && (
+                        <p className={`text-[10px] px-2 py-1 rounded-lg border ${
+                            isLight ? 'bg-amber-500/10 border-amber-500/25 text-amber-800' : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                        }`}>
+                            {warning}
+                        </p>
+                    )}
                     {/* Summary Badges */}
                     <div className="grid grid-cols-3 gap-1.5 text-center">
                         <div className={`p-2 rounded-xl ${getLiquidGlassCardClasses(isLight)}`}>
@@ -140,7 +174,7 @@ export default function GitHubGlancePopover() {
                                 {(reviewRequests || []).length}
                             </span>
                             <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                Reviews
+                                {t('chrome.githubReviews', null, 'Reviews')}
                             </span>
                         </div>
                         <div className={`p-2 rounded-xl ${getLiquidGlassCardClasses(isLight)}`}>
@@ -148,7 +182,7 @@ export default function GitHubGlancePopover() {
                                 {(myPrs || []).length}
                             </span>
                             <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                My PRs
+                                {t('chrome.githubMyPrs', null, 'My PRs')}
                             </span>
                         </div>
                         <div className={`p-2 rounded-xl ${getLiquidGlassCardClasses(isLight)}`}>
@@ -156,7 +190,7 @@ export default function GitHubGlancePopover() {
                                 {(assignedIssues || []).length}
                             </span>
                             <span className={`text-[9px] uppercase font-semibold tracking-wider ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                Issues
+                                {t('chrome.githubIssues', null, 'Issues')}
                             </span>
                         </div>
                     </div>
@@ -165,7 +199,9 @@ export default function GitHubGlancePopover() {
                     {(() => {
                         const hasReviews = (reviewRequests || []).length > 0;
                         const displayItems = hasReviews ? reviewRequests : (myPrs || []);
-                        const titleLabel = hasReviews ? 'Needs Your Review' : 'Your Pull Requests';
+                        const titleLabel = hasReviews
+                            ? t('chrome.githubNeedsReview', null, 'Needs Your Review')
+                            : t('chrome.githubYourPrs', null, 'Your Pull Requests');
 
                         return (
                             <div className="space-y-1">
@@ -174,7 +210,7 @@ export default function GitHubGlancePopover() {
                                 </p>
                                 <div className="space-y-1 max-h-36 overflow-y-auto hide-scroll">
                                     {displayItems.length === 0 ? (
-                                        <p className="text-[11px] text-zinc-500 italic py-1">No pull requests active</p>
+                                        <p className="text-[11px] text-zinc-500 italic py-1">{t('chrome.githubNoActivePrs', null, 'No pull requests active')}</p>
                                     ) : (
                                         displayItems.slice(0, 3).map((pr) => (
                                             <div 
@@ -205,13 +241,13 @@ export default function GitHubGlancePopover() {
                             className={`flex items-center gap-1.5 transition-colors cursor-pointer ${isLight ? 'text-zinc-500 hover:text-zinc-900' : 'text-zinc-400 hover:text-white'}`}
                         >
                             <Bell size={11} />
-                            Notifications
+                            {t('chrome.githubNotifications', null, 'Notifications')}
                         </button>
                         <button 
                             onClick={() => handleOpenUrl('https://github.com/pulls')}
                             className="flex items-center gap-1 text-accent hover:underline cursor-pointer"
                         >
-                            All PRs <ExternalLink size={10} />
+                            {t('chrome.githubAllPrs', null, 'All PRs')} <ExternalLink size={10} />
                         </button>
                     </div>
                 </>

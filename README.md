@@ -42,8 +42,9 @@
 | Platform | Format | Description |
 | :--- | :--- | :--- |
 | **Windows** | `.exe` (NSIS Installer) | Standard Windows installer with desktop and start menu integration |
-| **Linux** | `.AppImage` | Portable universal Linux binary (runs on all major distros) |
+| **Linux** | `.AppImage` | Portable universal Linux binary with automatic in-place updates |
 | **Linux** | `.deb` | Debian, Ubuntu, Linux Mint native package |
+| **Linux** | `.rpm` | Fedora, RHEL, Rocky, and openSUSE native package |
 | **Linux** | `.pacman` | Arch Linux, Manjaro, and EndeavourOS native package |
 | **Linux** | `.tar.gz` | Standalone portable archive for custom installations |
 

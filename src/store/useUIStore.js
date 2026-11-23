@@ -10,6 +10,60 @@ import {
 } from '../utils/experiencePresets.js';
 import { getNextZoomStep, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM } from '../utils/zoomSteps.js';
 import { applyAppFont } from '../utils/appFontManager.js';
+import {
+    DEFAULT_DARK_EXCLUSIONS,
+    normalizeWhitelist,
+    addWhitelistEntry,
+    removeWhitelistEntry,
+    toggleWhitelistForUrl,
+    getDefaultDarkExclusions
+} from '../utils/darkModeWhitelist.js';
+import {
+    EMPTY_MEDIA_STATE,
+    resolveMediaStateUpdate,
+    resolveMediaStateClearForTab,
+    resolveMediaCommandTargetTabId
+} from '../utils/mediaStateHelpers.js';
+
+const tr = (path, paramsOrFallback, fallback) => {
+    if (typeof window !== 'undefined' && typeof window.__qbrowseT === 'function') {
+        return window.__qbrowseT(path, paramsOrFallback, fallback);
+    }
+    const fb = typeof paramsOrFallback === 'string' ? paramsOrFallback : fallback;
+    return fb || path;
+};
+
+let unsubscribePerformanceProfile = null;
+
+export const shouldOptimizeEcoVisuals = (tier, reduceVisualsOnEco) =>
+    tier === 'eco' && reduceVisualsOnEco !== false;
+
+const applyPerformanceDom = (tier, reduceVisualsOnEco, wallpaperBlur) => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const resolvedTier = tier || 'balanced';
+    const optimizeVisuals = shouldOptimizeEcoVisuals(resolvedTier, reduceVisualsOnEco);
+    root.dataset.performanceTier = resolvedTier;
+    root.dataset.ecoVisuals = optimizeVisuals ? 'true' : 'false';
+
+    if (optimizeVisuals) {
+        root.classList.add('eco-mode');
+        root.classList.remove('ultra-mode');
+        root.style.setProperty('--glass-blur', '0px');
+        root.style.setProperty('--animation-speed', '0.12s');
+    } else if (resolvedTier === 'ultra') {
+        root.classList.remove('eco-mode');
+        root.classList.add('ultra-mode');
+        root.style.setProperty('--glass-blur', `${wallpaperBlur ?? 24}px`);
+        root.style.setProperty('--animation-speed', '0.32s');
+    } else {
+        // balanced, or eco with visual optimization turned off
+        root.classList.remove('eco-mode');
+        root.classList.remove('ultra-mode');
+        root.style.setProperty('--glass-blur', `${wallpaperBlur ?? 24}px`);
+        root.style.setProperty('--animation-speed', '0.24s');
+    }
+};
 
 export const hexToRgbString = (hex) => {
     if (!hex || typeof hex !== 'string') return '212, 188, 148';
@@ -65,7 +119,13 @@ const loadInitialDownloads = () => {
             const raw = localStorage.getItem('qbrowse_downloads');
             if (raw) {
                 const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) return parsed;
+                if (Array.isArray(parsed)) {
+                    return parsed.map(d => (
+                        d && (d.state === 'progressing' || d.state === 'paused')
+                            ? { ...d, state: 'interrupted', speedBytesPerSec: 0 }
+                            : d
+                    ));
+                }
             }
         }
     } catch (_) {}
@@ -168,6 +228,7 @@ const defaultSettings = {
     githubIntegrationEnabled: false,
     githubAuthMode: 'auto', // 'auto' | 'token'
     githubPersonalAccessToken: '',
+    githubUsername: '',
     githubSyncInterval: 10, // minutes (0 = manual only)
     githubShowReviews: true,
     githubShowMyPrs: true,
@@ -195,6 +256,10 @@ const defaultSettings = {
 
     // Internationalization & Language
     appLanguage: 'auto', // 'auto' | 'en' | 'pl' | 'fr' | 'de' | 'es' | 'pt' | 'zh' | 'ja' | 'ru' | 'it' | 'uk' | 'ko'
+
+    // Passkey & Hardware Security Key Routing
+    passkeyProviderMode: 'qvault', // 'qvault' (QVault with hardware fallback) | 'hardware' (Always use Hardware / System Key)
+    passkeyHardwareFallback: true, // Automatically fall back to Hardware/OS authenticator when QVault has no matching passkey or is unavailable
 };
 
 const loadSettings = () => {
@@ -256,6 +321,12 @@ const loadSettings = () => {
             if (typeof parsed.appFontSizeScale !== 'number') parsed.appFontSizeScale = 100;
             if (!parsed.appFontWeightShift) parsed.appFontWeightShift = 'normal';
             if (!parsed.appLanguage) parsed.appLanguage = 'auto';
+            if (parsed.passkeyProviderMode !== 'hardware' && parsed.passkeyProviderMode !== 'qvault') {
+                parsed.passkeyProviderMode = 'qvault';
+            }
+            if (typeof parsed.passkeyHardwareFallback !== 'boolean') {
+                parsed.passkeyHardwareFallback = true;
+            }
             const merged = { ...defaultSettings, ...parsed };
             try {
                 applyAppFont(merged);
@@ -325,7 +396,7 @@ const useUIStore = create((set, get) => ({
 
     if (!nextState) {
       useUIStore.setState({ isSplitView: false, splitRightTabId: null, focusedPane: 'left' });
-      useUIStore.getState().showToast('Split View: Disabled');
+      useUIStore.getState().showToast(tr('stores.ui.splitDisabled', 'Split View: Disabled'));
       return;
     }
 
@@ -361,7 +432,7 @@ const useUIStore = create((set, get) => ({
       splitRightTabId: rightId || null,
       focusedPane: rightId ? 'right' : 'left'
     });
-    useUIStore.getState().showToast(rightId ? 'Split View: Enabled' : 'Split View: Select a tab');
+    useUIStore.getState().showToast(rightId ? tr('stores.ui.splitEnabled', 'Split View: Enabled') : tr('stores.ui.splitSelectTab', 'Split View: Select a tab'));
   },
   // Windows & OS Accessibility Sync
   isSystemReducedMotion: typeof window !== 'undefined' && typeof window.matchMedia === 'function' 
@@ -484,6 +555,36 @@ const useUIStore = create((set, get) => ({
   isFullscreen: false,
   setIsFullscreen: async (val) => {
     set({ isFullscreen: val, isSidebarPeeking: false, isTopBarPeeking: false });
+  },
+  // Authoritative OS BrowserWindow focus & visibility state (immune to <webview> focus steal)
+  isWindowFocused: true,
+  isWindowMinimized: false,
+  isWindowVisible: typeof document !== 'undefined' ? !document.hidden : true,
+  setWindowFocusState: (nextState) => {
+    if (!nextState || typeof nextState !== 'object') return;
+    set((state) => {
+      const isMinimized = typeof nextState.isMinimized === 'boolean'
+        ? nextState.isMinimized
+        : state.isWindowMinimized;
+      const isVisible = typeof nextState.isVisible === 'boolean'
+        ? (nextState.isVisible && !isMinimized)
+        : (state.isWindowVisible && !isMinimized);
+      const isFocused = typeof nextState.isFocused === 'boolean'
+        ? (nextState.isFocused && isVisible)
+        : (state.isWindowFocused && isVisible);
+      if (
+        state.isWindowFocused === isFocused &&
+        state.isWindowMinimized === isMinimized &&
+        state.isWindowVisible === isVisible
+      ) {
+        return state;
+      }
+      return {
+        isWindowFocused: isFocused,
+        isWindowMinimized: isMinimized,
+        isWindowVisible: isVisible
+      };
+    });
   },
   // Zen Fullscreen Hover Peeks (Arc-style)
   isSidebarPeeking: false,
@@ -934,31 +1035,32 @@ const useUIStore = create((set, get) => ({
     try {
       const wv = get().getActiveWebView();
       if (!wv) {
-        get().showToast('No active webpage to export');
+        get().showToast(tr('stores.ui.noWebpageToExport', 'No active webpage to export'));
         return;
       }
 
-      let title = 'Webpage';
+      const defaultWebpage = tr('stores.ui.webpageDefault', 'Webpage');
+      let title = defaultWebpage;
       try {
         if (typeof wv.getTitle === 'function') {
           title = wv.getTitle() || title;
         }
       } catch (_) {}
 
-      if (title === 'Webpage' && window.__tabStore) {
+      if (title === defaultWebpage && window.__tabStore) {
         try {
           const tab = window.__tabStore.getState()?.getActiveTab?.();
           if (tab?.title) title = tab.title;
         } catch (_) {}
       }
 
-      const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim().slice(0, 80) || 'Webpage';
+      const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_').trim().slice(0, 80) || defaultWebpage;
       const defaultName = `${safeTitle}.pdf`;
 
-      get().showToast('Generating Clean PDF...');
+      get().showToast(tr('stores.ui.generatingCleanPdf', 'Generating Clean PDF...'));
 
       if (typeof wv.printToPDF !== 'function') {
-        get().showToast('PDF export not supported on this view');
+        get().showToast(tr('stores.ui.pdfNotSupported', 'PDF export not supported on this view'));
         return;
       }
 
@@ -999,7 +1101,7 @@ const useUIStore = create((set, get) => ({
       }
 
       if (!pdfData || pdfData.length === 0) {
-        get().showToast('Failed to generate PDF');
+        get().showToast(tr('stores.ui.pdfFailedGenerate', 'Failed to generate PDF'));
         return;
       }
 
@@ -1009,9 +1111,10 @@ const useUIStore = create((set, get) => ({
           data: pdfData
         });
         if (res?.success) {
-          get().showToast('PDF exported successfully');
+          get().showToast(tr('stores.ui.pdfExportedSuccess', 'PDF exported successfully'));
         } else if (!res?.canceled) {
-          get().showToast(`PDF export failed: ${res?.error || 'Unknown error'}`);
+          const reason = res?.error || tr('stores.ui.unknownError', 'Unknown error');
+          get().showToast(tr('stores.ui.pdfExportFailed', { error: reason }, `PDF export failed: ${reason}`));
         }
       } else {
         const blob = new Blob([pdfData], { type: 'application/pdf' });
@@ -1021,11 +1124,11 @@ const useUIStore = create((set, get) => ({
         a.download = defaultName;
         a.click();
         URL.revokeObjectURL(url);
-        get().showToast('PDF downloaded');
+        get().showToast(tr('stores.ui.pdfDownloaded', 'PDF downloaded'));
       }
     } catch (e) {
       console.error('[PDF Export] error:', e);
-      get().showToast(`PDF export failed: ${e.message}`);
+      get().showToast(tr('stores.ui.pdfExportFailed', { error: e.message }, `PDF export failed: ${e.message}`));
     }
   },
 
@@ -1088,15 +1191,16 @@ const useUIStore = create((set, get) => ({
 
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
-          get().registerScreenshotDownload(res, title, 'Visible Viewport');
-          get().showToast('Screenshot saved to Downloads & copied to clipboard!');
+          get().registerScreenshotDownload(res, title, tr('stores.ui.visibleViewport', 'Visible Viewport'));
+          get().showToast(tr('stores.ui.screenshotSavedCopied', 'Screenshot saved to Downloads & copied to clipboard!'));
         } else {
-          get().showToast(`Failed to capture screenshot: ${res?.error || 'Unknown error'}`);
+          const reason = res?.error || tr('stores.ui.unknownError', 'Unknown error');
+          get().showToast(tr('stores.ui.screenshotCaptureFailed', { error: reason }, `Failed to capture screenshot: ${reason}`));
         }
       }
     } catch (e) {
       console.error('[Screenshot] Visible capture error:', e);
-      get().showToast(`Screenshot failed: ${e.message}`);
+      get().showToast(tr('stores.ui.screenshotFailed', { error: e.message }, `Screenshot failed: ${e.message}`));
     }
   },
 
@@ -1109,7 +1213,7 @@ const useUIStore = create((set, get) => ({
       const isOnNewTab = !activeTab || !activeTab.url || activeTab.url === '' || activeTab.url === 'about:blank';
 
       if (isOnNewTab || !wv) {
-        get().showToast('Open a website to capture a full scrolling page');
+        get().showToast(tr('stores.ui.openWebsiteForFullScreenshot', 'Open a website to capture a full scrolling page'));
         return;
       }
 
@@ -1122,7 +1226,7 @@ const useUIStore = create((set, get) => ({
         }
       }
       if (!wcId) {
-        get().showToast('Unable to access page webcontents');
+        get().showToast(tr('stores.ui.unableAccessWebcontents', 'Unable to access page webcontents'));
         return;
       }
 
@@ -1146,7 +1250,7 @@ const useUIStore = create((set, get) => ({
       `);
 
       const { totalHeight, viewportHeight, viewportWidth, origX, origY } = metrics;
-      const title = activeTab?.title || 'Webpage';
+      const title = activeTab?.title || tr('stores.ui.webpageDefault', 'Webpage');
 
       // If page is not taller than the viewport, do a single clean guest capture!
       if (totalHeight <= viewportHeight + 20) {
@@ -1154,8 +1258,8 @@ const useUIStore = create((set, get) => ({
           const res = await window.electronAPI.captureAndSave({ webContentsId: wcId, title });
           if (res?.success) {
             set({ lastScreenshotPath: res.filePath });
-            get().registerScreenshotDownload(res, title, 'Full Page');
-            get().showToast('Full page screenshot saved & copied to clipboard!');
+            get().registerScreenshotDownload(res, title, tr('stores.ui.fullPage', 'Full Page'));
+            get().showToast(tr('stores.ui.fullPageSavedCopied', 'Full page screenshot saved & copied to clipboard!'));
           }
         }
         return;
@@ -1220,15 +1324,16 @@ const useUIStore = create((set, get) => ({
         });
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
-          get().registerScreenshotDownload(res, title, 'Full Page');
-          get().showToast('Full page screenshot saved & copied to clipboard!');
+          get().registerScreenshotDownload(res, title, tr('stores.ui.fullPage', 'Full Page'));
+          get().showToast(tr('stores.ui.fullPageSavedCopied', 'Full page screenshot saved & copied to clipboard!'));
         } else {
-          get().showToast(`Failed to save screenshot: ${res?.error || 'Unknown error'}`);
+          const reason = res?.error || tr('stores.ui.unknownError', 'Unknown error');
+          get().showToast(tr('stores.ui.fullPageSaveFailed', { error: reason }, `Failed to save screenshot: ${reason}`));
         }
       }
     } catch (e) {
       console.error('[Screenshot] Full page error:', e);
-      get().showToast(`Full page screenshot failed: ${e.message}`);
+      get().showToast(tr('stores.ui.fullPageFailed', { error: e.message }, `Full page screenshot failed: ${e.message}`));
     }
   },
 
@@ -1262,7 +1367,7 @@ const useUIStore = create((set, get) => ({
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       const activeTab = tabStore?.getActiveTab ? tabStore.getActiveTab() : null;
       const isOnNewTab = !activeTab || !activeTab.url || activeTab.url === '' || activeTab.url === 'about:blank';
-      const title = activeTab?.title || 'Snip';
+      const title = activeTab?.title || tr('stores.ui.snip', 'Snip');
       let wcId = null;
       if (!isOnNewTab && wv && typeof wv.getWebContentsId === 'function') {
         try {
@@ -1299,15 +1404,16 @@ const useUIStore = create((set, get) => ({
 
         if (res?.success) {
           set({ lastScreenshotPath: res.filePath });
-          get().registerScreenshotDownload(res, title, 'Snip');
-          get().showToast('Snip saved to Downloads & copied to clipboard!');
+          get().registerScreenshotDownload(res, title, tr('stores.ui.snip', 'Snip'));
+          get().showToast(tr('stores.ui.snipSavedCopied', 'Snip saved to Downloads & copied to clipboard!'));
         } else {
-          get().showToast(`Failed to save snip: ${res?.error || 'Unknown error'}`);
+          const reason = res?.error || tr('stores.ui.unknownError', 'Unknown error');
+          get().showToast(tr('stores.ui.snipSaveFailed', { error: reason }, `Failed to save snip: ${reason}`));
         }
       }
     } catch (e) {
       console.error('[Screenshot] Snip error:', e);
-      get().showToast(`Snip failed: ${e.message}`);
+      get().showToast(tr('stores.ui.snipFailed', { error: e.message }, `Snip failed: ${e.message}`));
     }
   },
 
@@ -1356,7 +1462,8 @@ const useUIStore = create((set, get) => ({
     }
     set({ isPopoverClosing: true });
     const tier = get().activePerformanceTier;
-    const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 260 : 230);
+    const optimizeEcoVisuals = shouldOptimizeEcoVisuals(tier, get().reduceVisualsOnEco);
+    const timeout = optimizeEcoVisuals ? 120 : (tier === 'ultra' ? 260 : 230);
     setTimeout(() => set({ activePopover: null, isPopoverClosing: false }), timeout);
   },
   togglePopover: (popover) => {
@@ -1377,28 +1484,85 @@ const useUIStore = create((set, get) => ({
     }
     set({ isPinnedStackClosing: true });
     const tier = get().activePerformanceTier;
-    const timeout = tier === 'eco' ? 100 : (tier === 'ultra' ? 220 : 180);
+    const optimizeEcoVisuals = shouldOptimizeEcoVisuals(tier, get().reduceVisualsOnEco);
+    const timeout = optimizeEcoVisuals ? 100 : (tier === 'ultra' ? 220 : 180);
     setTimeout(() => set({ activePinnedStack: null, isPinnedStackClosing: false }), timeout);
   },
-  mediaState: {
-      isPlaying: false,
-      title: '',
-      artist: '',
-      albumArt: '',
-      currentTime: 0,
-      duration: 0,
-      tabId: null
-  },
-  setMediaState: (mediaObj) => set(state => ({
-      mediaState: { ...state.mediaState, ...mediaObj }
-  })),
-  sendMediaCommand: (cmd) => {
+  mediaState: { ...EMPTY_MEDIA_STATE },
+  mediaSessionsByTab: {},
+  pipTabId: null,
+  updateTabMediaState: (tabId, payload) => set(state => {
+      if (!tabId) return state;
+      return resolveMediaStateUpdate(state, tabId, payload);
+  }),
+  clearMediaStateForTab: (tabId) => set(state => {
+      if (!tabId) return state;
+      return resolveMediaStateClearForTab(state, tabId);
+  }),
+  resetAllMediaState: () => set({
+      mediaState: { ...EMPTY_MEDIA_STATE },
+      mediaSessionsByTab: {},
+      pipTabId: null
+  }),
+  setPipTabId: (tabId, sourceTabId = null) => set(state => {
+      if (tabId) {
+          return { pipTabId: tabId };
+      }
+      if (!sourceTabId || state.pipTabId === sourceTabId) {
+          return { pipTabId: null };
+      }
+      return state;
+  }),
+  setMediaState: (mediaObj) => set(state => {
+      if (!mediaObj || typeof mediaObj !== 'object') return state;
+      if (mediaObj.tabId) {
+          return resolveMediaStateUpdate(state, mediaObj.tabId, mediaObj);
+      }
+      return {
+          mediaState: { ...state.mediaState, ...mediaObj }
+      };
+  }),
+  sendMediaCommand: (cmd, options = {}) => {
       const commandName = typeof cmd === 'string' ? cmd : (cmd ? cmd.action : 'unknown');
       const cmdPayload = typeof cmd === 'object' && cmd !== null ? cmd : { action: cmd };
-      console.log(`[QBrowse MediaControl] Dispatching command: "${commandName}"`, cmdPayload);
+      const explicitTabId = options?.targetTabId || (typeof cmd === 'object' && cmd !== null ? cmd.tabId : null) || null;
+      console.log(`[QBrowse MediaControl] Dispatching command: "${commandName}"`, cmdPayload, explicitTabId ? `(tab=${explicitTabId})` : '');
 
-      // Optimistic state toggle for play/pause
-      if (commandName === 'toggle-play' || commandName === 'play-pause') {
+      const getWebviewForTab = (id) => {
+          if (!id || typeof document === 'undefined') return null;
+          if (typeof window !== 'undefined' && window.qbrowseWebviews && window.qbrowseWebviews[id]) {
+              return window.qbrowseWebviews[id];
+          }
+          return document.querySelector(`webview#webview-${id}`);
+      };
+
+      const mediaState = get().mediaState;
+      let activeTabId = null;
+      try {
+          const tabStore = typeof window !== 'undefined' && window.__tabStore ? window.__tabStore.getState() : null;
+          const uiState = get();
+          if (uiState.isSplitView && uiState.focusedPane === 'right' && uiState.splitRightTabId) {
+              activeTabId = uiState.splitRightTabId;
+          } else if (tabStore?.getActiveTab) {
+              activeTabId = tabStore.getActiveTab()?.id || null;
+          }
+      } catch (_) {}
+
+      const resolvedTabId = resolveMediaCommandTargetTabId({
+          explicitTabId,
+          mediaStateTabId: mediaState?.tabId || null,
+          activeTabId,
+          hasWebviewForTab: (id) => Boolean(getWebviewForTab(id))
+      });
+
+      const targetWv = resolvedTabId ? getWebviewForTab(resolvedTabId) : null;
+      if (!targetWv) {
+          console.warn('[QBrowse MediaControl] No matching webview element available to receive command:', commandName);
+          return false;
+      }
+
+      // Optimistic state toggle for play/pause only when targeting the current mediaState tab
+      if ((commandName === 'toggle-play' || commandName === 'play-pause') && mediaState?.tabId && mediaState.tabId === resolvedTabId) {
           set(state => ({
               mediaState: {
                   ...state.mediaState,
@@ -1407,37 +1571,7 @@ const useUIStore = create((set, get) => ({
           }));
       }
 
-      // Determine target webview(s)
-      const mediaState = get().mediaState;
-      let targetWebviews = [];
-
-      // 1. Try to target the specific tab playing media
-      if (mediaState && mediaState.tabId) {
-          const matchingWv = document.querySelector(`webview#webview-${mediaState.tabId}`);
-          if (matchingWv) {
-              targetWebviews.push(matchingWv);
-          }
-      }
-
-      // 2. Fall back to the active tab's webview
-      if (targetWebviews.length === 0) {
-          const activeWv = get().getActiveWebView?.();
-          if (activeWv) {
-              targetWebviews.push(activeWv);
-          }
-      }
-
-      // 3. Fall back to visible webviews or any webview in DOM
-      if (targetWebviews.length === 0) {
-          const allWvs = Array.from(document.querySelectorAll('webview'));
-          const visibleWvs = allWvs.filter(wv => wv.style.visibility !== 'hidden' && wv.style.display !== 'none');
-          targetWebviews = visibleWvs.length > 0 ? visibleWvs : allWvs;
-      }
-
-      if (targetWebviews.length === 0) {
-          console.warn('[QBrowse MediaControl] No webview element available to receive command');
-          return;
-      }
+      const targetWebviews = [targetWv];
 
       targetWebviews.forEach((wv, index) => {
           try {
@@ -1450,8 +1584,9 @@ const useUIStore = create((set, get) => ({
                               try {
                                   window.__qbrowse_last_media_cmd = Date.now();
 
-                                  // 1. YouTube Player API
-                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  // 1. YouTube Player API (main watch player)
+                                  const isYt = /(^|\\.)youtube\\.com$/i.test(window.location.hostname || '');
+                                  const yt = isYt ? document.querySelector('#movie_player') : null;
                                   if (yt && typeof yt.getPlayerState === 'function') {
                                       const state = yt.getPlayerState();
                                       if (state === 1 || state === 3) {
@@ -1475,19 +1610,17 @@ const useUIStore = create((set, get) => ({
                                       'button[data-testid="control-button-playpause"], ' +
                                       'button[data-testid="play-pause-button"], ' +
                                       'button[data-a-target="player-play-pause-button"], ' +
-                                      '.playControl, ' +
-                                      'button[aria-label*="Play" i], ' +
-                                      'button[aria-label*="Pause" i]'
+                                      '.playControl'
                                   );
                                   if (streamBtn) {
                                       streamBtn.click();
                                       return 'stream-btn-clicked';
                                   }
 
-                                  // 4. HTML5 Video / Audio elements
+                                  // 4. HTML5 Video / Audio elements (only genuine unmuted media)
                                   const mediaEls = Array.from(document.querySelectorAll('video, audio'));
-                                  const playing = mediaEls.find(m => !m.paused && !m.ended);
-                                  const targetMedia = playing || mediaEls.find(m => m.readyState > 0) || mediaEls[0];
+                                  const playing = mediaEls.find(m => !m.paused && !m.ended && !m.muted && m.volume > 0 && m.readyState >= 2);
+                                  const targetMedia = playing || mediaEls.find(m => !m.muted && m.volume > 0 && m.readyState >= 2);
                                   if (targetMedia) {
                                       if (targetMedia.paused) {
                                           const p = targetMedia.play();
@@ -1499,10 +1632,7 @@ const useUIStore = create((set, get) => ({
                                       }
                                   }
 
-                                  // 5. Fallback keyboard event for YouTube
-                                  const keyEv = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', keyCode: 75, which: 75, bubbles: true });
-                                  document.dispatchEvent(keyEv);
-                                  return 'simulated-key-k';
+                                  return 'no-media-found';
                               } catch(e) {
                                   return 'toggle-err: ' + e.toString();
                               }
@@ -1513,7 +1643,8 @@ const useUIStore = create((set, get) => ({
                           (function() {
                               try {
                                   window.__qbrowse_last_media_cmd = Date.now();
-                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  const isYt = /(^|\\.)youtube\\.com$/i.test(window.location.hostname || '');
+                                  const yt = isYt ? document.querySelector('#movie_player') : null;
                                   if (yt && typeof yt.nextVideo === 'function') {
                                       yt.nextVideo();
                                       return 'yt-next';
@@ -1523,8 +1654,8 @@ const useUIStore = create((set, get) => ({
                                       btn.click();
                                       return 'next-btn';
                                   }
-                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused) || document.querySelector('video, audio');
-                                  if (media && media.duration) {
+                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused && !m.muted && m.volume > 0);
+                                  if (media && Number.isFinite(media.duration)) {
                                       media.currentTime = Math.min(media.duration, media.currentTime + 10);
                                       return 'skip-10s';
                                   }
@@ -1538,7 +1669,8 @@ const useUIStore = create((set, get) => ({
                           (function() {
                               try {
                                   window.__qbrowse_last_media_cmd = Date.now();
-                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  const isYt = /(^|\\.)youtube\\.com$/i.test(window.location.hostname || '');
+                                  const yt = isYt ? document.querySelector('#movie_player') : null;
                                   if (yt && typeof yt.previousVideo === 'function') {
                                       yt.previousVideo();
                                       return 'yt-prev';
@@ -1548,7 +1680,7 @@ const useUIStore = create((set, get) => ({
                                       btn.click();
                                       return 'prev-btn';
                                   }
-                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused) || document.querySelector('video, audio');
+                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused && !m.muted && m.volume > 0);
                                   if (media) {
                                       media.currentTime = Math.max(0, media.currentTime - 10);
                                       return 'rewind-10s';
@@ -1564,12 +1696,13 @@ const useUIStore = create((set, get) => ({
                           (function() {
                               try {
                                   window.__qbrowse_last_media_cmd = Date.now();
-                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  const isYt = /(^|\\.)youtube\\.com$/i.test(window.location.hostname || '');
+                                  const yt = isYt ? document.querySelector('#movie_player') : null;
                                   if (yt && typeof yt.seekTo === 'function') {
                                       yt.seekTo(${seekTime}, true);
                                       return 'yt-seek';
                                   }
-                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused) || document.querySelector('video, audio');
+                                  const media = Array.from(document.querySelectorAll('video, audio')).find(m => !m.paused && !m.muted && m.volume > 0) || Array.from(document.querySelectorAll('video, audio')).find(m => !m.muted && m.readyState >= 2);
                                   if (media) {
                                       media.currentTime = ${seekTime};
                                       return 'html5-seek';
@@ -1584,7 +1717,8 @@ const useUIStore = create((set, get) => ({
                           (function() {
                               try {
                                   window.__qbrowse_last_media_cmd = Date.now();
-                                  const yt = document.querySelector('#movie_player, .html5-video-player');
+                                  const isYt = /(^|\\.)youtube\\.com$/i.test(window.location.hostname || '');
+                                  const yt = isYt ? document.querySelector('#movie_player') : null;
                                   if (yt && typeof yt.isMuted === 'function') {
                                       if (yt.isMuted()) yt.unMute?.();
                                       else yt.mute?.();
@@ -1596,12 +1730,30 @@ const useUIStore = create((set, get) => ({
                                       return 'mute-btn';
                                   }
                                   const mediaEls = Array.from(document.querySelectorAll('video, audio'));
-                                  mediaEls.forEach(el => { el.muted = !el.muted; });
-                                  return 'html5-mute';
+                                  const active = mediaEls.find(el => !el.paused && !el.ended && el.readyState >= 2);
+                                  if (active) {
+                                      active.muted = !active.muted;
+                                      return 'html5-mute';
+                                  }
+                                  return 'no-media-found';
                               } catch(e) {
                                   return 'mute-err: ' + e.toString();
                               }
                           })()
+                      `;
+                  } else if (commandName === 'exit-pip') {
+                      script = `
+                          (async () => {
+                              try {
+                                  if (document.pictureInPictureElement) {
+                                      await document.exitPictureInPicture();
+                                      return 'exited-pip';
+                                  }
+                                  return 'no-pip-active';
+                              } catch(e) {
+                                  return 'exit-pip-error: ' + e.toString();
+                              }
+                          })();
                       `;
                   } else if (commandName === 'toggle-pip' || commandName === 'pip') {
                       script = `
@@ -1613,8 +1765,34 @@ const useUIStore = create((set, get) => ({
                                       return 'exited-pip';
                                   }
 
+                                  const isEligible = (v, allowPaused) => {
+                                      if (!v || !v.isConnected || v.readyState < 2) return false;
+                                      const vw = v.videoWidth || 0;
+                                      const vh = v.videoHeight || 0;
+                                      if (vw < 160 || vh < 90) return false;
+                                      if (v.hidden) return false;
+                                      const st = window.getComputedStyle ? window.getComputedStyle(v) : null;
+                                      if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return false;
+                                      const rect = v.getBoundingClientRect ? v.getBoundingClientRect() : null;
+                                      if (rect && rect.width <= 1 && rect.height <= 1) return false;
+                                      const dur = v.duration;
+                                      const finite = typeof dur === 'number' && Number.isFinite(dur) && dur > 0;
+                                      if (finite && dur <= 3) return false;
+                                      if (v.loop && finite && dur <= 15) return false;
+                                      if (v.muted || (typeof v.volume === 'number' && v.volume <= 0)) return false;
+                                      const ytC = v.closest ? v.closest('#movie_player, .html5-video-player') : null;
+                                      if (ytC && typeof ytC.isMuted === 'function' && ytC.isMuted()) return false;
+                                      if (!v.paused && !v.ended) return true;
+                                      if (!allowPaused || v.ended || v.loop) return false;
+                                      if (vw < 320 || vh < 180) return false;
+                                      if (finite && dur <= 15) return false;
+                                      return true;
+                                  };
+
                                   const videoEls = Array.from(document.querySelectorAll('video'));
-                                  const activeVideo = videoEls.find(v => !v.paused && v.readyState > 1) || videoEls[0];
+                                  const score = (v) => (v.videoWidth || 0) * (v.videoHeight || 0);
+                                  const playingVids = videoEls.filter(v => isEligible(v, false)).sort((a, b) => score(b) - score(a));
+                                  const activeVideo = playingVids[0] || videoEls.filter(v => isEligible(v, true)).sort((a, b) => score(b) - score(a))[0] || null;
 
                                   if (activeVideo) {
                                       activeVideo.removeAttribute('disablepictureinpicture');
@@ -1623,19 +1801,14 @@ const useUIStore = create((set, get) => ({
                                       return 'native-pip-success';
                                   }
 
-                                  const ytPlayer = document.querySelector('#movie_player, .html5-video-player');
+                                  const isYt = /(^|\\.)youtube\\.com$/i.test(window.location.hostname || '');
+                                  const ytPlayer = isYt ? document.querySelector('#movie_player') : null;
                                   if (ytPlayer && typeof ytPlayer.togglePictureInPicture === 'function') {
                                       ytPlayer.togglePictureInPicture();
                                       return 'yt-player-pip';
                                   }
 
-                                  const pipBtn = document.querySelector('.ytp-pip-button, button[title*="Picture-in-picture"]');
-                                  if (pipBtn) {
-                                      pipBtn.click();
-                                      return 'pip-btn-clicked';
-                                  }
-
-                                  return 'no-video-found';
+                                  return 'no-eligible-video-found';
                               } catch(e) {
                                   return 'pip-error: ' + e.toString();
                               }
@@ -1663,6 +1836,7 @@ const useUIStore = create((set, get) => ({
               console.error(`[QBrowse MediaControl] Error sending command to webview #${index}:`, e);
           }
       });
+      return true;
   },
 
 
@@ -1673,6 +1847,23 @@ const useUIStore = create((set, get) => ({
   // Passkey Prompt
   passkeyPrompt: null,
   setPasskeyPrompt: (prompt) => set({ passkeyPrompt: prompt }),
+
+  // Site Permission Request Queue (Mic, Camera, Location, Notifications, etc.)
+  permissionQueue: [],
+  enqueuePermissionPrompt: (prompt) => set((state) => {
+    if (!prompt || !prompt.requestId) return state;
+    if ((state.permissionQueue || []).some(p => p.requestId === prompt.requestId)) {
+      return state;
+    }
+    return { permissionQueue: [...(state.permissionQueue || []), prompt] };
+  }),
+  dismissPermissionPrompt: (requestId) => set((state) => {
+    if (!requestId) return state;
+    const next = (state.permissionQueue || []).filter(p => p.requestId !== requestId);
+    if (next.length === (state.permissionQueue || []).length) return state;
+    return { permissionQueue: next };
+  }),
+  clearPermissionPrompts: () => set({ permissionQueue: [] }),
 
   // Browser In-Tab Dialogs (Alerts, Confirms, Prompts, HTTP Auth)
   activeDialog: null,
@@ -1723,7 +1914,8 @@ const useUIStore = create((set, get) => ({
     const targetModal = get().activeModal;
     set({ isModalClosing: true, closingModal: targetModal });
     const tier = get().activePerformanceTier;
-    const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 280 : 240);
+    const optimizeEcoVisuals = shouldOptimizeEcoVisuals(tier, get().reduceVisualsOnEco);
+    const timeout = optimizeEcoVisuals ? 120 : (tier === 'ultra' ? 280 : 240);
     globalModalCloseTimeout = setTimeout(() => {
       globalModalCloseTimeout = null;
       const state = get();
@@ -1749,7 +1941,8 @@ const useUIStore = create((set, get) => ({
     }
     set({ isModalClosing: true, closingModal: current });
     const tier = get().activePerformanceTier;
-    const timeout = tier === 'eco' ? 120 : (tier === 'ultra' ? 280 : 240);
+    const optimizeEcoVisuals = shouldOptimizeEcoVisuals(tier, get().reduceVisualsOnEco);
+    const timeout = optimizeEcoVisuals ? 120 : (tier === 'ultra' ? 280 : 240);
     globalModalCloseTimeout = setTimeout(() => {
       globalModalCloseTimeout = null;
       set({
@@ -1785,7 +1978,8 @@ const useUIStore = create((set, get) => ({
     }
     set({ isReadAloudClosing: true });
     const tier = get().activePerformanceTier;
-    const timeout = tier === 'eco' ? 100 : (tier === 'ultra' ? 240 : 200);
+    const optimizeEcoVisuals = shouldOptimizeEcoVisuals(tier, get().reduceVisualsOnEco);
+    const timeout = optimizeEcoVisuals ? 100 : (tier === 'ultra' ? 240 : 200);
     setTimeout(() => set({ isReadAloudOpen: false, isReadAloudClosing: false }), timeout);
   },
   toggleReadAloud: () => {
@@ -1800,18 +1994,42 @@ const useUIStore = create((set, get) => ({
 
   isForceDark: localStorage.getItem('qbrowse_isForceDark') === 'true',
   setIsForceDark: (val) => {
-      set({ isForceDark: val });
+      const enabled = Boolean(val);
+      set({ isForceDark: enabled });
       try {
-          localStorage.setItem('qbrowse_isForceDark', val);
+          localStorage.setItem('qbrowse_isForceDark', String(enabled));
+          localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
       } catch (_) {}
       if (typeof window !== 'undefined' && window.electronAPI) {
           if (window.electronAPI.saveSetting) {
-              window.electronAPI.saveSetting('isForceDark', val);
+              window.electronAPI.saveSetting('isForceDark', enabled);
           }
           if (window.electronAPI.syncSmartDarkState) {
               window.electronAPI.syncSmartDarkState({
-                  isForceDark: val,
-                  darkExclusions: get().darkExclusions
+                  isForceDark: enabled,
+                  darkExclusions: get().darkExclusions,
+                  darkExcludeMedia: get().darkExcludeMedia
+              });
+          }
+      }
+  },
+  darkExcludeMedia: localStorage.getItem('qbrowse_dark_exclude_media') !== 'false',
+  setDarkExcludeMedia: (val) => {
+      const enabled = Boolean(val);
+      set({ darkExcludeMedia: enabled });
+      try {
+          localStorage.setItem('qbrowse_dark_exclude_media', String(enabled));
+          localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+      } catch (_) {}
+      if (typeof window !== 'undefined' && window.electronAPI) {
+          if (window.electronAPI.saveSetting) {
+              window.electronAPI.saveSetting('darkExcludeMedia', enabled);
+          }
+          if (window.electronAPI.syncSmartDarkState) {
+              window.electronAPI.syncSmartDarkState({
+                  isForceDark: get().isForceDark,
+                  darkExclusions: get().darkExclusions,
+                  darkExcludeMedia: enabled
               });
           }
       }
@@ -1907,26 +2125,203 @@ const useUIStore = create((set, get) => ({
   darkExclusions: (() => {
       try {
           const stored = localStorage.getItem('qbrowse_dark_exclusions');
-          if (stored) return JSON.parse(stored);
+          if (stored !== null) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed)) {
+                  return normalizeWhitelist(parsed);
+              }
+          }
       } catch (e) {}
-      return ['youtube.com', 'github.com', 'figma.com', 'mail.google.com'];
+      return getDefaultDarkExclusions();
   })(),
   setDarkExclusions: (exclusions) => {
-      set({ darkExclusions: exclusions });
+      const normalized = normalizeWhitelist(exclusions);
+      set({ darkExclusions: normalized });
       try {
-          localStorage.setItem('qbrowse_dark_exclusions', JSON.stringify(exclusions));
+          localStorage.setItem('qbrowse_dark_exclusions', JSON.stringify(normalized));
+          localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
       } catch (_) {}
       if (typeof window !== 'undefined' && window.electronAPI) {
           if (window.electronAPI.saveSetting) {
-              window.electronAPI.saveSetting('darkExclusions', exclusions);
+              window.electronAPI.saveSetting('darkExclusions', normalized);
           }
           if (window.electronAPI.syncSmartDarkState) {
               window.electronAPI.syncSmartDarkState({
                   isForceDark: get().isForceDark,
-                  darkExclusions: exclusions
+                  darkExclusions: normalized,
+                  darkExcludeMedia: get().darkExcludeMedia
               });
           }
       }
+      return normalized;
+  },
+  addDarkExclusion: (rawInput) => {
+      const res = addWhitelistEntry(get().darkExclusions, rawInput);
+      if (res.ok) {
+          get().setDarkExclusions(res.list);
+      }
+      return res;
+  },
+  removeDarkExclusion: (target) => {
+      const res = removeWhitelistEntry(get().darkExclusions, target);
+      if (res.removed) {
+          get().setDarkExclusions(res.list);
+      }
+      return res;
+  },
+  toggleDarkExclusionForUrl: (url) => {
+      const res = toggleWhitelistForUrl(get().darkExclusions, url);
+      if (res.ok) {
+          get().setDarkExclusions(res.list);
+      }
+      return res;
+  },
+  resetDarkExclusions: () => {
+      const defaults = getDefaultDarkExclusions();
+      get().setDarkExclusions(defaults);
+      return defaults;
+  },
+  clearDarkExclusions: () => {
+      get().setDarkExclusions([]);
+      return [];
+  },
+
+  // Safari-Style "Hide Distracting Items" (Element Eraser) State & Persistence
+  isElementEraserActive: false,
+  eraserSessionRules: {}, // { [tabId]: Array<{ selector, label, unlockScroll, createdAt }> } for Ghost/Tor ephemeral tabs
+  eraserUndoStack: [], // Array<{ domain, tabId, selector, ephemeral }>
+  hiddenElementsByDomain: (() => {
+      try {
+          const stored = localStorage.getItem('qbrowse_hidden_elements');
+          if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                  const clean = {};
+                  for (const [d, rules] of Object.entries(parsed)) {
+                      const arr = (Array.isArray(rules) ? rules : []).filter(r => r && !String(r.selector || '').includes('qbrowse-eraser'));
+                      if (arr.length) clean[d] = arr;
+                  }
+                  return clean;
+              }
+          }
+      } catch (_) {}
+      return {};
+  })(),
+  toggleElementEraser: (forced) => {
+      const next = typeof forced === 'boolean' ? forced : !get().isElementEraserActive;
+      set({
+          isElementEraserActive: next,
+          ...(next ? { activePopover: null, isPopoverClosing: false, isTopBarOmniboxActive: false } : {})
+      });
+  },
+  addHiddenElementRule: (domain, rule, options = {}) => {
+      if (!rule || !rule.selector) return;
+      const isEphemeral = Boolean(options.ephemeral || !domain);
+      const tabId = options.tabId || null;
+      const entry = {
+          selector: rule.selector,
+          label: rule.label || rule.selector,
+          unlockScroll: Boolean(rule.unlockScroll),
+          createdAt: Date.now()
+      };
+
+      if (isEphemeral && tabId) {
+          const prevSession = get().eraserSessionRules || {};
+          const existing = Array.isArray(prevSession[tabId]) ? prevSession[tabId] : [];
+          if (existing.some(r => r.selector === entry.selector)) return;
+          const nextSession = { ...prevSession, [tabId]: [...existing, entry] };
+          set({
+              eraserSessionRules: nextSession,
+              eraserUndoStack: [...(get().eraserUndoStack || []), { domain: null, tabId, selector: entry.selector, ephemeral: true }]
+          });
+          return;
+      }
+
+      if (!domain) return;
+      const cleanDomain = String(domain).replace(/^www\./i, '').toLowerCase();
+      const prevMap = get().hiddenElementsByDomain || {};
+      const existing = Array.isArray(prevMap[cleanDomain]) ? prevMap[cleanDomain] : [];
+      if (existing.some(r => r.selector === entry.selector)) return;
+      const nextMap = { ...prevMap, [cleanDomain]: [...existing, entry] };
+      set({
+          hiddenElementsByDomain: nextMap,
+          eraserUndoStack: [...(get().eraserUndoStack || []), { domain: cleanDomain, tabId, selector: entry.selector, ephemeral: false }]
+      });
+      try {
+          localStorage.setItem('qbrowse_hidden_elements', JSON.stringify(nextMap));
+      } catch (_) {}
+  },
+  removeLastHiddenElementRule: (domain, options = {}) => {
+      const isEphemeral = Boolean(options.ephemeral);
+      const tabId = options.tabId || null;
+      const undoStack = [...(get().eraserUndoStack || [])];
+
+      if (isEphemeral && tabId) {
+          const prevSession = get().eraserSessionRules || {};
+          const list = Array.isArray(prevSession[tabId]) ? prevSession[tabId] : [];
+          if (list.length === 0) return false;
+          const nextList = list.slice(0, -1);
+          const nextSession = { ...prevSession };
+          if (nextList.length > 0) nextSession[tabId] = nextList;
+          else delete nextSession[tabId];
+          set({
+              eraserSessionRules: nextSession,
+              eraserUndoStack: undoStack.filter(u => !(u.ephemeral && u.tabId === tabId)).concat(
+                  undoStack.filter(u => u.ephemeral && u.tabId === tabId).slice(0, -1)
+              )
+          });
+          return true;
+      }
+
+      if (!domain) return false;
+      const cleanDomain = String(domain).replace(/^www\./i, '').toLowerCase();
+      const prevMap = get().hiddenElementsByDomain || {};
+      const list = Array.isArray(prevMap[cleanDomain]) ? prevMap[cleanDomain] : [];
+      if (list.length === 0) return false;
+      const nextList = list.slice(0, -1);
+      const nextMap = { ...prevMap };
+      if (nextList.length > 0) nextMap[cleanDomain] = nextList;
+      else delete nextMap[cleanDomain];
+      set({
+          hiddenElementsByDomain: nextMap,
+          eraserUndoStack: undoStack.filter(u => !(!u.ephemeral && u.domain === cleanDomain)).concat(
+              undoStack.filter(u => !u.ephemeral && u.domain === cleanDomain).slice(0, -1)
+          )
+      });
+      try {
+          localStorage.setItem('qbrowse_hidden_elements', JSON.stringify(nextMap));
+      } catch (_) {}
+      return true;
+  },
+  clearHiddenElementsForDomain: (domain, options = {}) => {
+      const isEphemeral = Boolean(options.ephemeral);
+      const tabId = options.tabId || null;
+
+      if (isEphemeral && tabId) {
+          const prevSession = get().eraserSessionRules || {};
+          if (!prevSession[tabId]?.length) return;
+          const nextSession = { ...prevSession };
+          delete nextSession[tabId];
+          set({
+              eraserSessionRules: nextSession,
+              eraserUndoStack: (get().eraserUndoStack || []).filter(u => !(u.ephemeral && u.tabId === tabId))
+          });
+          return;
+      }
+
+      if (!domain) return;
+      const cleanDomain = String(domain).replace(/^www\./i, '').toLowerCase();
+      const prevMap = get().hiddenElementsByDomain || {};
+      if (!prevMap[cleanDomain]?.length) return;
+      const nextMap = { ...prevMap };
+      delete nextMap[cleanDomain];
+      set({
+          hiddenElementsByDomain: nextMap,
+          eraserUndoStack: (get().eraserUndoStack || []).filter(u => !(!u.ephemeral && u.domain === cleanDomain))
+      });
+      try {
+          localStorage.setItem('qbrowse_hidden_elements', JSON.stringify(nextMap));
+      } catch (_) {}
   },
   
   settings: loadSettings(),
@@ -1973,11 +2368,17 @@ const useUIStore = create((set, get) => ({
           if (typeof diskSettings.isGlassEnabled === 'boolean') {
             get().setIsGlassEnabled(diskSettings.isGlassEnabled);
           }
-          if (typeof diskSettings.isForceDark === 'boolean') {
+          const localForceDark = localStorage.getItem('qbrowse_isForceDark');
+          if (localForceDark === null && typeof diskSettings.isForceDark === 'boolean') {
             get().setIsForceDark(diskSettings.isForceDark);
           }
-          if (Array.isArray(diskSettings.darkExclusions)) {
+          const localDarkExclusions = localStorage.getItem('qbrowse_dark_exclusions');
+          if (localDarkExclusions === null && Array.isArray(diskSettings.darkExclusions)) {
             get().setDarkExclusions(diskSettings.darkExclusions);
+          }
+          const localDarkExcludeMedia = localStorage.getItem('qbrowse_dark_exclude_media');
+          if (localDarkExcludeMedia === null && typeof diskSettings.darkExcludeMedia === 'boolean') {
+            get().setDarkExcludeMedia(diskSettings.darkExcludeMedia);
           }
           if (typeof diskSettings.isSwipeEnabled === 'boolean') {
             get().setIsSwipeEnabled(diskSettings.isSwipeEnabled);
@@ -1999,6 +2400,7 @@ const useUIStore = create((set, get) => ({
               ...merged,
               isForceDark: get().isForceDark,
               darkExclusions: get().darkExclusions,
+              darkExcludeMedia: get().darkExcludeMedia,
               accentColor: get().accentColor,
               theme: get().theme
             });
@@ -2008,6 +2410,7 @@ const useUIStore = create((set, get) => ({
                 ...merged,
                 isForceDark: get().isForceDark,
                 darkExclusions: get().darkExclusions,
+                darkExcludeMedia: get().darkExcludeMedia,
                 accentColor: get().accentColor,
                 theme: get().theme
               }
@@ -2021,6 +2424,7 @@ const useUIStore = create((set, get) => ({
   },
   resetAllToFactoryDefaults: async () => {
     const cleanSettings = { ...defaultSettings };
+    const defaultExclusions = getDefaultDarkExclusions();
     set({
       settings: cleanSettings,
       theme: 'dark',
@@ -2030,7 +2434,8 @@ const useUIStore = create((set, get) => ({
       isGlassEnabled: true,
       isSwipeEnabled: true,
       isForceDark: false,
-      darkExclusions: [],
+      darkExclusions: defaultExclusions,
+      darkExcludeMedia: true,
       customPresets: [],
       activePresetId: 'balanced',
       zoomLevel: 1.0
@@ -2050,7 +2455,8 @@ const useUIStore = create((set, get) => ({
       localStorage.setItem('qbrowse_isSwipeEnabled', 'true');
       localStorage.setItem('qbrowse_isForceDark', 'false');
       localStorage.setItem('qbrowse_active_preset', 'balanced');
-      localStorage.removeItem('qbrowse_dark_exclusions');
+      localStorage.setItem('qbrowse_dark_exclusions', JSON.stringify(defaultExclusions));
+      localStorage.setItem('qbrowse_dark_exclude_media', 'true');
       localStorage.removeItem('qbrowse_custom_presets');
       localStorage.removeItem('qbrowse_preset_overrides');
       localStorage.removeItem('qbrowse_custom_search_engines');
@@ -2110,10 +2516,24 @@ const useUIStore = create((set, get) => ({
         window.electronAPI.saveSetting('isGlassEnabled', true);
         window.electronAPI.saveSetting('isSwipeEnabled', true);
         window.electronAPI.saveSetting('isForceDark', false);
-        window.electronAPI.saveSetting('darkExclusions', []);
+        window.electronAPI.saveSetting('darkExclusions', defaultExclusions);
+        window.electronAPI.saveSetting('darkExcludeMedia', true);
+      }
+      if (window.electronAPI.syncSmartDarkState) {
+        window.electronAPI.syncSmartDarkState({
+          isForceDark: false,
+          darkExclusions: defaultExclusions,
+          darkExcludeMedia: true
+        });
       }
       if (window.electronAPI.syncThemeSource) {
         window.electronAPI.syncThemeSource('dark');
+      }
+      if (window.electronAPI.syncPasskeySettings) {
+        window.electronAPI.syncPasskeySettings({
+          passkeyProviderMode: 'qvault',
+          passkeyHardwareFallback: true
+        });
       }
     }
   },
@@ -2129,7 +2549,7 @@ const useUIStore = create((set, get) => ({
           } catch(e) {}
           
           if (['hardware', 'isolation'].includes(key)) {
-              useUIStore.getState().showToast('Restart required for engine changes.');
+              useUIStore.getState().showToast(tr('stores.ui.restartRequiredEngine', 'Restart required for engine changes.'));
           }
           if (key === 'restoreTabsOnStartup' && typeof window !== 'undefined' && window.__tabStore) {
               const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
@@ -2141,6 +2561,12 @@ const useUIStore = create((set, get) => ({
           }
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, newSettings[key]);
+          }
+          if ((key === 'passkeyProviderMode' || key === 'passkeyHardwareFallback') && window.electronAPI?.syncPasskeySettings) {
+              window.electronAPI.syncPasskeySettings({
+                  passkeyProviderMode: newSettings.passkeyProviderMode || 'qvault',
+                  passkeyHardwareFallback: newSettings.passkeyHardwareFallback !== false
+              });
           }
           return { settings: newSettings };
       });
@@ -2172,6 +2598,12 @@ const useUIStore = create((set, get) => ({
           }
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, value);
+          }
+          if ((key === 'passkeyProviderMode' || key === 'passkeyHardwareFallback') && window.electronAPI?.syncPasskeySettings) {
+              window.electronAPI.syncPasskeySettings({
+                  passkeyProviderMode: newSettings.passkeyProviderMode || 'qvault',
+                  passkeyHardwareFallback: newSettings.passkeyHardwareFallback !== false
+              });
           }
           if (typeof key === 'string' && key.startsWith('appFont')) {
               try {
@@ -2243,7 +2675,7 @@ const useUIStore = create((set, get) => ({
           appFontFileData: null,
           appFontFileName: ''
       });
-      get().showToast('Typography reset to System Default');
+      get().showToast(tr('stores.ui.typographyReset', 'Typography reset to System Default'));
   },
   setAppLanguage: (langCode) => {
       get().setSettingValue('appLanguage', langCode);
@@ -2343,12 +2775,12 @@ const useUIStore = create((set, get) => ({
           ? get().settings.customSpaces
           : defaultSettings.customSpaces;
       if (currentSpaces.length >= 8) {
-          get().showToast('Maximum of 8 workspaces allowed', 'warning');
+          get().showToast(tr('stores.ui.maxWorkspacesAllowed', 'Maximum of 8 workspaces allowed'), 'warning');
           return null;
       }
 
       const id = `space_${Date.now()}`;
-      const cleanName = (typeof name === 'string' && name.trim()) ? name.trim() : 'New Space';
+      const cleanName = (typeof name === 'string' && name.trim()) ? name.trim() : tr('stores.ui.newSpaceDefault', 'New Space');
       const newSpace = {
           id,
           name: cleanName,
@@ -2363,7 +2795,7 @@ const useUIStore = create((set, get) => ({
       if (tabStore?.initSpaceTabs) {
           tabStore.initSpaceTabs(id);
       }
-      get().showToast(`Workspace "${cleanName}" created`);
+      get().showToast(tr('stores.ui.workspaceCreated', { name: cleanName }, `Workspace "${cleanName}" created`));
       return newSpace;
   },
 
@@ -2373,7 +2805,7 @@ const useUIStore = create((set, get) => ({
           : defaultSettings.customSpaces;
       const updated = currentSpaces.map(s => s.id === id ? { ...s, ...updates, id } : s);
       get().saveSetting('customSpaces', updated);
-      get().showToast('Workspace updated');
+      get().showToast(tr('stores.ui.workspaceUpdated', 'Workspace updated'));
   },
 
   removeSpace: (id) => {
@@ -2405,7 +2837,7 @@ const useUIStore = create((set, get) => ({
           localStorage.removeItem(`qbrowse_tabs_${profileId}_${id}`);
       } catch (_) {}
 
-      get().showToast('Workspace removed. Open tabs moved to Personal.');
+      get().showToast(tr('stores.ui.workspaceRemoved', 'Workspace removed. Open tabs moved to Personal.'));
   },
 
   reorderSpaces: (arg1, arg2) => {
@@ -2478,7 +2910,7 @@ const useUIStore = create((set, get) => ({
       set({ customPresets: updated, activePresetId: id });
       saveCustomPresetsToStorage(updated);
       setSavedPresetId(id);
-      get().showToast(`Preset "${preset.name}" saved!`);
+      get().showToast(tr('stores.ui.presetSaved', { name: preset.name }, `Preset "${preset.name}" saved!`));
       return preset;
   },
 
@@ -2486,7 +2918,7 @@ const useUIStore = create((set, get) => ({
       const current = get().customPresets || [];
       const index = current.findIndex(p => p.id === presetId);
       if (index === -1) {
-          get().showToast('Preset not found to update', 'warning');
+          get().showToast(tr('stores.ui.presetNotFoundUpdate', 'Preset not found to update'), 'warning');
           return null;
       }
       const updatedPreset = {
@@ -2500,7 +2932,7 @@ const useUIStore = create((set, get) => ({
       updated[index] = updatedPreset;
       set({ customPresets: updated });
       saveCustomPresetsToStorage(updated);
-      get().showToast(`Preset "${updatedPreset.name}" updated!`);
+      get().showToast(tr('stores.ui.presetUpdated', { name: updatedPreset.name }, `Preset "${updatedPreset.name}" updated!`));
       return updatedPreset;
   },
 
@@ -2519,21 +2951,21 @@ const useUIStore = create((set, get) => ({
       }
       set(updates);
       saveCustomPresetsToStorage(updated);
-      get().showToast(`Preset "${target.name}" deleted`);
+      get().showToast(tr('stores.ui.presetDeleted', { name: target.name }, `Preset "${target.name}" deleted`));
   },
 
   duplicatePreset: (presetId) => {
       const all = get().getAllPresets();
       const source = all.find(p => p.id === presetId);
       if (!source) {
-          get().showToast('Preset not found to duplicate', 'warning');
+          get().showToast(tr('stores.ui.presetNotFoundDuplicate', 'Preset not found to duplicate'), 'warning');
           return null;
       }
       const newId = `custom_${Date.now()}`;
       const clone = {
           ...source,
           id: newId,
-          name: `${source.name} (Copy)`,
+          name: tr('stores.ui.presetCopySuffix', { name: source.name }, `${source.name} (Copy)`),
           badge: 'Custom',
           isCustom: true,
           isBuiltIn: false,
@@ -2543,11 +2975,11 @@ const useUIStore = create((set, get) => ({
       const updated = [...currentCustom, clone];
       set({ customPresets: updated });
       saveCustomPresetsToStorage(updated);
-      get().showToast(`Duplicated "${source.name}"`);
+      get().showToast(tr('stores.ui.presetDuplicated', { name: source.name }, `Duplicated "${source.name}"`));
       return clone;
   },
 
-  captureCurrentAsPreset: (name = 'Custom Preset', description = '', icon = 'Sparkles') => {
+  captureCurrentAsPreset: (name = tr('stores.ui.customPresetDefault', 'Custom Preset'), description = '', icon = 'Sparkles') => {
       const s = get().settings || defaultSettings;
       const theme = get().theme || 'dark';
       const accentColor = get().accentColor || '#d4bc94';
@@ -3156,7 +3588,7 @@ const useUIStore = create((set, get) => ({
 
     const wv = window.qbrowseWebviews ? window.qbrowseWebviews[activeTab.id] : null;
     if (!wv || typeof wv.executeJavaScript !== 'function') {
-      state.showToast('Reader Mode is not available for this tab');
+      state.showToast(tr('stores.ui.readerNotAvailable', 'Reader Mode is not available for this tab'));
       return;
     }
 
@@ -3170,12 +3602,12 @@ const useUIStore = create((set, get) => ({
         set({ isReaderOpen: true, readerArticle: article, isReaderAvailable: true, isReaderLoading: false });
       } else {
         set({ isReaderLoading: false });
-        state.showToast('Could not extract readable article content');
+        state.showToast(tr('stores.ui.readerExtractFailed', 'Could not extract readable article content'));
       }
     } catch (e) {
       console.error('[ReaderMode] Failed to extract article:', e);
       set({ isReaderLoading: false });
-      state.showToast('Failed to load Reader Mode');
+      state.showToast(tr('stores.ui.readerLoadFailed', 'Failed to load Reader Mode'));
     }
   },
   setReaderSetting: (key, val) => {
@@ -3199,56 +3631,39 @@ const useUIStore = create((set, get) => ({
   initPerformanceProfile: async () => {
     if (typeof window === 'undefined' || !window.electronAPI?.getHardwareProfile) return;
     try {
-      const applyDom = (tier, reduce) => {
-        if (typeof document === 'undefined') return;
-        const root = document.documentElement;
-        root.dataset.performanceTier = tier;
-
-        if (tier === 'eco') {
-          root.classList.add('eco-mode');
-          root.classList.remove('ultra-mode');
-          root.style.setProperty('--glass-blur', '0px');
-          root.style.setProperty('--animation-speed', '0.12s');
-        } else if (tier === 'ultra') {
-          root.classList.remove('eco-mode');
-          root.classList.add('ultra-mode');
-          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 24}px`);
-          root.style.setProperty('--animation-speed', '0.32s');
-        } else {
-          // balanced
-          root.classList.remove('eco-mode');
-          root.classList.remove('ultra-mode');
-          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 20}px`);
-          root.style.setProperty('--animation-speed', '0.24s');
+      const resolveReducePref = (profile) => {
+        if (typeof profile?.reduceVisualsOnEco === 'boolean') return profile.reduceVisualsOnEco;
+        if (profile?.activeTier === 'eco' && typeof profile?.reduceVisuals === 'boolean') {
+          return profile.reduceVisuals;
         }
+        return get().reduceVisualsOnEco !== false;
       };
 
-      const profile = await window.electronAPI.getHardwareProfile();
-      if (profile) {
+      const applyProfile = (profile) => {
+        if (!profile) return;
+        const activeTier = profile.activeTier || 'balanced';
+        const reducePref = resolveReducePref(profile);
         set({
           hardwareProfile: profile,
           performanceMode: profile.mode || 'auto',
-          activePerformanceTier: profile.activeTier || 'balanced',
+          activePerformanceTier: activeTier,
           tabSleepTimeoutMinutes: profile.tabSleepTimeoutMinutes ?? 15,
-          reduceVisualsOnEco: profile.reduceVisuals !== false,
+          reduceVisualsOnEco: reducePref,
           bfcacheEnabled: profile.bfcacheEnabled !== false
         });
-        applyDom(profile.activeTier, profile.reduceVisuals !== false);
-      }
+        applyPerformanceDom(activeTier, reducePref, get().settings?.wallpaperBlur);
+      };
+
+      const profile = await window.electronAPI.getHardwareProfile();
+      applyProfile(profile);
 
       if (window.electronAPI.onPerformanceProfileChanged) {
-        window.electronAPI.onPerformanceProfileChanged((updatedProfile) => {
-          if (updatedProfile) {
-            set({
-              hardwareProfile: updatedProfile,
-              performanceMode: updatedProfile.mode || 'auto',
-              activePerformanceTier: updatedProfile.activeTier || 'balanced',
-              tabSleepTimeoutMinutes: updatedProfile.tabSleepTimeoutMinutes ?? 15,
-              reduceVisualsOnEco: updatedProfile.reduceVisuals !== false,
-              bfcacheEnabled: updatedProfile.bfcacheEnabled !== false
-            });
-            applyDom(updatedProfile.activeTier, updatedProfile.reduceVisuals !== false);
-          }
+        if (typeof unsubscribePerformanceProfile === 'function') {
+          try { unsubscribePerformanceProfile(); } catch (_) {}
+          unsubscribePerformanceProfile = null;
+        }
+        unsubscribePerformanceProfile = window.electronAPI.onPerformanceProfileChanged((updatedProfile) => {
+          applyProfile(updatedProfile);
         });
       }
     } catch (e) {
@@ -3266,35 +3681,19 @@ const useUIStore = create((set, get) => ({
       }
       const activeTier = updatedProfile?.activeTier || (mode === 'auto' ? (get().hardwareProfile?.detectedTier || 'balanced') : mode);
       const sleepTimeout = updatedProfile?.tabSleepTimeoutMinutes ?? (activeTier === 'eco' ? 5 : (activeTier === 'ultra' ? 60 : 15));
-      const reduceVisuals = get().reduceVisualsOnEco;
+      const reduceVisualsOnEco = typeof updatedProfile?.reduceVisualsOnEco === 'boolean'
+        ? updatedProfile.reduceVisualsOnEco
+        : get().reduceVisualsOnEco !== false;
 
       set({
         performanceMode: mode,
         activePerformanceTier: activeTier,
         tabSleepTimeoutMinutes: sleepTimeout,
+        reduceVisualsOnEco,
         hardwareProfile: updatedProfile || get().hardwareProfile
       });
 
-      if (typeof document !== 'undefined') {
-        const root = document.documentElement;
-        root.dataset.performanceTier = activeTier;
-        if (activeTier === 'eco') {
-          root.classList.add('eco-mode');
-          root.classList.remove('ultra-mode');
-          root.style.setProperty('--glass-blur', '0px');
-          root.style.setProperty('--animation-speed', '0.12s');
-        } else if (activeTier === 'ultra') {
-          root.classList.remove('eco-mode');
-          root.classList.add('ultra-mode');
-          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 24}px`);
-          root.style.setProperty('--animation-speed', '0.32s');
-        } else {
-          root.classList.remove('eco-mode');
-          root.classList.remove('ultra-mode');
-          root.style.setProperty('--glass-blur', `${get().settings?.wallpaperBlur ?? 20}px`);
-          root.style.setProperty('--animation-speed', '0.24s');
-        }
-      }
+      applyPerformanceDom(activeTier, reduceVisualsOnEco, get().settings?.wallpaperBlur);
       return activeTier;
     } catch (e) {
       console.warn('[PerformanceProfile] Mode change error:', e);
@@ -3310,12 +3709,12 @@ const useUIStore = create((set, get) => ({
     const activeTier = await get().setPerformanceMode(nextMode);
 
     const labels = {
-      auto: `Auto (Adapting: ${String(activeTier || 'balanced').toUpperCase()})`,
-      eco: 'Eco Saver (Max Battery & RAM Savings)',
-      balanced: 'Balanced (Optimal Glass & Responsiveness)',
-      ultra: 'Ultra (Maximum Frame Rates & RAM)'
+      auto: tr('stores.ui.perfAuto', { tier: String(activeTier || 'balanced').toUpperCase() }, `Auto (Adapting: ${String(activeTier || 'balanced').toUpperCase()})`),
+      eco: tr('stores.ui.perfEco', 'Eco Saver (Max Battery & RAM Savings)'),
+      balanced: tr('stores.ui.perfBalanced', 'Balanced (Optimal Glass & Responsiveness)'),
+      ultra: tr('stores.ui.perfUltra', 'Ultra (Maximum Frame Rates & RAM)')
     };
-    get().showToast(`Performance: ${labels[nextMode] || nextMode}`);
+    get().showToast(tr('stores.ui.perfToast', { label: labels[nextMode] || nextMode }, `Performance: ${labels[nextMode] || nextMode}`));
   },
 
   setTabSleepTimeoutMinutes: async (minutes) => {
@@ -3340,26 +3739,28 @@ const useUIStore = create((set, get) => ({
       } else {
         set({ bfcacheEnabled: newVal });
       }
-      get().showToast(newVal ? 'Instant Back/Forward Cache enabled' : 'Instant Back/Forward Cache disabled');
+      get().showToast(newVal ? tr('stores.ui.bfcacheEnabled', 'Instant Back/Forward Cache enabled') : tr('stores.ui.bfcacheDisabled', 'Instant Back/Forward Cache disabled'));
     } catch (_) {
       set({ bfcacheEnabled: newVal });
     }
   },
 
   setReduceVisualsOnEco: async (enabled) => {
+    const nextEnabled = Boolean(enabled);
+    // Apply optimistically so toggling visuals responds instantaneously
+    set({ reduceVisualsOnEco: nextEnabled });
+    applyPerformanceDom(get().activePerformanceTier, nextEnabled, get().settings?.wallpaperBlur);
     try {
       if (window.electronAPI?.setPerformanceSettings) {
-        const updated = await window.electronAPI.setPerformanceSettings({ reduceVisualsOnEco: enabled });
-        set({ reduceVisualsOnEco: enabled, hardwareProfile: updated || get().hardwareProfile });
-      } else {
-        set({ reduceVisualsOnEco: enabled });
-      }
-      if (typeof document !== 'undefined') {
-        if (get().activePerformanceTier === 'eco' && enabled !== false) {
-          document.documentElement.classList.add('eco-mode');
-        } else {
-          document.documentElement.classList.remove('eco-mode');
-        }
+        const updated = await window.electronAPI.setPerformanceSettings({ reduceVisualsOnEco: nextEnabled });
+        const resolvedTier = updated?.activeTier || get().activePerformanceTier;
+        const resolvedPref = typeof updated?.reduceVisualsOnEco === 'boolean' ? updated.reduceVisualsOnEco : nextEnabled;
+        set({
+          reduceVisualsOnEco: resolvedPref,
+          activePerformanceTier: resolvedTier,
+          hardwareProfile: updated || get().hardwareProfile
+        });
+        applyPerformanceDom(resolvedTier, resolvedPref, get().settings?.wallpaperBlur);
       }
     } catch (e) {
       console.warn('[PerformanceProfile] Visual setting error:', e);
@@ -3413,6 +3814,7 @@ export const syncInitialSettingsToElectron = () => {
         ...(state.settings || {}),
         isForceDark: state.isForceDark,
         darkExclusions: state.darkExclusions,
+        darkExcludeMedia: state.darkExcludeMedia,
         accentColor: state.accentColor,
         theme: state.theme
       };
@@ -3424,7 +3826,14 @@ export const syncInitialSettingsToElectron = () => {
       if (window.electronAPI.syncSmartDarkState) {
         window.electronAPI.syncSmartDarkState({
           isForceDark: state.isForceDark,
-          darkExclusions: state.darkExclusions
+          darkExclusions: state.darkExclusions,
+          darkExcludeMedia: state.darkExcludeMedia
+        });
+      }
+      if (window.electronAPI.syncPasskeySettings) {
+        window.electronAPI.syncPasskeySettings({
+          passkeyProviderMode: state.settings?.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault',
+          passkeyHardwareFallback: state.settings?.passkeyHardwareFallback !== false
         });
       }
     } catch (_) {}
@@ -3441,8 +3850,11 @@ if (typeof window !== 'undefined') {
 // Hardware-aware animation duration scaler for eco, balanced, and ultra performance tiers
 export const getAnimationTimeout = (baseMs = 200) => {
     try {
-        const tier = (typeof document !== 'undefined' && document.documentElement?.dataset?.performanceTier) || useUIStore?.getState?.()?.activePerformanceTier;
-        if (tier === 'eco') return Math.max(70, Math.round(baseMs * 0.5));
+        const uiState = useUIStore?.getState?.();
+        const tier = (typeof document !== 'undefined' && document.documentElement?.dataset?.performanceTier) || uiState?.activePerformanceTier;
+        const optimizeEcoVisuals = (typeof document !== 'undefined' && document.documentElement?.classList?.contains('eco-mode'))
+            || shouldOptimizeEcoVisuals(tier, uiState?.reduceVisualsOnEco);
+        if (optimizeEcoVisuals) return Math.max(70, Math.round(baseMs * 0.5));
         if (tier === 'ultra') return Math.round(baseMs * 1.15);
     } catch (_) {}
     return baseMs;

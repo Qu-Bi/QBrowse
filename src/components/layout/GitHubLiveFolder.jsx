@@ -8,8 +8,10 @@ import { useGitHubStore } from '../../store/useGitHubStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassMenuClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export default function GitHubLiveFolder({ spaceId = 'work' }) {
+    const { t } = useTranslation();
     const settings = useUIStore(state => state.settings);
     const setSettingValue = useUIStore(state => state.setSettingValue);
     const openSettings = useUIStore(state => state.openSettings);
@@ -38,6 +40,8 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
         reviewRequests,
         myPrs,
         assignedIssues,
+        error,
+        warning,
         isLoading,
         activeSubFilter,
         setSubFilter,
@@ -107,7 +111,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
         setContextMenuPos(null);
         setSettingValue('githubIntegrationEnabled', false);
         useGitHubStore.getState().syncWithConfig();
-        showToast('GitHub Live hidden. You can re-enable it in Settings.');
+        showToast(t('chrome.toastGithubHidden', null, 'GitHub Live hidden. You can re-enable it in Settings.'));
     };
 
     // Tabs configuration
@@ -118,35 +122,45 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
     const visibleTabs = [];
     if (showReviewsTab) visibleTabs.push({ 
         id: 'reviews', 
-        label: 'Reviews', 
-        title: 'Pull Requests awaiting your review',
+        label: t('chrome.githubReviews', null, 'Reviews'), 
+        title: t('chrome.githubReviewsTooltip', null, 'Pull Requests awaiting your review'),
         count: (reviewRequests || []).length 
     });
     if (showMyPrsTab) visibleTabs.push({ 
         id: 'prs', 
-        label: 'PRs', 
-        title: 'Pull Requests authored by you',
+        label: t('chrome.githubPrsShort', null, 'PRs'), 
+        title: t('chrome.githubPrsTooltip', null, 'Pull Requests authored by you'),
         count: (myPrs || []).length 
     });
     if (showIssuesTab) visibleTabs.push({ 
         id: 'issues', 
-        label: 'Issues', 
-        title: 'Issues assigned to you',
+        label: t('chrome.githubIssues', null, 'Issues'), 
+        title: t('chrome.githubIssuesTooltip', null, 'Issues assigned to you'),
         count: (assignedIssues || []).length 
     });
 
     let activeIndex = visibleTabs.findIndex(t => t.id === activeSubFilter);
     if (activeIndex === -1) activeIndex = 0;
+    const effectiveSubFilter = visibleTabs[activeIndex]?.id || activeSubFilter;
     const hoveredIndex = visibleTabs.findIndex(t => t.id === hoveredSubFilter);
 
     let currentItems = [];
-    if (activeSubFilter === 'reviews') {
+    if (effectiveSubFilter === 'reviews') {
         currentItems = reviewRequests || [];
-    } else if (activeSubFilter === 'prs') {
+    } else if (effectiveSubFilter === 'prs') {
         currentItems = myPrs || [];
-    } else if (activeSubFilter === 'issues') {
+    } else if (effectiveSubFilter === 'issues') {
         currentItems = assignedIssues || [];
     }
+
+    const handleManualRefresh = async () => {
+        const res = await fetchData(true);
+        if (res?.error) {
+            showToast(res.error);
+        } else if (res && !res.authenticated) {
+            showToast(t('chrome.githubLiveConnectDesc', null, 'Connect your GitHub session in Work Mode or enter a Personal Access Token in settings.'));
+        }
+    };
 
     return (
         <>
@@ -168,7 +182,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             <GitPullRequest size={12} className="text-emerald-400" />
                         </div>
                         <span className="text-xs font-semibold text-[color:var(--sidebar-text-muted)] group-hover:text-[color:var(--sidebar-text-hover)] truncate tracking-tight">
-                            GitHub Live
+                            {t('chrome.githubLive', null, 'GitHub Live')}
                         </span>
                         {username && (
                             <span className="text-[10px] text-zinc-500 font-mono truncate hidden lg:inline">
@@ -184,11 +198,12 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
 
                     <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button 
-                            onClick={() => fetchData(true)}
-                            className={`p-1 rounded-md transition-all cursor-pointer ${
+                            onClick={handleManualRefresh}
+                            disabled={isLoading}
+                            className={`p-1 rounded-md transition-all cursor-pointer disabled:opacity-60 ${
                                 isBright ? 'text-zinc-500 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'
                             } ${isLoading ? 'animate-spin text-accent' : ''}`}
-                            title="Refresh GitHub Live"
+                            title={t('chrome.refreshGithubLive', null, 'Refresh GitHub Live')}
                         >
                             <RefreshCw size={11} />
                         </button>
@@ -197,7 +212,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             className={`p-1 rounded-md transition-all cursor-pointer ${
                                 isBright ? 'text-zinc-500 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'
                             }`}
-                            title="Customize GitHub Work Mode"
+                            title={t('chrome.customizeGithubWorkMode', null, 'Customize GitHub Work Mode')}
                         >
                             <Settings size={11} />
                         </button>
@@ -206,7 +221,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             className={`p-0.5 transition-all cursor-pointer ${
                                 isBright ? 'text-zinc-500 hover:text-zinc-950' : 'text-white/55 hover:text-white'
                             }`}
-                            title={isLiveFolderOpen ? 'Collapse' : 'Expand'}
+                            title={isLiveFolderOpen ? t('chrome.collapse', null, 'Collapse') : t('chrome.expand', null, 'Expand')}
                         >
                             <ChevronDown size={12} className={`transition-transform duration-300 ${isLiveFolderOpen ? 'rotate-180' : ''}`} />
                         </button>
@@ -226,8 +241,8 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             <div className={`p-3 text-center rounded-xl border space-y-2 ${
                                 isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/20 border-[color:var(--sidebar-border)]'
                             }`}>
-                                <p className="text-[11px] text-[color:var(--sidebar-text-muted)]">
-                                    Connect your GitHub session in Work Mode or enter a Personal Access Token in settings.
+                                <p className={`text-[11px] ${error ? (isBright ? 'text-rose-600' : 'text-rose-400') : 'text-[color:var(--sidebar-text-muted)]'}`}>
+                                    {error || t('chrome.githubLiveConnectDesc', null, 'Connect your GitHub session in Work Mode or enter a Personal Access Token in settings.')}
                                 </p>
                                 <div className="flex items-center justify-center gap-2">
                                     <button 
@@ -236,7 +251,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                             isBright ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25' : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
                                         }`}
                                     >
-                                        Log In
+                                        {t('chrome.logIn', null, 'Log In')}
                                     </button>
                                     <button 
                                         onClick={() => openSettings('workmode')}
@@ -244,12 +259,19 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                             isBright ? 'bg-black/[0.06] text-zinc-700 hover:bg-black/10' : 'bg-white/10 text-zinc-300 hover:bg-white/15'
                                         }`}
                                     >
-                                        Configure
+                                        {t('chrome.configure', null, 'Configure')}
                                     </button>
                                 </div>
                             </div>
                         ) : (
                             <>
+                                {warning && (
+                                    <div className={`px-2 py-1 rounded-lg border text-[10px] leading-snug ${
+                                        isBright ? 'bg-amber-500/10 border-amber-500/25 text-amber-800' : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                                    }`}>
+                                        {warning}
+                                    </div>
+                                )}
                                 {/* Clean Liquid Glass Pill Switcher */}
                                 {visibleTabs.length > 0 && (
                                     <div 
@@ -264,7 +286,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                         }`}
                                     >
                                         {/* Hover Preview Pill */}
-                                        {hoveredIndex !== -1 && hoveredSubFilter !== activeSubFilter && (
+                                        {hoveredIndex !== -1 && hoveredSubFilter !== effectiveSubFilter && (
                                             <div
                                                 className={`absolute top-1 bottom-1 rounded-full transition-all duration-150 pointer-events-none ${
                                                     isBright ? 'bg-black/[0.04]' : 'bg-white/[0.04]'
@@ -292,7 +314,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                         />
 
                                         {visibleTabs.map((tab) => {
-                                            const isActive = activeSubFilter === tab.id;
+                                            const isActive = effectiveSubFilter === tab.id;
                                             return (
                                                 <button
                                                     key={tab.id}
@@ -324,7 +346,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                     {currentItems.length === 0 ? (
                                         <div className="py-2.5 text-center">
                                             <p className="text-[11px] text-[color:var(--sidebar-text-muted)] italic">
-                                                {isLoading ? 'Checking GitHub...' : 'Inbox zero — nothing pending'}
+                                                {isLoading ? t('chrome.githubChecking', null, 'Checking GitHub...') : t('chrome.githubInboxZero', null, 'Inbox zero — nothing pending')}
                                             </p>
                                         </div>
                                     ) : (
@@ -334,13 +356,13 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                                                 onClick={(e) => handleOpenItem(e, item.url)}
                                                 onAuxClick={(e) => handleAuxClick(e, item.url)}
                                                 className="group flex items-start justify-between p-2 rounded-xl hover:bg-white/[0.08] cursor-pointer transition-all border border-transparent hover:border-white/5 active:scale-[0.99]"
-                                                title={`${item.title}\n${item.repo} #${item.number}\nClick to open in Work Mode • Middle-click for background`}
+                                                title={`${item.title}\n${item.repo} #${item.number}\n${t('chrome.githubItemTooltipHint', null, 'Click to open in Work Mode • Middle-click for background')}`}
                                             >
                                                 <div className="min-w-0 pr-2">
                                                     <div className="flex items-center gap-1.5 mb-0.5">
                                                         {item.isDraft ? (
                                                             <span className="text-[9px] px-1 py-0.2 bg-zinc-700/60 text-zinc-300 rounded font-mono">
-                                                                Draft
+                                                                {t('chrome.githubDraft', null, 'Draft')}
                                                             </span>
                                                         ) : (
                                                             <GitBranch size={11} className="text-emerald-400 flex-shrink-0" />
@@ -397,14 +419,14 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             }`}
                         >
                             <EyeOff size={14} className="group-hover:scale-110 transition-transform" />
-                            <span>Hide GitHub Live</span>
+                            <span>{t('chrome.hideGithubLive', null, 'Hide GitHub Live')}</span>
                         </button>
 
                         <div className={`my-1 border-t ${isBright ? 'border-black/[0.08]' : 'border-white/[0.08]'}`} />
 
                         <button
                             onClick={() => {
-                                fetchData(true);
+                                handleManualRefresh();
                                 setContextMenuPos(null);
                             }}
                             className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-xl transition-all cursor-pointer ${
@@ -412,7 +434,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             }`}
                         >
                             <RefreshCw size={14} />
-                            <span>Refresh Live Data</span>
+                            <span>{t('chrome.refreshLiveData', null, 'Refresh Live Data')}</span>
                         </button>
 
                         <button
@@ -425,7 +447,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             }`}
                         >
                             <ExternalLink size={14} />
-                            <span>Open on GitHub</span>
+                            <span>{t('chrome.openOnGithub', null, 'Open on GitHub')}</span>
                         </button>
 
                         <button
@@ -438,7 +460,7 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
                             }`}
                         >
                             <Settings size={14} />
-                            <span>Configure Settings...</span>
+                            <span>{t('chrome.configureSettings', null, 'Configure Settings...')}</span>
                         </button>
                     </div>
                 </div>,

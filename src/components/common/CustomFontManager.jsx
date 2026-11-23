@@ -24,6 +24,7 @@ import {
     WEIGHT_SHIFT_OPTIONS,
     isFontAvailable 
 } from '../../utils/appFontManager';
+import { useTranslation } from '../../i18n/index';
 
 // Smooth hardware-accelerated sliding pill switcher matching QBrowse's motion language
 function FontSlidingPillSwitcher({ options = [], value, onChange, isBright, compact = false }) {
@@ -104,6 +105,7 @@ function FontSlidingPillSwitcher({ options = [], value, onChange, isBright, comp
 }
 
 export default function CustomFontManager({ isStudio = false, isBright: isBrightProp }) {
+    const { t } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const activeSpace = useTabStore(state => state.activeSpace);
     const computedBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
@@ -198,7 +200,10 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
             appFontSizeScale,
             appFontWeightShift
         });
-        showToast(`App font set to ${preset.name}`);
+        const displayName = preset.id === 'default'
+            ? t('tools.fontManager.presetDefaultName', null, preset.name)
+            : preset.name;
+        showToast(t('tools.fontManager.toasts.presetSet', { name: displayName }, `App font set to ${displayName}`));
     };
 
     // Handle Google Font Selection / Submission
@@ -215,7 +220,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
             appFontWeightShift
         });
         setCustomGoogleInput('');
-        showToast(`Google Font "${target}" applied to QBrowse`);
+        showToast(t('tools.fontManager.toasts.googleApplied', { name: target }, `Google Font "${target}" applied to QBrowse`));
     };
 
     // Handle Local System Font Apply
@@ -232,7 +237,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
             appFontWeightShift
         });
         setSystemFontInput(target);
-        showToast(`System font "${target}" applied`);
+        showToast(t('tools.fontManager.toasts.systemApplied', { name: target }, `System font "${target}" applied`));
     };
 
     // Handle Font File Upload
@@ -245,13 +250,13 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
         const isValid = validExts.some(ext => lowerName.endsWith(ext));
 
         if (!isValid) {
-            setUploadError('Invalid font format. Please upload .ttf, .otf, .woff, or .woff2 files.');
+            setUploadError(t('tools.fontManager.errors.invalidFormat', null, 'Invalid font format. Please upload .ttf, .otf, .woff, or .woff2 files.'));
             return;
         }
 
         // Limit size to 12MB
         if (file.size > 12 * 1024 * 1024) {
-            setUploadError('Font file is too large. Maximum supported size is 12MB.');
+            setUploadError(t('tools.fontManager.errors.tooLarge', null, 'Font file is too large. Maximum supported size is 12MB.'));
             return;
         }
 
@@ -269,10 +274,10 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                 appFontSizeScale,
                 appFontWeightShift
             });
-            showToast(`Custom font file "${file.name}" loaded successfully`);
+            showToast(t('tools.fontManager.toasts.fileLoaded', { name: file.name }, `Custom font file "${file.name}" loaded successfully`));
         };
         reader.onerror = () => {
-            setUploadError('Failed to read the font file. Please try another file.');
+            setUploadError(t('tools.fontManager.errors.readFailed', null, 'Failed to read the font file. Please try another file.'));
         };
         reader.readAsDataURL(file);
     };
@@ -291,16 +296,25 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
 
     // Current active display name for status header
     const currentActiveFontName = useMemo(() => {
-        if (appFontType === 'default') return 'System Default (Segoe UI / Native)';
+        if (appFontType === 'default') return t('tools.fontManager.activeDefault', null, 'System Default (Segoe UI / Native)');
         if (appFontType === 'preset') {
             const p = PRESET_FONTS.find(f => f.id === appFontFamily);
-            return p ? p.name : appFontFamily;
+            if (!p) return appFontFamily;
+            return p.id === 'default' ? t('tools.fontManager.presetDefaultName', null, p.name) : p.name;
         }
-        if (appFontType === 'google') return `Google Font: ${appFontGoogleFamily || 'Custom'}`;
-        if (appFontType === 'system') return `System Font: ${appFontCustomName || 'Installed OS'}`;
-        if (appFontType === 'file') return `Custom File: ${appFontFileName || 'Uploaded Font'}`;
-        return 'System Default';
-    }, [appFontType, appFontFamily, appFontGoogleFamily, appFontCustomName, appFontFileName]);
+        if (appFontType === 'google') return t('tools.fontManager.activeGoogle', { name: appFontGoogleFamily || t('tools.fontManager.customLabel', null, 'Custom') }, `Google Font: ${appFontGoogleFamily || 'Custom'}`);
+        if (appFontType === 'system') return t('tools.fontManager.activeSystem', { name: appFontCustomName || t('tools.fontManager.installedOsLabel', null, 'Installed OS') }, `System Font: ${appFontCustomName || 'Installed OS'}`);
+        if (appFontType === 'file') return t('tools.fontManager.activeFile', { name: appFontFileName || t('tools.fontManager.uploadedFontLabel', null, 'Uploaded Font') }, `Custom File: ${appFontFileName || 'Uploaded Font'}`);
+        return t('tools.fontManager.presetDefaultName', null, 'System Default');
+    }, [appFontType, appFontFamily, appFontGoogleFamily, appFontCustomName, appFontFileName, t]);
+
+    const localizedSpacingOptions = useMemo(() => (
+        LETTER_SPACING_OPTIONS.map(o => ({ ...o, label: t(`tools.fontManager.spacing.${o.id}`, null, o.label) }))
+    ), [t]);
+
+    const localizedWeightOptions = useMemo(() => (
+        WEIGHT_SHIFT_OPTIONS.map(o => ({ ...o, label: t(`tools.fontManager.weight.${o.id}`, null, o.label) }))
+    ), [t]);
 
     return (
         <div className={`space-y-5 ${isStudio ? 'w-full' : ''}`}>
@@ -318,10 +332,10 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                         </div>
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className={`font-bold text-sm tracking-tight ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>App Typography &amp; Font</h3>
+                                <h3 className={`font-bold text-sm tracking-tight ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>{t('tools.fontManager.title', null, 'App Typography & Font')}</h3>
                             </div>
                             <p className={`text-xs mt-0.5 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                Active: <span className="font-semibold text-accent">{currentActiveFontName}</span>
+                                {t('tools.fontManager.active', null, 'Active:')} <span className="font-semibold text-accent">{currentActiveFontName}</span>
                             </p>
                         </div>
                     </div>
@@ -335,10 +349,10 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                     ? 'border-black/[0.08] hover:border-black/[0.14] hover:bg-black/[0.04] text-zinc-700' 
                                     : 'border-white/[0.08] hover:border-white/[0.14] hover:bg-white/[0.06] text-zinc-300'
                             }`}
-                            title="Reset font to operating system default"
+                            title={t('tools.fontManager.resetTitle', null, 'Reset font to operating system default')}
                         >
                             <RotateCcw size={13} />
-                            <span>Reset to Default</span>
+                            <span>{t('tools.fontManager.resetToDefault', null, 'Reset to Default')}</span>
                         </button>
                     )}
                 </div>
@@ -350,10 +364,10 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                 value={activeModeTab}
                 onChange={setActiveModeTab}
                 options={[
-                    { id: 'preset', label: 'Preset Fonts', icon: Sparkles },
-                    { id: 'google', label: 'Google Fonts', icon: Globe },
-                    { id: 'system', label: 'System Fonts', icon: Laptop },
-                    { id: 'file', label: 'Upload Font', icon: UploadCloud }
+                    { id: 'preset', label: t('tools.fontManager.modes.preset', null, 'Preset Fonts'), icon: Sparkles },
+                    { id: 'google', label: t('tools.fontManager.modes.google', null, 'Google Fonts'), icon: Globe },
+                    { id: 'system', label: t('tools.fontManager.modes.system', null, 'System Fonts'), icon: Laptop },
+                    { id: 'file', label: t('tools.fontManager.modes.file', null, 'Upload Font'), icon: UploadCloud }
                 ]}
             />
 
@@ -368,10 +382,10 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                             value={presetCategory}
                             onChange={setPresetCategory}
                             options={[
-                                { id: 'all', label: 'All' },
-                                { id: 'sans', label: 'Sans' },
-                                { id: 'mono', label: 'Mono' },
-                                { id: 'serif', label: 'Serif' }
+                                { id: 'all', label: t('tools.fontManager.categories.all', null, 'All') },
+                                { id: 'sans', label: t('tools.fontManager.categories.sans', null, 'Sans') },
+                                { id: 'mono', label: t('tools.fontManager.categories.mono', null, 'Mono') },
+                                { id: 'serif', label: t('tools.fontManager.categories.serif', null, 'Serif') }
                             ]}
                         />
                     </div>
@@ -400,7 +414,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                     <div>
                                         <div className="flex items-center justify-between gap-2 mb-1.5">
                                             <span className={`text-xs font-bold tracking-tight flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
-                                                {preset.name}
+                                                {preset.id === 'default' ? t('tools.fontManager.presetDefaultName', null, preset.name) : preset.name}
                                                 {active && (
                                                     <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"></span>
                                                 )}
@@ -408,7 +422,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                         </div>
 
                                         <p className={`text-[11px] line-clamp-2 mb-3 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                            {preset.description}
+                                            {t(`tools.fontManager.presets.${preset.id}.description`, null, preset.description)}
                                         </p>
                                     </div>
 
@@ -419,13 +433,13 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                         }`}
                                         style={{ fontFamily: preset.family }}
                                     >
-                                        {preset.previewText}
+                                        {t(`tools.fontManager.presets.${preset.id}.previewText`, null, preset.previewText)}
                                     </div>
 
                                     {/* Action Footnote */}
                                     <div className="mt-2 flex items-center justify-between text-[11px]">
                                         <span className={`font-mono text-[10px] ${active ? 'text-accent font-semibold' : (isBright ? 'text-zinc-500' : 'text-zinc-400')}`}>
-                                            {active ? 'Active Font' : 'Click to apply'}
+                                            {active ? t('tools.fontManager.activeFont', null, 'Active Font') : t('tools.fontManager.clickToApply', null, 'Click to apply')}
                                         </span>
                                         {active && (
                                             <Check size={13} className="text-accent" />
@@ -448,9 +462,9 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                         <div className="flex items-center gap-2">
                             <Globe size={16} className="text-accent shrink-0" />
                             <div className="flex-1">
-                                <span className={`text-xs font-bold tracking-tight block ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>Use Any Google Font</span>
+                                <span className={`text-xs font-bold tracking-tight block ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>{t('tools.fontManager.googleTitle', null, 'Use Any Google Font')}</span>
                                 <span className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Type any font name from fonts.google.com and press Enter to instantly load it into QBrowse.
+                                    {t('tools.fontManager.googleDesc', null, 'Type any font name from fonts.google.com and press Enter to instantly load it into QBrowse.')}
                                 </span>
                             </div>
                         </div>
@@ -469,7 +483,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                             handleApplyGoogleFont(customGoogleInput);
                                         }
                                     }}
-                                    placeholder="e.g. Montserrat, Space Grotesk, Syne, Cinzel..."
+                                    placeholder={t('tools.fontManager.googlePlaceholder', null, 'e.g. Montserrat, Space Grotesk, Syne, Cinzel...')}
                                     className={`w-full bg-transparent outline-none text-xs font-mono ${
                                         isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-zinc-100 placeholder-zinc-500'
                                     }`}
@@ -485,7 +499,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                         : (isBright ? 'bg-black/[0.06] text-zinc-400 cursor-not-allowed' : 'bg-white/[0.06] text-zinc-500 cursor-not-allowed')
                                 }`}
                             >
-                                Apply Font
+                                {t('tools.fontManager.applyFont', null, 'Apply Font')}
                             </button>
                         </div>
                     </div>
@@ -494,7 +508,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                     <div>
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-bold uppercase tracking-wider text-accent">
-                                Popular Google Fonts
+                                {t('tools.fontManager.popularGoogle', null, 'Popular Google Fonts')}
                             </span>
                             <div className={`relative flex items-center px-2 py-0.5 rounded-lg border text-[11px] w-44 ${
                                 isBright ? 'bg-black/[0.03] border-black/[0.08]' : 'bg-black/35 border-white/[0.08]'
@@ -504,7 +518,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                     type="text"
                                     value={googleSearch}
                                     onChange={(e) => setGoogleSearch(e.target.value)}
-                                    placeholder="Filter list..."
+                                    placeholder={t('tools.fontManager.filterPlaceholder', null, 'Filter list...')}
                                     className={`w-full bg-transparent outline-none text-[11px] ${
                                         isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-zinc-100 placeholder-zinc-500'
                                     }`}
@@ -549,9 +563,9 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                         <div className="flex items-center gap-2">
                             <Laptop size={16} className="text-accent shrink-0" />
                             <div className="flex-1">
-                                <span className={`text-xs font-bold tracking-tight block ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>Installed System Font Picker</span>
+                                <span className={`text-xs font-bold tracking-tight block ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>{t('tools.fontManager.systemTitle', null, 'Installed System Font Picker')}</span>
                                 <span className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Enter any font installed on your operating system (e.g. Segoe UI Variable, Calibri, Helvetica, Comic Sans MS).
+                                    {t('tools.fontManager.systemDesc', null, 'Enter any font installed on your operating system (e.g. Segoe UI Variable, Calibri, Helvetica, Comic Sans MS).')}
                                 </span>
                             </div>
                         </div>
@@ -570,7 +584,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                             handleApplySystemFont(systemFontInput);
                                         }
                                     }}
-                                    placeholder="Enter system font name..."
+                                    placeholder={t('tools.fontManager.systemPlaceholder', null, 'Enter system font name...')}
                                     className={`w-full bg-transparent outline-none text-xs font-mono ${
                                         isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-zinc-100 placeholder-zinc-500'
                                     }`}
@@ -581,13 +595,13 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                             <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
                                                 isBright ? 'text-emerald-700 bg-emerald-500/10' : 'text-emerald-400 bg-emerald-500/10'
                                             }`}>
-                                                <CheckCircle2 size={11} /> Installed
+                                                <CheckCircle2 size={11} /> {t('tools.fontManager.installed', null, 'Installed')}
                                             </span>
                                         ) : (
                                             <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
                                                 isBright ? 'text-amber-700 bg-amber-500/10' : 'text-amber-400 bg-amber-500/10'
-                                            }`} title="Font not detected by canvas metrics differential, but CSS will still attempt to render it if available">
-                                                <AlertCircle size={11} /> Not detected
+                                            }`} title={t('tools.fontManager.notDetectedTitle', null, 'Font not detected by canvas metrics differential, but CSS will still attempt to render it if available')}>
+                                                <AlertCircle size={11} /> {t('tools.fontManager.notDetected', null, 'Not detected')}
                                             </span>
                                         )}
                                     </div>
@@ -603,7 +617,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                         : (isBright ? 'bg-black/[0.06] text-zinc-400 cursor-not-allowed' : 'bg-white/[0.06] text-zinc-500 cursor-not-allowed')
                                 }`}
                             >
-                                Apply Font
+                                {t('tools.fontManager.applyFont', null, 'Apply Font')}
                             </button>
                         </div>
                     </div>
@@ -611,7 +625,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                     {/* Common Operating System Fonts Suggestions */}
                     <div>
                         <span className="text-xs font-bold uppercase tracking-wider text-accent mb-2 block">
-                            Common Operating System Fonts
+                            {t('tools.fontManager.commonOsFonts', null, 'Common Operating System Fonts')}
                         </span>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                             {SYSTEM_FONT_SUGGESTIONS.map(s => {
@@ -636,7 +650,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                     >
                                         <div className="truncate">
                                             <span className="text-xs font-medium block truncate">{s.name}</span>
-                                            <span className={`text-[10px] font-mono ${isSelected ? 'text-accent/80' : (isBright ? 'text-zinc-500' : 'text-zinc-400')}`}>{s.os}</span>
+                                            <span className={`text-[10px] font-mono ${isSelected ? 'text-accent/80' : (isBright ? 'text-zinc-500' : 'text-zinc-400')}`}>{t(`tools.fontManager.osLabels.${s.os}`, null, s.os)}</span>
                                         </div>
                                         {isSelected && <Check size={13} className="text-accent shrink-0 ml-1" />}
                                     </button>
@@ -676,16 +690,16 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                             <UploadCloud size={24} />
                         </div>
                         <h4 className={`text-sm font-bold tracking-tight mb-1 ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
-                            Click or drag &amp; drop your font file here
+                            {t('tools.fontManager.dropTitle', null, 'Click or drag & drop your font file here')}
                         </h4>
                         <p className={`text-xs max-w-sm mb-3 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                            Supports TrueType (.ttf), OpenType (.otf), WOFF (.woff), and WOFF2 (.woff2) up to 12MB.
+                            {t('tools.fontManager.dropDesc', null, 'Supports TrueType (.ttf), OpenType (.otf), WOFF (.woff), and WOFF2 (.woff2) up to 12MB.')}
                         </p>
                         <button
                             type="button"
                             className="px-4 py-2 rounded-xl bg-accent text-zinc-950 font-bold text-xs shadow-sm hover:brightness-105 active:scale-95 cursor-pointer pointer-events-none"
                         >
-                            Select Local Font File
+                            {t('tools.fontManager.selectFile', null, 'Select Local Font File')}
                         </button>
                     </div>
 
@@ -710,7 +724,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                         {appFontFileName}
                                     </span>
                                     <span className={`text-[10px] font-mono font-medium ${isBright ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                                        Active Custom Font Face
+                                        {t('tools.fontManager.activeCustomFace', null, 'Active Custom Font Face')}
                                     </span>
                                 </div>
                             </div>
@@ -719,7 +733,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                 type="button"
                                 onClick={resetAppFont}
                                 className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
-                                title="Remove uploaded font file"
+                                title={t('tools.fontManager.removeFileTitle', null, 'Remove uploaded font file')}
                             >
                                 <Trash2 size={14} />
                             </button>
@@ -735,7 +749,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                 <div className="flex items-center gap-2">
                     <Sliders size={16} className="text-accent" />
                     <span className="text-xs font-bold uppercase tracking-wider text-accent">
-                        Typography Fine-Tuning
+                        {t('tools.fontManager.fineTuning', null, 'Typography Fine-Tuning')}
                     </span>
                 </div>
 
@@ -743,28 +757,28 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                     {/* 1. Letter Spacing */}
                     <div className="space-y-1.5">
                         <label className={`text-xs font-semibold block ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
-                            Letter Spacing (Tracking)
+                            {t('tools.fontManager.letterSpacing', null, 'Letter Spacing (Tracking)')}
                         </label>
                         <FontSlidingPillSwitcher
                             compact
                             isBright={isBright}
                             value={appFontLetterSpacing}
                             onChange={setAppFontLetterSpacing}
-                            options={LETTER_SPACING_OPTIONS}
+                            options={localizedSpacingOptions}
                         />
                     </div>
 
                     {/* 2. Weight Shift */}
                     <div className="space-y-1.5">
                         <label className={`text-xs font-semibold block ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
-                            Weight Shift (Boldness)
+                            {t('tools.fontManager.weightShift', null, 'Weight Shift (Boldness)')}
                         </label>
                         <FontSlidingPillSwitcher
                             compact
                             isBright={isBright}
                             value={appFontWeightShift}
                             onChange={setAppFontWeightShift}
-                            options={WEIGHT_SHIFT_OPTIONS}
+                            options={localizedWeightOptions}
                         />
                     </div>
 
@@ -772,7 +786,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                     <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                             <label className={`text-xs font-semibold block ${isBright ? 'text-zinc-700' : 'text-zinc-300'}`}>
-                                UI Font Scale
+                                {t('tools.fontManager.fontScale', null, 'UI Font Scale')}
                             </label>
                             <span className="text-xs font-mono font-bold text-accent">
                                 {appFontSizeScale}%
@@ -795,7 +809,7 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                                     type="button"
                                     onClick={() => setAppFontSizeScale(100)}
                                     className="text-[10px] font-mono text-zinc-400 hover:text-accent cursor-pointer shrink-0"
-                                    title="Reset to 100%"
+                                    title={t('tools.fontManager.reset100Title', null, 'Reset to 100%')}
                                 >
                                     100%
                                 </button>
@@ -812,15 +826,15 @@ export default function CustomFontManager({ isStudio = false, isBright: isBright
                     : 'bg-white/[0.02] border border-white/[0.06]'
             }`}>
                 <span className={`block text-[11px] font-medium opacity-50 ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
-                    Typography Specimen
+                    {t('tools.fontManager.specimen', null, 'Typography Specimen')}
                 </span>
 
                 <div className="space-y-2">
                     <h2 className={`text-xl sm:text-2xl font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-zinc-100'}`}>
-                        The quick brown fox jumps over the lazy dog
+                        {t('tools.fontManager.specimen1', null, 'The quick brown fox jumps over the lazy dog')}
                     </h2>
                     <p className={`text-xs sm:text-sm leading-relaxed ${isBright ? 'text-zinc-600' : 'text-zinc-300'}`}>
-                        Sphinx of black quartz, judge my vow.
+                        {t('tools.fontManager.specimen2', null, 'Sphinx of black quartz, judge my vow.')}
                     </p>
                     <p className={`text-xs tracking-wide pt-1 ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
                         ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789

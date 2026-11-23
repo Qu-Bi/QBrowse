@@ -7,8 +7,10 @@ import {
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassMenuClasses } from './ContextMenuProvider';
+import { useTranslation, t as tStatic } from '../../i18n/index';
 
 export default function ReadAloudPlayer() {
+    const { t } = useTranslation();
     const isReadAloudOpen = useUIStore(state => state.isReadAloudOpen);
     const isReadAloudClosing = useUIStore(state => state.isReadAloudClosing);
     const closeReadAloud = useUIStore(state => state.closeReadAloud);
@@ -23,7 +25,8 @@ export default function ReadAloudPlayer() {
     const [isPaused, setIsPaused] = useState(false);
     const [paragraphs, setParagraphs] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [articleTitle, setArticleTitle] = useState('Read Aloud');
+    const [articleTitle, setArticleTitle] = useState('');
+    const [titleFallbackKey, setTitleFallbackKey] = useState('pop.readAloud.title');
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
     const [voices, setVoices] = useState([]);
     const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
@@ -235,6 +238,8 @@ export default function ReadAloudPlayer() {
             }
             setIsPlaying(false);
             setIsPaused(false);
+            setArticleTitle('');
+            setTitleFallbackKey('pop.readAloud.title');
             return;
         }
 
@@ -243,11 +248,16 @@ export default function ReadAloudPlayer() {
             const data = e.detail;
             if (data && data.paragraphs && data.paragraphs.length > 0) {
                 setParagraphs(data.paragraphs);
-                setArticleTitle(data.title || 'Page Content');
+                if (data.title) {
+                    setArticleTitle(data.title);
+                } else {
+                    setArticleTitle('');
+                    setTitleFallbackKey('pop.readAloud.pageContent');
+                }
                 setCurrentIndex(0);
                 startSpeakingParagraph(data.paragraphs[0], 0, data.paragraphs);
             } else {
-                const fallback = ['No readable paragraph content detected on this page.'];
+                const fallback = [tStatic('pop.readAloud.noContent', null, 'No readable paragraph content detected on this page.')];
                 setParagraphs(fallback);
                 setCurrentIndex(0);
                 startSpeakingParagraph(fallback[0], 0, fallback);
@@ -262,10 +272,11 @@ export default function ReadAloudPlayer() {
         // Fallback timer if webview doesn't respond (e.g., on internal newtab page)
         const timeout = setTimeout(() => {
             if (paragraphsRef.current.length === 0) {
-                const fallback = ['QBrowse Read Aloud is ready. Select text or navigate to any web article to begin reading.'];
+                const fallback = [tStatic('pop.readAloud.readyMsg', null, 'QBrowse Read Aloud is ready. Select text or navigate to any web article to begin reading.')];
                 setParagraphs(fallback);
                 setCurrentIndex(0);
-                setArticleTitle('QBrowse Assistant');
+                setArticleTitle('');
+                setTitleFallbackKey('pop.readAloud.assistant');
                 startSpeakingParagraph(fallback[0], 0, fallback);
             }
         }, 1200);
@@ -318,7 +329,7 @@ export default function ReadAloudPlayer() {
             } else {
                 setIsPlaying(false);
                 setIsPaused(false);
-                showToast('Finished reading article.');
+                showToast(tStatic('pop.readAloud.finishedToast', null, 'Finished reading article.'));
             }
         };
 
@@ -401,7 +412,7 @@ export default function ReadAloudPlayer() {
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Drag Grip Handle */}
-                <GripVertical size={13} className={`transition-colors shrink-0 cursor-grab active:cursor-grabbing -ml-1 mr-0.5 ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/30 hover:text-white/60'}`} title="Drag to move" />
+                <GripVertical size={13} className={`transition-colors shrink-0 cursor-grab active:cursor-grabbing -ml-1 mr-0.5 ${isBright ? 'text-zinc-400 hover:text-zinc-700' : 'text-white/30 hover:text-white/60'}`} title={t('pop.readAloud.dragToMove', null, 'Drag to move')} />
 
                 {/* Status Icon */}
                 <div className="w-6 h-6 rounded-full bg-accent/15 border border-accent/25 flex items-center justify-center shrink-0">
@@ -411,7 +422,7 @@ export default function ReadAloudPlayer() {
                 {/* Title & Counter */}
                 <div className="flex items-center gap-1.5 max-w-[140px] sm:max-w-[200px] truncate text-left pr-1">
                     <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                        {articleTitle}
+                        {articleTitle || t(titleFallbackKey, null, 'Read Aloud')}
                     </span>
                     {paragraphs.length > 0 && (
                         <span className={`text-[10px] font-mono shrink-0 ${isBright ? 'text-zinc-500 font-bold' : 'text-white/60 font-bold'}`}>
@@ -428,7 +439,7 @@ export default function ReadAloudPlayer() {
                     <button
                         onClick={handlePrev}
                         disabled={currentIndex === 0}
-                        title="Previous paragraph"
+                        title={t('pop.readAloud.prevParagraph', null, 'Previous paragraph')}
                         className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 disabled:opacity-20 disabled:pointer-events-none cursor-pointer ${
                             isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-white/70 hover:text-white hover:bg-white/10'
                         }`}
@@ -438,7 +449,7 @@ export default function ReadAloudPlayer() {
 
                     <button
                         onClick={handlePlayPause}
-                        title={isPlaying && !isPaused ? "Pause (Space)" : "Play / Resume (Space)"}
+                        title={isPlaying && !isPaused ? t('pop.readAloud.pauseSpace', null, 'Pause (Space)') : t('pop.readAloud.playSpace', null, 'Play / Resume (Space)')}
                         className="w-7 h-7 rounded-full flex items-center justify-center bg-accent text-zinc-950 font-bold hover:brightness-110 active:scale-90 transition cursor-pointer shadow-xs shrink-0"
                     >
                         {isPlaying && !isPaused ? (
@@ -451,7 +462,7 @@ export default function ReadAloudPlayer() {
                     <button
                         onClick={handleNext}
                         disabled={currentIndex >= paragraphs.length - 1}
-                        title="Next paragraph"
+                        title={t('pop.readAloud.nextParagraph', null, 'Next paragraph')}
                         className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 disabled:opacity-20 disabled:pointer-events-none cursor-pointer ${
                             isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-white/70 hover:text-white hover:bg-white/10'
                         }`}
@@ -468,7 +479,7 @@ export default function ReadAloudPlayer() {
                             setIsSpeedDropdownOpen(!isSpeedDropdownOpen);
                             setIsVoiceDropdownOpen(false);
                         }}
-                        title="Playback speed"
+                        title={t('pop.readAloud.playbackSpeed', null, 'Playback speed')}
                         className={`h-6 px-2 rounded-full text-[10px] font-mono font-bold flex items-center gap-1 transition active:scale-95 cursor-pointer ${
                             isBright 
                                 ? 'text-zinc-700 hover:bg-black/5' 
@@ -511,7 +522,7 @@ export default function ReadAloudPlayer() {
                 {/* Close Button */}
                 <button
                     onClick={closeReadAloud}
-                    title="Close Read Aloud (Escape)"
+                    title={t('pop.readAloud.closeEsc', null, 'Close Read Aloud (Escape)')}
                     className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
                         isBright 
                             ? 'text-zinc-500 hover:text-rose-600 hover:bg-black/5' 

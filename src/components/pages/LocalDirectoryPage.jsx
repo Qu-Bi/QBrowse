@@ -5,6 +5,7 @@ import {
     ChevronRight, Clock, Database, Eye, Sparkles
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import { useTranslation } from '../../i18n/index';
 
 function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
@@ -14,10 +15,10 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function formatDate(timestamp) {
+function formatDate(timestamp, intlLocale) {
     if (!timestamp) return '—';
     const d = new Date(timestamp);
-    return d.toLocaleDateString(undefined, { 
+    return d.toLocaleDateString(intlLocale || undefined, { 
         year: 'numeric', month: 'short', day: 'numeric', 
         hour: '2-digit', minute: '2-digit' 
     });
@@ -64,6 +65,7 @@ function getFileIcon(extension, isDirectory) {
 }
 
 export default function LocalDirectoryPage({ url, onNavigate }) {
+    const { t, intlLocale } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const showToast = useUIStore(state => state.showToast);
     const isBright = theme === 'light';
@@ -78,7 +80,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
 
     const loadDirectory = async () => {
         if (!window.electronAPI?.listLocalDirectory) {
-            setError('Electron directory API not available');
+            setError(t('tools.localDir.apiUnavailable', null, 'Electron directory API not available'));
             setLoading(false);
             return;
         }
@@ -93,7 +95,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                 setDirData(res);
             }
         } catch (e) {
-            setError(e.message || 'Failed to open directory');
+            setError(e.message || t('tools.localDir.openFailed', null, 'Failed to open directory'));
         } finally {
             setLoading(false);
         }
@@ -162,7 +164,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
     const handleOpenInExplorer = () => {
         if (dirData?.currentPath && window.electronAPI?.openPath) {
             window.electronAPI.openPath(dirData.currentPath);
-            showToast('Opened in system file manager');
+            showToast(t('tools.localDir.toastOpened', null, 'Opened in system file manager'));
         }
     };
 
@@ -170,7 +172,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
         e.stopPropagation();
         if (window.electronAPI?.showInFolder) {
             window.electronAPI.showInFolder(item.path);
-            showToast(`Revealed: ${item.name}`);
+            showToast(t('tools.localDir.toastRevealed', { name: item.name }, `Revealed: ${item.name}`));
         }
     };
 
@@ -200,7 +202,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                         <button
                             onClick={handleParentClick}
                             disabled={!dirData?.parentPath}
-                            title="Go to Parent Folder"
+                            title={t('tools.localDir.parentFolderTitle', null, 'Go to Parent Folder')}
                             className={`p-1.5 rounded-xl border transition flex items-center justify-center flex-shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                                 isBright 
                                     ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' 
@@ -245,7 +247,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                     <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                             onClick={loadDirectory}
-                            title="Reload folder"
+                            title={t('tools.localDir.reloadTitle', null, 'Reload folder')}
                             className={`p-2 rounded-xl border transition cursor-pointer ${
                                 isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-700' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
                             }`}
@@ -262,7 +264,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                             }`}
                         >
                             <ExternalLink size={12} />
-                            <span>Open in File Manager</span>
+                            <span>{t('tools.localDir.openInFileManager', null, 'Open in File Manager')}</span>
                         </button>
                     </div>
                 </div>
@@ -277,7 +279,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                             type="text"
                             value={searchFilter}
                             onChange={(e) => setSearchFilter(e.target.value)}
-                            placeholder="Filter files in this directory..."
+                            placeholder={t('tools.localDir.filterPlaceholder', null, 'Filter files in this directory...')}
                             className={`w-full text-xs rounded-xl py-1.5 pl-9 pr-3 outline-none border transition-colors ${
                                 isBright 
                                     ? 'bg-black/[0.04] border-black/10 focus:border-accent text-zinc-900 placeholder-zinc-400' 
@@ -300,7 +302,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                                     sortBy === 'name' ? 'bg-accent text-black font-bold shadow-sm' : 'text-zinc-400 hover:text-white'
                                 }`}
                             >
-                                Name {sortBy === 'name' && (sortAsc ? '↑' : '↓')}
+                                {t('tools.localDir.sortName', null, 'Name')} {sortBy === 'name' && (sortAsc ? '↑' : '↓')}
                             </button>
                             <button
                                 onClick={() => {
@@ -311,7 +313,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                                     sortBy === 'size' ? 'bg-accent text-black font-bold shadow-sm' : 'text-zinc-400 hover:text-white'
                                 }`}
                             >
-                                Size {sortBy === 'size' && (sortAsc ? '↑' : '↓')}
+                                {t('tools.localDir.sortSize', null, 'Size')} {sortBy === 'size' && (sortAsc ? '↑' : '↓')}
                             </button>
                             <button
                                 onClick={() => {
@@ -322,7 +324,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                                     sortBy === 'modified' ? 'bg-accent text-black font-bold shadow-sm' : 'text-zinc-400 hover:text-white'
                                 }`}
                             >
-                                Date {sortBy === 'modified' && (sortAsc ? '↑' : '↓')}
+                                {t('tools.localDir.sortDate', null, 'Date')} {sortBy === 'modified' && (sortAsc ? '↑' : '↓')}
                             </button>
                         </div>
 
@@ -332,7 +334,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                         }`}>
                             <button
                                 onClick={() => setViewMode('grid')}
-                                title="Grid View"
+                                title={t('tools.localDir.gridViewTitle', null, 'Grid View')}
                                 className={`p-1.5 rounded-lg transition cursor-pointer ${
                                     viewMode === 'grid' ? 'bg-accent text-black shadow-sm' : 'text-zinc-400 hover:text-white'
                                 }`}
@@ -341,7 +343,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                             </button>
                             <button
                                 onClick={() => setViewMode('list')}
-                                title="List View"
+                                title={t('tools.localDir.listViewTitle', null, 'List View')}
                                 className={`p-1.5 rounded-lg transition cursor-pointer ${
                                     viewMode === 'list' ? 'bg-accent text-black shadow-sm' : 'text-zinc-400 hover:text-white'
                                 }`}
@@ -358,29 +360,29 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                 {loading ? (
                     <div className="w-full h-64 flex flex-col items-center justify-center gap-3 text-zinc-400">
                         <RefreshCw size={24} className="animate-spin text-accent" />
-                        <p className="text-xs font-medium">Scanning directory contents...</p>
+                        <p className="text-xs font-medium">{t('tools.localDir.scanning', null, 'Scanning directory contents...')}</p>
                     </div>
                 ) : error ? (
                     <div className="max-w-md mx-auto mt-12 p-6 rounded-3xl border border-red-500/20 bg-red-500/10 text-center space-y-3">
                         <div className="w-12 h-12 rounded-2xl bg-red-500/20 text-red-400 mx-auto flex items-center justify-center">
                             <Folder size={24} />
                         </div>
-                        <h3 className="text-sm font-bold text-white">Unable to Open Folder</h3>
+                        <h3 className="text-sm font-bold text-white">{t('tools.localDir.errorTitle', null, 'Unable to Open Folder')}</h3>
                         <p className="text-xs text-zinc-400">{error}</p>
                         {dirData?.parentUrl && (
                             <button
                                 onClick={handleParentClick}
                                 className="px-4 py-2 bg-accent text-black font-bold rounded-xl text-xs cursor-pointer shadow-md"
                             >
-                                Go to Parent Directory
+                                {t('tools.localDir.goParent', null, 'Go to Parent Directory')}
                             </button>
                         )}
                     </div>
                 ) : filteredAndSortedItems.length === 0 ? (
                     <div className="w-full h-64 flex flex-col items-center justify-center gap-2 text-zinc-400">
                         <Folder size={32} className="text-zinc-600 mb-1" />
-                        <p className="text-xs font-semibold">No files match your query</p>
-                        <p className="text-[11px] text-zinc-500">Try clearing the search filter</p>
+                        <p className="text-xs font-semibold">{t('tools.localDir.emptySearch', null, 'No files match your query')}</p>
+                        <p className="text-[11px] text-zinc-500">{t('tools.localDir.emptySearchHint', null, 'Try clearing the search filter')}</p>
                     </div>
                 ) : viewMode === 'grid' ? (
                     /* Grid Layout */
@@ -410,14 +412,14 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                                         <p className={`text-[10px] mt-0.5 truncate ${
                                             isBright ? 'text-zinc-400' : 'text-zinc-500'
                                         }`}>
-                                            {item.isDirectory ? 'Folder' : formatBytes(item.size)}
+                                            {item.isDirectory ? t('tools.localDir.folderType', null, 'Folder') : formatBytes(item.size)}
                                         </p>
                                     </div>
 
                                     {/* Action Hover Tooltip */}
                                     <button
                                         onClick={(e) => handleRevealFile(e, item)}
-                                        title="Reveal in File Manager"
+                                        title={t('tools.localDir.revealTitle', null, 'Reveal in File Manager')}
                                         className={`absolute top-2 right-2 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition duration-150 ${
                                             isBright ? 'hover:bg-black/10 text-zinc-600' : 'hover:bg-white/15 text-zinc-300'
                                         }`}
@@ -436,9 +438,9 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                         <div className={`grid grid-cols-12 px-4 py-2.5 text-[11px] font-semibold border-b ${
                             isBright ? 'bg-black/[0.02] border-black/10 text-zinc-500' : 'bg-white/[0.03] border-white/10 text-zinc-400'
                         }`}>
-                            <div className="col-span-6 sm:col-span-7 flex items-center gap-2">Name</div>
-                            <div className="col-span-3 sm:col-span-3 text-right">Modified</div>
-                            <div className="col-span-3 sm:col-span-2 text-right">Size</div>
+                            <div className="col-span-6 sm:col-span-7 flex items-center gap-2">{t('tools.localDir.colName', null, 'Name')}</div>
+                            <div className="col-span-3 sm:col-span-3 text-right">{t('tools.localDir.colModified', null, 'Modified')}</div>
+                            <div className="col-span-3 sm:col-span-2 text-right">{t('tools.localDir.colSize', null, 'Size')}</div>
                         </div>
 
                         <div className="divide-y divide-white/5">
@@ -463,7 +465,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                                         <div className={`col-span-3 sm:col-span-3 text-right text-[11px] font-mono ${
                                             isBright ? 'text-zinc-500' : 'text-zinc-400'
                                         }`}>
-                                            {formatDate(item.modified)}
+                                            {formatDate(item.modified, intlLocale)}
                                         </div>
                                         <div className={`col-span-3 sm:col-span-2 text-right text-[11px] font-mono flex items-center justify-end gap-2 ${
                                             isBright ? 'text-zinc-500' : 'text-zinc-400'
@@ -471,7 +473,7 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                                             <span>{item.isDirectory ? '—' : formatBytes(item.size)}</span>
                                             <button
                                                 onClick={(e) => handleRevealFile(e, item)}
-                                                title="Reveal in File Manager"
+                                                title={t('tools.localDir.revealTitle', null, 'Reveal in File Manager')}
                                                 className={`p-1 rounded opacity-0 hover:opacity-100 hover:text-white transition ${
                                                     isBright ? 'hover:bg-black/10' : 'hover:bg-white/10'
                                                 }`}
@@ -492,12 +494,16 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                 isBright ? 'bg-white/80 border-black/10 text-zinc-500' : 'bg-[#121318]/80 border-white/10 text-zinc-400'
             }`}>
                 <div className="flex items-center gap-2">
-                    <span>{filteredAndSortedItems.length} items</span>
-                    {searchFilter && <span className="text-accent">(filtered)</span>}
+                    <span>
+                        {filteredAndSortedItems.length === 1
+                            ? t('tools.localDir.itemSingular', { count: filteredAndSortedItems.length }, `${filteredAndSortedItems.length} item`)
+                            : t('tools.localDir.itemPlural', { count: filteredAndSortedItems.length }, `${filteredAndSortedItems.length} items`)}
+                    </span>
+                    {searchFilter && <span className="text-accent">{t('tools.localDir.filtered', null, '(filtered)')}</span>}
                 </div>
                 <div className="flex items-center gap-1 font-mono text-[10px]">
                     <Database size={11} className="text-accent" />
-                    <span>QBrowse File Suite</span>
+                    <span>{t('tools.localDir.suiteName', null, 'QBrowse File Suite')}</span>
                 </div>
             </footer>
         </div>

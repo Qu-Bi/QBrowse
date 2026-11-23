@@ -3,6 +3,53 @@ import {
     Terminal, Search, Calculator, Globe, ArrowRight,
     Zap, Sparkles, Folder, FileText
 } from 'lucide-react';
+import { useTranslation } from '../../i18n/index';
+
+const BANG_CATEGORY_KEYS = new Set(['General', 'Media', 'Development', 'Reference', 'Social', 'Shopping', 'AI', 'Custom', 'Engine']);
+
+function renderWithStrongQuery(template, queryVal) {
+    const parts = String(template || '').split('{query}');
+    if (parts.length < 2) return template;
+    return (
+        <>
+            {parts[0]}<strong>{queryVal}</strong>{parts.slice(1).join('')}
+        </>
+    );
+}
+
+function formatPredictionTitle(pred, t) {
+    if (!pred) return '';
+    if (pred.isMath) {
+        const expr = (pred.title || '').replace(/^Calculator:\s*/, '');
+        return t('chrome.omniboxCalculatorExpr', { expr }, pred.title);
+    }
+    if (pred.isAI) {
+        const q = pred.query || t('chrome.omniboxAskAiPlaceholder', null, 'Type your question...');
+        return t('chrome.omniboxAskAi', { query: q }, pred.title);
+    }
+    if (pred.isSearch && pred.title) {
+        if (pred.bang && pred.title === `Go to ${pred.bang.name}`) {
+            return t('chrome.omniboxGoTo', { target: pred.bang.name }, pred.title);
+        }
+        const match = pred.title.match(/^Search ([^:]+): "([\s\S]*)"$/);
+        if (match) {
+            return t('chrome.omniboxSearchWith', { engine: match[1], query: match[2] }, pred.title);
+        }
+        return pred.title;
+    }
+    if (pred.isLocalFile && pred.title) {
+        if (pred.title.startsWith('Open Folder: ')) {
+            return t('chrome.omniboxOpenFolder', { path: pred.title.slice(13) }, pred.title);
+        }
+        if (pred.title.startsWith('Open File: ')) {
+            return t('chrome.omniboxOpenFile', { path: pred.title.slice(11) }, pred.title);
+        }
+    }
+    if (pred.url && pred.title === `Go to ${pred.url}`) {
+        return t('chrome.omniboxGoTo', { target: pred.url }, pred.title);
+    }
+    return pred.title;
+}
 
 export default function OmniboxSuggestionsDropdown({
     isCommandMode,
@@ -28,6 +75,7 @@ export default function OmniboxSuggestionsDropdown({
     compact = false,
     style = {}
 }) {
+    const { t } = useTranslation();
     const liquidGlassSurfaceStyle = {
         backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
         backdropFilter: isBright
@@ -88,9 +136,9 @@ export default function OmniboxSuggestionsDropdown({
                         }`}>
                             <span className="flex items-center gap-1.5">
                                 <Terminal size={11} className="text-yellow-500" />
-                                Terminal Commands
+                                {t('chrome.omniboxTerminalCommands', null, 'Terminal Commands')}
                             </span>
-                            <span className="font-mono text-[9px] lowercase opacity-60">↵ enter to run</span>
+                            <span className="font-mono text-[9px] lowercase opacity-60">{t('chrome.omniboxEnterToRun', null, '↵ enter to run')}</span>
                         </div>
                         {filteredCommands.map((cmd, i) => {
                             const isSelected = i === selectedIndex;
@@ -128,7 +176,7 @@ export default function OmniboxSuggestionsDropdown({
                                                 ? (isBright ? 'text-zinc-700' : 'text-white/80') 
                                                 : (isBright ? 'text-zinc-500' : 'text-white/45')
                                         }`}>
-                                            {cmd.title}
+                                            {t(`chrome.cmd_${cmd.id}`, null, cmd.title)}
                                         </span>
                                     </div>
                                     {isSelected ? (
@@ -138,7 +186,7 @@ export default function OmniboxSuggestionsDropdown({
                                                     ? 'border-yellow-600/30 bg-yellow-500/15 text-yellow-800' 
                                                     : 'border-yellow-500/30 bg-yellow-500/15 text-yellow-300'
                                             }`}>
-                                                ↵ Run
+                                                {t('chrome.omniboxRunBadge', null, '↵ Run')}
                                             </span>
                                             <Zap size={13} className="text-yellow-500" />
                                         </div>
@@ -150,7 +198,9 @@ export default function OmniboxSuggestionsDropdown({
                 ) : (
                     <div className={`p-3 flex items-center gap-3 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
                         <Terminal size={15} className="text-red-500 animate-pulse" />
-                        <span className="text-xs font-mono">No command matching <strong>"{commandQuery}"</strong></span>
+                        <span className="text-xs font-mono">
+                            {renderWithStrongQuery(t('chrome.omniboxNoCommandMatching', null, 'No command matching "{query}"'), commandQuery)}
+                        </span>
                     </div>
                 )
             ) : isBangSuggestionMode ? (
@@ -161,14 +211,18 @@ export default function OmniboxSuggestionsDropdown({
                         }`}>
                             <span className="flex items-center gap-1.5">
                                 <Sparkles size={11} className="text-accent" />
-                                Search Bangs & Engines
+                                {t('chrome.omniboxBangsHeader', null, 'Search Bangs & Engines')}
                             </span>
-                            <span className="font-mono text-[9px] lowercase opacity-60">Tab ⇥ or ↵ to use</span>
+                            <span className="font-mono text-[9px] lowercase opacity-60">{t('chrome.omniboxTabOrEnterToUse', null, 'Tab ⇥ or ↵ to use')}</span>
                         </div>
                         {bangSuggestions.map((bang, i) => {
                             const BangIcon = bang.icon || Search;
                             const isSelected = i === selectedIndex;
                             const bangColor = bang.color || '#a855f7';
+                            const rawCategory = bang.category || 'Engine';
+                            const catLabel = BANG_CATEGORY_KEYS.has(rawCategory)
+                                ? t(`chrome.bangCat_${rawCategory}`, null, rawCategory)
+                                : rawCategory;
                             return (
                                 <button
                                     key={`bang-${i}-${bang.id}`}
@@ -204,7 +258,7 @@ export default function OmniboxSuggestionsDropdown({
                                                     ))}
                                                 </div>
                                                 <span className={`text-[9px] ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                    ({bang.category || 'Engine'})
+                                                    ({catLabel})
                                                 </span>
                                             </div>
                                             <span className={`${subtitleSize} truncate font-mono ${
@@ -228,7 +282,9 @@ export default function OmniboxSuggestionsDropdown({
                 ) : (
                     <div className={`p-3 flex items-center gap-3 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
                         <Search size={15} className="text-accent" />
-                        <span className="text-xs">No bang matching <strong>"{searchQuery}"</strong></span>
+                        <span className="text-xs">
+                            {renderWithStrongQuery(t('chrome.omniboxNoBangMatching', null, 'No bang matching "{query}"'), searchQuery)}
+                        </span>
                     </div>
                 )
             ) : (
@@ -284,7 +340,7 @@ export default function OmniboxSuggestionsDropdown({
                                                     ? (isBright ? 'text-zinc-950 font-semibold' : 'text-white font-semibold') 
                                                     : (isBright ? 'text-zinc-800 font-medium' : 'text-white/85 font-medium'))
                                         }`}>
-                                            {pred.title}
+                                            {formatPredictionTitle(pred, t)}
                                         </span>
                                         <span className={`${subtitleSize} truncate font-mono ${
                                             isSelected 
@@ -308,7 +364,7 @@ export default function OmniboxSuggestionsDropdown({
                                                         ? 'border-black/10 bg-black/5 hover:bg-black/10 text-zinc-700'
                                                         : 'border-white/15 bg-white/10 hover:bg-white/20 text-white/90'
                                                 }`}
-                                                title="Tab into directory"
+                                                title={t('chrome.omniboxTabIntoDir', null, 'Tab into directory')}
                                             >
                                                 <span>Tab</span>
                                                 <span className="text-accent font-bold">⇥</span>
@@ -317,7 +373,7 @@ export default function OmniboxSuggestionsDropdown({
                                                 <span className={`border text-[9px] font-mono font-medium px-1.5 py-0.5 rounded-lg ${
                                                     isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/15 bg-white/10 text-white/80'
                                                 }`}>
-                                                    ↵ Open
+                                                    {t('chrome.omniboxOpenBadge', null, '↵ Open')}
                                                 </span>
                                             )}
                                         </div>
@@ -326,7 +382,7 @@ export default function OmniboxSuggestionsDropdown({
                                             <span className={`border text-[9px] font-mono font-medium px-1.5 py-0.5 rounded-lg ${
                                                 isBright ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/15 bg-white/10 text-white/80'
                                             }`}>
-                                                ↵ Enter
+                                                {t('chrome.omniboxEnterBadge', null, '↵ Enter')}
                                             </span>
                                             <ArrowRight size={13} className="text-accent" />
                                         </div>
@@ -338,7 +394,7 @@ export default function OmniboxSuggestionsDropdown({
                 ) : (
                     <div className={`p-3 flex items-center gap-3 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
                         <Search size={15} />
-                        <span className="text-xs">No results for "{searchQuery}"</span>
+                        <span className="text-xs">{t('chrome.omniboxNoResults', { query: searchQuery }, `No results for "${searchQuery}"`)}</span>
                     </div>
                 )
             )}

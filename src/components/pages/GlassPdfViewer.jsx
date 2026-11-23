@@ -8,6 +8,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import useUIStore from '../../store/useUIStore';
 import useAIStore from '../../store/useAIStore';
+import { useTranslation } from '../../i18n/index';
 
 // Configure offline local pdf.js worker
 if (typeof window !== 'undefined') {
@@ -15,6 +16,7 @@ if (typeof window !== 'undefined') {
 }
 
 export default function GlassPdfViewer({ url, filePath, fileName }) {
+    const { t } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const showToast = useUIStore(state => state.showToast);
     const setIsRightPanelOpen = useUIStore(state => state.setIsRightPanelOpen);
@@ -82,7 +84,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
             } catch (err) {
                 if (!isMounted) return;
                 console.error('[PDF Viewer] Failed to load PDF:', err);
-                setError(err.message || 'Failed to open PDF document');
+                setError(err.message || t('tools.pdfViewer.openError', null, 'Failed to open PDF document'));
                 setLoading(false);
             }
         };
@@ -204,7 +206,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
     const handleSummarizeWithAI = async () => {
         if (!pdfDoc) return;
         try {
-            showToast('Extracting document text for Qu-AI...', 'info');
+            showToast(t('tools.pdfViewer.extractingToast', null, 'Extracting document text for Qu-AI...'), 'info');
             let fullText = '';
             const maxPages = Math.min(pdfDoc.numPages, 6);
 
@@ -212,17 +214,18 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                 const page = await pdfDoc.getPage(i);
                 const textContent = await page.getTextContent();
                 const pageStr = textContent.items.map(item => item.str).join(' ');
-                fullText += `\n--- Page ${i} ---\n` + pageStr;
+                fullText += `\n${t('tools.pdfViewer.pageMarker', { num: i }, `--- Page ${i} ---`)}\n` + pageStr;
             }
 
-            const prompt = `Please provide a concise, high-level summary and key takeaways of this PDF document (${fileName || 'document'}):\n\n${fullText.slice(0, 4500)}`;
+            const docName = fileName || t('tools.pdfViewer.fallbackDocName', null, 'document');
+            const prompt = `${t('tools.pdfViewer.summaryPrompt', { fileName: docName }, `Please provide a concise, high-level summary and key takeaways of this PDF document (${docName}):`)}\n\n${fullText.slice(0, 4500)}`;
             
             setChatInput(prompt);
             setRightPanelTab('ai');
             setIsRightPanelOpen(true);
-            showToast('Opened in Qu-AI Panel with document text!');
+            showToast(t('tools.pdfViewer.openedAiToast', null, 'Opened in Qu-AI Panel with document text!'));
         } catch (e) {
-            showToast('Failed to extract text: ' + e.message, 'error');
+            showToast(t('tools.pdfViewer.extractErrorToast', { error: e.message }, 'Failed to extract text: ' + e.message), 'error');
         }
     };
 
@@ -272,7 +275,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
         const target = filePath || url;
         if (target && window.electronAPI?.showInFolder) {
             window.electronAPI.showInFolder(target);
-            showToast('Revealed file in system folder');
+            showToast(t('tools.pdfViewer.revealedToast', null, 'Revealed file in system folder'));
         }
     };
 
@@ -288,7 +291,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                 <div className="flex items-center gap-3 min-w-0">
                     <button
                         onClick={() => setShowThumbnails(!showThumbnails)}
-                        title="Toggle Page Thumbnails"
+                        title={t('tools.pdfViewer.toggleThumbnails', null, 'Toggle Page Thumbnails')}
                         className={`p-1.5 rounded-xl border transition cursor-pointer ${
                             showThumbnails 
                                 ? 'bg-accent text-black font-bold border-accent shadow-sm' 
@@ -300,12 +303,14 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
 
                     <div className="flex items-center gap-2 min-w-0">
                         <FileText size={15} className="text-rose-400 flex-shrink-0" />
-                        <span className="text-xs font-semibold truncate max-w-[200px] sm:max-w-xs" title={fileName || 'PDF Document'}>
-                            {fileName || 'PDF Document'}
+                        <span className="text-xs font-semibold truncate max-w-[200px] sm:max-w-xs" title={fileName || t('tools.pdfViewer.fallbackName', null, 'PDF Document')}>
+                            {fileName || t('tools.pdfViewer.fallbackName', null, 'PDF Document')}
                         </span>
                         {numPages > 0 && (
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 text-accent font-mono border border-accent/20 flex-shrink-0">
-                                {numPages} {numPages === 1 ? 'page' : 'pages'}
+                                {numPages === 1
+                                    ? t('tools.pdfViewer.pageSingular', { count: numPages }, `${numPages} page`)
+                                    : t('tools.pdfViewer.pagePlural', { count: numPages }, `${numPages} pages`)}
                             </span>
                         )}
                     </div>
@@ -319,7 +324,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                         <button
                             onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
                             disabled={currentPage <= 1}
-                            title="Previous Page"
+                            title={t('tools.pdfViewer.prevPage', null, 'Previous Page')}
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition"
                         >
                             <ChevronLeft size={14} />
@@ -346,7 +351,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                         <button
                             onClick={() => setCurrentPage(p => Math.min(p + 1, numPages))}
                             disabled={currentPage >= numPages}
-                            title="Next Page"
+                            title={t('tools.pdfViewer.nextPage', null, 'Next Page')}
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition"
                         >
                             <ChevronRight size={14} />
@@ -362,7 +367,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                     }`}>
                         <button
                             onClick={handleZoomOut}
-                            title="Zoom Out"
+                            title={t('tools.pdfViewer.zoomOut', null, 'Zoom Out')}
                             className="p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
                         >
                             <ZoomOut size={13} />
@@ -372,7 +377,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                         </span>
                         <button
                             onClick={handleZoomIn}
-                            title="Zoom In"
+                            title={t('tools.pdfViewer.zoomIn', null, 'Zoom In')}
                             className="p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
                         >
                             <ZoomIn size={13} />
@@ -384,7 +389,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                         onClick={() => {
                             setFitMode(fitMode === 'width' ? 'custom' : 'width');
                         }}
-                        title="Fit to Width"
+                        title={t('tools.pdfViewer.fitWidth', null, 'Fit to Width')}
                         className={`p-1.5 rounded-xl border transition cursor-pointer text-xs ${
                             fitMode === 'width' 
                                 ? 'bg-accent text-black font-bold border-accent shadow-sm' 
@@ -397,7 +402,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                     {/* Rotate */}
                     <button
                         onClick={handleRotate}
-                        title="Rotate 90° Clockwise"
+                        title={t('tools.pdfViewer.rotate', null, 'Rotate 90° Clockwise')}
                         className={`p-1.5 rounded-xl border transition cursor-pointer ${
                             isBright ? 'bg-black/5 hover:bg-black/10 border-black/10' : 'bg-white/5 hover:bg-white/10 border-white/10'
                         }`}
@@ -408,7 +413,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                     {/* Smart Dark Mode Invert Toggle */}
                     <button
                         onClick={() => setIsDarkModeInvert(!isDarkModeInvert)}
-                        title={isDarkModeInvert ? "Normal Mode" : "Dark Reader Invert Mode"}
+                        title={isDarkModeInvert ? t('tools.pdfViewer.normalMode', null, 'Normal Mode') : t('tools.pdfViewer.darkInvertMode', null, 'Dark Reader Invert Mode')}
                         className={`p-1.5 rounded-xl border transition cursor-pointer ${
                             isDarkModeInvert 
                                 ? 'bg-indigo-600 text-white border-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.4)]' 
@@ -424,13 +429,13 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                         className="px-3 py-1.5 rounded-xl bg-accent text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-accent/20 hover:scale-105 active:scale-95 transition cursor-pointer"
                     >
                         <Sparkles size={12} />
-                        <span className="hidden sm:inline">Summarize</span>
+                        <span className="hidden sm:inline">{t('tools.pdfViewer.summarize', null, 'Summarize')}</span>
                     </button>
 
                     {/* Reveal in Explorer */}
                     <button
                         onClick={handleRevealFile}
-                        title="Open in System File Manager"
+                        title={t('tools.pdfViewer.revealTitle', null, 'Open in System File Manager')}
                         className={`p-1.5 rounded-xl border transition cursor-pointer ${
                             isBright ? 'bg-black/5 hover:bg-black/10 border-black/10' : 'bg-white/5 hover:bg-white/10 border-white/10'
                         }`}
@@ -448,7 +453,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                         isBright ? 'bg-white/70 border-black/10' : 'bg-[#121318]/90 border-white/10 backdrop-blur-xl'
                     }`}>
                         <div className="flex items-center justify-between text-xs font-semibold px-1 text-zinc-400">
-                            <span>Pages</span>
+                            <span>{t('tools.pdfViewer.pagesHeader', null, 'Pages')}</span>
                             <span>{numPages}</span>
                         </div>
                         <div className="space-y-3">
@@ -465,7 +470,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                                     {pageThumbnails[pageNum] ? (
                                         <img 
                                             src={pageThumbnails[pageNum]} 
-                                            alt={`Page ${pageNum}`} 
+                                            alt={t('tools.pdfViewer.pageNum', { num: pageNum }, `Page ${pageNum}`)} 
                                             className="w-full h-auto rounded shadow-sm"
                                         />
                                     ) : (
@@ -473,7 +478,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                                             {pageNum}
                                         </div>
                                     )}
-                                    <span className="text-[11px] font-mono font-medium">Page {pageNum}</span>
+                                    <span className="text-[11px] font-mono font-medium">{t('tools.pdfViewer.pageNum', { num: pageNum }, `Page ${pageNum}`)}</span>
                                 </div>
                             ))}
                         </div>
@@ -491,12 +496,12 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
                     {loading ? (
                         <div className="m-auto flex flex-col items-center gap-3 text-zinc-400">
                             <Loader2 size={32} className="animate-spin text-accent" />
-                            <p className="text-xs font-medium">Rendering PDF with PDF.js...</p>
+                            <p className="text-xs font-medium">{t('tools.pdfViewer.loading', null, 'Rendering PDF with PDF.js...')}</p>
                         </div>
                     ) : error ? (
                         <div className="m-auto max-w-md p-6 rounded-3xl border border-red-500/20 bg-red-500/10 text-center space-y-3">
                             <AlertCircle size={28} className="text-red-400 mx-auto" />
-                            <h3 className="text-sm font-bold text-white">Failed to Open Document</h3>
+                            <h3 className="text-sm font-bold text-white">{t('tools.pdfViewer.errorTitle', null, 'Failed to Open Document')}</h3>
                             <p className="text-xs text-zinc-400">{error}</p>
                         </div>
                     ) : (

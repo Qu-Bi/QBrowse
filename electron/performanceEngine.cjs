@@ -106,6 +106,8 @@ function detectHardwareProfile(gpuInfo = null, isOnBattery = false) {
         ? currentSettings.tabSleepTimeoutMinutes
         : defaultSleepTimeout;
 
+    const reduceVisualsOnEco = currentSettings.reduceVisualsOnEco !== false;
+
     return {
         coreCount,
         cpuModel,
@@ -118,7 +120,8 @@ function detectHardwareProfile(gpuInfo = null, isOnBattery = false) {
         isSoftwareGpu,
         mode: currentSettings.mode,
         tabSleepTimeoutMinutes: finalSleepTimeout,
-        reduceVisuals: activeTier === 'eco' && currentSettings.reduceVisualsOnEco,
+        reduceVisualsOnEco,
+        reduceVisuals: activeTier === 'eco' && reduceVisualsOnEco,
         bfcacheEnabled: currentSettings.bfcacheEnabled !== false,
         isBfcacheActive: currentSettings.bfcacheEnabled !== false && activeTier !== 'eco',
         bfcachePages: activeTier === 'ultra' ? 6 : (activeTier === 'balanced' ? 3 : 0),

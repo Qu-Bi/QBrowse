@@ -1204,7 +1204,10 @@ html.eco-mode .liquid-glass-bright {
 html.no-glass [class*="backdrop-blur"],
 html.eco-mode [class*="backdrop-blur"],
 html.no-glass [data-context-menu],
-html.eco-mode [data-context-menu] {
+html.eco-mode [data-context-menu],
+html.no-glass .liquid-glass-surface,
+html.eco-mode .liquid-glass-surface,
+html.eco-mode [style*="backdrop-filter"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -1245,6 +1248,7 @@ html:not(.theme-light).eco-mode #download-toast-popup,
 html:not(.theme-light).eco-mode #qbrowse-sticky-note-card,
 html:not(.theme-light).eco-mode #qbrowse-highlight-pill,
 html:not(.theme-light).eco-mode [data-context-menu],
+html:not(.theme-light).eco-mode .liquid-glass-surface,
 html:not(.theme-light).eco-mode #omnibox-card,
 html:not(.theme-light).eco-mode #omnibox-dropdown,
 html:not(.theme-light).eco-mode .tab-switcher-card {
@@ -1308,6 +1312,7 @@ html.theme-light.eco-mode #download-toast-popup,
 html.theme-light.eco-mode #qbrowse-sticky-note-card,
 html.theme-light.eco-mode #qbrowse-highlight-pill,
 html.theme-light.eco-mode [data-context-menu],
+html.theme-light.eco-mode .liquid-glass-surface,
 html.theme-light.eco-mode #omnibox-card,
 html.theme-light.eco-mode #omnibox-dropdown,
 html.theme-light.eco-mode .tab-switcher-card {

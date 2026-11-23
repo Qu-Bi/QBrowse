@@ -6,8 +6,10 @@ import {
     ExternalLink, ZoomIn, ZoomOut, Maximize2, Sparkles, Eye, FileCode
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
+import { useTranslation } from '../../i18n/index';
 
 export default function GlassDocumentViewer({ url, filePath, fileName, extension, type }) {
+    const { t } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const showToast = useUIStore(state => state.showToast);
     const isBright = theme === 'light';
@@ -39,11 +41,11 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                     const res = await fetch(url);
                     const text = await res.text();
                     if (!isMounted) return;
-                    setFileData({ content: text, isText: true, name: fileName || 'File' });
+                    setFileData({ content: text, isText: true, name: fileName || t('tools.docViewer.fallbackFile', null, 'File') });
                 }
             } catch (e) {
                 if (!isMounted) return;
-                setError(e.message || 'Failed to read file');
+                setError(e.message || t('tools.docViewer.readError', null, 'Failed to read file'));
             } finally {
                 if (isMounted) setLoading(false);
             }
@@ -60,7 +62,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
         if (!fileData?.content) return;
         navigator.clipboard.writeText(fileData.content);
         setCopied(true);
-        showToast('Copied content to clipboard');
+        showToast(t('tools.docViewer.toastCopied', null, 'Copied content to clipboard'));
         setTimeout(() => setCopied(false), 1500);
     };
 
@@ -68,7 +70,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
         const target = filePath || url;
         if (target && window.electronAPI?.showInFolder) {
             window.electronAPI.showInFolder(target);
-            showToast('Revealed file in system folder');
+            showToast(t('tools.docViewer.toastRevealed', null, 'Revealed file in system folder'));
         }
     };
 
@@ -126,7 +128,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                     </div>
                     <div className="min-w-0">
                         <h2 className="text-xs font-bold truncate max-w-sm" title={fileName || fileData?.name}>
-                            {fileName || fileData?.name || 'Local Document'}
+                            {fileName || fileData?.name || t('tools.docViewer.fallbackName', null, 'Local Document')}
                         </h2>
                         {fileData?.size && (
                             <p className="text-[10px] text-zinc-500 font-mono">
@@ -150,7 +152,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                                         : 'text-zinc-400 hover:text-white'
                                 }`}
                             >
-                                <Eye size={12} /> Preview
+                                <Eye size={12} /> {t('tools.docViewer.preview', null, 'Preview')}
                             </button>
                             <button
                                 onClick={() => setMarkdownMode('raw')}
@@ -160,7 +162,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                                         : 'text-zinc-400 hover:text-white'
                                 }`}
                             >
-                                <Code2 size={12} /> Raw
+                                <Code2 size={12} /> {t('tools.docViewer.raw', null, 'Raw')}
                             </button>
                         </div>
                     )}
@@ -172,7 +174,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                         }`}>
                             <button
                                 onClick={() => setImageZoom(z => Math.max(z - 0.25, 0.25))}
-                                title="Zoom Out"
+                                title={t('tools.docViewer.zoomOut', null, 'Zoom Out')}
                                 className="p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
                             >
                                 <ZoomOut size={13} />
@@ -182,14 +184,14 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                             </span>
                             <button
                                 onClick={() => setImageZoom(z => Math.min(z + 0.25, 4))}
-                                title="Zoom In"
+                                title={t('tools.docViewer.zoomIn', null, 'Zoom In')}
                                 className="p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
                             >
                                 <ZoomIn size={13} />
                             </button>
                             <button
                                 onClick={() => setImageZoom(1)}
-                                title="Reset Zoom"
+                                title={t('tools.docViewer.resetZoom', null, 'Reset Zoom')}
                                 className="p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
                             >
                                 <Maximize2 size={12} />
@@ -201,7 +203,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                     {fileData?.isText && (
                         <button
                             onClick={handleCopy}
-                            title="Copy File Content"
+                            title={t('tools.docViewer.copyTitle', null, 'Copy File Content')}
                             className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
                                 isBright 
                                     ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' 
@@ -209,14 +211,14 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                             }`}
                         >
                             {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                            <span>{copied ? 'Copied' : 'Copy'}</span>
+                            <span>{copied ? t('tools.docViewer.copied', null, 'Copied') : t('tools.docViewer.copy', null, 'Copy')}</span>
                         </button>
                     )}
 
                     {/* Open in File Manager */}
                     <button
                         onClick={handleRevealFile}
-                        title="Reveal in System Folder"
+                        title={t('tools.docViewer.revealTitle', null, 'Reveal in System Folder')}
                         className={`p-2 rounded-xl border transition cursor-pointer ${
                             isBright ? 'bg-black/5 hover:bg-black/10 border-black/10' : 'bg-white/5 hover:bg-white/10 border-white/10'
                         }`}
@@ -231,12 +233,12 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                 {loading ? (
                     <div className="m-auto flex flex-col items-center gap-2 text-zinc-400">
                         <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                        <p className="text-xs">Loading document...</p>
+                        <p className="text-xs">{t('tools.docViewer.loading', null, 'Loading document...')}</p>
                     </div>
                 ) : error ? (
                     <div className="m-auto max-w-md p-6 rounded-3xl border border-red-500/20 bg-red-500/10 text-center space-y-3">
                         <FileCode size={28} className="text-red-400 mx-auto" />
-                        <h3 className="text-sm font-bold text-white">Unable to Display File</h3>
+                        <h3 className="text-sm font-bold text-white">{t('tools.docViewer.errorTitle', null, 'Unable to Display File')}</h3>
                         <p className="text-xs text-zinc-400">{error}</p>
                     </div>
                 ) : isMediaImage ? (

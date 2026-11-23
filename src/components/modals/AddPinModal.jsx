@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pin, X, Globe, Plus, Sparkles } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { useTranslation } from '../../i18n/index';
 
 const PRESET_APPS = [
     { name: 'GitHub', domain: 'github.com' },
@@ -17,6 +18,7 @@ const PRESET_APPS = [
 ];
 
 export default function AddPinModal() {
+    const { t } = useTranslation();
     const { activeModal, isModalClosing, closingModal, closeModal, theme } = useUIStore();
     const addPinnedTab = useTabStore(state => state.addPinnedTab);
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -77,8 +79,8 @@ export default function AddPinModal() {
                             <Pin size={20} />
                         </div>
                         <div>
-                            <h2 className={`text-lg font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>Pin App to Sidebar</h2>
-                            <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>Add a quick access app or website shortcut</p>
+                            <h2 className={`text-lg font-bold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('tools.addPin.title', null, 'Pin App to Sidebar')}</h2>
+                            <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>{t('tools.addPin.subtitle', null, 'Add a quick access app or website shortcut')}</p>
                         </div>
                     </div>
                     <button 
@@ -112,7 +114,7 @@ export default function AddPinModal() {
                             )}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-bold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{title.trim() || cleanDomain || 'App Name'}</p>
+                            <p className={`text-xs font-bold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{title.trim() || cleanDomain || t('tools.addPin.defaultAppName', null, 'App Name')}</p>
                             <p className={`text-[10px] font-mono truncate ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{cleanDomain || 'domain.com'}</p>
                         </div>
                     </div>
@@ -121,13 +123,13 @@ export default function AddPinModal() {
                     <div className="space-y-3">
                         <div>
                             <label className={`text-[10px] font-bold uppercase tracking-wider mb-1 block ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                App Name / Title
+                                {t('tools.addPin.appNameLabel', null, 'App Name / Title')}
                             </label>
                             <input 
                                 type="text"
                                 value={title}
                                 onChange={e => setTitle(e.target.value)}
-                                placeholder="e.g. GitHub, Gemini..."
+                                placeholder={t('tools.addPin.appNamePlaceholder', null, 'e.g. GitHub, Gemini...')}
                                 className={`w-full border rounded-xl px-3.5 py-2.5 text-xs transition focus:outline-none focus:border-accent ${
                                     isBright ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:bg-black/[0.05]' : 'bg-white/[0.04] border-white/[0.08] text-white placeholder-white/30 focus:bg-white/[0.07]'
                                 }`}
@@ -136,13 +138,13 @@ export default function AddPinModal() {
 
                         <div>
                             <label className={`text-[10px] font-bold uppercase tracking-wider mb-1 block ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                URL / Domain *
+                                {t('tools.addPin.urlLabel', null, 'URL / Domain *')}
                             </label>
                             <input 
                                 type="text"
                                 value={url}
                                 onChange={e => setUrl(e.target.value)}
-                                placeholder="e.g. github.com or https://gemini.google.com"
+                                placeholder={t('tools.addPin.urlPlaceholder', null, 'e.g. github.com or https://gemini.google.com')}
                                 className={`w-full border rounded-xl px-3.5 py-2.5 text-xs transition font-mono focus:outline-none focus:border-accent ${
                                     isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-black/40 border-white/10 text-white placeholder-white/30'
                                 }`}
@@ -154,7 +156,7 @@ export default function AddPinModal() {
                     {/* Presets Grid */}
                     <div>
                         <span className={`text-[10px] font-bold uppercase tracking-wider mb-2 block flex items-center gap-1 ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                            <Sparkles size={10} className="text-accent" /> Quick Presets
+                            <Sparkles size={10} className="text-accent" /> {t('tools.addPin.quickPresets', null, 'Quick Presets')}
                         </span>
                         <div className="grid grid-cols-5 gap-1.5">
                             {PRESET_APPS.map(preset => (
@@ -191,14 +193,14 @@ export default function AddPinModal() {
                                 isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-700 hover:text-zinc-950' : 'bg-white/[0.06] hover:bg-white/[0.12] text-white/80 hover:text-white border border-white/[0.08]'
                             }`}
                         >
-                            Cancel
+                            {t('tools.addPin.cancel', null, 'Cancel')}
                         </button>
                         <button 
                             type="submit"
                             disabled={!url.trim()}
                             className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-black font-bold rounded-xl text-xs shadow-lg shadow-accent/20 transition disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
                         >
-                            <Plus size={14} /> Pin App
+                            <Plus size={14} /> {t('tools.addPin.pinApp', null, 'Pin App')}
                         </button>
                     </div>
                 </form>

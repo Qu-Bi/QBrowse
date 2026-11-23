@@ -15,18 +15,19 @@ import useVaultStore from '../../store/useVaultStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useProfileStore from '../../store/useProfileStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
+import { useTranslation } from '../../i18n/index';
 
 export const AVATAR_PRESETS = [
-    { id: 'rocket', icon: Rocket, name: 'Rocket' },
-    { id: 'zap', icon: Zap, name: 'Energy' },
-    { id: 'fox', icon: Sparkles, name: 'Cyber Fox' },
-    { id: 'alien', icon: Terminal, name: 'Pixel' },
-    { id: 'galaxy', icon: Compass, name: 'Cosmos' },
-    { id: 'gem', icon: Gem, name: 'Diamond' },
-    { id: 'dragon', icon: Flame, name: 'Dragon' },
-    { id: 'crown', icon: Crown, name: 'Royal' },
-    { id: 'shield', icon: Shield, name: 'Guardian' },
-    { id: 'dna', icon: Activity, name: 'Genesis' }
+    { id: 'rocket', icon: Rocket, name: 'Rocket', nameKey: 'pop.profile.avatarRocket' },
+    { id: 'zap', icon: Zap, name: 'Energy', nameKey: 'pop.profile.avatarEnergy' },
+    { id: 'fox', icon: Sparkles, name: 'Cyber Fox', nameKey: 'pop.profile.avatarCyberFox' },
+    { id: 'alien', icon: Terminal, name: 'Pixel', nameKey: 'pop.profile.avatarPixel' },
+    { id: 'galaxy', icon: Compass, name: 'Cosmos', nameKey: 'pop.profile.avatarCosmos' },
+    { id: 'gem', icon: Gem, name: 'Diamond', nameKey: 'pop.profile.avatarDiamond' },
+    { id: 'dragon', icon: Flame, name: 'Dragon', nameKey: 'pop.profile.avatarDragon' },
+    { id: 'crown', icon: Crown, name: 'Royal', nameKey: 'pop.profile.avatarRoyal' },
+    { id: 'shield', icon: Shield, name: 'Guardian', nameKey: 'pop.profile.avatarGuardian' },
+    { id: 'dna', icon: Activity, name: 'Genesis', nameKey: 'pop.profile.avatarGenesis' }
 ];
 
 export const AVATAR_ICON_MAP = {
@@ -53,22 +54,24 @@ const PROFILE_COLORS = [
     '#a78bfa', '#fbbf24', '#f87171', '#38bdf8'
 ];
 
-function formatTimeAgo(ts) {
-    if (!ts) return 'Just now';
+function formatTimeAgo(ts, t) {
+    const tr = t || ((_, __, fb) => fb);
+    if (!ts) return tr('pop.profile.justNow', null, 'Just now');
     const num = Number(ts);
-    if (isNaN(num) || num <= 0) return 'Just now';
+    if (isNaN(num) || num <= 0) return tr('pop.profile.justNow', null, 'Just now');
     const diff = Math.floor((Date.now() - num) / 1000);
-    if (diff < 30) return 'Just now';
-    if (diff < 60) return `${diff}s ago`;
+    if (diff < 30) return tr('pop.profile.justNow', null, 'Just now');
+    if (diff < 60) return tr('pop.profile.secondsAgo', { n: diff }, '{n}s ago');
     const mins = Math.floor(diff / 60);
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 60) return tr('pop.profile.minutesAgo', { n: mins }, '{n}m ago');
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return tr('pop.profile.hoursAgo', { n: hours }, '{n}h ago');
     const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+    return tr('pop.profile.daysAgo', { n: days }, '{n}d ago');
 }
 
 export default function UserProfilePopover({ isClosing }) {
+    const { t, intlLocale } = useTranslation();
     const { closePopover, openModal, showToast, theme } = useUIStore();
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -123,8 +126,8 @@ export default function UserProfilePopover({ isClosing }) {
     const [hoveredCategory, setHoveredCategory] = useState(null);
 
     // Profile state
-    const [username, setUsername] = useState(() => localStorage.getItem('qbrowse_profile_username') || activeProfile?.name || (user ? user.email.split('@')[0] : 'Zen Explorer'));
-    const [statusQuote, setStatusQuote] = useState(() => localStorage.getItem('qbrowse_profile_status') || 'Exploring the Zen web');
+    const [username, setUsername] = useState(() => localStorage.getItem('qbrowse_profile_username') || activeProfile?.name || (user ? user.email.split('@')[0] : t('pop.profile.defaultExplorer', null, 'Zen Explorer')));
+    const [statusQuote, setStatusQuote] = useState(() => localStorage.getItem('qbrowse_profile_status') || t('pop.profile.defaultQuote', null, 'Exploring the Zen web'));
     const [avatarPreset, setAvatarPreset] = useState(() => localStorage.getItem('qbrowse_profile_avatar_preset') || 'rocket');
     const [customAvatarUrl, setCustomAvatarUrl] = useState(() => localStorage.getItem('qbrowse_profile_avatar_url') || '');
     
@@ -189,7 +192,7 @@ export default function UserProfilePopover({ isClosing }) {
         const target = profiles.find(p => p.id === targetId);
         if (target) {
             setUsername(target.name);
-            showToast(`Switched to profile: ${target.name}`);
+            showToast(t('pop.profile.switchedProfile', { name: target.name }, 'Switched to profile: {name}'));
         }
     };
 
@@ -203,25 +206,25 @@ export default function UserProfilePopover({ isClosing }) {
         });
         setNewProfileName('');
         setShowAddProfile(false);
-        showToast(`Created profile "${prof.name}"`);
+        showToast(t('pop.profile.createdProfile', { name: prof.name }, 'Created profile "{name}"'));
         await handleSwitchProfile(prof.id);
     };
 
     const handleOpenInNewWindow = (targetId) => {
         if (window.electronAPI && window.electronAPI.openNewWindow) {
             window.electronAPI.openNewWindow({ profileId: targetId });
-            showToast('Opened profile in new window');
+            showToast(t('pop.profile.openedNewWindow', null, 'Opened profile in new window'));
         }
     };
 
     const handleDeleteProfile = (id, name) => {
         useUIStore.getState().setActiveDialog({
             type: 'confirm',
-            hostname: 'QBrowse Profiles',
-            message: `Are you sure you want to delete profile "${name}"? All associated local data will be removed.`,
+            hostname: t('pop.profile.profilesDialogTitle', null, 'QBrowse Profiles'),
+            message: t('pop.profile.deleteProfileConfirm', { name }, 'Are you sure you want to delete profile "{name}"? All associated local data will be removed.'),
             onConfirm: () => {
                 deleteProfile(id);
-                showToast(`Profile "${name}" deleted`);
+                showToast(t('pop.profile.profileDeleted', { name }, 'Profile "{name}" deleted'));
             },
             onCancel: () => {}
         });
@@ -239,7 +242,7 @@ export default function UserProfilePopover({ isClosing }) {
 
         setIsEditing(false);
         setShowAvatarPicker(false);
-        showToast('Profile updated!');
+        showToast(t('pop.profile.profileUpdated', null, 'Profile updated!'));
         
         useSyncStore.getState().syncDataToCloud('profile', {
             username,
@@ -256,7 +259,9 @@ export default function UserProfilePopover({ isClosing }) {
         if (!trimmed) {
             return {
                 ok: false,
-                error: effectiveMode === 'pin' ? 'Please enter your QVault PIN.' : 'Please enter your QVault Master Password.'
+                error: effectiveMode === 'pin'
+                    ? t('pop.profile.enterVaultPinErr', null, 'Please enter your QVault PIN.')
+                    : t('pop.profile.enterVaultMasterErr', null, 'Please enter your QVault Master Password.')
             };
         }
         const res = effectiveMode === 'pin' ? await unlockWithPin(trimmed) : await unlockVault(trimmed);
@@ -264,7 +269,9 @@ export default function UserProfilePopover({ isClosing }) {
         if (!unlockedOk) {
             return {
                 ok: false,
-                error: res?.error || useVaultStore.getState().error || (effectiveMode === 'pin' ? 'Invalid QVault PIN' : 'Invalid Master Password')
+                error: res?.error || useVaultStore.getState().error || (effectiveMode === 'pin'
+                    ? t('pop.profile.invalidVaultPin', null, 'Invalid QVault PIN')
+                    : t('pop.profile.invalidMasterPass', null, 'Invalid Master Password'))
             };
         }
         return { ok: true, error: '' };
@@ -277,7 +284,9 @@ export default function UserProfilePopover({ isClosing }) {
             const res = await unlockWithWindowsHello();
             const unlockedOk = res === true || res?.success === true;
             if (!unlockedOk) {
-                setSnapshotUnlockError(res?.error || useVaultStore.getState().error || 'Windows Hello unlock failed');
+                const bioPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || 'win32';
+                const bioLabel = bioPlatform === 'darwin' ? 'Touch ID' : bioPlatform === 'linux' ? t('pop.vault.systemBiometrics', null, 'System Biometrics') : 'Windows Hello';
+                setSnapshotUnlockError(res?.error || useVaultStore.getState().error || t('pop.profile.biometricUnlockFailed', { label: bioLabel }, '{label} unlock failed'));
             } else {
                 setSnapshotPin('');
             }
@@ -311,7 +320,7 @@ export default function UserProfilePopover({ isClosing }) {
                 setShowPushBackupForm(false);
             }
         } catch (err) {
-            setSnapshotUnlockError(err?.message || 'Failed to create cloud snapshot.');
+            setSnapshotUnlockError(err?.message || t('pop.profile.snapshotCreateFailed', null, 'Failed to create cloud snapshot.'));
         }
     };
 
@@ -355,7 +364,9 @@ export default function UserProfilePopover({ isClosing }) {
             const res = await unlockWithWindowsHello();
             const unlockedOk = res === true || res?.success === true;
             if (!unlockedOk) {
-                setRestoreUnlockError(res?.error || useVaultStore.getState().error || 'Windows Hello unlock failed');
+                const bioPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || 'win32';
+                const bioLabel = bioPlatform === 'darwin' ? 'Touch ID' : bioPlatform === 'linux' ? t('pop.vault.systemBiometrics', null, 'System Biometrics') : 'Windows Hello';
+                setRestoreUnlockError(res?.error || useVaultStore.getState().error || t('pop.profile.biometricUnlockFailed', { label: bioLabel }, '{label} unlock failed'));
                 return;
             }
             setPendingRestoreSnapshotId(null);
@@ -370,7 +381,7 @@ export default function UserProfilePopover({ isClosing }) {
     const renderInlineVaultUnlockFields = ({ title, value, onChange, errorMsg, onBiometricClick, isBusy }) => {
         const effectiveMode = pinEnabled ? vaultUnlockMode : 'password';
         const bioPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || 'win32';
-        const bioShortLabel = bioPlatform === 'darwin' ? 'Touch ID' : bioPlatform === 'linux' ? 'Bio' : 'Hello';
+        const bioShortLabel = bioPlatform === 'darwin' ? 'Touch ID' : bioPlatform === 'linux' ? t('pop.profile.bioShort', null, 'Bio') : t('pop.profile.helloShort', null, 'Hello');
         const inputClasses = isBright
             ? 'bg-white border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent shadow-xs'
             : 'bg-black/20 border-white/10 text-white placeholder-white/40 focus:border-accent/50';
@@ -434,7 +445,7 @@ export default function UserProfilePopover({ isClosing }) {
                                     : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                             }`}
                         >
-                            Quick PIN
+                            {t('pop.vault.quickPin', null, 'Quick PIN')}
                         </button>
                         <button
                             type="button"
@@ -449,7 +460,7 @@ export default function UserProfilePopover({ isClosing }) {
                                     : (isBright ? 'text-zinc-600 hover:text-zinc-900' : 'text-white/70 hover:text-white')
                             }`}
                         >
-                            Master Password
+                            {t('pop.vault.masterPassword', null, 'Master Password')}
                         </button>
                     </div>
                 )}
@@ -472,7 +483,7 @@ export default function UserProfilePopover({ isClosing }) {
                             value={value}
                             onChange={(e) => onChange(e.target.value)}
                             disabled={isBusy}
-                            placeholder="Enter master password..."
+                            placeholder={t('pop.vault.enterMasterPlaceholder', null, 'Enter master password...')}
                             className={`flex-1 min-w-0 h-9 rounded-full px-3.5 text-xs font-mono outline-none transition-all border disabled:opacity-50 ${inputClasses}`}
                         />
                     )}
@@ -481,7 +492,7 @@ export default function UserProfilePopover({ isClosing }) {
                             type="button"
                             disabled={isBusy}
                             onClick={onBiometricClick}
-                            title={`Unlock with ${bioShortLabel}`}
+                            title={t('pop.profile.unlockWith', { method: bioShortLabel }, 'Unlock with {method}')}
                             className={`h-9 px-3 rounded-full border text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shrink-0 active:scale-95 ${
                                 isBright
                                     ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/10 text-zinc-800 shadow-xs'
@@ -512,11 +523,11 @@ export default function UserProfilePopover({ isClosing }) {
         try {
             const res = await changePassword(currPass, newPass);
             if (res && res.success === false) {
-                setPassMsg({ type: 'error', text: res.error || 'Failed to update password' });
+                setPassMsg({ type: 'error', text: res.error || t('pop.profile.passwordUpdateFailed', null, 'Failed to update password') });
             } else {
                 setCurrPass('');
                 setNewPass('');
-                setPassMsg({ type: 'success', text: 'Account password updated successfully!' });
+                setPassMsg({ type: 'success', text: t('pop.profile.passwordUpdated', null, 'Account password updated successfully!') });
             }
         } catch(err) {
             setPassMsg({ type: 'error', text: err.message });
@@ -548,20 +559,20 @@ export default function UserProfilePopover({ isClosing }) {
             (list || []).filter(isValidSyncTab).map(t => ({ ...t, spaceId: sId, spaceName: sId }))
         );
         const legacyTabs = [
-            ...rawPrivate.map(t => ({ ...t, spaceId: 'personal', spaceName: 'Personal' })),
-            ...rawWork.map(t => ({ ...t, spaceId: 'work', spaceName: 'Work' })),
+            ...rawPrivate.map(tb => ({ ...tb, spaceId: 'personal', spaceName: t('nav.personal', null, 'Personal') })),
+            ...rawWork.map(tb => ({ ...tb, spaceId: 'work', spaceName: t('nav.work', null, 'Work') })),
             ...customEntries
         ];
         if (legacyTabs.length > 0) {
             return [{
                 deviceId: 'legacy-remote',
-                deviceName: 'Remote Device',
+                deviceName: t('pop.profile.remoteDevice', null, 'Remote Device'),
                 lastSynced: Date.now(),
                 tabs: legacyTabs
             }];
         }
         return [];
-    }, [remoteDeviceTabs, cloudTabs]);
+    }, [remoteDeviceTabs, cloudTabs, t]);
 
     const totalCloudTabs = useMemo(() => {
         return displayDevices.reduce((sum, d) => sum + (d.tabs?.length || 0), 0);
@@ -580,19 +591,19 @@ export default function UserProfilePopover({ isClosing }) {
 
     // Status details
     const getStatusDetails = () => {
-        if (!user) return { label: 'Guest', color: isBright ? 'text-zinc-500' : 'text-white/40', bg: isBright ? 'bg-black/5' : 'bg-white/10', border: isBright ? 'border-black/10' : 'border-white/10' };
-        if (isSyncing) return { label: 'Syncing...', color: isBright ? 'text-blue-600 animate-pulse' : 'text-blue-400 animate-pulse', bg: isBright ? 'bg-blue-500/15' : 'bg-blue-500/20', border: isBright ? 'border-blue-500/25' : 'border-blue-500/30' };
-        if (syncStatus === 'synced') return { label: 'Synced', color: isBright ? 'text-emerald-700' : 'text-emerald-400', bg: isBright ? 'bg-emerald-500/15' : 'bg-emerald-500/20', border: isBright ? 'border-emerald-500/25' : 'border-emerald-500/30' };
-        return { label: 'Local Only', color: isBright ? 'text-zinc-600' : 'text-white/60', bg: isBright ? 'bg-black/5' : 'bg-white/10', border: isBright ? 'border-black/10' : 'border-white/15' };
+        if (!user) return { label: t('pop.profile.statusGuest', null, 'Guest'), color: isBright ? 'text-zinc-500' : 'text-white/40', bg: isBright ? 'bg-black/5' : 'bg-white/10', border: isBright ? 'border-black/10' : 'border-white/10' };
+        if (isSyncing) return { label: t('pop.profile.statusSyncing', null, 'Syncing...'), color: isBright ? 'text-blue-600 animate-pulse' : 'text-blue-400 animate-pulse', bg: isBright ? 'bg-blue-500/15' : 'bg-blue-500/20', border: isBright ? 'border-blue-500/25' : 'border-blue-500/30' };
+        if (syncStatus === 'synced') return { label: t('pop.profile.statusSynced', null, 'Synced'), color: isBright ? 'text-emerald-700' : 'text-emerald-400', bg: isBright ? 'bg-emerald-500/15' : 'bg-emerald-500/20', border: isBright ? 'border-emerald-500/25' : 'border-emerald-500/30' };
+        return { label: t('pop.profile.statusLocalOnly', null, 'Local Only'), color: isBright ? 'text-zinc-600' : 'text-white/60', bg: isBright ? 'bg-black/5' : 'bg-white/10', border: isBright ? 'border-black/10' : 'border-white/15' };
     };
 
     const statusDetails = getStatusDetails();
 
     const CATEGORIES = [
-        { id: 'sync', label: 'Sync', icon: RefreshCw },
-        { id: 'tabs', label: 'Tabs', icon: Layers },
-        { id: 'backups', label: 'Backups', icon: Cloud },
-        { id: 'profile', label: 'Profile', icon: User },
+        { id: 'sync', label: t('pop.profile.tabSync', null, 'Sync'), icon: RefreshCw },
+        { id: 'tabs', label: t('pop.profile.tabTabs', null, 'Tabs'), icon: Layers },
+        { id: 'backups', label: t('pop.profile.tabBackups', null, 'Backups'), icon: Cloud },
+        { id: 'profile', label: t('pop.profile.tabProfile', null, 'Profile'), icon: User },
     ];
 
     // Global Escape key dismiss listener
@@ -627,7 +638,7 @@ export default function UserProfilePopover({ isClosing }) {
                 <div 
                     className="flex items-center gap-3 min-w-0 cursor-pointer group"
                     onClick={() => setActiveCategory('profile')}
-                    title="Profile & Settings"
+                    title={t('pop.profile.profileAndSettings', null, 'Profile & Settings')}
                 >
                     <div 
                         className={`w-9 h-9 rounded-2xl border-2 flex items-center justify-center text-xs font-semibold shadow-xs overflow-hidden shrink-0 group-hover:scale-105 transition-transform duration-200 ${
@@ -647,7 +658,7 @@ export default function UserProfilePopover({ isClosing }) {
                             {user && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />}
                         </div>
                         <p className={`text-[11px] truncate ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                            {user ? user.email : 'Local Workspace'}
+                            {user ? user.email : t('pop.profile.localWorkspace', null, 'Local Workspace')}
                         </p>
                     </div>
                 </div>
@@ -739,9 +750,9 @@ export default function UserProfilePopover({ isClosing }) {
                                             <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-500 shadow-[0_0_6px_#10b981]' : 'bg-blue-500 animate-pulse'}`} />
                                             <div>
                                                 <span className={`text-xs font-semibold block ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                    {lastSyncTime ? `Last sync ${lastSyncTime}` : 'Cloud Connected'}
+                                                    {lastSyncTime ? t('pop.profile.lastSync', { time: lastSyncTime }, 'Last sync {time}') : t('pop.profile.cloudConnected', null, 'Cloud Connected')}
                                                 </span>
-                                                <span className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>AES-256 zero-knowledge</span>
+                                                <span className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>{t('pop.profile.aesZeroKnowledge', null, 'AES-256 zero-knowledge')}</span>
                                             </div>
                                         </div>
 
@@ -752,14 +763,14 @@ export default function UserProfilePopover({ isClosing }) {
                                             className="px-3.5 py-1.5 bg-accent/20 hover:bg-accent/30 text-accent border border-accent/40 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 active:scale-95 shadow-[0_0_10px_var(--accent-15)]"
                                         >
                                             <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
-                                            <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                                            <span>{isSyncing ? t('pop.profile.statusSyncing', null, 'Syncing...') : t('pop.profile.syncNow', null, 'Sync Now')}</span>
                                         </button>
                                     </div>
 
                                     {/* Auto-Sync Toggle Row */}
                                     <div className={`pt-2 border-t ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'} flex items-center justify-between`}>
                                         <span className={`text-xs font-medium ${isBright ? 'text-zinc-700' : 'text-white/80'}`}>
-                                            Auto-sync changes
+                                            {t('pop.profile.autoSyncChanges', null, 'Auto-sync changes')}
                                         </span>
                                         <button
                                             type="button"
@@ -767,7 +778,7 @@ export default function UserProfilePopover({ isClosing }) {
                                             className={`w-8 h-4.5 rounded-full flex items-center p-0.5 transition-all duration-300 cursor-pointer ${
                                                 autoSyncEnabled ? 'bg-accent shadow-[0_0_8px_var(--accent-40)]' : (isBright ? 'bg-zinc-300' : 'bg-white/20')
                                             }`}
-                                            title={autoSyncEnabled ? 'Disable Auto-Sync' : 'Enable Auto-Sync'}
+                                            title={autoSyncEnabled ? t('pop.profile.disableAutoSync', null, 'Disable Auto-Sync') : t('pop.profile.enableAutoSync', null, 'Enable Auto-Sync')}
                                         >
                                             <div
                                                 className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
@@ -782,7 +793,7 @@ export default function UserProfilePopover({ isClosing }) {
                                 <div>
                                     <div className="flex items-center justify-between px-1.5 pb-1.5 text-[11px] font-semibold">
                                         <span className={`flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                            <Sliders size={11} className="text-accent" /> SYNC ITEMS
+                                            <Sliders size={11} className="text-accent" /> {t('pop.profile.syncItems', null, 'SYNC ITEMS')}
                                         </span>
                                     </div>
 
@@ -790,15 +801,15 @@ export default function UserProfilePopover({ isClosing }) {
                                         {[
                                             {
                                                 key: 'vault',
-                                                label: 'Passwords',
+                                                label: t('pop.profile.passwords', null, 'Passwords'),
                                                 count: isVaultUnlocked
-                                                    ? `${vaultCount} items`
-                                                    : (vaultItemCount > 0 ? `${vaultItemCount} locked` : 'Locked'),
+                                                    ? t('pop.profile.itemsCount', { count: vaultCount }, '{count} items')
+                                                    : (vaultItemCount > 0 ? t('pop.profile.lockedCount', { count: vaultItemCount }, '{count} locked') : t('pop.profile.locked', null, 'Locked')),
                                                 icon: Key
                                             },
-                                            { key: 'tabs', label: 'Open Tabs', count: `${totalLocalActiveTabs} local tabs`, icon: Layers },
-                                            { key: 'settings', label: 'Settings & Theme', count: 'Preferences', icon: Palette },
-                                            { key: 'history', label: 'Browsing History', count: `${historyCount} entries`, icon: History }
+                                            { key: 'tabs', label: t('pop.profile.openTabs', null, 'Open Tabs'), count: t('pop.profile.localTabsCount', { count: totalLocalActiveTabs }, '{count} local tabs'), icon: Layers },
+                                            { key: 'settings', label: t('pop.profile.settingsTheme', null, 'Settings & Theme'), count: t('pop.profile.preferences', null, 'Preferences'), icon: Palette },
+                                            { key: 'history', label: t('pop.profile.browsingHistory', null, 'Browsing History'), count: t('pop.profile.entriesCount', { count: historyCount }, '{count} entries'), icon: History }
                                         ].map((cat) => {
                                             const Icon = cat.icon;
                                             const isEnabled = syncCategories ? syncCategories[cat.key] !== false : true;
@@ -838,9 +849,9 @@ export default function UserProfilePopover({ isClosing }) {
                             <div className={`p-5 text-center rounded-2xl border ${isBright ? 'bg-black/[0.02] border-black/[0.06]' : 'bg-white/[0.02] border-white/[0.06]'} space-y-3`}>
                                 <ShieldCheck size={28} className="text-accent mx-auto opacity-80" />
                                 <div>
-                                    <h4 className={`text-xs font-bold ${isBright ? 'text-zinc-900' : 'text-white'}`}>End-to-End Encrypted Cloud Sync</h4>
+                                    <h4 className={`text-xs font-bold ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('pop.profile.e2eSyncTitle', null, 'End-to-End Encrypted Cloud Sync')}</h4>
                                     <p className={`text-[11px] ${isBright ? 'text-zinc-500' : 'text-white/50'} mt-1`}>
-                                        Sign in to synchronize passwords, open tabs, and settings across your devices with zero-knowledge AES-256 encryption.
+                                        {t('pop.profile.e2eSyncDesc', null, 'Sign in to synchronize passwords, open tabs, and settings across your devices with zero-knowledge AES-256 encryption.')}
                                     </p>
                                 </div>
                                 <button
@@ -850,7 +861,7 @@ export default function UserProfilePopover({ isClosing }) {
                                     }}
                                     className="w-full py-2.5 bg-accent text-black font-bold rounded-full text-xs transition hover:scale-[1.01] cursor-pointer shadow-md flex items-center justify-center gap-1.5 active:scale-95"
                                 >
-                                    Sign In / Register <ArrowRight size={13} />
+                                    {t('pop.profile.signInRegister', null, 'Sign In / Register')} <ArrowRight size={13} />
                                 </button>
                             </div>
                         )}
@@ -865,7 +876,7 @@ export default function UserProfilePopover({ isClosing }) {
                             <div className={`flex items-center justify-between pb-2 border-b ${isBright ? 'border-black/[0.06]' : 'border-white/[0.06]'}`}>
                                 <div className="flex items-center gap-2">
                                     <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                        <Layers size={13} className="text-accent" /> Tabs from Other Devices {totalCloudTabs > 0 && `(${totalCloudTabs})`}
+                                        <Layers size={13} className="text-accent" /> {t('pop.profile.tabsOtherDevices', null, 'Tabs from Other Devices')} {totalCloudTabs > 0 && `(${totalCloudTabs})`}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
@@ -882,7 +893,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                 ? 'bg-black/[0.04] hover:bg-black/[0.08] border-black/[0.08] text-zinc-700' 
                                                 : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-zinc-300 hover:text-white'
                                         }`}
-                                        title="Refresh remote tabs"
+                                        title={t('pop.profile.refreshRemoteTabs', null, 'Refresh remote tabs')}
                                     >
                                         <RefreshCw size={12} className={`${isRefreshingTabs || isSyncing ? 'animate-spin text-accent' : ''}`} />
                                     </button>
@@ -905,11 +916,11 @@ export default function UserProfilePopover({ isClosing }) {
                                                         }
                                                     });
                                                 });
-                                                showToast(`Opened ${count} tabs across workspaces`);
+                                                showToast(t('pop.profile.openedTabsAcrossSpaces', { count }, 'Opened {count} tabs across workspaces'));
                                             }}
                                             className="text-accent hover:underline font-semibold text-xs cursor-pointer px-2 py-0.5 rounded-full"
                                         >
-                                            Open All
+                                            {t('pop.profile.openAll', null, 'Open All')}
                                         </button>
                                     )}
                                 </div>
@@ -922,9 +933,9 @@ export default function UserProfilePopover({ isClosing }) {
                                     }`}>
                                         <Layers size={18} />
                                     </div>
-                                    <p className={`font-semibold ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>No tabs from other devices</p>
+                                    <p className={`font-semibold ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>{t('pop.profile.noRemoteTabs', null, 'No tabs from other devices')}</p>
                                     <p className="text-[10px] opacity-60 max-w-[260px] mx-auto leading-relaxed">
-                                        Tabs opened on your other connected devices will appear here automatically with real-time updates.
+                                        {t('pop.profile.noRemoteTabsDesc', null, 'Tabs opened on your other connected devices will appear here automatically with real-time updates.')}
                                     </p>
                                     <button
                                         type="button"
@@ -938,7 +949,7 @@ export default function UserProfilePopover({ isClosing }) {
                                         }`}
                                     >
                                         <RefreshCw size={11} className={isRefreshingTabs || isSyncing ? 'animate-spin' : ''} />
-                                        Refresh Now
+                                        {t('pop.profile.refreshNow', null, 'Refresh Now')}
                                     </button>
                                 </div>
                             ) : (
@@ -946,7 +957,7 @@ export default function UserProfilePopover({ isClosing }) {
                                     {displayDevices.map((device, devIdx) => {
                                         const isLaptop = /Mac|Laptop|Notebook|Book/i.test(device.deviceName);
                                         const DeviceIcon = isLaptop ? Laptop : Monitor;
-                                        const timeAgo = formatTimeAgo(device.lastSynced);
+                                        const timeAgo = formatTimeAgo(device.lastSynced, t);
                                         const devTabs = (device.tabs || []).filter(isValidSyncTab);
 
                                         return (
@@ -967,7 +978,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                             <DeviceIcon size={12} />
                                                         </div>
                                                         <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                            {device.deviceName || 'Remote Device'}
+                                                            {device.deviceName || t('pop.profile.remoteDevice', null, 'Remote Device')}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -993,11 +1004,11 @@ export default function UserProfilePopover({ isClosing }) {
                                                                             folderId: null
                                                                         }, tab.spaceId || 'personal');
                                                                     });
-                                                                    showToast(`Opened ${count} tabs from ${device.deviceName}`);
+                                                                    showToast(t('pop.profile.openedTabsFromDevice', { count, device: device.deviceName }, 'Opened {count} tabs from {device}'));
                                                                 }}
                                                                 className="text-accent hover:underline font-medium text-[11px] cursor-pointer"
                                                             >
-                                                                Open All
+                                                                {t('pop.profile.openAll', null, 'Open All')}
                                                             </button>
                                                         )}
                                                     </div>
@@ -1018,7 +1029,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                                         active: true,
                                                                         folderId: null
                                                                     }, tab.spaceId || 'personal');
-                                                                    showToast(`Opened: ${cleanTitle}`);
+                                                                    showToast(t('pop.profile.openedTab', { title: cleanTitle }, 'Opened: {title}'));
                                                                 }}
                                                                 className={`px-2.5 py-1.5 rounded-lg border transition cursor-pointer flex items-center justify-between group active:scale-[0.99] ${
                                                                     isBright 
@@ -1051,7 +1062,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                                     )}
                                                                 </div>
                                                                 <span className="inline-flex items-center gap-1 text-[11px] text-accent opacity-0 group-hover:opacity-100 transition-opacity font-medium shrink-0">
-                                                                    <span>Open</span>
+                                                                    <span>{t('pop.profile.open', null, 'Open')}</span>
                                                                     <ExternalLink size={10} />
                                                                 </span>
                                                             </div>
@@ -1081,16 +1092,16 @@ export default function UserProfilePopover({ isClosing }) {
                             }`}>
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs font-bold text-accent flex items-center gap-1.5">
-                                        <UploadCloud size={12} /> New Cloud Snapshot
+                                        <UploadCloud size={12} /> {t('pop.profile.newCloudSnapshot', null, 'New Cloud Snapshot')}
                                     </span>
-                                    <button type="button" onClick={handleClosePushBackup} className={`text-xs cursor-pointer transition ${isBright ? 'text-zinc-400 hover:text-zinc-800' : 'text-white/40 hover:text-white'}`}>Cancel</button>
+                                    <button type="button" onClick={handleClosePushBackup} className={`text-xs cursor-pointer transition ${isBright ? 'text-zinc-400 hover:text-zinc-800' : 'text-white/40 hover:text-white'}`}>{t('common.cancel', null, 'Cancel')}</button>
                                 </div>
                                 <form onSubmit={handlePushBackup} className="space-y-2">
                                     <input
                                         type="text"
                                         value={backupLabel}
                                         onChange={(e) => setBackupLabel(e.target.value)}
-                                        placeholder="Snapshot Name (e.g. Workstation Backup)"
+                                        placeholder={t('pop.profile.snapshotNamePlaceholder', null, 'Snapshot Name (e.g. Workstation Backup)')}
                                         className={`w-full ${
                                             isBright 
                                                 ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent/60 focus:bg-black/[0.05]' 
@@ -1098,7 +1109,7 @@ export default function UserProfilePopover({ isClosing }) {
                                         } border rounded-xl px-3 py-1.5 text-xs outline-none transition`}
                                     />
                                     {isVaultInitialized && !isVaultUnlocked && renderInlineVaultUnlockFields({
-                                        title: 'Unlock QVault to include passwords',
+                                        title: t('pop.profile.unlockToIncludePasswords', null, 'Unlock QVault to include passwords'),
                                         value: snapshotPin,
                                         onChange: (val) => {
                                             setSnapshotPin(val);
@@ -1114,7 +1125,7 @@ export default function UserProfilePopover({ isClosing }) {
                                         className="w-full py-1.5 bg-accent text-black font-bold rounded-full text-xs shadow-md transition hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"
                                     >
                                         {(isCreatingBackup || isUnlockingForSnapshot) ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
-                                        {isVaultInitialized && !isVaultUnlocked ? 'Unlock & Save Snapshot' : 'Save Snapshot'}
+                                        {isVaultInitialized && !isVaultUnlocked ? t('pop.profile.unlockAndSaveSnapshot', null, 'Unlock & Save Snapshot') : t('pop.profile.saveSnapshot', null, 'Save Snapshot')}
                                     </button>
                                 </form>
                             </div>
@@ -1124,7 +1135,7 @@ export default function UserProfilePopover({ isClosing }) {
                         <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
                             <div className={`flex items-center justify-between pb-1.5 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                 <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                    <Cloud size={13} className="text-accent" /> Cloud Snapshots {cloudBackups.length > 0 && `(${cloudBackups.length})`}
+                                    <Cloud size={13} className="text-accent" /> {t('pop.profile.cloudSnapshots', null, 'Cloud Snapshots')} {cloudBackups.length > 0 && `(${cloudBackups.length})`}
                                 </span>
                                 <div className="flex items-center gap-2">
                                     <button 
@@ -1132,7 +1143,7 @@ export default function UserProfilePopover({ isClosing }) {
                                         className={`hover:text-accent flex items-center gap-1 text-[11px] cursor-pointer p-1 rounded-full ${
                                             isBright ? 'text-zinc-500 hover:bg-black/[0.05]' : 'text-white/50 hover:bg-white/[0.05]'
                                         }`}
-                                        title="Refresh"
+                                        title={t('pop.profile.refresh', null, 'Refresh')}
                                     >
                                         <RefreshCw size={11} />
                                     </button>
@@ -1141,7 +1152,7 @@ export default function UserProfilePopover({ isClosing }) {
                                             onClick={() => setShowPushBackupForm(true)}
                                             className="px-3 py-0.5 rounded-full bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer"
                                         >
-                                            <Plus size={10} /> Push
+                                            <Plus size={10} /> {t('pop.profile.pushSnapshot', null, 'Push')}
                                         </button>
                                     )}
                                 </div>
@@ -1150,12 +1161,12 @@ export default function UserProfilePopover({ isClosing }) {
                             {isLoadingBackups ? (
                                 <div className={`text-center py-4 text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                     <RefreshCw size={13} className="animate-spin mx-auto mb-1 text-accent" />
-                                    Loading snapshots...
+                                    {t('pop.profile.loadingSnapshots', null, 'Loading snapshots...')}
                                 </div>
                             ) : cloudBackups.length === 0 ? (
                                 <div className={`text-center py-6 text-xs ${isBright ? 'text-zinc-400' : 'text-white/40'} space-y-1`}>
                                     <Cloud size={20} className="text-accent/40 mx-auto opacity-70" />
-                                    <p className={`font-medium ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>No cloud snapshots yet</p>
+                                    <p className={`font-medium ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>{t('pop.profile.noSnapshotsYet', null, 'No cloud snapshots yet')}</p>
                                 </div>
                             ) : (
                                 <div className="space-y-1.5 max-h-[38vh] overflow-y-auto hide-scroll">
@@ -1166,10 +1177,10 @@ export default function UserProfilePopover({ isClosing }) {
                                             <div key={bkMatchId || bkIdx} className={`p-2.5 ${isBright ? 'bg-black/[0.02] border-black/[0.04]' : 'bg-white/[0.02] border-white/[0.04]'} border rounded-xl transition space-y-1`}>
                                                 <div className="flex items-center justify-between">
                                                     <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white'} truncate flex-1 pr-2`}>
-                                                        {bk.label || 'Snapshot'}
+                                                        {bk.label || t('pop.profile.snapshotFallback', null, 'Snapshot')}
                                                     </span>
                                                     <span className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/40'} font-mono`}>
-                                                        {bk.createdAt ? new Date(bk.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                                                        {bk.createdAt ? new Date(bk.createdAt).toLocaleDateString(intlLocale, { month: 'short', day: 'numeric' }) : ''}
                                                     </span>
                                                 </div>
                                                 {bk.stats && (
@@ -1185,7 +1196,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                         className={`pt-2 border-t space-y-2 ${isBright ? 'border-black/[0.04]' : 'border-white/[0.04]'}`}
                                                     >
                                                         {renderInlineVaultUnlockFields({
-                                                            title: 'Unlock QVault to restore passwords',
+                                                            title: t('pop.profile.unlockToRestorePasswords', null, 'Unlock QVault to restore passwords'),
                                                             value: restorePin,
                                                             onChange: (val) => {
                                                                 setRestorePin(val);
@@ -1203,11 +1214,11 @@ export default function UserProfilePopover({ isClosing }) {
                                                             >
                                                                 {isUnlockingForRestore ? (
                                                                     <>
-                                                                        <RefreshCw size={10} className="animate-spin" /> Unlocking...
+                                                                        <RefreshCw size={10} className="animate-spin" /> {t('pop.profile.unlocking', null, 'Unlocking...')}
                                                                     </>
                                                                 ) : (
                                                                     <>
-                                                                        <DownloadCloud size={10} /> Unlock & Restore
+                                                                        <DownloadCloud size={10} /> {t('pop.profile.unlockAndRestore', null, 'Unlock & Restore')}
                                                                     </>
                                                                 )}
                                                             </button>
@@ -1223,7 +1234,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                                     isBright ? 'bg-black/[0.05] text-zinc-600 hover:bg-black/[0.09]' : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.12]'
                                                                 }`}
                                                             >
-                                                                Cancel
+                                                                {t('common.cancel', null, 'Cancel')}
                                                             </button>
                                                         </div>
                                                     </form>
@@ -1236,11 +1247,11 @@ export default function UserProfilePopover({ isClosing }) {
                                                         >
                                                             {restoringBackupId === bk.id ? (
                                                                 <>
-                                                                    <RefreshCw size={10} className="animate-spin" /> Restoring...
+                                                                    <RefreshCw size={10} className="animate-spin" /> {t('pop.profile.restoring', null, 'Restoring...')}
                                                                 </>
                                                             ) : (
                                                                 <>
-                                                                    <DownloadCloud size={10} /> Restore
+                                                                    <DownloadCloud size={10} /> {t('pop.profile.restore', null, 'Restore')}
                                                                 </>
                                                             )}
                                                         </button>
@@ -1248,7 +1259,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                             disabled={isRestoringBackup}
                                                             onClick={() => deleteCloudBackup(bk.id)}
                                                             className="p-1 rounded-full text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition cursor-pointer disabled:opacity-40"
-                                                            title="Delete"
+                                                            title={t('common.delete', null, 'Delete')}
                                                         >
                                                             <Trash2 size={11} />
                                                         </button>
@@ -1263,7 +1274,7 @@ export default function UserProfilePopover({ isClosing }) {
 
                         {/* Offline Zero-Cloud File Sync (.qsync) */}
                         <div className={`p-3 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl flex items-center justify-between`}>
-                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>Offline Archive</span>
+                            <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>{t('pop.profile.offlineArchive', null, 'Offline Archive')}</span>
                             <div className="flex gap-2">
                                 <button
                                     onClick={exportLocalBackup}
@@ -1271,12 +1282,12 @@ export default function UserProfilePopover({ isClosing }) {
                                         isBright ? 'bg-black/[0.04] text-zinc-800 border-black/[0.08] hover:bg-black/[0.08]' : 'bg-white/[0.04] text-white border-white/[0.06] hover:bg-white/[0.08]'
                                     }`}
                                 >
-                                    <Download size={11} className="text-accent" /> Export
+                                    <Download size={11} className="text-accent" /> {t('pop.profile.export', null, 'Export')}
                                 </button>
                                 <label className={`px-3.5 py-1 border rounded-full text-[10px] font-medium transition cursor-pointer hover:border-accent/40 flex items-center gap-1 ${
                                     isBright ? 'bg-black/[0.04] text-zinc-800 border-black/[0.08] hover:bg-black/[0.08]' : 'bg-white/[0.04] text-white border-white/[0.06] hover:bg-white/[0.08]'
                                 }`}>
-                                    <Upload size={11} className="text-accent" /> Import
+                                    <Upload size={11} className="text-accent" /> {t('pop.profile.import', null, 'Import')}
                                     <input type="file" accept=".qsync,.json" onChange={handleImportFile} className="hidden" />
                                 </label>
                             </div>
@@ -1291,13 +1302,13 @@ export default function UserProfilePopover({ isClosing }) {
                         <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
                             <div className={`flex items-center justify-between pb-1.5 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                 <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                    <User size={13} className="text-accent" /> Active Profile
+                                    <User size={13} className="text-accent" /> {t('pop.profile.activeProfile', null, 'Active Profile')}
                                 </span>
                                 <button
                                     onClick={() => setIsEditing(!isEditing)}
                                     className="text-xs text-accent hover:underline flex items-center gap-1 cursor-pointer"
                                 >
-                                    <Edit3 size={11} /> {isEditing ? 'Cancel' : 'Edit'}
+                                    <Edit3 size={11} /> {isEditing ? t('common.cancel', null, 'Cancel') : t('common.edit', null, 'Edit')}
                                 </button>
                             </div>
 
@@ -1333,14 +1344,14 @@ export default function UserProfilePopover({ isClosing }) {
                                                 onClick={handleSaveProfile}
                                                 className="px-3 py-1 bg-accent text-black font-bold rounded-full text-xs cursor-pointer"
                                             >
-                                                Save
+                                                {t('common.save', null, 'Save')}
                                             </button>
                                         </div>
                                     ) : (
                                         <div>
                                             <h4 className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{username}</h4>
                                             <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                                {activeProfile?.name || 'Default'}
+                                                {activeProfile?.name || t('pop.profile.defaultProfile', null, 'Default')}
                                             </span>
                                         </div>
                                     )}
@@ -1373,7 +1384,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                             ? 'bg-accent/20 border-accent text-accent' 
                                                             : (isBright ? 'bg-black/[0.03] border-black/10 text-zinc-700 hover:bg-black/[0.06]' : 'bg-white/[0.02] border-white/8 hover:bg-white/[0.05]')
                                                     }`}
-                                                    title={preset.name}
+                                                    title={t(preset.nameKey, null, preset.name)}
                                                 >
                                                     <IconComponent size={14} />
                                                 </button>
@@ -1384,7 +1395,7 @@ export default function UserProfilePopover({ isClosing }) {
                                         type="text"
                                         value={customAvatarUrl}
                                         onChange={(e) => setCustomAvatarUrl(e.target.value)}
-                                        placeholder="Or paste image URL..."
+                                        placeholder={t('pop.profile.pasteImageUrl', null, 'Or paste image URL...')}
                                         className={`w-full border rounded-xl px-2.5 py-1 text-[10px] outline-none font-mono ${
                                             isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-white/[0.04] border-white/10 text-white placeholder-white/40'
                                         }`}
@@ -1397,13 +1408,13 @@ export default function UserProfilePopover({ isClosing }) {
                         <div className={`p-3.5 ${getLiquidGlassCardClasses(isBright)} border rounded-2xl space-y-2.5`}>
                             <div className={`flex items-center justify-between pb-1.5 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                 <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                    <User size={13} className="text-accent" /> Profiles ({profiles.length})
+                                    <User size={13} className="text-accent" /> {t('pop.profile.profilesCount', { count: profiles.length }, 'Profiles ({count})')}
                                 </span>
                                 <button
                                     onClick={() => setShowAddProfile(!showAddProfile)}
                                     className="px-2.5 py-0.5 rounded-full bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 text-xs font-medium flex items-center gap-1 cursor-pointer"
                                 >
-                                    <Plus size={12} /> Add
+                                    <Plus size={12} /> {t('pop.profile.add', null, 'Add')}
                                 </button>
                             </div>
 
@@ -1418,7 +1429,7 @@ export default function UserProfilePopover({ isClosing }) {
                                 }`}>
                                     <input
                                         type="text"
-                                        placeholder="New Profile Name"
+                                        placeholder={t('pop.profile.newProfileNamePlaceholder', null, 'New Profile Name')}
                                         value={newProfileName}
                                         onChange={(e) => setNewProfileName(e.target.value)}
                                         className={`w-full ${
@@ -1446,14 +1457,14 @@ export default function UserProfilePopover({ isClosing }) {
                                                 isBright ? 'bg-black/5 hover:bg-black/10 text-zinc-600' : 'bg-white/[0.06] hover:bg-white/[0.1] text-white/70'
                                             }`}
                                         >
-                                            Cancel
+                                            {t('common.cancel', null, 'Cancel')}
                                         </button>
                                         <button
                                             type="submit"
                                             disabled={!newProfileName.trim()}
                                             className="flex-1 py-1 bg-accent text-black font-bold rounded-full text-[10px] disabled:opacity-50 cursor-pointer"
                                         >
-                                            Create
+                                            {t('pop.profile.create', null, 'Create')}
                                         </button>
                                     </div>
                                 </form>
@@ -1490,7 +1501,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                     className={`p-1 rounded-full opacity-60 hover:opacity-100 transition cursor-pointer ${
                                                         isBright ? 'hover:bg-black/[0.06]' : 'hover:bg-white/[0.05]'
                                                     }`}
-                                                    title="Open in new window"
+                                                    title={t('pop.profile.openInNewWindow', null, 'Open in new window')}
                                                 >
                                                     <ExternalLink size={11} />
                                                 </button>
@@ -1501,7 +1512,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                             isBright ? 'bg-black/[0.05] text-zinc-700' : 'bg-white/[0.06]'
                                                         }`}
                                                     >
-                                                        Switch
+                                                        {t('pop.profile.switch', null, 'Switch')}
                                                     </button>
                                                 )}
                                                 {profiles.length > 1 && !isCurrent && (
@@ -1526,7 +1537,7 @@ export default function UserProfilePopover({ isClosing }) {
                                 className="w-full flex items-center justify-between text-xs font-semibold cursor-pointer"
                             >
                                 <span className="flex items-center gap-1.5">
-                                    <Lock size={12} className="text-accent" /> Security & Passphrase
+                                    <Lock size={12} className="text-accent" /> {t('pop.profile.securityPassphrase', null, 'Security & Passphrase')}
                                 </span>
                                 {showSecuritySection ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                             </button>
@@ -1535,7 +1546,7 @@ export default function UserProfilePopover({ isClosing }) {
                                 <div className={`pt-2 border-t space-y-2.5 animate-slide-down-fade ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
                                     {user && (
                                         <form onSubmit={handleChangeAccountPassword} className={`space-y-2 pb-2 border-b ${isBright ? 'border-black/[0.05]' : 'border-white/[0.04]'}`}>
-                                            <span className="text-[10px] font-bold text-accent uppercase block">Change Password</span>
+                                            <span className="text-[10px] font-bold text-accent uppercase block">{t('pop.profile.changePassword', null, 'Change Password')}</span>
                                             {passMsg && (
                                                 <p className={`text-[10px] p-1.5 rounded-xl border ${passMsg.type === 'success' ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/30' : 'bg-red-500/20 text-red-500 border-red-500/30'}`}>
                                                     {passMsg.text}
@@ -1545,7 +1556,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                 type={showPassText ? "text" : "password"}
                                                 value={currPass}
                                                 onChange={(e) => setCurrPass(e.target.value)}
-                                                placeholder="Current Password"
+                                                placeholder={t('pop.profile.currentPassword', null, 'Current Password')}
                                                 className={`w-full border rounded-xl px-2.5 py-1 text-xs outline-none ${
                                                     isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-white/[0.04] border-white/10 text-white placeholder-white/40'
                                                 }`}
@@ -1554,7 +1565,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                 type={showPassText ? "text" : "password"}
                                                 value={newPass}
                                                 onChange={(e) => setNewPass(e.target.value)}
-                                                placeholder="New Password (min 6 chars)"
+                                                placeholder={t('pop.profile.newPasswordMin', null, 'New Password (min 6 chars)')}
                                                 className={`w-full border rounded-xl px-2.5 py-1 text-xs outline-none ${
                                                     isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-white/[0.04] border-white/10 text-white placeholder-white/40'
                                                 }`}
@@ -1564,7 +1575,7 @@ export default function UserProfilePopover({ isClosing }) {
                                                 disabled={isChangingPass || !currPass || !newPass}
                                                 className="w-full py-1.5 bg-accent/20 hover:bg-accent/30 text-accent border border-accent/30 rounded-full text-xs font-bold transition disabled:opacity-50 cursor-pointer"
                                             >
-                                                {isChangingPass ? 'Updating...' : 'Update Password'}
+                                                {isChangingPass ? t('pop.profile.updating', null, 'Updating...') : t('pop.profile.updatePassword', null, 'Update Password')}
                                             </button>
                                         </form>
                                     )}
@@ -1572,13 +1583,13 @@ export default function UserProfilePopover({ isClosing }) {
                                     {/* Local AES-256 Key */}
                                     <div className="space-y-1.5">
                                         <div className="flex items-center justify-between">
-                                            <span className={`text-[10px] font-bold uppercase block ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>AES-256 Key</span>
+                                            <span className={`text-[10px] font-bold uppercase block ${isBright ? 'text-emerald-700' : 'text-emerald-400'}`}>{t('pop.profile.aesKey', null, 'AES-256 Key')}</span>
                                             <button
                                                 type="button"
                                                 onClick={() => setShowPassText(!showPassText)}
                                                 className="text-[10px] opacity-60 hover:opacity-100 cursor-pointer"
                                             >
-                                                {showPassText ? 'Hide' : 'Show'}
+                                                {showPassText ? t('pop.profile.hide', null, 'Hide') : t('pop.profile.show', null, 'Show')}
                                             </button>
                                         </div>
                                         <input
@@ -1600,7 +1611,7 @@ export default function UserProfilePopover({ isClosing }) {
                                 onClick={logout}
                                 className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-full text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
                             >
-                                <LogOut size={12} /> Sign Out of QBrowse Cloud
+                                <LogOut size={12} /> {t('pop.profile.signOutCloud', null, 'Sign Out of QBrowse Cloud')}
                             </button>
                         ) : (
                             <button
@@ -1610,7 +1621,7 @@ export default function UserProfilePopover({ isClosing }) {
                                 }}
                                 className="w-full py-2.5 bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 rounded-full text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
                             >
-                                Sign In →
+                                {t('pop.profile.signInArrow', null, 'Sign In →')}
                             </button>
                         )}
                     </div>

@@ -4,6 +4,7 @@ import useUIStore from '../../store/useUIStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTabStore from '../../store/useTabStore';
 import { isFirebaseConfigured, reinitializeFirebase } from '../../services/firebase';
+import { useTranslation } from '../../i18n/index';
 
 // Apple-style synthesized unlock chime using Web Audio API
 const playUnlockChime = () => {
@@ -44,12 +45,14 @@ const playUnlockChime = () => {
 };
 
 const AuthModal = () => {
+    const { t } = useTranslation();
     const { activeModal, isModalClosing, closeModal, showToast, theme } = useUIStore();
     const { signIn, signUp, user, logout, isSyncing, authError, masterPassword, setMasterPassword } = useSyncStore();
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
     const [mode, setMode] = useState('login'); // 'login' | 'register'
+    const [hoveredMode, setHoveredMode] = useState(null);
     const isSignUp = mode === 'register';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -102,12 +105,12 @@ const AuthModal = () => {
                 reinitializeFirebase(configObj);
                 useSyncStore.getState().initAuth();
                 setShowConfigDrawer(false);
-                showToast("Firebase Cloud Sync credentials configured!");
+                showToast(t('pop.auth.firebaseConfigured', null, 'Firebase Cloud Sync credentials configured!'));
             } else {
-                showToast("Invalid configuration. Please provide a valid Firebase API Key.", "error");
+                showToast(t('pop.auth.invalidConfig', null, 'Invalid configuration. Please provide a valid Firebase API Key.'), "error");
             }
         } catch (e) {
-            showToast("Failed to parse config: " + e.message, "error");
+            showToast(t('pop.auth.parseConfigError', { error: e.message }, 'Failed to parse config: {error}'), "error");
         }
     };
 
@@ -120,17 +123,17 @@ const AuthModal = () => {
         if (!email.trim() || !password || authStatus !== 'idle') return;
 
         if (password.length < 6) {
-            setValidationError('Password must be at least 6 characters long.');
+            setValidationError(t('pop.auth.errPassMin', null, 'Password must be at least 6 characters long.'));
             return;
         }
 
         if (mode === 'register') {
             if (!confirmPassword) {
-                setValidationError('Please confirm your password.');
+                setValidationError(t('pop.auth.errConfirmReq', null, 'Please confirm your password.'));
                 return;
             }
             if (password !== confirmPassword) {
-                setValidationError('Passwords do not match. Please re-check.');
+                setValidationError(t('pop.auth.errPassMismatch', null, 'Passwords do not match. Please re-check.'));
                 return;
             }
         }
@@ -242,17 +245,17 @@ const AuthModal = () => {
                         authStatus === 'success' ? 'text-emerald-500' : (isBright ? 'text-zinc-900' : 'text-white')
                     }`}>
                         {authStatus === 'success' 
-                            ? 'Cloud Sync Connected!' 
+                            ? t('pop.auth.connectedTitle', null, 'Cloud Sync Connected!')
                             : authStatus === 'authenticating'
-                                ? (mode === 'login' ? 'Authenticating...' : 'Creating Account...')
-                                : 'QBrowse Cloud Sync'}
+                                ? (mode === 'login' ? t('pop.auth.authenticating', null, 'Authenticating...') : t('pop.auth.creatingAccount', null, 'Creating Account...'))
+                                : t('pop.auth.title', null, 'QBrowse Cloud Sync')}
                     </h2>
                     <p className={`text-xs mt-1 transition-colors duration-300 ${
                         authStatus === 'success' ? 'text-emerald-500/80 font-medium' : (isBright ? 'text-zinc-500' : 'text-white/40')
                     }`}>
                         {authStatus === 'success'
-                            ? 'End-to-End Encrypted Cloud Storage Linked'
-                            : 'End-to-End Encrypted Firebase Firestore Sync'}
+                            ? t('pop.auth.connectedSubtitle', null, 'End-to-End Encrypted Cloud Storage Linked')
+                            : t('pop.auth.subtitle', null, 'End-to-End Encrypted Firebase Firestore Sync')}
                     </p>
                 </div>
 
@@ -266,7 +269,7 @@ const AuthModal = () => {
                             <div className="flex-1 min-w-0">
                                 <p className={`font-semibold text-sm truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{user.email}</p>
                                 <p className="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
-                                    <UserCheck size={12} /> Active Cloud Sync
+                                    <UserCheck size={12} /> {t('pop.auth.activeSync', null, 'Active Cloud Sync')}
                                 </p>
                             </div>
                         </div>
@@ -274,14 +277,14 @@ const AuthModal = () => {
                         {/* Master Password Setting */}
                         <div className={`p-4 border rounded-2xl space-y-2 ${isBright ? 'bg-black/[0.02] border-black/10' : 'bg-black/40 border-white/10'}`}>
                             <label className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-700' : 'text-white/70'}`}>
-                                <Key size={13} className="text-accent" /> Master Encryption Password
+                                <Key size={13} className="text-accent" /> {t('pop.auth.masterEncPass', null, 'Master Encryption Password')}
                             </label>
                             <div className="flex items-center gap-2">
                                 <input
                                     type={showPass ? "text" : "password"}
                                     value={masterPassword}
                                     onChange={(e) => setMasterPassword(e.target.value)}
-                                    placeholder="Master Passphrase"
+                                    placeholder={t('pop.auth.masterPassphrasePlaceholder', null, 'Master Passphrase')}
                                     className={`flex-1 border rounded-xl px-3 py-2 text-xs font-mono outline-none focus:border-accent ${
                                         isBright ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400' : 'bg-white/5 border-white/10 text-white placeholder-white/30'
                                     }`}
@@ -294,7 +297,7 @@ const AuthModal = () => {
                                     {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
                                 </button>
                             </div>
-                            <p className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>Derives AES-GCM 256-bit keys on your device. Never leaves your hardware.</p>
+                            <p className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('pop.auth.masterKeyDeviceHint', null, 'Derives AES-GCM 256-bit keys on your device. Never leaves your hardware.')}</p>
                         </div>
 
                         <div className="flex gap-3">
@@ -306,56 +309,100 @@ const AuthModal = () => {
                                         : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'
                                 }`}
                             >
-                                Sign Out
+                                {t('pop.auth.signOut', null, 'Sign Out')}
                             </button>
                             <button
                                 onClick={closeModal}
                                 className="flex-1 py-2.5 bg-accent hover:bg-accent/90 text-black font-bold rounded-xl text-xs shadow-md transition cursor-pointer"
                             >
-                                Close
+                                {t('common.close', null, 'Close')}
                             </button>
                         </div>
                     </div>
                 ) : (
                     /* Auth Form */
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        {/* Tab Selector */}
+                        {/* Flagship Spaces-Style Sliding Pill Mode Switcher */}
                         <div className="space-y-1.5">
-                            <div className={`flex p-1 border rounded-xl ${isBright ? 'bg-black/[0.04] border-black/10' : 'bg-black/40 border-white/10'}`}>
+                            <div
+                                onMouseLeave={() => setHoveredMode(null)}
+                                className={`relative grid grid-cols-2 p-1 rounded-full border shadow-xs backdrop-blur-2xl transition-colors duration-200 select-none ${
+                                    isBright
+                                        ? 'bg-black/[0.03] border-black/[0.05]'
+                                        : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
+                                }`}
+                            >
+                                {/* Subtle Hover Preview Pill */}
+                                {hoveredMode && hoveredMode !== mode && (
+                                    <div
+                                        className={`absolute top-1 bottom-1 rounded-full pointer-events-none ${
+                                            isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                        }`}
+                                        style={{
+                                            left: '4px',
+                                            width: 'calc((100% - 8px) / 2)',
+                                            transform: `translateX(${hoveredMode === 'register' ? 100 : 0}%)`,
+                                            transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)'
+                                        }}
+                                    />
+                                )}
+
+                                {/* Signature Liquid Glass Sliding Pill */}
+                                <div
+                                    className={`absolute top-1 bottom-1 rounded-full border pointer-events-none ${
+                                        isBright
+                                            ? 'bg-white border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
+                                            : 'shadow-xs'
+                                    }`}
+                                    style={{
+                                        left: '4px',
+                                        width: 'calc((100% - 8px) / 2)',
+                                        transform: `translateX(${mode === 'register' ? 100 : 0}%)`,
+                                        transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                                        ...(!isBright ? {
+                                            borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
+                                            backgroundColor: 'var(--accent-15, rgba(212, 188, 148, 0.16))',
+                                            boxShadow: '0 2px 10px rgba(212, 188, 148, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)'
+                                        } : {})
+                                    }}
+                                />
+
                                 <button
                                     type="button"
+                                    onMouseEnter={() => setHoveredMode('login')}
                                     onClick={() => {
                                         setMode('login');
                                         setValidationError(null);
                                     }}
-                                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                                        mode === 'login' 
-                                            ? 'bg-accent text-black shadow-md' 
-                                            : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                                    className={`relative z-10 py-1.5 px-2 rounded-full text-xs transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer outline-none select-none ${
+                                        mode === 'login'
+                                            ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900 font-semibold' : 'text-white/55 hover:text-white font-semibold')
                                     }`}
                                 >
-                                    <span>Sign In</span>
-                                    <span className="text-[10px] opacity-75 font-normal">(Existing)</span>
+                                    <span>{t('pop.auth.signIn', null, 'Sign In')}</span>
+                                    <span className="text-[10px] opacity-75 font-normal">{t('pop.auth.existingBadge', null, '(Existing)')}</span>
                                 </button>
                                 <button
                                     type="button"
+                                    onMouseEnter={() => setHoveredMode('register')}
                                     onClick={() => {
                                         setMode('register');
                                         setValidationError(null);
                                     }}
-                                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                                        mode === 'register' 
-                                            ? 'bg-accent text-black shadow-md' 
-                                            : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/60 hover:text-white')
+                                    className={`relative z-10 py-1.5 px-2 rounded-full text-xs transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer outline-none select-none ${
+                                        mode === 'register'
+                                            ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
+                                            : (isBright ? 'text-zinc-600 hover:text-zinc-900 font-semibold' : 'text-white/55 hover:text-white font-semibold')
                                     }`}
                                 >
-                                    <span>Register</span>
-                                    <span className="text-[10px] opacity-75 font-normal">(New Account)</span>
+                                    <span>{t('pop.auth.register', null, 'Register')}</span>
+                                    <span className="text-[10px] opacity-75 font-normal">{t('pop.auth.newAccountBadge', null, '(New Account)')}</span>
                                 </button>
                             </div>
 
                             <p className={`text-[11px] text-center pt-0.5 ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
-                                {isSignUp ? 'Create a free QBrowse account to sync your data across devices.' : 'Sign in to synchronize your existing vault and spaces.'}
+                                {isSignUp ? t('pop.auth.registerDesc', null, 'Create a free QBrowse account to sync your data across devices.') : t('pop.auth.loginDesc', null, 'Sign in to synchronize your existing vault and spaces.')}
                             </p>
                         </div>
 
@@ -374,7 +421,7 @@ const AuthModal = () => {
                                         }}
                                         className="shrink-0 text-[11px] font-bold text-accent underline hover:opacity-80"
                                     >
-                                        Switch to Sign In
+                                        {t('pop.auth.switchToSignIn', null, 'Switch to Sign In')}
                                     </button>
                                 )}
                             </div>
@@ -390,7 +437,7 @@ const AuthModal = () => {
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="flex items-center gap-2 text-amber-500 font-semibold text-xs">
                                         <Settings size={14} />
-                                        <span>Cloud Sync Configuration</span>
+                                        <span>{t('pop.auth.configTitle', null, 'Cloud Sync Configuration')}</span>
                                     </div>
                                     {isFirebaseConfigured && (
                                         <button
@@ -403,13 +450,16 @@ const AuthModal = () => {
                                     )}
                                 </div>
                                 <p className={`text-[11px] leading-relaxed ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                    Paste your Firebase API Key or full <code>.env</code> / JSON config below to connect sync in this installed package.
+                                    {(() => {
+                                        const parts = t('pop.auth.configDesc', { env: '__ENV__' }, 'Paste your Firebase API Key or full __ENV__ / JSON config below to connect sync in this installed package.').split('__ENV__');
+                                        return <>{parts[0]}<code>.env</code>{parts[1] || ''}</>;
+                                    })()}
                                 </p>
                                 <textarea
                                     rows={2}
                                     value={customConfigInput}
                                     onChange={(e) => setCustomConfigInput(e.target.value)}
-                                    placeholder="Paste API Key (AIzaSy...) or .env lines"
+                                    placeholder={t('pop.auth.configPlaceholder', null, 'Paste API Key (AIzaSy...) or .env lines')}
                                     className={`w-full text-xs font-mono p-2.5 rounded-xl border outline-none resize-none transition-colors ${
                                         isBright 
                                             ? 'bg-white border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-amber-500' 
@@ -418,14 +468,17 @@ const AuthModal = () => {
                                 />
                                 <div className="flex items-center justify-between gap-2 pt-1">
                                     <span className={`text-[10px] ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                        Saves to <code>~/.config/QBrowse/</code>
+                                        {(() => {
+                                            const parts = t('pop.auth.savesToPath', { path: '__PATH__' }, 'Saves to __PATH__').split('__PATH__');
+                                            return <>{parts[0]}<code>~/.config/QBrowse/</code>{parts[1] || ''}</>;
+                                        })()}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={handleSaveCustomFirebase}
                                         className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs transition cursor-pointer shadow-md"
                                     >
-                                        Save & Connect
+                                        {t('pop.auth.saveAndConnect', null, 'Save & Connect')}
                                     </button>
                                 </div>
                             </div>
@@ -433,7 +486,7 @@ const AuthModal = () => {
 
                         <div className="space-y-3">
                             <div>
-                                <label className={`text-[11px] font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>Email Address</label>
+                                <label className={`text-[11px] font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>{t('pop.auth.emailLabel', null, 'Email Address')}</label>
                                 <div className="relative flex items-center">
                                     <Mail size={14} className={`absolute left-3 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
                                     <input
@@ -441,7 +494,7 @@ const AuthModal = () => {
                                         required
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="name@example.com"
+                                        placeholder={t('pop.auth.emailPlaceholder', null, 'name@example.com')}
                                         className={`w-full border rounded-xl py-2 pl-9 pr-3 text-xs outline-none transition-colors ${
                                             isBright 
                                                 ? 'bg-black/[0.04] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent' 
@@ -453,7 +506,7 @@ const AuthModal = () => {
 
                             <div>
                                 <label className={`text-[11px] font-semibold block mb-1 ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                    {mode === 'register' ? 'Create Password (min. 6 characters)' : 'Account Password'}
+                                    {mode === 'register' ? t('pop.auth.createPasswordLabel', null, 'Create Password (min. 6 characters)') : t('pop.auth.accountPasswordLabel', null, 'Account Password')}
                                 </label>
                                 <div className="relative flex items-center">
                                     <Lock size={14} className={`absolute left-3 ${isBright ? 'text-zinc-400' : 'text-white/40'}`} />
@@ -486,15 +539,15 @@ const AuthModal = () => {
                                 <div className="animate-pop-in">
                                     <div className="flex items-center justify-between mb-1">
                                         <label className={`text-[11px] font-semibold block ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                            Confirm Password
+                                            {t('pop.auth.confirmPasswordLabel', null, 'Confirm Password')}
                                         </label>
                                         {confirmPassword.length > 0 && (
                                             password === confirmPassword ? (
                                                 <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
-                                                    <Check size={11} strokeWidth={3} /> Passwords match
+                                                    <Check size={11} strokeWidth={3} /> {t('pop.auth.passwordsMatch', null, 'Passwords match')}
                                                 </span>
                                             ) : (
-                                                <span className="text-[10px] text-red-500">Passwords do not match</span>
+                                                <span className="text-[10px] text-red-500">{t('pop.auth.passwordsDoNotMatch', null, 'Passwords do not match')}</span>
                                             )
                                         )}
                                     </div>
@@ -566,12 +619,12 @@ const AuthModal = () => {
                                         </div>
                                         <div className="min-w-0">
                                             <p className={`text-xs font-semibold leading-tight ${isBright ? 'text-zinc-900' : 'text-white'}`}>
-                                                Use account password as Master Key
+                                                {t('pop.auth.useAccountAsMaster', null, 'Use account password as Master Key')}
                                             </p>
                                             <p className={`text-[10px] mt-0.5 truncate ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
                                                 {useAccountPassAsMaster 
-                                                    ? 'Derives AES-GCM 256-bit keys from your login password' 
-                                                    : 'Using dedicated custom encryption passphrase'}
+                                                    ? t('pop.auth.useAccountAsMasterOn', null, 'Derives AES-GCM 256-bit keys from your login password')
+                                                    : t('pop.auth.useAccountAsMasterOff', null, 'Using dedicated custom encryption passphrase')}
                                             </p>
                                         </div>
                                     </div>
@@ -601,7 +654,7 @@ const AuthModal = () => {
                                     }`}>
                                         <div className="flex items-center justify-between">
                                             <label className="text-[11px] font-semibold text-accent flex items-center gap-1.5">
-                                                <Key size={12} /> Custom Master Encryption Passphrase
+                                                <Key size={12} /> {t('pop.auth.customMasterLabel', null, 'Custom Master Encryption Passphrase')}
                                             </label>
                                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/25 font-mono">
                                                 AES-256
@@ -614,7 +667,7 @@ const AuthModal = () => {
                                                 required={!useAccountPassAsMaster}
                                                 value={customMasterPass}
                                                 onChange={(e) => setCustomMasterPass(e.target.value)}
-                                                placeholder="Enter custom encryption passphrase"
+                                                placeholder={t('pop.auth.customMasterPlaceholder', null, 'Enter custom encryption passphrase')}
                                                 className={`w-full border rounded-xl py-2 pl-3 pr-9 text-xs outline-none transition-colors font-mono ${
                                                     isBright 
                                                         ? 'bg-white border-black/15 text-zinc-900 placeholder-zinc-400 focus:border-accent' 
@@ -632,7 +685,7 @@ const AuthModal = () => {
 
                                         <p className={`text-[10px] leading-relaxed flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
                                             <AlertCircle size={12} className="shrink-0 text-amber-500" />
-                                            <span>Make sure to save this passphrase securely. QBrowse cannot recover encrypted data if lost.</span>
+                                            <span>{t('pop.auth.customMasterWarning', null, 'Make sure to save this passphrase securely. QBrowse cannot recover encrypted data if lost.')}</span>
                                         </p>
                                     </div>
                                 )}
@@ -650,15 +703,15 @@ const AuthModal = () => {
                         >
                             {authStatus === 'success' ? (
                                 <>
-                                    <Check size={15} className="stroke-[2.5]" /> Connected!
+                                    <Check size={15} className="stroke-[2.5]" /> {t('pop.auth.btnConnected', null, 'Connected!')}
                                 </>
                             ) : authStatus === 'authenticating' ? (
                                 <>
-                                    <Loader2 size={14} className="animate-spin" /> Authenticating & Encrypting...
+                                    <Loader2 size={14} className="animate-spin" /> {t('pop.auth.btnAuthenticating', null, 'Authenticating & Encrypting...')}
                                 </>
                             ) : (
                                 <>
-                                    {mode === 'login' ? 'Sign In to Cloud Sync' : 'Create Encrypted Account'} <ArrowRight size={14} />
+                                    {mode === 'login' ? t('pop.auth.btnSignIn', null, 'Sign In to Cloud Sync') : t('pop.auth.btnCreateAccount', null, 'Create Encrypted Account')} <ArrowRight size={14} />
                                 </>
                             )}
                         </button>
@@ -666,7 +719,7 @@ const AuthModal = () => {
                         <div className="text-center pt-2 space-y-2">
                             {mode === 'register' ? (
                                 <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                    Already have an account?{' '}
+                                    {t('pop.auth.alreadyHaveAccount', null, 'Already have an account?')}{' '}
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -675,12 +728,12 @@ const AuthModal = () => {
                                         }}
                                         className="text-accent font-bold hover:underline cursor-pointer"
                                     >
-                                        Sign In here
+                                        {t('pop.auth.signInHere', null, 'Sign In here')}
                                     </button>
                                 </p>
                             ) : (
                                 <p className={`text-xs ${isBright ? 'text-zinc-600' : 'text-white/60'}`}>
-                                    Don't have an account yet?{' '}
+                                    {t('pop.auth.noAccountYet', null, "Don't have an account yet?")}{' '}
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -689,7 +742,7 @@ const AuthModal = () => {
                                         }}
                                         className="text-accent font-bold hover:underline cursor-pointer"
                                     >
-                                        Create a free account (Register)
+                                        {t('pop.auth.createFreeAccount', null, 'Create a free account (Register)')}
                                     </button>
                                 </p>
                             )}
@@ -698,11 +751,11 @@ const AuthModal = () => {
                                 type="button"
                                 onClick={() => {
                                     closeModal();
-                                    showToast("Continuing in Guest Mode (Offline)");
+                                    showToast(t('pop.auth.guestToast', null, 'Continuing in Guest Mode (Offline)'));
                                 }}
                                 className={`text-[11px] transition cursor-pointer block mx-auto ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'}`}
                             >
-                                Continue as Guest (Offline Local Mode)
+                                {t('pop.auth.continueAsGuest', null, 'Continue as Guest (Offline Local Mode)')}
                             </button>
 
                             <button
@@ -715,7 +768,7 @@ const AuthModal = () => {
                                 }`}
                             >
                                 <Settings size={11} />
-                                {showConfigDrawer ? 'Hide Sync Settings' : 'Configure Custom Firebase Sync'}
+                                {showConfigDrawer ? t('pop.auth.hideSyncSettings', null, 'Hide Sync Settings') : t('pop.auth.configureCustomSync', null, 'Configure Custom Firebase Sync')}
                             </button>
                         </div>
                     </form>

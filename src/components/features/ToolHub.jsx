@@ -15,6 +15,7 @@ import useTabStore from '../../store/useTabStore';
 import { useAnnotationStore, normalizeAnnotationUrl, deduplicateAnnotationList, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { startRecording, stopRecordingAndTranscribe } from '../../utils/whisperSTT';
 import * as pdfjsLib from 'pdfjs-dist';
+import { useTranslation } from '../../i18n/index';
 
 // Configure pdfjs worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
@@ -28,6 +29,7 @@ function formatBytes(bytes) {
 }
 
 export default function ToolHub() {
+    const { t, intlLocale } = useTranslation();
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
     const setIsRightPanelOpen = useUIStore(state => state.setIsRightPanelOpen);
     const toolHubPosition = useUIStore(state => state.settings?.toolHubPosition || 'right');
@@ -115,15 +117,29 @@ export default function ToolHub() {
     const theme = useUIStore(state => state.theme);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
 
+    const localizeSpaceName = (sp) => {
+        if (!sp) return '';
+        if (sp.id === 'personal' && (!sp.name || sp.name === 'Personal')) return t('nav.personal', null, 'Personal');
+        if (sp.id === 'work' && (!sp.name || sp.name === 'Work')) return t('nav.work', null, 'Work');
+        return sp.name || sp.id;
+    };
+
     const getSpaceDisplayName = (spaceId) => {
-        if (!spaceId) return 'Personal';
+        if (!spaceId) return t('nav.personal', null, 'Personal');
         const found = (customSpaces || []).find(s => s.id === spaceId);
-        if (found && found.name) return found.name;
-        if (spaceId === 'personal') return 'Personal';
-        if (spaceId === 'work') return 'Work';
-        if (spaceId === 'ghost') return 'Incognito';
+        if (found) return localizeSpaceName(found);
+        if (spaceId === 'personal') return t('nav.personal', null, 'Personal');
+        if (spaceId === 'work') return t('nav.work', null, 'Work');
+        if (spaceId === 'ghost') return t('tools.common.incognito', null, 'Incognito');
         if (spaceId === 'tor') return 'Tor';
         return spaceId;
+    };
+
+    const formatModelSize = (rawSize) => {
+        if (!rawSize) return '';
+        return rawSize
+            .replace(/\(Model\)/g, `(${t('tools.aiSettings.modelWord', null, 'Model')})`)
+            .replace(/\(Vision\)/g, `(${t('tools.aiSettings.visionWord', null, 'Vision')})`);
     };
 
     const toggleDomainCollapse = (domain) => {
@@ -171,7 +187,7 @@ export default function ToolHub() {
         } else {
             const newTab = tabStore.addTab({
                 id: `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                title: ann.title || ann.domain || 'Loading...',
+                title: ann.title || ann.domain || t('common.loading', null, 'Loading...'),
                 url: ann.url,
                 active: true,
                 folderId: null
@@ -199,7 +215,7 @@ export default function ToolHub() {
         setTimeout(dispatchJump, 1400);
 
         setIsRightPanelOpen(false);
-        showHubToast('Jumping to note on page...');
+        showHubToast(t('tools.toolhub.toasts.jumpingToNote', null, 'Jumping to note on page...'));
     };
 
     const handleExportMarkdown = () => {
@@ -215,10 +231,10 @@ export default function ToolHub() {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showHubToast('Exported Markdown file!');
+            showHubToast(t('tools.toolhub.toasts.exportedMarkdown', null, 'Exported Markdown file!'));
         } catch (_) {
             navigator.clipboard.writeText(md);
-            showHubToast('Copied notes to clipboard as Markdown!');
+            showHubToast(t('tools.toolhub.toasts.copiedNotesMarkdown', null, 'Copied notes to clipboard as Markdown!'));
         }
     };
 
@@ -276,7 +292,7 @@ export default function ToolHub() {
                     id: Date.now().toString(),
                     type,
                     content: cleanText,
-                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    time: new Date().toLocaleTimeString(intlLocale || undefined, { hour: '2-digit', minute: '2-digit' })
                 };
 
                 const updated = [newItem, ...filtered].slice(0, 100);
@@ -304,9 +320,9 @@ export default function ToolHub() {
             } else if (navigator.clipboard) {
                 await navigator.clipboard.writeText(text);
             }
-            showHubToast('Copied to clipboard!');
+            showHubToast(t('tools.toolhub.toasts.copiedToClipboard', null, 'Copied to clipboard!'));
         } catch {
-            showHubToast('Copied!');
+            showHubToast(t('tools.toolhub.toasts.copiedToClipboard', null, 'Copied!'));
         }
     };
 
@@ -319,7 +335,7 @@ export default function ToolHub() {
             } catch (e) {}
             return updated;
         });
-        showHubToast('Clip deleted');
+        showHubToast(t('tools.toolhub.toasts.clipDeleted', null, 'Clip deleted'));
     };
 
     const handleClearAllClips = () => {
@@ -327,7 +343,7 @@ export default function ToolHub() {
         try {
             localStorage.removeItem('qbrowse_clipboard_history');
         } catch (e) {}
-        showHubToast('Clipboard history cleared');
+        showHubToast(t('tools.toolhub.toasts.clipboardCleared', null, 'Clipboard history cleared'));
     };
 
     const handleFileUpload = async (e) => {
@@ -338,7 +354,7 @@ export default function ToolHub() {
             
             // PDF to Image Processing
             if (isPdf && parsePdfAsImage) {
-                showHubToast(`Parsing PDF visually: ${file.name}`);
+                showHubToast(t('tools.toolhub.toasts.parsingPdf', { name: file.name }, `Parsing PDF visually: ${file.name}`));
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -359,8 +375,8 @@ export default function ToolHub() {
                         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                         
                         addAttachment({
-                            name: `${file.name} (Pg ${pageNum})`,
-                            size: 'PDF Image',
+                            name: t('tools.toolhub.pdfPageName', { name: file.name, page: pageNum }, `${file.name} (Pg ${pageNum})`),
+                            size: t('tools.toolhub.pdfImageSize', null, 'PDF Image'),
                             type: 'image',
                             dataUrl: dataUrl,
                             content: undefined
@@ -368,11 +384,11 @@ export default function ToolHub() {
                     }
                     
                     if (pdf.numPages > 10) {
-                        showHubToast(`Parsed first 10 pages of ${file.name} as images (VRAM limit).`);
+                        showHubToast(t('tools.toolhub.toasts.pdfVramLimit', { name: file.name }, `Parsed first 10 pages of ${file.name} as images (VRAM limit).`));
                     }
                 } catch (err) {
                     console.error('Failed to parse PDF as image:', err);
-                    showHubToast('Failed to parse PDF visually. Falling back to text extraction.');
+                    showHubToast(t('tools.toolhub.toasts.pdfVisualFailed', null, 'Failed to parse PDF visually. Falling back to text extraction.'));
                     // Fallback to old behavior inside error block if needed
                 }
                 continue;
@@ -431,11 +447,11 @@ export default function ToolHub() {
         if (isGenerating) return;
         const fullPageContext = await extractActivePageContext(true);
         if (!fullPageContext || (!fullPageContext.includes('PAGE CONTENT:') && !currentUrl)) {
-            showHubToast('Open a web page first to summarize it');
+            showHubToast(t('tools.toolhub.toasts.openPageFirst', null, 'Open a web page first to summarize it'));
             return;
         }
         sendChatMessage(
-            "Summarize this web page clearly with key takeaways and main points based on its content.",
+            t('tools.toolhub.summarizePrompt', null, "Summarize this web page clearly with key takeaways and main points based on its content."),
             fullPageContext,
             { forceContext: true }
         );
@@ -451,7 +467,7 @@ export default function ToolHub() {
                     setChatInput(prev => prev + (prev ? ' ' : '') + text);
                 }
             } catch (err) {
-                showHubToast('Transcription failed');
+                showHubToast(t('tools.toolhub.toasts.transcriptionFailed', null, 'Transcription failed'));
             } finally {
                 setIsTranscribing(false);
             }
@@ -460,7 +476,7 @@ export default function ToolHub() {
                 await startRecording();
                 setIsRecording(true);
             } catch (err) {
-                showHubToast('Microphone access denied');
+                showHubToast(t('tools.toolhub.toasts.micDenied', null, 'Microphone access denied'));
             }
         }
     };
@@ -544,7 +560,7 @@ export default function ToolHub() {
                     <div className="flex items-center gap-2">
                         <Puzzle size={14} className="text-accent" />
                         <h2 className={`text-xs font-semibold tracking-tight ${isBright ? 'text-zinc-900' : 'text-white'} uppercase font-mono`}>
-                            Tool Hub
+                            {t('tools.toolhub.title', null, 'Tool Hub')}
                         </h2>
                     </div>
 
@@ -559,10 +575,10 @@ export default function ToolHub() {
                                     ? 'bg-accent/20 hover:bg-accent/30 text-zinc-950 border-accent/50 shadow-xs' 
                                     : 'bg-accent/15 hover:bg-accent/25 text-accent border-accent/40 hover:border-accent/60 shadow-[0_0_12px_var(--accent-15)]'
                             } border transition text-[11px] font-mono flex items-center gap-1.5 cursor-pointer active:scale-95`}
-                            title="Interactive Screen Snip (Crop Selection)"
+                            title={t('tools.toolhub.snipTitle', null, 'Interactive Screen Snip (Crop Selection)')}
                         >
                             <Crop size={11} className="text-accent" />
-                            <span>Snip</span>
+                            <span>{t('tools.toolhub.snip', null, 'Snip')}</span>
                         </button>
                         <button
                             onClick={() => {
@@ -574,7 +590,7 @@ export default function ToolHub() {
                                     ? 'bg-accent/10 hover:bg-accent/20 text-zinc-800 border-accent/40 shadow-xs' 
                                     : 'bg-accent/10 hover:bg-accent/20 text-accent/80 hover:text-accent border-accent/30 hover:border-accent/50 shadow-[0_0_8px_var(--accent-10)]'
                             } border transition cursor-pointer active:scale-95`}
-                            title="Capture Visible Viewport"
+                            title={t('tools.toolhub.captureViewportTitle', null, 'Capture Visible Viewport')}
                         >
                             <Camera size={12} />
                         </button>
@@ -588,7 +604,7 @@ export default function ToolHub() {
                                     ? 'bg-accent/10 hover:bg-accent/20 text-zinc-800 border-accent/40 shadow-xs' 
                                     : 'bg-accent/10 hover:bg-accent/20 text-accent/80 hover:text-accent border-accent/30 hover:border-accent/50 shadow-[0_0_8px_var(--accent-10)]'
                             } border transition cursor-pointer active:scale-95`}
-                            title="Capture Full Scrolling Page"
+                            title={t('tools.toolhub.captureFullTitle', null, 'Capture Full Scrolling Page')}
                         >
                             <Maximize2 size={12} />
                         </button>
@@ -605,10 +621,10 @@ export default function ToolHub() {
                 <div className="px-4 pt-3 pb-1">
                     {(() => {
                         const tabs = [
-                            { id: 'notes', label: 'Notes', icon: PenTool, iconColor: isBright ? 'text-amber-600' : 'text-amber-400' },
-                            { id: 'clipboard', label: 'Clipboard', icon: ClipboardList, iconColor: isBright ? 'text-cyan-600' : 'text-cyan-400' },
-                            { id: 'ai', label: 'Local AI', icon: Cpu, iconColor: isBright ? 'text-purple-600' : 'text-purple-400' },
-                            { id: 'downloads', label: 'Downloads', icon: Download, iconColor: isBright ? 'text-emerald-600' : 'text-emerald-400' }
+                            { id: 'notes', label: t('tools.toolhub.tabs.notes', null, 'Notes'), icon: PenTool, iconColor: isBright ? 'text-amber-600' : 'text-amber-400' },
+                            { id: 'clipboard', label: t('tools.toolhub.tabs.clipboard', null, 'Clipboard'), icon: ClipboardList, iconColor: isBright ? 'text-cyan-600' : 'text-cyan-400' },
+                            { id: 'ai', label: t('tools.toolhub.tabs.ai', null, 'Local AI'), icon: Cpu, iconColor: isBright ? 'text-purple-600' : 'text-purple-400' },
+                            { id: 'downloads', label: t('tools.toolhub.tabs.downloads', null, 'Downloads'), icon: Download, iconColor: isBright ? 'text-emerald-600' : 'text-emerald-400' }
                         ];
                         const activeTabIdx = Math.max(0, tabs.findIndex(t => t.id === rightPanelTab));
                         const hoveredTabIdx = tabs.findIndex(t => t.id === hoveredRightPanelTab);
@@ -723,7 +739,7 @@ export default function ToolHub() {
                                 }`}
                             >
                                 <Globe size={13} />
-                                <span>Web Notes ({annotations.length})</span>
+                                <span>{t('tools.toolhub.webNotesTab', { count: annotations.length }, `Web Notes (${annotations.length})`)}</span>
                             </button>
                             <button
                                 type="button"
@@ -736,7 +752,7 @@ export default function ToolHub() {
                                 }`}
                             >
                                 <PenTool size={13} />
-                                <span>Scratchpad</span>
+                                <span>{t('tools.toolhub.scratchpadTab', null, 'Scratchpad')}</span>
                             </button>
                         </div>
 
@@ -744,9 +760,9 @@ export default function ToolHub() {
                             <div className="flex-1 flex flex-col min-h-0 gap-2.5">
                                 {(() => {
                                     const scratchpadTabs = [
-                                        { id: 'global', name: 'Global' },
-                                        { id: 'current', name: `${getSpaceDisplayName(activeSpace)} Space` },
-                                        ...(customSpaces || []).filter(sp => sp.id !== activeSpace).map(sp => ({ id: sp.id, name: sp.name }))
+                                        { id: 'global', name: t('tools.toolhub.globalScope', null, 'Global') },
+                                        { id: 'current', name: t('tools.toolhub.spaceScope', { space: getSpaceDisplayName(activeSpace) }, `${getSpaceDisplayName(activeSpace)} Space`) },
+                                        ...(customSpaces || []).filter(sp => sp.id !== activeSpace).map(sp => ({ id: sp.id, name: localizeSpaceName(sp) }))
                                     ];
                                     const activeIdx = Math.max(0, scratchpadTabs.findIndex(t => t.id === scratchpadScope));
                                     const hoveredIdx = scratchpadTabs.findIndex(t => t.id === hoveredScratchpadScope);
@@ -805,7 +821,7 @@ export default function ToolHub() {
                                                                     ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                                                     : (isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/45 hover:text-white')
                                                             }`}
-                                                            title={`Scratchpad: ${tabItem.name}`}
+                                                            title={t('tools.toolhub.scratchpadTitle', { name: tabItem.name }, `Scratchpad: ${tabItem.name}`)}
                                                         >
                                                             <span className="truncate">{tabItem.name}</span>
                                                         </button>
@@ -823,7 +839,9 @@ export default function ToolHub() {
                                                             setSpaceNotesMap(prev => ({ ...prev, [resolvedSpaceKey]: val }));
                                                         }
                                                     }}
-                                                    placeholder={resolvedSpaceKey === 'global' ? "Jot down global thoughts, notes, links... markdown supported." : `Scratchpad for ${getSpaceDisplayName(resolvedSpaceKey)} Space... markdown supported.`}
+                                                    placeholder={resolvedSpaceKey === 'global'
+                                                        ? t('tools.toolhub.scratchpadGlobalPlaceholder', null, 'Jot down global thoughts, notes, links... markdown supported.')
+                                                        : t('tools.toolhub.scratchpadSpacePlaceholder', { space: getSpaceDisplayName(resolvedSpaceKey) }, `Scratchpad for ${getSpaceDisplayName(resolvedSpaceKey)} Space... markdown supported.`)}
                                                     className={`w-full h-full bg-transparent text-sm ${isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white/90 placeholder-white/30'} resize-none outline-none custom-scrollbar leading-relaxed font-sans`}
                                                     spellCheck="false"
                                                 />
@@ -842,11 +860,11 @@ export default function ToolHub() {
                                             type="text"
                                             value={webNotesQuery}
                                             onChange={e => setWebNotesQuery(e.target.value)}
-                                            placeholder="Search highlights, notes, domains..."
+                                            placeholder={t('tools.toolhub.searchNotesPlaceholder', null, 'Search highlights, notes, domains...')}
                                             className={`flex-1 bg-transparent text-xs ${isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/35'} outline-none`}
                                         />
                                         {webNotesQuery && (
-                                            <button onClick={() => setWebNotesQuery('')} className={`${isBright ? 'text-zinc-400 hover:text-zinc-900' : 'text-white/40 hover:text-white'} text-xs px-1 cursor-pointer`} title="Clear search">
+                                            <button onClick={() => setWebNotesQuery('')} className={`${isBright ? 'text-zinc-400 hover:text-zinc-900' : 'text-white/40 hover:text-white'} text-xs px-1 cursor-pointer`} title={t('tools.toolhub.clearSearchTitle', null, 'Clear search')}>
                                                 <X size={12} />
                                             </button>
                                         )}
@@ -855,9 +873,9 @@ export default function ToolHub() {
                                     <div className="flex items-center justify-between gap-2">
                                         {(() => {
                                             const filterTabs = [
-                                                { id: 'all', label: 'All Spaces' },
-                                                { id: 'current', label: `${getSpaceDisplayName(activeSpace)} Space` },
-                                                ...(customSpaces || []).filter(sp => sp.id !== activeSpace).map(sp => ({ id: sp.id, label: sp.name }))
+                                                { id: 'all', label: t('tools.toolhub.allSpaces', null, 'All Spaces') },
+                                                { id: 'current', label: t('tools.toolhub.spaceScope', { space: getSpaceDisplayName(activeSpace) }, `${getSpaceDisplayName(activeSpace)} Space`) },
+                                                ...(customSpaces || []).filter(sp => sp.id !== activeSpace).map(sp => ({ id: sp.id, label: localizeSpaceName(sp) }))
                                             ];
                                             const activeFilterIdx = Math.max(0, filterTabs.findIndex(f => f.id === webNotesSpaceFilter));
                                             const hoveredFilterIdx = filterTabs.findIndex(f => f.id === hoveredWebNotesSpaceFilter);
@@ -928,10 +946,10 @@ export default function ToolHub() {
                                                     ? 'bg-black/[0.03] hover:bg-black/[0.06] text-zinc-700 hover:text-zinc-950 border-black/10' 
                                                     : 'bg-white/[0.04] hover:bg-white/[0.08] text-white/70 hover:text-white border-white/[0.08]'
                                             } disabled:opacity-30 text-[11px] font-medium border transition cursor-pointer shadow-xs`}
-                                            title="Export Notes as Markdown (.md)"
+                                            title={t('tools.toolhub.exportMdTitle', null, 'Export Notes as Markdown (.md)')}
                                         >
                                             <FileDown size={12} />
-                                            <span>Export MD</span>
+                                            <span>{t('tools.toolhub.exportMd', null, 'Export MD')}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -959,9 +977,9 @@ export default function ToolHub() {
                                             return (
                                                 <div className={`flex-1 flex flex-col items-center justify-center text-center p-6 ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
                                                     <Highlighter size={32} className="text-accent/30 mb-2.5" />
-                                                    <p className={`text-xs font-semibold ${isBright ? 'text-zinc-700' : 'text-white/70'} mb-1`}>No Web Notes Saved</p>
+                                                    <p className={`text-xs font-semibold ${isBright ? 'text-zinc-700' : 'text-white/70'} mb-1`}>{t('tools.toolhub.noWebNotesTitle', null, 'No Web Notes Saved')}</p>
                                                     <p className="text-[11px] leading-relaxed max-w-[260px]">
-                                                        Highlight text on any webpage or click "Note" in the floating pill to keep persistent notes across visits.
+                                                        {t('tools.toolhub.noWebNotesDesc', null, 'Highlight text on any webpage or click "Note" in the floating pill to keep persistent notes across visits.')}
                                                     </p>
                                                 </div>
                                             );
@@ -969,7 +987,7 @@ export default function ToolHub() {
 
                                         const domainMap = new Map();
                                         filtered.forEach(ann => {
-                                            const d = ann.domain || 'Other';
+                                            const d = ann.domain || t('tools.toolhub.otherDomain', null, 'Other');
                                             if (!domainMap.has(d)) domainMap.set(d, []);
                                             domainMap.get(d).push(ann);
                                         });
@@ -1033,7 +1051,7 @@ export default function ToolHub() {
                                                                                 <div 
                                                                                     className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-[0_0_8px_currentColor]" 
                                                                                     style={{ backgroundColor: colorConfig.border, color: colorConfig.border }} 
-                                                                                    title={`Color: ${colorConfig.label}`}
+                                                                                    title={t('tools.toolhub.colorTitle', { color: t(`tools.common.colors.${ann.color || 'accent'}`, null, colorConfig.label) }, `Color: ${colorConfig.label}`)}
                                                                                 />
                                                                                 <span 
                                                                                     className={`text-[11px] font-medium ${isBright ? 'text-zinc-800 hover:text-zinc-950' : 'text-white/80 hover:text-white'} truncate max-w-[210px] cursor-pointer hover:underline transition`} 
@@ -1053,7 +1071,7 @@ export default function ToolHub() {
                                                                             className={`text-xs ${isBright ? 'text-zinc-900 bg-black/[0.02] hover:bg-black/[0.04]' : 'text-white/95 bg-white/[0.015] hover:bg-white/[0.03]'} pl-3 border-l-2 leading-relaxed cursor-pointer transition py-0.5 rounded-r`}
                                                                             style={{ borderColor: colorConfig.border }}
                                                                             onClick={() => handleJumpToAnnotation(ann)}
-                                                                            title="Click to jump to this highlight on page"
+                                                                            title={t('tools.toolhub.jumpHighlightTitle', null, 'Click to jump to this highlight on page')}
                                                                         >
                                                                             "{ann.text}"
                                                                         </div>
@@ -1064,7 +1082,7 @@ export default function ToolHub() {
                                                                                 <textarea
                                                                                     value={editingNoteText}
                                                                                     onChange={e => setEditingNoteText(e.target.value)}
-                                                                                    placeholder="Add a note or thought..."
+                                                                                    placeholder={t('tools.toolhub.editNotePlaceholder', null, 'Add a note or thought...')}
                                                                                     className={`w-full h-16 ${
                                                                                         isBright ? 'bg-black/[0.04] border-black/15 text-zinc-900 focus:border-accent' : 'bg-white/[0.04] border-white/20 text-white focus:border-accent/60'
                                                                                     } backdrop-blur-md border rounded-xl p-2.5 text-xs outline-none resize-none`}
@@ -1076,30 +1094,30 @@ export default function ToolHub() {
                                                                                             onClick={() => {
                                                                                                 updateAnnotation(ann.id, { note: '' });
                                                                                                 setEditingNoteId(null);
-                                                                                                showHubToast('Note removed');
+                                                                                                showHubToast(t('tools.toolhub.toasts.noteRemoved', null, 'Note removed'));
                                                                                             }}
                                                                                             className={`px-2 py-1 rounded-lg text-[10px] ${isBright ? 'text-red-500 hover:bg-red-500/10' : 'text-red-400 hover:bg-red-500/10'} cursor-pointer`}
-                                                                                            title="Delete note text"
+                                                                                            title={t('tools.toolhub.deleteNoteTitle', null, 'Delete note text')}
                                                                                         >
-                                                                                            Delete Note
+                                                                                            {t('tools.toolhub.deleteNote', null, 'Delete Note')}
                                                                                         </button>
                                                                                     ) : null}
                                                                                     <button
                                                                                         onClick={() => setEditingNoteId(null)}
                                                                                         className={`px-2.5 py-1 rounded-lg text-[10px] ${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/50 hover:text-white'} cursor-pointer`}
                                                                                     >
-                                                                                        Cancel
+                                                                                        {t('tools.toolhub.cancel', null, 'Cancel')}
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => {
                                                                                             const nextNote = editingNoteText.trim();
                                                                                             updateAnnotation(ann.id, { note: nextNote });
                                                                                             setEditingNoteId(null);
-                                                                                            showHubToast(nextNote ? 'Note updated' : 'Note removed');
+                                                                                            showHubToast(nextNote ? t('tools.toolhub.toasts.noteUpdated', null, 'Note updated') : t('tools.toolhub.toasts.noteRemoved', null, 'Note removed'));
                                                                                         }}
                                                                                         className="px-3 py-1 rounded-lg bg-accent text-black text-[10px] font-bold cursor-pointer hover:opacity-90 shadow-sm"
                                                                                     >
-                                                                                        Save Note
+                                                                                        {t('tools.toolhub.saveNote', null, 'Save Note')}
                                                                                     </button>
                                                                                 </div>
                                                                             </div>
@@ -1112,7 +1130,7 @@ export default function ToolHub() {
                                                                                 className={`flex items-start gap-2 p-2.5 rounded-xl ${
                                                                                     isBright ? 'bg-amber-500/10 border-amber-500/30 text-amber-950 hover:border-amber-500/50' : 'bg-accent/[0.08] border-accent/25 text-[#f5ebd9] hover:border-accent/40'
                                                                                 } border text-xs cursor-pointer transition group/note shadow-xs`}
-                                                                                title="Click to edit note"
+                                                                                title={t('tools.toolhub.clickToEditNote', null, 'Click to edit note')}
                                                                             >
                                                                                 <StickyNote size={12} className="text-accent flex-shrink-0 mt-0.5" />
                                                                                 <span className="flex-1 leading-snug">{ann.note}</span>
@@ -1121,7 +1139,7 @@ export default function ToolHub() {
 
                                                                         {/* Action Buttons Row */}
                                                                         <div className={`flex items-center justify-between pt-1 border-t ${isBright ? 'border-black/[0.06] text-zinc-400' : 'border-white/[0.06] text-white/40'} text-[10px]`}>
-                                                                            <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
+                                                                            <span>{new Date(ann.createdAt).toLocaleDateString(intlLocale || undefined)}</span>
                                                                             <div className="flex items-center gap-1.5">
                                                                                 {!ann.note && !isEditing && (
                                                                                     <button
@@ -1132,37 +1150,37 @@ export default function ToolHub() {
                                                                                         className={`flex items-center gap-0.5 px-2 py-0.5 rounded-md ${
                                                                                             isBright ? 'hover:text-accent hover:bg-black/5 text-zinc-600' : 'hover:text-accent hover:bg-white/5 text-white/60'
                                                                                         } transition cursor-pointer`}
-                                                                                        title="Add note"
+                                                                                        title={t('tools.toolhub.addNoteTitle', null, 'Add note')}
                                                                                     >
                                                                                         <StickyNote size={11} />
-                                                                                        <span>Note</span>
+                                                                                        <span>{t('tools.toolhub.noteBtn', null, 'Note')}</span>
                                                                                     </button>
                                                                                 )}
                                                                                 <button
                                                                                     onClick={() => {
                                                                                         navigator.clipboard.writeText(ann.text);
-                                                                                        showHubToast('Copied quote');
+                                                                                        showHubToast(t('tools.toolhub.toasts.copiedQuote', null, 'Copied quote'));
                                                                                     }}
                                                                                     className={`${isBright ? 'hover:text-zinc-900 hover:bg-black/5 text-zinc-500' : 'hover:text-white hover:bg-white/5 text-white/50'} p-1 rounded-md transition cursor-pointer`}
-                                                                                    title="Copy quote"
+                                                                                    title={t('tools.toolhub.copyQuoteTitle', null, 'Copy quote')}
                                                                                 >
                                                                                     <Copy size={11} />
                                                                                 </button>
                                                                                 <button
                                                                                     onClick={() => handleJumpToAnnotation(ann)}
                                                                                     className="bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30 hover:border-accent/50 flex items-center gap-1 px-2.5 py-0.5 rounded-md transition-all cursor-pointer font-semibold text-[11px] shadow-xs active:scale-95"
-                                                                                    title="Jump to note on page"
+                                                                                    title={t('tools.toolhub.jumpBtnTitle', null, 'Jump to note on page')}
                                                                                 >
                                                                                     <ArrowUpRight size={11} />
-                                                                                    <span>Jump</span>
+                                                                                    <span>{t('tools.toolhub.jumpBtn', null, 'Jump')}</span>
                                                                                 </button>
                                                                                 <button
                                                                                     onClick={() => {
                                                                                         removeAnnotation(ann.id);
-                                                                                        showHubToast('Highlight removed');
+                                                                                        showHubToast(t('tools.toolhub.toasts.highlightRemoved', null, 'Highlight removed'));
                                                                                     }}
                                                                                     className={`p-1 rounded-md ${isBright ? 'hover:text-red-500 hover:bg-red-500/10 text-zinc-400' : 'hover:text-red-400 hover:bg-red-500/10 text-white/40'} transition cursor-pointer`}
-                                                                                    title="Delete highlight"
+                                                                                    title={t('tools.toolhub.deleteHighlightTitle', null, 'Delete highlight')}
                                                                                 >
                                                                                     <Trash2 size={11} />
                                                                                 </button>
@@ -1185,13 +1203,13 @@ export default function ToolHub() {
                     {/* CLIPBOARD TAB */}
                     <div className={`absolute inset-0 p-5 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'clipboard' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
                         <div className="flex items-center justify-between mb-3">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>System Clipboard History</span>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>{t('tools.toolhub.clipboardHeader', null, 'System Clipboard History')}</span>
                             <button 
                                 onClick={syncSystemClipboard}
                                 className={`flex items-center gap-1 text-[10px] font-bold text-accent opacity-80 hover:opacity-100 ${isBright ? 'hover:bg-accent/15' : 'hover:bg-accent-10'} px-2 py-1 rounded-lg transition`}
-                                title="Sync system clipboard"
+                                title={t('tools.toolhub.syncTitle', null, 'Sync system clipboard')}
                             >
-                                <RefreshCw size={10} /> Sync
+                                <RefreshCw size={10} /> {t('tools.toolhub.syncBtn', null, 'Sync')}
                             </button>
                         </div>
 
@@ -1221,7 +1239,7 @@ export default function ToolHub() {
                                                 <button 
                                                     onClick={(e) => handleDeleteClip(item.id, e)}
                                                     className={`p-1 ${isBright ? 'text-zinc-400 hover:text-red-500' : 'text-white/40 hover:text-red-400'} transition`}
-                                                    title="Delete clip"
+                                                    title={t('tools.toolhub.deleteClipTitle', null, 'Delete clip')}
                                                 >
                                                     <Trash2 size={12} />
                                                 </button>
@@ -1233,8 +1251,8 @@ export default function ToolHub() {
                             ) : (
                                 <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
                                     <ClipboardList size={32} className={`${isBright ? 'text-zinc-300' : 'text-white/10'} mb-2`} />
-                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'} font-medium`}>Clipboard history is empty</p>
-                                    <p className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/20'} mt-1`}>Copy text or URLs anywhere to see them here</p>
+                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'} font-medium`}>{t('tools.toolhub.clipboardEmptyTitle', null, 'Clipboard history is empty')}</p>
+                                    <p className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/20'} mt-1`}>{t('tools.toolhub.clipboardEmptyDesc', null, 'Copy text or URLs anywhere to see them here')}</p>
                                 </div>
                             )}
                         </div>
@@ -1244,7 +1262,7 @@ export default function ToolHub() {
                                 className="w-full mt-3 py-2 border border-red-500/20 text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-xs font-semibold transition cursor-pointer" 
                                 onClick={handleClearAllClips}
                             >
-                                Clear Clipboard History
+                                {t('tools.toolhub.clearClipboard', null, 'Clear Clipboard History')}
                             </button>
                         )}
                     </div>
@@ -1278,16 +1296,16 @@ export default function ToolHub() {
                                                 </span>
                                                 <span className={`text-[9px] font-mono ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
                                                     {isRunning 
-                                                        ? 'llama-server Active (Port 8080)' 
+                                                        ? t('tools.toolhub.aiStatusRunning', null, 'llama-server Active (Port 8080)')
                                                         : isDownloading 
-                                                            ? `Downloading model (${downloadProgress || 0}%)...` 
+                                                            ? t('tools.toolhub.aiStatusDownloading', { progress: downloadProgress || 0 }, `Downloading model (${downloadProgress || 0}%)...`)
                                                             : isStarting 
-                                                                ? 'Starting engine...' 
+                                                                ? t('tools.toolhub.aiStatusStarting', null, 'Starting engine...')
                                                                 : isCurrentModelDownloaded 
-                                                                    ? 'Ready to Start' 
+                                                                    ? t('tools.toolhub.aiStatusReady', null, 'Ready to Start')
                                                                     : hasAnyModel 
-                                                                        ? 'Downloaded' 
-                                                                        : 'Model Not Downloaded'}
+                                                                        ? t('tools.toolhub.aiStatusDownloaded', null, 'Downloaded')
+                                                                        : t('tools.toolhub.aiStatusNotDownloaded', null, 'Model Not Downloaded')}
                                                 </span>
                                             </div>
                                         </div>
@@ -1297,17 +1315,17 @@ export default function ToolHub() {
                                                 <button
                                                     onClick={cancelDownload}
                                                     className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition flex items-center gap-1 cursor-pointer"
-                                                    title="Cancel Download"
+                                                    title={t('tools.toolhub.cancelDownloadTitle', null, 'Cancel Download')}
                                                 >
-                                                    <X size={10} /> Cancel
+                                                    <X size={10} /> {t('tools.toolhub.cancel', null, 'Cancel')}
                                                 </button>
                                             ) : (!isCurrentModelDownloaded && !hasAnyModel) ? (
                                                 <button
                                                     onClick={() => downloadModel(activePreset)}
                                                     className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-accent text-black hover:scale-105 transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                                    title={`Download ${activePreset.name} (${activePreset.size})`}
+                                                    title={t('tools.toolhub.downloadModelTitle', { name: activePreset.name, size: formatModelSize(activePreset.size) }, `Download ${activePreset.name} (${activePreset.size})`)}
                                                 >
-                                                    <Download size={10} /> Download
+                                                    <Download size={10} /> {t('tools.toolhub.downloadBtn', null, 'Download')}
                                                 </button>
                                             ) : (
                                                 <button
@@ -1322,11 +1340,11 @@ export default function ToolHub() {
                                                     }`}
                                                 >
                                                     {isStarting ? (
-                                                        <> <Loader2 size={10} className="animate-spin" /> Starting... </>
+                                                        <> <Loader2 size={10} className="animate-spin" /> {t('tools.toolhub.startingBtn', null, 'Starting...')} </>
                                                     ) : isRunning ? (
-                                                        <> <Square size={10} fill="currentColor" /> Stop </>
+                                                        <> <Square size={10} fill="currentColor" /> {t('tools.toolhub.stopBtn', null, 'Stop')} </>
                                                     ) : (
-                                                        <> <Play size={10} fill="currentColor" /> Start </>
+                                                        <> <Play size={10} fill="currentColor" /> {t('tools.toolhub.startBtn', null, 'Start')} </>
                                                     )}
                                                 </button>
                                             )}
@@ -1344,7 +1362,7 @@ export default function ToolHub() {
                                                         setIsRightPanelOpen(false);
                                                     }}
                                                     className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
-                                                    title="Open llama.cpp Web UI"
+                                                    title={t('tools.toolhub.openWebUiTitle', null, 'Open llama.cpp Web UI')}
                                                 >
                                                     <Globe size={12} />
                                                 </button>
@@ -1355,7 +1373,7 @@ export default function ToolHub() {
                                                     openModal('settings');
                                                 }}
                                                 className={`p-1.5 ${isBright ? 'bg-black/[0.04] hover:bg-black/[0.08] text-zinc-600 hover:text-zinc-950' : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'} rounded-xl transition cursor-pointer`}
-                                                title="llama.cpp Console & Advanced Settings"
+                                                title={t('tools.toolhub.aiConsoleSettingsTitle', null, 'llama.cpp Console & Advanced Settings')}
                                             >
                                                 <Sliders size={12} />
                                             </button>
@@ -1367,7 +1385,9 @@ export default function ToolHub() {
                                         <div className="space-y-1 pt-1.5 border-t border-white/5">
                                             <div className="flex justify-between text-[10px] font-mono text-accent">
                                                 <span className="truncate">
-                                                    {downloadDetail?.filename ? `Downloading ${downloadDetail.filename}` : 'Downloading weights...'}
+                                                    {downloadDetail?.filename
+                                                        ? t('tools.toolhub.downloadingFile', { filename: downloadDetail.filename }, `Downloading ${downloadDetail.filename}`)
+                                                        : t('tools.toolhub.downloadingWeights', null, 'Downloading weights...')}
                                                 </span>
                                                 <span className="font-bold flex-shrink-0 ml-2">
                                                     {downloadDetail?.downloadedBytes 
@@ -1408,11 +1428,11 @@ export default function ToolHub() {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="text-xs font-bold leading-tight flex items-center gap-1.5">
-                                                        No AI Model Downloaded
-                                                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-accent/20 text-accent font-semibold">Offline</span>
+                                                        {t('tools.toolhub.noModelTitle', null, 'No AI Model Downloaded')}
+                                                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-accent/20 text-accent font-semibold">{t('tools.toolhub.offlineBadge', null, 'Offline')}</span>
                                                     </h4>
                                                     <p className={`text-[11px] leading-relaxed mt-1 ${isBright ? 'text-zinc-600' : 'text-white/70'}`}>
-                                                        Download {activePreset.name} to run fast, private local AI for web summarization, coding, and chat.
+                                                        {t('tools.toolhub.noModelDesc', { name: activePreset.name }, `Download ${activePreset.name} to run fast, private local AI for web summarization, coding, and chat.`)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -1422,7 +1442,7 @@ export default function ToolHub() {
                                                     className="flex-1 py-1.5 px-3 bg-accent text-black font-bold text-xs rounded-xl shadow-xs hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
                                                 >
                                                     <Download size={13} />
-                                                    <span>Download Model ({activePreset.size.split('+')[0].trim()})</span>
+                                                    <span>{t('tools.toolhub.downloadModelSize', { size: activePreset.size.split('+')[0].trim() }, `Download Model (${activePreset.size.split('+')[0].trim()})`)}</span>
                                                 </button>
                                                 <button
                                                     onClick={() => {
@@ -1433,7 +1453,7 @@ export default function ToolHub() {
                                                         isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80'
                                                     } transition cursor-pointer`}
                                                 >
-                                                    Settings
+                                                    {t('tools.toolhub.settingsBtn', null, 'Settings')}
                                                 </button>
                                             </div>
                                         </div>
@@ -1565,7 +1585,7 @@ export default function ToolHub() {
                                         }`}
                                     >
                                         <Globe size={11} className="flex-shrink-0" />
-                                        <span className="truncate">Context</span>
+                                        <span className="truncate">{t('tools.toolhub.contextBtn', null, 'Context')}</span>
                                     </button>
 
                                     <button
@@ -1577,7 +1597,7 @@ export default function ToolHub() {
                                         }`}
                                     >
                                         <Search size={11} className="flex-shrink-0" />
-                                        <span className="truncate">Search</span>
+                                        <span className="truncate">{t('tools.toolhub.searchBtn', null, 'Search')}</span>
                                     </button>
 
                                     <button
@@ -1589,7 +1609,7 @@ export default function ToolHub() {
                                         }`}
                                     >
                                         <Volume2 size={11} className="flex-shrink-0" />
-                                        <span className="truncate">Voice</span>
+                                        <span className="truncate">{t('tools.toolhub.voiceBtn', null, 'Voice')}</span>
                                     </button>
                                 </div>
 
@@ -1600,7 +1620,7 @@ export default function ToolHub() {
                                     } border text-[10px] font-medium tracking-wide transition cursor-pointer flex-shrink-0 flex items-center gap-1.5`}
                                 >
                                     <FileText size={11} className="opacity-70" />
-                                    <span>Summarize</span>
+                                    <span>{t('tools.toolhub.summarizeBtn', null, 'Summarize')}</span>
                                 </button>
                             </div>
 
@@ -1620,7 +1640,7 @@ export default function ToolHub() {
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     className={`p-1.5 ${isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'} rounded-xl transition cursor-pointer`}
-                                    title="Attach File or Image"
+                                    title={t('tools.toolhub.attachTitle', null, 'Attach File or Image')}
                                 >
                                     <Paperclip size={14} />
                                 </button>
@@ -1630,7 +1650,7 @@ export default function ToolHub() {
                                     value={chatInput}
                                     onChange={e => setChatInput(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleSend()}
-                                    placeholder="Ask local Gemma 4 AI or drop files..."
+                                    placeholder={t('tools.toolhub.chatPlaceholder', null, 'Ask local Gemma 4 AI or drop files...')}
                                     className={`flex-1 bg-transparent px-2 text-xs ${isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/30'} outline-none`}
                                 />
 
@@ -1640,7 +1660,7 @@ export default function ToolHub() {
                                     className={`p-1.5 rounded-xl transition cursor-pointer flex items-center justify-center ${
                                         isRecording ? 'text-red-400 bg-red-500/20 animate-pulse' : (isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10')
                                     }`}
-                                    title="Voice Input (Whisper)"
+                                    title={t('tools.toolhub.voiceInputTitle', null, 'Voice Input (Whisper)')}
                                 >
                                     {isTranscribing ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
                                 </button>
@@ -1669,11 +1689,13 @@ export default function ToolHub() {
                     <div className={`absolute inset-0 p-5 overflow-y-auto hide-scroll transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${rightPanelTab === 'downloads' ? 'opacity-100 translate-x-0 z-10' : 'opacity-0 translate-x-4 pointer-events-none z-0'}`}>
                         <div className="flex items-center justify-between mb-3">
                             <span className={`text-[10px] font-bold uppercase tracking-wider ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
-                                Active & Recent Downloads
+                                {t('tools.toolhub.downloadsHeader', null, 'Active & Recent Downloads')}
                             </span>
                             <div className="flex items-center gap-2">
                                 <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
-                                    {downloads.length} {downloads.length === 1 ? 'Item' : 'Items'}
+                                    {downloads.length === 1
+                                        ? t('tools.toolhub.itemSingular', { count: downloads.length }, `${downloads.length} Item`)
+                                        : t('tools.toolhub.itemPlural', { count: downloads.length }, `${downloads.length} Items`)}
                                 </span>
                                 <button
                                     onClick={() => {
@@ -1685,7 +1707,7 @@ export default function ToolHub() {
                                         }
                                     }}
                                     className={`p-1 rounded-md transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
-                                    title="Open Downloads Folder"
+                                    title={t('tools.toolhub.openDownloadsFolderTitle', null, 'Open Downloads Folder')}
                                 >
                                     <FolderOpen size={12} />
                                 </button>
@@ -1693,10 +1715,10 @@ export default function ToolHub() {
                                     <button
                                         onClick={() => {
                                             useUIStore.getState().clearDownloads?.();
-                                            useUIStore.getState().showToast?.('Downloads list cleared');
+                                            useUIStore.getState().showToast?.(t('tools.toolhub.toasts.downloadsCleared', null, 'Downloads list cleared'));
                                         }}
                                         className={`p-1 rounded-md transition cursor-pointer ${isBright ? 'text-zinc-400 hover:text-red-500 hover:bg-red-50' : 'text-white/40 hover:text-red-400 hover:bg-red-500/10'}`}
-                                        title="Clear All Downloads"
+                                        title={t('tools.toolhub.clearDownloadsTitle', null, 'Clear All Downloads')}
                                     >
                                         <Trash2 size={12} />
                                     </button>
@@ -1708,9 +1730,11 @@ export default function ToolHub() {
                             {downloads.length > 0 ? (
                                 downloads.map((dl, i) => {
                                     const isScreenshot = !!(dl.isScreenshot || dl.screenshotType || (dl.fileName || dl.filename || '').startsWith('Screenshot_'));
-                                    const fileName = dl.fileName || dl.filename || (isScreenshot ? 'Screenshot.png' : 'Downloaded File');
+                                    const fileName = dl.fileName || dl.filename || (isScreenshot ? 'Screenshot.png' : t('tools.toolhub.downloadedFileFallback', null, 'Downloaded File'));
                                     const ext = (fileName.split('.').pop() || '').toLowerCase();
                                     const isImg = isScreenshot || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
+                                    const isCancelled = dl.state === 'cancelled';
+                                    const isFailed = dl.state === 'failed' || dl.state === 'interrupted';
                                     const isProgressing = dl.state === 'progressing';
                                     const progressPct = isProgressing 
                                         ? Math.min(100, Math.round(((dl.receivedBytes || 0) / (dl.totalBytes || 1)) * 100)) 
@@ -1721,10 +1745,12 @@ export default function ToolHub() {
                                         <div 
                                             key={dl.id || i}
                                             onClick={() => {
+                                                if (isCancelled || isFailed) return;
                                                 const path = dl.savePath || dl.filePath;
-                                                if (path && window.electronAPI?.openFile) {
+                                                if (!path) return;
+                                                if (window.electronAPI?.openFile) {
                                                     window.electronAPI.openFile(path);
-                                                } else if (path && window.electronAPI?.showItemInFolder) {
+                                                } else if (window.electronAPI?.showItemInFolder) {
                                                     window.electronAPI.showItemInFolder(path);
                                                 }
                                             }}
@@ -1757,17 +1783,25 @@ export default function ToolHub() {
                                                 </div>
                                                 {isProgressing ? (
                                                     <span className="text-[10px] font-mono text-accent font-bold">{progressPct}%</span>
+                                                ) : isCancelled ? (
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/20 flex items-center gap-0.5">
+                                                        {t('tools.toolhub.cancelled', null, 'Cancelled')}
+                                                    </span>
+                                                ) : isFailed ? (
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/20 flex items-center gap-0.5" title={dl.error || t('tools.toolhub.failed', null, 'Failed')}>
+                                                        <AlertTriangle size={10} /> {t('tools.toolhub.failed', null, 'Failed')}
+                                                    </span>
                                                 ) : isScreenshot ? (
                                                     <span className={`text-[10px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>
-                                                        {dl.screenshotType || 'Snip'}
+                                                        {dl.screenshotType || t('tools.toolhub.snipBadge', null, 'Snip')}
                                                     </span>
                                                 ) : dl.state === 'completed' && dl.verified ? (
-                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex items-center gap-0.5" title={`SHA-256: ${dl.checksum || 'Verified'}`}>
-                                                        <ShieldCheck size={10} /> Verified
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex items-center gap-0.5" title={t('tools.toolhub.sha256Prefix', { hash: dl.checksum || t('tools.toolhub.verified', null, 'Verified') }, `SHA-256: ${dl.checksum || 'Verified'}`)}>
+                                                        <ShieldCheck size={10} /> {t('tools.toolhub.verified', null, 'Verified')}
                                                     </span>
                                                 ) : dl.state === 'completed' && dl.verified === false ? (
-                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center gap-0.5" title={dl.error || 'Unverified'}>
-                                                        <AlertTriangle size={10} /> Unverified
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center gap-0.5" title={dl.error || t('tools.toolhub.unverified', null, 'Unverified')}>
+                                                        <AlertTriangle size={10} /> {t('tools.toolhub.unverified', null, 'Unverified')}
                                                     </span>
                                                 ) : null}
                                             </div>
@@ -1779,12 +1813,16 @@ export default function ToolHub() {
                                             )}
 
                                             <div className="flex justify-between items-center mt-2 pt-1 border-t border-white/[0.04]">
-                                                <span className={`text-[9px] font-mono ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                                    {sizeStr || 'Saved'}
+                                                <span className={`text-[9px] font-mono ${isCancelled || isFailed ? (isBright ? 'text-rose-600' : 'text-rose-400/80') : (isBright ? 'text-zinc-400' : 'text-white/30')}`}>
+                                                    {isCancelled
+                                                        ? t('tools.toolhub.cancelled', null, 'Cancelled')
+                                                        : isFailed
+                                                            ? (dl.error || t('tools.toolhub.failed', null, 'Failed'))
+                                                            : (sizeStr || t('tools.toolhub.saved', null, 'Saved'))}
                                                     {isProgressing && dl.speedBytesPerSec > 0 && ` • ${(dl.speedBytesPerSec / 1024 / 1024).toFixed(1)} MB/s`}
                                                 </span>
                                                 <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition">
-                                                    {(dl.checksum || dl.savePath) && (
+                                                    {!isCancelled && !isFailed && (dl.checksum || dl.savePath) && (
                                                         <button
                                                             onClick={async (e) => {
                                                                 e.stopPropagation();
@@ -1798,34 +1836,34 @@ export default function ToolHub() {
                                                                 }
                                                                 if (hash) {
                                                                     navigator.clipboard.writeText(hash);
-                                                                    useUIStore.getState().showToast('SHA-256 checksum copied to clipboard');
+                                                                    useUIStore.getState().showToast(t('tools.toolhub.toasts.hashCopied', null, 'SHA-256 checksum copied to clipboard'));
                                                                 } else {
-                                                                    useUIStore.getState().showToast('Unable to calculate hash - file missing');
+                                                                    useUIStore.getState().showToast(t('tools.toolhub.toasts.hashMissing', null, 'Unable to calculate hash - file missing'));
                                                                 }
                                                             }}
                                                             className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50' : 'text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10'} transition cursor-pointer`}
-                                                            title={dl.checksum ? `SHA-256: ${dl.checksum} (Click to copy)` : "Verify & Copy SHA-256 Checksum"}
+                                                            title={dl.checksum ? t('tools.toolhub.copyHashTitle', { hash: dl.checksum }, `SHA-256: ${dl.checksum} (Click to copy)`) : t('tools.toolhub.verifyCopyHashTitle', null, 'Verify & Copy SHA-256 Checksum')}
                                                         >
                                                             <ShieldCheck size={12} className={dl.verified ? "text-emerald-400" : ""} />
                                                         </button>
                                                     )}
-                                                    {isImg && (dl.savePath || dl.filePath) && (
+                                                    {!isCancelled && !isFailed && isImg && (dl.savePath || dl.filePath) && (
                                                         <button
                                                             onClick={async (e) => {
                                                                 e.stopPropagation();
                                                                 const path = dl.savePath || dl.filePath;
                                                                 if (window.electronAPI?.copyImageToClipboard) {
                                                                     await window.electronAPI.copyImageToClipboard(path);
-                                                                    useUIStore.getState().showToast('Screenshot copied to clipboard');
+                                                                    useUIStore.getState().showToast(t('tools.toolhub.toasts.screenshotCopied', null, 'Screenshot copied to clipboard'));
                                                                 }
                                                             }}
                                                             className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'} transition cursor-pointer`}
-                                                            title="Copy Image to Clipboard"
+                                                            title={t('tools.toolhub.copyImageTitle', null, 'Copy Image to Clipboard')}
                                                         >
                                                             <Copy size={12} />
                                                         </button>
                                                     )}
-                                                    {(dl.savePath || dl.filePath) && (
+                                                    {!isCancelled && !isFailed && (dl.savePath || dl.filePath) && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1835,7 +1873,7 @@ export default function ToolHub() {
                                                                 }
                                                             }}
                                                             className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-zinc-900 hover:bg-black/5' : 'text-white/40 hover:text-white hover:bg-white/10'} transition cursor-pointer`}
-                                                            title="Show in Folder"
+                                                            title={t('tools.toolhub.showInFolderTitle', null, 'Show in Folder')}
                                                         >
                                                             <FolderOpen size={12} />
                                                         </button>
@@ -1844,10 +1882,10 @@ export default function ToolHub() {
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
                                                             await useUIStore.getState().removeDownload(dl.id, true);
-                                                            useUIStore.getState().showToast('Download and file deleted');
+                                                            useUIStore.getState().showToast(t('tools.toolhub.toasts.downloadDeleted', null, 'Download and file deleted'));
                                                         }}
                                                         className={`p-1 rounded-md ${isBright ? 'text-zinc-400 hover:text-red-500 hover:bg-red-50' : 'text-white/40 hover:text-red-400 hover:bg-red-500/10'} transition cursor-pointer`}
-                                                        title="Delete file & remove from list"
+                                                        title={t('tools.toolhub.deleteDownloadTitle', null, 'Delete file & remove from list')}
                                                     >
                                                         <Trash2 size={12} />
                                                     </button>
@@ -1859,8 +1897,8 @@ export default function ToolHub() {
                             ) : (
                                 <div className="flex flex-col items-center justify-center text-center p-6 mt-12">
                                     <Download size={32} className={`${isBright ? 'text-zinc-300' : 'text-white/10'} mb-2`} />
-                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'} font-medium`}>No active downloads</p>
-                                    <p className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/20'} mt-1`}>Screenshots and downloaded files will appear here</p>
+                                    <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/40'} font-medium`}>{t('tools.toolhub.downloadsEmptyTitle', null, 'No active downloads')}</p>
+                                    <p className={`text-[10px] ${isBright ? 'text-zinc-400' : 'text-white/20'} mt-1`}>{t('tools.toolhub.downloadsEmptyDesc', null, 'Screenshots and downloaded files will appear here')}</p>
                                 </div>
                             )}
                         </div>

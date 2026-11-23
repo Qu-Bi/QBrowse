@@ -18,6 +18,9 @@ import PinnedStackPopup, { isTabForPin } from './PinnedStackPopup';
 import GitHubLiveFolder from './GitHubLiveFolder';
 import GitHubGlancePopover from './GitHubGlancePopover';
 import { useGitHubStore } from '../../store/useGitHubStore';
+import { useTranslation } from '../../i18n/index';
+import { selectPluralForm } from '../../i18n/domains/chrome';
+import { PLACEHOLDER_TAB_TITLE_SET } from '../../i18n/domains/stores.js';
 
 const SPACE_ICONS = {
     User,
@@ -52,6 +55,14 @@ const getTabDomain = (url) => {
 };
 
 export default function Sidebar() {
+    const { t, resolvedLanguage } = useTranslation();
+    const getSpaceDisplayName = (sp) => {
+        if (!sp) return '';
+        if (sp.id === 'personal' && sp.name === 'Personal') return t('nav.personal', null, 'Personal');
+        if (sp.id === 'work' && sp.name === 'Work') return t('nav.work', null, 'Work');
+        return sp.name || '';
+    };
+
     // UI Store State
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
@@ -164,8 +175,15 @@ export default function Sidebar() {
     const closeHoverGlance = useGitHubStore(state => state.closeHoverGlance);
 
     React.useEffect(() => {
-        useGitHubStore.getState().syncWithConfig();
+        const unsubscribe = useGitHubStore.getState().initListener?.();
+        return () => {
+            if (typeof unsubscribe === 'function') unsubscribe();
+        };
     }, []);
+
+    React.useEffect(() => {
+        useGitHubStore.getState().syncWithConfig();
+    }, [activeProfileId]);
 
     // Vault Store state for folder open logic (since they belong to folders)
     const [isPrivateFolderOpen, setIsPrivateFolderOpen] = [true, () => {}]; // TODO: Link from useVaultStore or local state?
@@ -228,11 +246,11 @@ export default function Sidebar() {
 
     const handleQuickAddSpace = () => {
         if (customSpaces.length >= 8) {
-            showToast('Maximum of 8 workspaces reached');
+            showToast(t('chrome.maxWorkspacesReached', null, 'Maximum of 8 workspaces reached'));
             return;
         }
         const nextIdx = customSpaces.length + 1;
-        const name = `Workspace ${nextIdx}`;
+        const name = t('chrome.defaultNewWorkspaceName', { index: nextIdx }, `Workspace ${nextIdx}`);
         if (addSpace) {
             const newSp = addSpace(name, 'Layers', false);
             if (newSp?.id) {
@@ -374,7 +392,7 @@ export default function Sidebar() {
                 active: false,
                 folderId: null
             });
-            useUIStore.getState().showToast(`Opened ${pin.title} in background tab`);
+            useUIStore.getState().showToast(t('chrome.toastOpenedPinBg', { title: pin.title }, `Opened ${pin.title} in background tab`));
         }
     };
 
@@ -390,8 +408,14 @@ export default function Sidebar() {
         const isSquare = frameCurvature === 'square';
         const isCohesive = frameCurvature === 'cohesive';
         const domain = getTabDomain(tab.url);
-        const tabTitle = (!tab.title || tab.title === 'about:blank' || tab.title === '')
-            ? (spaceType === 'ghost' ? 'New Incognito Tab' : spaceType === 'tor' ? 'New Tor Tab' : 'New Tab')
+        const isPlaceholder = !tab.title || tab.title === 'about:blank' || tab.title === '' ||
+            ((!tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://newtab')) && PLACEHOLDER_TAB_TITLE_SET.has(String(tab.title).trim().toLowerCase()));
+        const tabTitle = isPlaceholder
+            ? (spaceType === 'ghost'
+                ? t('chrome.newIncognitoTab', null, 'New Incognito Tab')
+                : spaceType === 'tor'
+                    ? t('chrome.newTorTab', null, 'New Tor Tab')
+                    : t('nav.newTab', null, 'New Tab'))
             : tab.title;
 
         const commonProps = {
@@ -429,7 +453,7 @@ export default function Sidebar() {
                             screenY: e.screenY
                         });
                         useTabStore.getState().removeTabById(tab.id);
-                        useUIStore.getState().showToast(`Detached "${tabTitle}" into a new window`);
+                        useUIStore.getState().showToast(t('chrome.toastDetachedTab', { title: tabTitle }, `Detached "${tabTitle}" into a new window`));
                     }
                 }
             },
@@ -585,26 +609,28 @@ export default function Sidebar() {
                     <button 
                         onClick={(e) => { e.stopPropagation(); handleToggleMute(tab.id, spaceType); }} 
                         className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${tab.isMuted ? 'text-red-500 hover:bg-red-500/20' : (isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10')}`} 
-                        title={tab.isMuted ? "Unmute Tab" : "Mute Tab"}
+                        title={tab.isMuted ? t('nav.unmuteTab', null, 'Unmute Tab') : t('nav.muteTab', null, 'Mute Tab')}
                     >
                         {tab.isMuted ? <VolumeX size={isCompactSize ? 10 : 12} /> : <Volume2 size={isCompactSize ? 10 : 12} />}
                     </button>
 
-                    {tab.isAudioPlaying && (
+                    {!tab.suspended && !tab.isClosing && tab.url && tab.url !== 'about:blank' && (tab.isAudioPlaying || tab.isAudible) && (
                         <button 
                             onClick={(e) => { 
                                 e.stopPropagation(); 
-                                useUIStore.getState().sendMediaCommand('toggle-pip'); 
-                                showToast('Picture-in-Picture'); 
+                                const sent = useUIStore.getState().sendMediaCommand('toggle-pip', { targetTabId: tab.id }); 
+                                if (sent) {
+                                    showToast(t('chrome.pipToast', null, 'Picture-in-Picture')); 
+                                }
                             }} 
                             className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
-                            title="Picture in Picture"
+                            title={t('chrome.pipTooltip', null, 'Picture in Picture')}
                         >
                             <PictureInPicture2 size={isCompactSize ? 10 : 12} />
                         </button>
                     )}
                     {spaceType !== 'ghost' && spaceType !== 'tor' && tab.url && tab.url !== 'about:blank' && (
-                        <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} title="Pin Tab"><Pin size={isCompactSize ? 10 : 12} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handlePinTab(tab); }} className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} title={t('nav.pinTab', null, 'Pin Tab')}><Pin size={isCompactSize ? 10 : 12} /></button>
                     )}
                     <button 
                         onClick={(e) => { 
@@ -614,7 +640,7 @@ export default function Sidebar() {
                             handleCloseTab(tab.id); 
                         }} 
                         className={`p-1 ${isSquare ? 'rounded-none' : 'rounded'} transition-all duration-150 hover:scale-115 active:scale-85 ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/5' : 'text-accent opacity-70 hover:opacity-100 hover:bg-accent-10'}`} 
-                        title="Close Tab"
+                        title={t('nav.closeTab', null, 'Close Tab')}
                     >
                         <X size={isCompactSize ? 10 : 12} />
                     </button>
@@ -663,7 +689,7 @@ export default function Sidebar() {
                         </span>
                     </div>
 
-                    {(tab.isAudioPlaying || tab.isMuted) && (
+                    {!tab.suspended && !tab.isClosing && tab.url && tab.url !== 'about:blank' && (tab.isAudioPlaying || tab.isAudible || tab.isMuted) && (
                         <div className="absolute right-2 opacity-100 group-hover:opacity-0 transition-opacity duration-150 md:flex hidden pointer-events-none">
                             {tab.isMuted ? <VolumeX size={11} className="text-red-400" /> : <Volume2 size={11} className="text-accent opacity-80 animate-pulse" />}
                         </div>
@@ -709,16 +735,20 @@ export default function Sidebar() {
                         <span className={`text-[10px] font-mono px-1.5 py-0.5 ${isSquare ? 'rounded-none' : 'rounded'} border truncate max-w-[130px] ${
                             isBright ? 'bg-black/[0.03] text-zinc-600 border-black/[0.06]' : 'bg-white/[0.04] text-white/60 border-white/[0.06]'
                         }`}>
-                            {domain || (spaceType === 'ghost' ? 'incognito' : spaceType === 'tor' ? 'tor circuit' : 'local')}
+                            {domain || (spaceType === 'ghost'
+                                ? t('chrome.badgeIncognito', null, 'incognito')
+                                : spaceType === 'tor'
+                                    ? t('chrome.badgeTorCircuit', null, 'tor circuit')
+                                    : t('chrome.badgeLocal', null, 'local'))}
                         </span>
                         {tab.suspended && (
                             <span className={`text-[9px] font-mono uppercase tracking-wider ${isBright ? 'text-zinc-400' : 'text-white/30'}`}>
-                                sleep
+                                {t('chrome.badgeSleep', null, 'sleep')}
                             </span>
                         )}
                     </div>
 
-                    {(tab.isAudioPlaying || tab.isMuted) && (
+                    {!tab.suspended && !tab.isClosing && tab.url && tab.url !== 'about:blank' && (tab.isAudioPlaying || tab.isAudible || tab.isMuted) && (
                         <div className="absolute top-2.5 right-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
                             {tab.isMuted ? <VolumeX size={13} className="text-red-400" /> : <Volume2 size={13} className="text-accent opacity-80 animate-pulse" />}
                         </div>
@@ -760,7 +790,7 @@ export default function Sidebar() {
                     </span>
                 </div>
 
-                {(tab.isAudioPlaying || tab.isMuted) && (
+                {!tab.suspended && !tab.isClosing && tab.url && tab.url !== 'about:blank' && (tab.isAudioPlaying || tab.isAudible || tab.isMuted) && (
                     <div className="absolute right-3 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
                         {tab.isMuted ? <VolumeX size={14} className="text-red-400" /> : <Volume2 size={14} className="text-accent opacity-80 animate-pulse" />}
                     </div>
@@ -873,7 +903,7 @@ export default function Sidebar() {
                                 className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer hover:bg-red-500 hover:text-white ${
                                     isBright ? 'text-zinc-600' : 'text-white/70'
                                 }`} 
-                                title="Close"
+                                title={t('common.close', null, 'Close')}
                             >
                                 <X size={12} strokeWidth={2} />
                             </button>
@@ -885,7 +915,7 @@ export default function Sidebar() {
                                 className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
                                     isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
                                 }`} 
-                                title="Minimize"
+                                title={t('chrome.windowMinimize', null, 'Minimize')}
                             >
                                 <Minus size={11} strokeWidth={2} />
                             </button>
@@ -897,7 +927,7 @@ export default function Sidebar() {
                                 className={`w-6 h-6 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-md'} flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
                                     isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/70 hover:text-white hover:bg-white/10'
                                 }`} 
-                                title="Maximize"
+                                title={t('chrome.windowMaximize', null, 'Maximize')}
                             >
                                 <Square size={10} strokeWidth={1.8} />
                             </button>
@@ -920,7 +950,7 @@ export default function Sidebar() {
                                         ? 'bg-black/10 border-black/15 hover:bg-red-500/20 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.4)]' 
                                         : 'bg-white/15 border-white/20 hover:bg-red-500/30 hover:border-red-400 hover:shadow-[0_0_10px_rgba(239,68,68,0.5)]'
                                 }`} 
-                                title="Close"
+                                title={t('common.close', null, 'Close')}
                             >
                                 <X size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-red-400 transition-opacity duration-150" />
                             </button>
@@ -934,7 +964,7 @@ export default function Sidebar() {
                                         ? 'bg-black/10 border-black/15 hover:bg-amber-500/20 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.4)]' 
                                         : 'bg-white/15 border-white/20 hover:bg-amber-500/30 hover:border-amber-400 hover:shadow-[0_0_10px_rgba(245,158,11,0.5)]'
                                 }`} 
-                                title="Minimize"
+                                title={t('chrome.windowMinimize', null, 'Minimize')}
                             >
                                 <Minus size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-amber-300 transition-opacity duration-150" />
                             </button>
@@ -948,7 +978,7 @@ export default function Sidebar() {
                                         ? 'bg-black/10 border-black/15 hover:bg-emerald-500/20 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.4)]' 
                                         : 'bg-white/15 border-white/20 hover:bg-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.5)]'
                                 }`} 
-                                title="Maximize"
+                                title={t('chrome.windowMaximize', null, 'Maximize')}
                             >
                                 <Maximize2 size={8} strokeWidth={2.5} className="opacity-0 group-hover/btn:opacity-100 text-emerald-300 transition-opacity duration-150" />
                             </button>
@@ -967,7 +997,7 @@ export default function Sidebar() {
                             key="mac-close"
                             onClick={() => window.electronAPI?.close?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-red-500/80 hover:bg-red-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(239,68,68,0.5)] flex items-center justify-center group/btn cursor-pointer`}
-                            title="Close"
+                            title={t('common.close', null, 'Close')}
                         >
                             <X size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
                         </button>
@@ -977,7 +1007,7 @@ export default function Sidebar() {
                             key="mac-min"
                             onClick={() => window.electronAPI?.minimize?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-yellow-500/80 hover:bg-yellow-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(234,179,8,0.5)] flex items-center justify-center group/btn cursor-pointer`}
-                            title="Minimize"
+                            title={t('chrome.windowMinimize', null, 'Minimize')}
                         >
                             <Minus size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
                         </button>
@@ -987,7 +1017,7 @@ export default function Sidebar() {
                             key="mac-max"
                             onClick={() => window.electronAPI?.maximize?.()} 
                             className={`w-3.5 h-3.5 ${frameCurvature === 'square' ? 'rounded-none' : 'rounded-full'} bg-green-500/80 hover:bg-green-400 transition-all duration-150 hover:scale-110 active:scale-90 shadow-[0_0_8px_rgba(34,197,94,0.5)] flex items-center justify-center group/btn cursor-pointer`}
-                            title="Maximize"
+                            title={t('chrome.windowMaximize', null, 'Maximize')}
                         >
                             <Maximize2 size={10} className="opacity-0 group-hover/btn:opacity-100 text-black transition-opacity duration-150" />
                         </button>
@@ -1008,7 +1038,9 @@ export default function Sidebar() {
                                 : (isBright ? 'bg-white/70 border-white/40 text-zinc-700 hover:text-black shadow-xs' : 'bg-white/10 border-white/20 text-white/70 hover:text-white')
                         }`} 
                         style={{ borderColor: activeProfile?.color || '#d4bc94' }}
-                        title={`Profile: ${activeProfile?.name || 'Default'} & Cloud Sync`}
+                        title={t('chrome.profileTooltip', {
+                            name: activeProfile?.name || t('chrome.defaultProfileName', null, 'Default')
+                        }, `Profile: ${activeProfile?.name || 'Default'} & Cloud Sync`)}
                     >
                         {localStorage.getItem('qbrowse_profile_avatar_url') ? (
                             <img src={localStorage.getItem('qbrowse_profile_avatar_url')} alt="Avatar" className="w-full h-full rounded-full object-cover" />
@@ -1023,8 +1055,8 @@ export default function Sidebar() {
                             }`} />
                         )}
                     </button>
-                    <button onClick={() => setActiveModal('history')} className="hover:text-accent hover:scale-110 active:scale-90 transition-all duration-200 p-1 rounded-md cursor-pointer" title="History"><Clock size={15} strokeWidth={1.85} /></button>
-                    <button onClick={() => setActiveModal('settings')} className="hover:text-accent hover:scale-110 active:scale-90 hover:rotate-45 transition-all duration-200 p-1 rounded-md cursor-pointer" title="Settings"><Settings size={15} strokeWidth={1.85} /></button>
+                    <button onClick={() => setActiveModal('history')} className="hover:text-accent hover:scale-110 active:scale-90 transition-all duration-200 p-1 rounded-md cursor-pointer" title={t('nav.history', null, 'History')}><Clock size={15} strokeWidth={1.85} /></button>
+                    <button onClick={() => setActiveModal('settings')} className="hover:text-accent hover:scale-110 active:scale-90 hover:rotate-45 transition-all duration-200 p-1 rounded-md cursor-pointer" title={t('nav.settings', null, 'Settings')}><Settings size={15} strokeWidth={1.85} /></button>
                     <button 
                         onClick={handleGoHome} 
                         onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
@@ -1036,7 +1068,7 @@ export default function Sidebar() {
                             }
                         }}
                         className={`transition-all duration-200 hover:scale-110 active:scale-90 p-1 rounded-md cursor-pointer ${isHomeActive ? 'text-accent drop-shadow-[0_0_8px_var(--accent)] scale-105' : 'hover:text-accent'}`} 
-                        title="Zen Dashboard (Middle-click to open in background)"
+                        title={t('chrome.zenDashboardTooltip', null, 'Zen Dashboard (Middle-click to open in background)')}
                     >
                         <Home size={15} strokeWidth={1.85} />
                     </button>
@@ -1094,7 +1126,25 @@ export default function Sidebar() {
                                     ? 'bg-[color:var(--sidebar-bg-active)] border-white/40 scale-105'
                                     : 'bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border-[color:var(--sidebar-border)] group-hover:scale-105'
                             }`} 
-                            title={`${pin.title}${pinTabs.length > 0 ? ` (${pinTabs.length} open tab${pinTabs.length > 1 ? 's' : ''})` : ''} • Middle-click to open in background • Right-click for tab list`}
+                            title={(() => {
+                                if (pinTabs.length > 0) {
+                                    const countLabel = t(
+                                        selectPluralForm(pinTabs.length, resolvedLanguage, 'chrome.openTabOne', 'chrome.openTabFew', 'chrome.openTabMany'),
+                                        { count: pinTabs.length },
+                                        `${pinTabs.length} open tab${pinTabs.length > 1 ? 's' : ''}`
+                                    );
+                                    return t(
+                                        'chrome.pinnedTabTooltipWithCount',
+                                        { title: pin.title, countLabel },
+                                        `${pin.title} (${countLabel}) • Middle-click to open in background • Right-click for tab list`
+                                    );
+                                }
+                                return t(
+                                    'chrome.pinnedTabTooltipNoCount',
+                                    { title: pin.title },
+                                    `${pin.title} • Middle-click to open in background • Right-click for tab list`
+                                );
+                            })()}
                         >
                             <img 
                                 src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} 
@@ -1147,14 +1197,14 @@ export default function Sidebar() {
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleUnpinTab(pin); }} 
                             className={`absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100 ${isBright ? 'bg-zinc-100 border border-black/10 text-zinc-700 hover:bg-red-500 hover:text-white' : 'bg-[#2a251e] border-accent-30 text-accent hover:bg-accent hover:text-black'} rounded-full p-0.5 hover:scale-125 active:scale-90 transition-all duration-200 shadow-md z-10`}
-                            title="Unpin"
+                            title={t('chrome.unpin', null, 'Unpin')}
                         >
                             <Minus size={10} />
                         </button>
                     </div>
                 )})}
                 <div className="relative group flex justify-center animate-pin-in">
-                    <button onClick={() => setActiveModal('addPin')} className="w-10 h-10 flex flex-col items-center justify-center bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border border-[color:var(--sidebar-border)] border-dashed rounded-xl transition-all duration-200 hover:scale-110 active:scale-90 hover:border-accent/60 shadow-sm text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer" title="Pin New App / Shortcut">
+                    <button onClick={() => setActiveModal('addPin')} className="w-10 h-10 flex flex-col items-center justify-center bg-[color:var(--sidebar-bg-hover)] hover:bg-[color:var(--sidebar-bg-active)] border border-[color:var(--sidebar-border)] border-dashed rounded-xl transition-all duration-200 hover:scale-110 active:scale-90 hover:border-accent/60 shadow-sm text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer" title={t('chrome.pinNewAppTooltip', null, 'Pin New App / Shortcut')}>
                         <Plus size={16} />
                     </button>
                 </div>
@@ -1206,14 +1256,14 @@ export default function Sidebar() {
                                                 : 'border-transparent'
                                         }`}>
                                             <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest truncate">
-                                                {sp.name}
+                                                {getSpaceDisplayName(sp)}
                                             </h3>
                                             <button 
                                                 onClick={() => handleNewTab()} 
                                                 onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} 
                                                 onAuxClick={handleNewTabAuxClick} 
                                                 className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md shrink-0" 
-                                                title={`New Tab in ${sp.name} (CMD+T) • Middle-click for background`}
+                                                title={t('chrome.newTabInSpaceTooltip', { space: getSpaceDisplayName(sp) }, `New Tab in ${getSpaceDisplayName(sp)} (CMD+T) • Middle-click for background`)}
                                             >
                                                 <Plus size={12} strokeWidth={2.5} />
                                             </button>
@@ -1230,11 +1280,11 @@ export default function Sidebar() {
                                                         } ${
                                                             frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
                                                         } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} 
-                                                        title="New Tab (CMD+T) • Middle-click for background"
+                                                        title={t('chrome.newTabBtnTooltip', null, 'New Tab (CMD+T) • Middle-click for background')}
                                                     >
                                                         <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                             <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                                            <span className="text-sm font-medium truncate hidden md:block italic">New Tab</span>
+                                                            <span className="text-sm font-medium truncate hidden md:block italic">{t('nav.newTab', null, 'New Tab')}</span>
                                                         </div>
                                                     </button>
                                                 );
@@ -1264,10 +1314,10 @@ export default function Sidebar() {
                             >
                                 <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-ghost' ? 'border-[#a855f7] border-dashed bg-[#a855f7]/10 py-1' : 'border-transparent'}`}>
                                     <div className="flex items-center gap-1.5">
-                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">Incognito Tabs</h3>
+                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">{t('chrome.incognitoTabs', null, 'Incognito Tabs')}</h3>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title="New Incognito Tab (CMD+T) • Middle-click for background">
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title={t('chrome.newIncognitoTabTooltip', null, 'New Incognito Tab (CMD+T) • Middle-click for background')}>
                                             <Plus size={12} strokeWidth={2.5} />
                                         </button>
                                     </div>
@@ -1280,10 +1330,10 @@ export default function Sidebar() {
                                                 uiScale === 'compact' ? 'py-2 px-2.5' : 'p-3'
                                             } ${
                                                 frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
-                                            } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Incognito Tab (CMD+T) • Middle-click for background">
+                                            } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title={t('chrome.newIncognitoTabTooltip', null, 'New Incognito Tab (CMD+T) • Middle-click for background')}>
                                                 <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                                    <span className="text-sm font-medium truncate hidden md:block italic">New Incognito Tab</span>
+                                                    <span className="text-sm font-medium truncate hidden md:block italic">{t('chrome.newIncognitoTab', null, 'New Incognito Tab')}</span>
                                                 </div>
                                             </button>
                                         );
@@ -1312,17 +1362,17 @@ export default function Sidebar() {
                                 <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-tor' ? 'border-purple-400 border-dashed bg-purple-500/10 py-1' : 'border-transparent'}`}>
                                     <div className="flex items-center gap-1.5">
                                         <span className={`w-1.5 h-1.5 rounded-full ${torStatus === 'connected' ? 'bg-purple-400 shadow-[0_0_6px_#c084fc]' : 'bg-amber-400'}`}></span>
-                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-purple-400/80 tracking-widest">Tor Tabs</h3>
+                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-purple-400/80 tracking-widest">{t('chrome.torTabs', null, 'Tor Tabs')}</h3>
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button 
                                             onClick={() => useTorStore.getState().toggleTorEnabled(false, { fallbackSpace: 'ghost' })}
                                             className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10 cursor-pointer" 
-                                            title="Turn off Tor and return to Ghost mode"
+                                            title={t('chrome.turnOffTorTooltip', null, 'Turn off Tor and return to Ghost mode')}
                                         >
-                                            <Ghost size={11} /> Ghost
+                                            <Ghost size={11} /> {t('chrome.ghostShort', null, 'Ghost')}
                                         </button>
-                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title="New Tor Tab (CMD+T) • Middle-click for background">
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title={t('chrome.newTorTabTooltip', null, 'New Tor Tab (CMD+T) • Middle-click for background')}>
                                             <Plus size={12} strokeWidth={2.5} />
                                         </button>
                                     </div>
@@ -1333,10 +1383,10 @@ export default function Sidebar() {
                                         return (
                                             <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between p-3 ${
                                                 frameCurvature === 'square' ? 'rounded-none !rounded-none' : 'rounded-xl'
-                                            } bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title="New Tor Tab (CMD+T) • Middle-click for background">
+                                            } bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title={t('chrome.newTorTabTooltip', null, 'New Tor Tab (CMD+T) • Middle-click for background')}>
                                                 <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                                    <span className="text-sm font-medium truncate hidden md:block italic">New Tor Tab</span>
+                                                    <span className="text-sm font-medium truncate hidden md:block italic">{t('chrome.newTorTab', null, 'New Tor Tab')}</span>
                                                 </div>
                                             </button>
                                         );
@@ -1405,7 +1455,7 @@ export default function Sidebar() {
                                             }`}>
                                                 <SpaceIcon size={13} />
                                             </div>
-                                            <span className={`text-xs font-bold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>Rename Workspace</span>
+                                            <span className={`text-xs font-bold truncate ${isBright ? 'text-zinc-900' : 'text-white'}`}>{t('chrome.renameWorkspace', null, 'Rename Workspace')}</span>
                                         </div>
                                         <button
                                             type="button"
@@ -1432,7 +1482,7 @@ export default function Sidebar() {
                                                 }
                                             }}
                                             maxLength={30}
-                                            placeholder="Workspace name..."
+                                            placeholder={t('chrome.workspaceNamePlaceholder', null, 'Workspace name...')}
                                             className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-medium transition outline-none ${
                                                 isBright 
                                                     ? 'bg-black/[0.04] border-black/12 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white' 
@@ -1447,7 +1497,7 @@ export default function Sidebar() {
                                     </div>
 
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className={`text-[10px] select-none ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>↵ to save</span>
+                                        <span className={`text-[10px] select-none ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>{t('chrome.enterToSave', null, '↵ to save')}</span>
                                         <div className="flex items-center gap-1.5">
                                             <button
                                                 type="button"
@@ -1456,13 +1506,13 @@ export default function Sidebar() {
                                                     isBright ? 'hover:bg-black/[0.06] text-zinc-700 hover:text-zinc-950' : 'hover:bg-white/10 text-white/75 hover:text-white'
                                                 }`}
                                             >
-                                                Cancel
+                                                {t('common.cancel', null, 'Cancel')}
                                             </button>
                                             <button
                                                 type="submit"
                                                 className="px-3 py-1 rounded-lg text-xs font-bold bg-accent text-zinc-950 hover:brightness-110 active:scale-95 transition cursor-pointer shadow-sm"
                                             >
-                                                Save
+                                                {t('common.save', null, 'Save')}
                                             </button>
                                         </div>
                                     </div>
@@ -1541,9 +1591,9 @@ export default function Sidebar() {
                     {(() => {
                         const showSpaceLabels = 
                             customSpaces.length === 1 
-                                ? (customSpaces[0]?.name || '').length <= 18
+                                ? getSpaceDisplayName(customSpaces[0]).length <= 18
                                 : customSpaces.length === 2 
-                                    ? customSpaces.every(s => (s.name || '').length <= 8)
+                                    ? customSpaces.every(s => getSpaceDisplayName(s).length <= 10)
                                     : false;
 
                         return customSpaces.map((sp, spIdx) => {
@@ -1618,11 +1668,11 @@ export default function Sidebar() {
                                             ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold') 
                                             : 'text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)]'
                                     }`}
-                                    title={`${sp.name} (Drag to reorder • Right-click for options • Double-click to rename)`}
+                                    title={t('chrome.workspaceBtnTooltip', { name: getSpaceDisplayName(sp) }, `${getSpaceDisplayName(sp)} (Drag to reorder • Right-click for options • Double-click to rename)`)}
                                 >
                                     {getSpaceIcon(sp.icon, { size: showSpaceLabels ? 14 : 15, className: 'shrink-0 pointer-events-none' })}
                                     {showSpaceLabels && (
-                                        <span className="hidden md:inline whitespace-nowrap select-none pointer-events-none">{sp.name}</span>
+                                        <span className="hidden md:inline truncate select-none pointer-events-none">{getSpaceDisplayName(sp)}</span>
                                     )}
                                 </div>
                             );
@@ -1639,10 +1689,14 @@ export default function Sidebar() {
                             : (customSpaces[0]?.id || 'personal');
                         if (isTorEnabled) {
                             setActiveSpace(isTor ? returnSpace : 'tor');
-                            showToast(!isTor ? 'Tor Space: Activated' : 'Tor Space: Deactivated');
+                            showToast(!isTor
+                                ? t('chrome.toastTorActivated', null, 'Tor Space: Activated')
+                                : t('chrome.toastTorDeactivated', null, 'Tor Space: Deactivated'));
                         } else {
                             setActiveSpace(isIncognito ? returnSpace : 'ghost');
-                            showToast(!isIncognito ? 'Ghost Mode: Activated' : 'Ghost Mode: Deactivated');
+                            showToast(!isIncognito
+                                ? t('chrome.toastGhostActivated', null, 'Ghost Mode: Activated')
+                                : t('chrome.toastGhostDeactivated', null, 'Ghost Mode: Deactivated'));
                         }
                     }}
                     onContextMenu={(e) => {
@@ -1666,8 +1720,8 @@ export default function Sidebar() {
                                 : (isBright ? 'border-transparent bg-transparent text-zinc-500 hover:text-zinc-900 hover:bg-black/[0.05]' : 'border-transparent bg-transparent text-white/50 hover:text-white hover:bg-white/10'))
                     }`}
                     title={isTorEnabled 
-                        ? (isTor ? "Tor Space Active (Click to switch to Personal • Right-click to switch to Ghost)" : "Enter Tor Space • Right-click to switch to Ghost")
-                        : (isIncognito ? "Ghost Mode Active (Click to switch to Personal • Right-click to enable Tor)" : "Ghost Mode (CMD+Shift+N) • Right-click to enable Tor")
+                        ? (isTor ? t('chrome.torSpaceActiveTooltip', null, 'Tor Space Active (Click to switch to Personal • Right-click to switch to Ghost)') : t('chrome.enterTorSpaceTooltip', null, 'Enter Tor Space • Right-click to switch to Ghost'))
+                        : (isIncognito ? t('chrome.ghostModeActiveTooltip', null, 'Ghost Mode Active (Click to switch to Personal • Right-click to enable Tor)') : t('chrome.ghostModeTooltip', null, 'Ghost Mode (CMD+Shift+N) • Right-click to enable Tor'))
                     }
                 >
                     {/* Dual Layered Icons Container with Spring 3D Rotation */}
@@ -1748,7 +1802,7 @@ export default function Sidebar() {
                         <Globe size={14} className={`shrink-0 ${isBright ? 'text-zinc-800' : 'text-accent'}`} />
                     )}
                     <span className="text-xs font-semibold truncate">
-                        {draggedItem.tab.title || 'New Tab'}
+                        {draggedItem.tab.title || t('nav.newTab', null, 'New Tab')}
                     </span>
                 </div>
             </div>
